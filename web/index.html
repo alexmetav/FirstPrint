@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Firstprint: predict new exchange listings</title>
+    <meta name="description" content="Predict where newly listed crypto tokens trade 72 hours after they list on a centralized exchange." />
+    <meta name="theme-color" content="#0d1421" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f4f6fa" media="(prefers-color-scheme: light)" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip" href="#view">Skip to content</a>
+    <div id="app">
+      <header class="topbar" id="topbar"></header>
+      <div id="demo-bar"></div>
+      <main id="view" tabindex="-1"><p class="loading">Loading markets</p></main>
+      <footer class="footer">
+        <p>Points have no cash value. Firstprint is independent and not affiliated with any exchange. <a href="#/admin">Admin</a></p>
+      </footer>
+    </div>
+    <div id="modal-root"></div>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

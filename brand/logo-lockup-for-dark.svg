@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 200" width="760" height="200" role="img" aria-label="Firstprint">
+  <title>Firstprint</title>
+  
+  <g>
+    <rect x="60.0" y="47.0" width="104.0" height="14" rx="7.0" fill="#FFC53D"/>
+    <rect x="71.4" y="70.0" width="81.1" height="14" rx="7.0" fill="#35E0A1"/>
+    <rect x="82.9" y="93.0" width="58.2" height="14" rx="7.0" fill="#A6B0C4"/>
+    <rect x="71.4" y="116.0" width="81.1" height="14" rx="7.0" fill="#FF8A5C"/>
+    <rect x="60.0" y="139.0" width="104.0" height="14" rx="7.0" fill="#FF4D6A"/>
+  </g>
+  <text x="196" y="130" font-family="Bricolage Grotesque, Poppins, DejaVu Sans, sans-serif" font-size="88" font-weight="700" letter-spacing="-3.5" fill="#F2F5FA">Firstprint</text>
+</svg>

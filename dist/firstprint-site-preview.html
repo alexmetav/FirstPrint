@@ -1,0 +1,3310 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Firstprint: predict the first 72 hours of new token listings</title>
+    <meta name="description" content="Firstprint tracks new token listings across the biggest crypto exchanges and lets you predict where the price lands 72 hours later. Explore live exchange data today; predictions are coming soon." />
+    <meta name="theme-color" content="#07090f" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Firstprint: predict the first 72 hours of new listings" />
+    <meta property="og:description" content="Track new listings across major exchanges. Predictions are coming soon." />
+    <meta property="og:image" content="og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="./" id="canonical" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%20role%3D%22img%22%20aria-label%3D%22Firstprint%22%3E%0A%20%20%3Ctitle%3EFirstprint%3C%2Ftitle%3E%0A%20%20%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%2307090f%22%2F%3E%0A%20%20%3Crect%20x%3D%2212%22%20y%3D%227.2%22%20width%3D%2240%22%20height%3D%226.4%22%20rx%3D%223.20%22%20fill%3D%22%23ffc53d%22%2F%3E%0A%20%20%3Crect%20x%3D%2216.4%22%20y%3D%2218.0%22%20width%3D%2231.2%22%20height%3D%226.4%22%20rx%3D%223.20%22%20fill%3D%22%2335e0a1%22%2F%3E%0A%20%20%3Crect%20x%3D%2220.8%22%20y%3D%2228.8%22%20width%3D%2222.4%22%20height%3D%226.4%22%20rx%3D%223.20%22%20fill%3D%22%23a6b0c4%22%2F%3E%0A%20%20%3Crect%20x%3D%2216.4%22%20y%3D%2239.6%22%20width%3D%2231.2%22%20height%3D%226.4%22%20rx%3D%223.20%22%20fill%3D%22%23ff8a5c%22%2F%3E%0A%20%20%3Crect%20x%3D%2212%22%20y%3D%2250.4%22%20width%3D%2240%22%20height%3D%226.4%22%20rx%3D%223.20%22%20fill%3D%22%23ff4d6a%22%2F%3E%0A%3C%2Fsvg%3E%0A" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon-180.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-title" content="Firstprint" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wdth,wght@75..100,600..800&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wdth,wght@75..100,600..800&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wdth,wght@75..100,600..800&display=swap" /></noscript>
+    <style>
+/* Firstprint
+   Near-black canvas, one accent scale (Crash → Moon), generous space.
+   Motion is quiet by default and springy on interaction. */
+
+@font-face {
+  font-family: 'Display Fallback';
+  src: local('Arial Bold'), local('Helvetica Bold'), local('Liberation Sans Bold');
+  font-weight: 600 800;
+  size-adjust: 104%;
+  ascent-override: 92%;
+  descent-override: 22%;
+  line-gap-override: 0%;
+}
+
+:root {
+  --bg: #07090f;
+  --bg-2: #0b0e16;
+  --surface: rgba(255, 255, 255, 0.038);
+  --surface-2: rgba(255, 255, 255, 0.062);
+  --line: rgba(255, 255, 255, 0.09);
+  --line-2: rgba(255, 255, 255, 0.16);
+  --text: #f2f5fa;
+  --muted: #8d95a6;
+  --focus: #9ec5ff;
+
+  --crash: #ff4d6a;
+  --down: #ff8a5c;
+  --flat: #a6b0c4;
+  --up: #35e0a1;
+  --moon: #ffc53d;
+
+  --display: 'Bricolage Grotesque', 'Display Fallback', ui-sans-serif, system-ui, sans-serif;
+  --body: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 24px;
+  --page: 1140px;
+
+  /* Motion */
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --swift: cubic-bezier(0.4, 0, 0.2, 1);
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 var(--body);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  margin: 0;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+}
+
+p {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.wrap {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+.skip {
+  position: absolute;
+  left: -999px;
+  top: 8px;
+  z-index: 100;
+  background: var(--bg-2);
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+}
+.skip:focus {
+  left: 8px;
+}
+
+body[data-view='app'] .landing,
+body[data-view='landing'] .app {
+  display: none;
+}
+
+/* ------------------------------------------------------- Scroll reveal */
+
+.reveal {
+  opacity: 0;
+  transform: translate3d(0, 22px, 0);
+  transition: opacity 0.75s var(--ease), transform 0.75s var(--ease);
+  transition-delay: var(--d, 0ms);
+  will-change: opacity, transform;
+}
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+/* Headline lines rise from a mask */
+.hero-title .line {
+  display: block;
+  overflow: hidden;
+}
+.hero-title .line > span {
+  display: block;
+  transform: translate3d(0, 105%, 0);
+  transition: transform 1s var(--ease);
+}
+.is-loaded .hero-title .line > span {
+  transform: none;
+}
+.is-loaded .hero-title .line:nth-child(2) > span {
+  transition-delay: 90ms;
+}
+.is-loaded .hero-title .line:nth-child(3) > span {
+  transition-delay: 180ms;
+}
+
+/* ------------------------------------------------------------- Buttons */
+
+.btn {
+  --lift: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  border-radius: 999px;
+  padding: 10px 20px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transform: translate3d(var(--mx, 0), calc(var(--my, 0px) - var(--lift)), 0) scale(var(--s, 1));
+  transition: transform 0.45s var(--spring), background 0.25s var(--swift), border-color 0.25s var(--swift), box-shadow 0.35s var(--ease);
+}
+.btn:hover {
+  --lift: 2px;
+  --s: 1.02;
+  background: var(--surface-2);
+}
+.btn:active {
+  --s: 0.97;
+  transition-duration: 0.12s;
+}
+.btn-solid {
+  background: var(--text);
+  border-color: var(--text);
+  color: #06080d;
+}
+.btn-solid:hover {
+  background: #fff;
+  box-shadow: 0 10px 34px -12px rgba(255, 255, 255, 0.45);
+}
+.btn-lg {
+  padding: 15px 28px;
+  font-size: 17px;
+}
+
+.chip {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--moon);
+  border: 1px solid color-mix(in srgb, var(--moon) 40%, transparent);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+/* ------------------------------------------------------------ Wordmark */
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.035em;
+  text-decoration: none;
+  line-height: 1;
+}
+.wordmark.small {
+  font-size: 19px;
+}
+.mark {
+  display: inline-grid;
+  justify-items: center;
+  gap: 2.5px;
+  width: 15px;
+  margin-right: 10px;
+}
+.mark i {
+  display: block;
+  height: 2.5px;
+  border-radius: 2px;
+  transform-origin: center;
+  animation: markIn 0.7s var(--spring) backwards;
+}
+.mark i:nth-child(1) { background: var(--moon); width: 100%; animation-delay: 0.05s; }
+.mark i:nth-child(2) { background: var(--up); width: 78%; animation-delay: 0.11s; }
+.mark i:nth-child(3) { background: var(--flat); width: 56%; animation-delay: 0.17s; }
+.mark i:nth-child(4) { background: var(--down); width: 78%; animation-delay: 0.23s; }
+.mark i:nth-child(5) { background: var(--crash); width: 100%; animation-delay: 0.29s; }
+@keyframes markIn {
+  from { transform: scaleX(0); }
+}
+.wordmark:hover .mark i {
+  animation: markIn 0.55s var(--spring);
+}
+
+/* ----------------------------------------------------------------- Nav */
+
+.nav-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  transition: transform 0.4s var(--ease), background 0.3s var(--swift), border-color 0.3s var(--swift), backdrop-filter 0.3s;
+  border-bottom: 1px solid transparent;
+}
+.nav-bar.stuck {
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom-color: var(--line);
+}
+.nav-bar.hide {
+  transform: translate3d(0, -100%, 0);
+}
+.nav-inner {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  height: 66px;
+}
+.nav-links {
+  display: flex;
+  gap: 2px;
+  margin-right: auto;
+}
+.nav-links a {
+  position: relative;
+  text-decoration: none;
+  color: var(--muted);
+  padding: 8px 12px;
+  font-size: 15px;
+  transition: color 0.25s var(--swift);
+}
+.nav-links a::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 4px;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.4s var(--ease);
+}
+.nav-links a:hover {
+  color: var(--text);
+}
+.nav-links a:hover::after {
+  transform: scaleX(1);
+}
+
+/* ---------------------------------------------------------------- Hero */
+
+.hero {
+  position: relative;
+  padding-top: 132px;
+  padding-bottom: 40px;
+  overflow: hidden;
+}
+.hero-inner {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 56px;
+  align-items: center;
+  padding-bottom: 84px;
+}
+
+/* Slow colour wash behind the hero */
+.aurora {
+  position: absolute;
+  inset: -20% -10% auto;
+  height: 900px;
+  pointer-events: none;
+  filter: blur(74px);
+  opacity: 0.5;
+}
+.aurora span {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  mix-blend-mode: screen;
+  animation: drift 26s ease-in-out infinite;
+}
+.aurora span:nth-child(1) {
+  width: 46vw;
+  height: 46vw;
+  left: -6%;
+  top: 4%;
+  background: radial-gradient(circle, rgba(53, 224, 161, 0.5), transparent 65%);
+}
+.aurora span:nth-child(2) {
+  width: 40vw;
+  height: 40vw;
+  right: 2%;
+  top: -6%;
+  background: radial-gradient(circle, rgba(255, 197, 61, 0.42), transparent 65%);
+  animation-delay: -9s;
+}
+.aurora span:nth-child(3) {
+  width: 36vw;
+  height: 36vw;
+  right: 22%;
+  top: 34%;
+  background: radial-gradient(circle, rgba(255, 77, 106, 0.34), transparent 65%);
+  animation-delay: -17s;
+}
+@keyframes drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(4%, 6%, 0) scale(1.12); }
+  66% { transform: translate3d(-5%, 3%, 0) scale(0.94); }
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 9px;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 22px;
+}
+.dot-live {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--up);
+  position: relative;
+  transform: translateY(-1px);
+}
+.dot-live::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1px solid var(--up);
+  opacity: 0;
+  animation: ping 2.4s var(--ease) infinite;
+}
+@keyframes ping {
+  0% { transform: scale(0.6); opacity: 0.9; }
+  70%, 100% { transform: scale(1.9); opacity: 0; }
+}
+
+.hero-title {
+  font-size: clamp(42px, 5.6vw, 78px);
+  font-weight: 800;
+  font-stretch: 84%;
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+}
+.hero-title em {
+  font-style: normal;
+  white-space: nowrap;
+  background: linear-gradient(96deg, var(--moon), var(--up) 55%, var(--flat));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero .lede {
+  font-size: clamp(17px, 1.5vw, 20px);
+  color: var(--muted);
+  margin: 24px 0 30px;
+  max-width: 33em;
+}
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* The example market */
+
+.hero-market {
+  margin: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.028));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 24px;
+  box-shadow: 0 40px 80px -40px rgba(0, 0, 0, 0.9);
+  transform: perspective(1200px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform 0.6s var(--ease);
+}
+.hm-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.hm-title {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.hm-title b {
+  display: block;
+  font-family: var(--display);
+  color: var(--text);
+  font-size: 36px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  margin-bottom: 4px;
+}
+.hm-clock {
+  text-align: right;
+  font-size: 12.5px;
+}
+.hm-clock b {
+  display: block;
+  font-family: var(--display);
+  font-size: 21px;
+  letter-spacing: -0.02em;
+  color: var(--moon);
+  transition: color 0.4s var(--swift);
+}
+.hm-question {
+  margin: 18px 0 14px;
+  font-size: 14.5px;
+  color: var(--muted);
+}
+
+.hm-ladder {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.hm-ladder li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 62px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  overflow: hidden;
+  font-size: 13.5px;
+  transition: transform 0.5s var(--spring), background 0.4s var(--swift), opacity 0.4s var(--swift);
+}
+.hm-ladder li::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--share, 0%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--c) 34%, transparent), color-mix(in srgb, var(--c) 12%, transparent));
+  transition: width 1.1s var(--ease);
+}
+.hm-ladder li > * {
+  position: relative;
+}
+.hm-ladder b {
+  font-family: var(--display);
+  color: var(--c);
+  font-size: 15px;
+}
+.hm-ladder span {
+  color: var(--muted);
+}
+.hm-ladder em {
+  font-style: normal;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 14px;
+}
+.hm-ladder li.dim {
+  opacity: 0.38;
+}
+.hm-ladder li.won {
+  background: color-mix(in srgb, var(--c) 14%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent);
+  animation: pop 0.7s var(--spring);
+}
+@keyframes pop {
+  35% { transform: scale(1.035); }
+}
+.hm-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Ticker */
+
+.ticker {
+  position: relative;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  padding: 16px 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+}
+.ticker-track {
+  display: flex;
+  gap: 46px;
+  width: max-content;
+  animation: marquee 38s linear infinite;
+}
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  to { transform: translate3d(-50%, 0, 0); }
+}
+.ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 17px;
+  color: color-mix(in srgb, var(--text) 70%, var(--bg));
+  white-space: nowrap;
+}
+.ticker-item i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--line-2);
+}
+
+/* ------------------------------------------------------------ Sections */
+
+.section {
+  padding: 120px 0 0;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 720px;
+}
+.section-head {
+  max-width: 760px;
+  margin-bottom: 56px;
+}
+.section-head.center {
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+.section-head.split {
+  max-width: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.section-head h2 {
+  font-size: clamp(34px, 4.4vw, 60px);
+  font-weight: 800;
+  font-stretch: 90%;
+}
+.section-head .sub {
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 18px;
+  max-width: 46em;
+}
+.section-head.center .sub {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Steps */
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.steps li {
+  background: var(--bg);
+  padding: 30px 26px 34px;
+  transition: background 0.4s var(--swift);
+}
+.steps li:hover {
+  background: var(--bg-2);
+}
+.step-n {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+.steps h3 {
+  font-size: 21px;
+  margin: 22px 0 10px;
+}
+.steps p {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+/* Scale cards */
+.scale {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+.scale-card {
+  position: relative;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  padding: 26px 20px 24px;
+  overflow: hidden;
+  transition: transform 0.5s var(--spring), background 0.4s var(--swift);
+}
+.scale-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--c);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.8s var(--ease);
+  transition-delay: var(--d, 0ms);
+}
+.scale-card.in::before {
+  transform: scaleX(1);
+}
+.scale-card:hover {
+  background: var(--surface-2);
+  transform: translateY(-4px);
+}
+.scale-pct {
+  font-size: 13px;
+  color: var(--muted);
+}
+.scale-card b {
+  display: block;
+  font-family: var(--display);
+  font-size: 30px;
+  letter-spacing: -0.03em;
+  color: var(--c);
+  margin: 6px 0 12px;
+}
+.scale-card p {
+  color: var(--muted);
+  font-size: 14.5px;
+}
+
+/* Fairness cards with pointer-follow highlight */
+.fair-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.tilt {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 26px;
+  background: var(--surface);
+  overflow: hidden;
+  transition: transform 0.5s var(--spring), border-color 0.4s var(--swift);
+}
+.tilt::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: radial-gradient(240px circle at var(--px, 50%) var(--py, 0%), rgba(255, 255, 255, 0.09), transparent 70%);
+  opacity: 0;
+  transition: opacity 0.4s var(--swift);
+  pointer-events: none;
+}
+.tilt:hover {
+  border-color: var(--line-2);
+  transform: translateY(-3px);
+}
+.tilt:hover::after {
+  opacity: 1;
+}
+.tilt h3 {
+  font-size: 19px;
+  margin-bottom: 10px;
+}
+.tilt p {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+/* Big stats */
+.big-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0 0 40px;
+  padding: 32px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.big-stats dd {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: clamp(36px, 4.6vw, 58px);
+  letter-spacing: -0.04em;
+  line-height: 1;
+  background: linear-gradient(170deg, var(--text) 35%, color-mix(in srgb, var(--text) 68%, var(--bg)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.big-stats dt {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 14.5px;
+}
+
+/* Exchange tiles */
+.exchange-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+}
+.ex-tile {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 15px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid transparent;
+  text-decoration: none;
+  transition: transform 0.5s var(--spring), background 0.35s var(--swift), border-color 0.35s var(--swift);
+}
+.ex-tile:hover {
+  background: var(--surface-2);
+  border-color: var(--line);
+  transform: translateY(-3px);
+}
+.ex-tile b {
+  font-family: var(--display);
+  font-size: 16.5px;
+}
+.ex-tile small {
+  display: block;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.monogram {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 16px;
+  background: var(--surface-2);
+}
+
+/* Roadmap */
+.roadmap {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0 7px;
+  border-left: 1px solid var(--line);
+}
+.roadmap li {
+  position: relative;
+  padding: 0 0 40px 34px;
+  max-width: 700px;
+}
+.roadmap li::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 7px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--line-2);
+}
+.roadmap li.is-live::before {
+  background: var(--up);
+  border-color: var(--up);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--up) 18%, transparent);
+}
+.roadmap li.is-next::before {
+  border-color: var(--moon);
+}
+.roadmap .status {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.roadmap .is-live .status { color: var(--up); }
+.roadmap .is-next .status { color: var(--moon); }
+.roadmap h3 {
+  font-size: 22px;
+  margin: 8px 0 8px;
+}
+.roadmap p {
+  color: var(--muted);
+}
+
+/* FAQ */
+.faq-list {
+  max-width: 840px;
+  border-top: 1px solid var(--line);
+}
+.faq-list details {
+  border-bottom: 1px solid var(--line);
+}
+.faq-list summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 22px 44px 22px 0;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 19px;
+  position: relative;
+  transition: color 0.25s var(--swift);
+}
+.faq-list summary::-webkit-details-marker {
+  display: none;
+}
+.faq-list summary:hover {
+  color: #fff;
+}
+.faq-list summary::after,
+.faq-list summary::before {
+  content: '';
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  width: 13px;
+  height: 1.5px;
+  background: var(--muted);
+  transition: transform 0.45s var(--spring);
+}
+.faq-list summary::before {
+  transform: rotate(90deg);
+}
+.faq-list details[open] summary::before {
+  transform: rotate(0deg);
+}
+.faq-list details p {
+  color: var(--muted);
+  padding: 0 44px 24px 0;
+  max-width: 64ch;
+  animation: fadeUp 0.5s var(--ease);
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(-6px); }
+}
+
+/* CTA */
+.cta-band {
+  margin-top: 130px;
+  border-top: 1px solid var(--line);
+  background: radial-gradient(120% 160% at 50% 0%, rgba(53, 224, 161, 0.08), transparent 60%), var(--bg-2);
+}
+.cta-inner {
+  padding: 84px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.cta-inner h2 {
+  font-size: clamp(32px, 4vw, 50px);
+  font-weight: 800;
+}
+
+/* Footer */
+.footer {
+  border-top: 1px solid var(--line);
+}
+.footer-inner {
+  padding: 38px 28px 48px;
+  display: flex;
+  justify-content: space-between;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.footer-inner p {
+  margin-top: 12px;
+  font-size: 14px;
+  max-width: 46em;
+}
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  align-items: flex-start;
+}
+.footer-links a {
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 15px;
+  transition: color 0.25s var(--swift);
+}
+.footer-links a:hover {
+  color: var(--text);
+}
+
+/* ================================================================== App */
+
+.app {
+  animation: appIn 0.5s var(--ease);
+}
+@keyframes appIn {
+  from { opacity: 0; transform: translateY(8px); }
+}
+
+.app-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: color-mix(in srgb, var(--bg) 74%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--line);
+}
+.app-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  height: 66px;
+}
+.app-tabs {
+  display: flex;
+  gap: 2px;
+  margin-right: auto;
+  position: relative;
+}
+.app-tabs a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--muted);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 15px;
+  white-space: nowrap;
+  transition: color 0.25s var(--swift), background 0.25s var(--swift);
+}
+.app-tabs a:hover {
+  color: var(--text);
+}
+.app-tabs a[aria-current='page'] {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.soon {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--moon);
+  border: 1px solid color-mix(in srgb, var(--moon) 38%, transparent);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.btn-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.app-main {
+  padding: 44px 28px 110px;
+  min-height: 72vh;
+}
+.app-main:focus {
+  outline: none;
+}
+.page-title {
+  font-size: clamp(36px, 4.6vw, 56px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+.page-lede {
+  color: var(--muted);
+  margin: 14px 0 32px;
+  max-width: 44em;
+  font-size: 17px;
+}
+
+.data-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.data-note.offline .dot-live {
+  background: var(--down);
+}
+.data-note.offline .dot-live::after {
+  display: none;
+}
+
+.summary-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0 0 28px;
+}
+.summary-stats > div {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 18px;
+}
+.summary-stats dt {
+  font-size: 13px;
+  color: var(--muted);
+}
+.summary-stats dd {
+  margin: 6px 0 0;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 28px;
+  letter-spacing: -0.03em;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.toolbar-left {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.input,
+.select {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 9px 16px;
+  transition: border-color 0.25s var(--swift), background 0.25s var(--swift);
+}
+.input:hover,
+.select:hover {
+  background: var(--surface-2);
+}
+.input:focus,
+.select:focus {
+  border-color: var(--line-2);
+  outline: none;
+}
+
+/* Exchange table */
+.ex-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.ex-table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.ex-table td {
+  padding: 15px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.ex-table tbody tr {
+  cursor: pointer;
+  transition: background 0.2s var(--swift);
+}
+.ex-table tbody tr:hover {
+  background: var(--surface);
+}
+.ex-table tbody tr.row-in td {
+  animation: rowIn 0.5s var(--ease) backwards;
+}
+@keyframes rowIn {
+  from { opacity: 0; transform: translateY(8px); }
+}
+.ex-table .right {
+  text-align: right;
+}
+.ex-name {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  text-decoration: none;
+}
+.ex-name b {
+  font-family: var(--display);
+  font-size: 16.5px;
+  display: block;
+}
+.ex-name small {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.num {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 16px;
+}
+.rank {
+  color: var(--muted);
+  width: 34px;
+  font-family: var(--display);
+}
+
+.trust {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+}
+.trust-bar {
+  width: 56px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.trust-bar i {
+  display: block;
+  height: 100%;
+  width: calc(var(--t) * 10%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--up) 60%, transparent), var(--up));
+  animation: growX 0.9s var(--ease) backwards;
+}
+@keyframes growX {
+  from { transform: scaleX(0); transform-origin: left; }
+}
+
+.radar-pill {
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.radar-pill.on {
+  color: var(--up);
+  background: color-mix(in srgb, var(--up) 12%, transparent);
+}
+.radar-pill.off {
+  color: var(--muted);
+  background: var(--surface-2);
+}
+
+.skeleton {
+  display: inline-block;
+  width: 74px;
+  height: 15px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--surface), var(--surface-2), var(--surface));
+  background-size: 200% 100%;
+  animation: shimmer 1.3s linear infinite;
+}
+@keyframes shimmer {
+  to { background-position: -200% 0; }
+}
+
+/* Exchange detail */
+.back {
+  display: inline-block;
+  color: var(--muted);
+  text-decoration: none;
+  margin-bottom: 22px;
+  font-size: 15px;
+  transition: transform 0.35s var(--spring), color 0.25s;
+}
+.back:hover {
+  color: var(--text);
+  transform: translateX(-3px);
+}
+.detail-head {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.detail-head .monogram {
+  width: 66px;
+  height: 66px;
+  border-radius: 18px;
+  font-size: 27px;
+}
+.detail-head .actions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+}
+.detail-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 32px 0 42px;
+}
+.detail-stats > div {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 20px;
+}
+.detail-stats dt {
+  font-size: 13px;
+  color: var(--muted);
+}
+.detail-stats dd {
+  margin: 8px 0 0;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 26px;
+  letter-spacing: -0.03em;
+}
+.detail-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 40px;
+  align-items: start;
+}
+.panel h2 {
+  font-size: 22px;
+  margin-bottom: 14px;
+}
+.panel + .panel {
+  margin-top: 30px;
+}
+.panel-box {
+  background: var(--surface);
+  border-radius: var(--r-md);
+  padding: 20px;
+}
+.panel-box p + p,
+.panel-box ul {
+  margin-top: 12px;
+}
+.check-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.check-list li {
+  padding: 7px 0 7px 26px;
+  position: relative;
+}
+.check-list li::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 15px;
+  width: 10px;
+  height: 5px;
+  border-left: 1.8px solid var(--up);
+  border-bottom: 1.8px solid var(--up);
+  transform: rotate(-45deg);
+}
+.pairs .num {
+  font-size: 15px;
+}
+.pairs td a {
+  text-decoration: none;
+}
+.pairs td a:hover {
+  text-decoration: underline;
+}
+.table-scroll {
+  overflow-x: auto;
+}
+
+/* Coming soon */
+.soon-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr);
+  gap: 60px;
+  align-items: center;
+  padding-top: 24px;
+}
+.soon-page h1 {
+  font-size: clamp(40px, 5.4vw, 70px);
+  font-weight: 800;
+  font-stretch: 88%;
+  letter-spacing: -0.045em;
+}
+.soon-page .lede {
+  color: var(--muted);
+  font-size: 18.5px;
+  margin: 20px 0 26px;
+  max-width: 32em;
+}
+.soon-page .check-list {
+  margin-bottom: 30px;
+}
+.soon-badge {
+  display: inline-block;
+  margin-bottom: 20px;
+}
+.preview-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.028));
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 22px;
+  box-shadow: 0 40px 80px -44px rgba(0, 0, 0, 0.9);
+}
+.preview-card .hm-ladder li::before {
+  width: var(--share);
+}
+.radar-preview {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 0;
+}
+.radar-preview li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--line);
+}
+.radar-preview b {
+  font-family: var(--display);
+  font-size: 18px;
+}
+.radar-preview small {
+  color: var(--muted);
+  grid-column: 1 / -1;
+}
+.blur-rows {
+  filter: blur(3px);
+  opacity: 0.5;
+  user-select: none;
+}
+
+.empty {
+  padding: 52px 20px;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+}
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translate(-50%, 24px) scale(0.96);
+  opacity: 0;
+  z-index: 60;
+  background: var(--text);
+  color: #06080d;
+  padding: 12px 20px;
+  border-radius: 999px;
+  font-weight: 600;
+  pointer-events: none;
+  box-shadow: 0 20px 50px -20px rgba(0, 0, 0, 0.8);
+  transition: opacity 0.3s var(--ease), transform 0.5s var(--spring);
+}
+#toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+/* ------------------------------------------------------------ Responsive */
+
+@media (max-width: 1000px) {
+  .hero-inner {
+    grid-template-columns: 1fr;
+    gap: 48px;
+    padding-bottom: 72px;
+  }
+  .hero {
+    padding-top: 120px;
+  }
+  .steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .scale {
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  }
+  .fair-grid,
+  .big-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .detail-cols,
+  .soon-page {
+    grid-template-columns: 1fr;
+  }
+  .detail-stats,
+  .summary-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .wrap {
+    padding: 0 20px;
+  }
+  .nav-links {
+    display: none;
+  }
+  .nav-inner {
+    justify-content: space-between;
+    height: 60px;
+  }
+  .hero {
+    padding-top: 104px;
+  }
+  .aurora {
+    filter: blur(56px);
+    opacity: 0.4;
+  }
+  .aurora span {
+    animation: none;
+  }
+  .hero-title {
+    font-size: clamp(38px, 11vw, 56px);
+  }
+  .eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    margin-bottom: 18px;
+  }
+  .hero .lede {
+    font-size: 16.5px;
+  }
+  .hero-actions .btn-lg {
+    flex: 1 1 auto;
+    padding: 14px 20px;
+  }
+  .hero-market {
+    padding: 20px;
+  }
+  .section {
+    padding-top: 88px;
+  }
+  .section-head {
+    margin-bottom: 36px;
+  }
+  .steps,
+  .fair-grid {
+    grid-template-columns: 1fr;
+  }
+  .cta-inner {
+    padding: 56px 20px;
+  }
+  .app-main {
+    padding: 28px 20px 96px;
+  }
+  .app-bar-inner {
+    height: auto;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding: 10px 0 8px;
+  }
+  .app-tabs {
+    order: 3;
+    width: calc(100% + 20px);
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 -10px;
+  }
+  .app-bar .btn-disabled {
+    display: none;
+  }
+  .toolbar {
+    align-items: flex-start;
+  }
+  .trending-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .trend-card {
+    width: 152px;
+    padding: 12px;
+  }
+  .ex-name .monogram {
+    display: none;
+  }
+  .hide-sm {
+    display: none;
+  }
+  .ex-table td {
+    padding: 13px 8px;
+  }
+  .ex-table th {
+    padding: 10px 8px;
+  }
+  .detail-head .actions {
+    margin-left: 0;
+    width: 100%;
+  }
+  .hm-ladder li {
+    grid-template-columns: 54px 1fr auto;
+    padding: 11px 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .reveal,
+  .hero-title .line > span {
+    opacity: 1;
+    transform: none;
+  }
+  .aurora {
+    display: none;
+  }
+}
+
+/* --------------------------------------------------------- Practice market */
+
+.try-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
+  padding: 24px;
+  max-width: 960px;
+  margin: 0 auto;
+  box-shadow: 0 40px 90px -50px rgba(0, 0, 0, 0.95);
+}
+.try-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.try-score {
+  text-align: right;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.try-score b {
+  display: block;
+  font-family: var(--display);
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  transition: transform 0.5s var(--spring), color 0.3s;
+}
+.try-score.bump b {
+  transform: scale(1.25);
+  color: var(--up);
+}
+
+.try-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+  gap: 26px;
+  margin-top: 22px;
+  align-items: stretch;
+}
+
+.try-chart {
+  position: relative;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow: hidden;
+  min-height: 220px;
+}
+.try-chart.idle::after {
+  content: 'The 72 hours draw here once you pick.';
+  position: absolute;
+  inset: auto 0 18px;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.try-chart svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.try-base {
+  stroke: var(--line-2);
+  stroke-dasharray: 4 6;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.try-path {
+  stroke: var(--c, var(--flat));
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  transition: stroke 0.4s var(--swift);
+}
+.try-move {
+  position: absolute;
+  right: 16px;
+  top: 14px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 30px;
+  letter-spacing: -0.03em;
+  color: var(--c, var(--muted));
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.4s var(--ease), transform 0.5s var(--spring);
+}
+.try-move.show {
+  opacity: 1;
+  transform: none;
+}
+
+.try-side {
+  display: flex;
+  flex-direction: column;
+}
+.try-q {
+  font-size: 14.5px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.try-picks {
+  display: grid;
+  gap: 6px;
+}
+.try-picks button {
+  display: grid;
+  grid-template-columns: 62px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  padding: 11px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  cursor: pointer;
+  font-size: 13.5px;
+  transition: transform 0.4s var(--spring), background 0.25s var(--swift), border-color 0.25s var(--swift), opacity 0.3s;
+}
+.try-picks button b {
+  font-family: var(--display);
+  font-size: 15px;
+  color: var(--c);
+}
+.try-picks button span {
+  color: var(--muted);
+}
+.try-picks button em {
+  font-style: normal;
+  font-family: var(--display);
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 42px;
+  text-align: right;
+}
+.try-picks button:hover:not(:disabled) {
+  background: var(--surface-2);
+  transform: translateX(3px);
+}
+.try-picks button:active:not(:disabled) {
+  transform: scale(0.985);
+}
+.try-picks button[aria-checked='true'] {
+  border-color: var(--c);
+  background: color-mix(in srgb, var(--c) 12%, var(--surface));
+}
+.try-picks button:disabled {
+  cursor: default;
+}
+.try-picks.locked button:not([aria-checked='true']) {
+  opacity: 0.4;
+}
+.try-picks button.win {
+  border-color: var(--c);
+  box-shadow: inset 0 0 0 1px var(--c);
+  animation: pop 0.7s var(--spring);
+}
+
+.try-result {
+  margin-top: 16px;
+  font-size: 15px;
+  color: var(--muted);
+  min-height: 48px;
+}
+.try-result b {
+  font-family: var(--display);
+  font-size: 19px;
+  color: var(--text);
+  display: block;
+  margin-bottom: 2px;
+}
+.try-result.win b {
+  color: var(--up);
+}
+.try-result.lose b {
+  color: var(--down);
+}
+#try-again {
+  margin-top: auto;
+  align-self: flex-start;
+}
+.try-note {
+  text-align: center;
+  margin-top: 18px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+/* Confetti burst on a correct call */
+.spark {
+  position: fixed;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 50;
+  animation: spark 1s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+@keyframes spark {
+  to {
+    transform: translate3d(var(--dx), var(--dy), 0) rotate(var(--rot));
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------------- Trending */
+
+.trending {
+  margin-bottom: 34px;
+}
+.trending-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.trending-head h2 {
+  font-size: 20px;
+}
+.trend-row {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+  -webkit-mask-image: linear-gradient(90deg, #000 94%, transparent);
+  mask-image: linear-gradient(90deg, #000 94%, transparent);
+}
+.trend-row::-webkit-scrollbar {
+  display: none;
+}
+.trend-card {
+  flex: none;
+  width: 176px;
+  padding: 14px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid transparent;
+  transition: background 0.3s var(--swift), border-color 0.3s var(--swift), transform 0.4s var(--spring);
+  animation: rowIn 0.5s var(--ease) backwards;
+}
+.trend-card:hover {
+  background: var(--surface-2);
+  border-color: var(--line);
+  transform: translateY(-3px);
+}
+.trend-rank {
+  font-size: 12px;
+  color: var(--muted);
+}
+.trend-sym {
+  display: block;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  margin: 6px 0 2px;
+}
+.trend-name {
+  display: block;
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trend-cap {
+  display: block;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+@media (max-width: 860px) {
+  .try-body {
+    grid-template-columns: 1fr;
+  }
+  .try-chart {
+    min-height: 170px;
+  }
+  .try-card {
+    padding: 18px;
+  }
+  #try-again {
+    align-self: stretch;
+  }
+}
+
+</style>
+    <script>
+// Site settings. Edit these before you deploy; empty values are hidden on the site.
+window.FIRSTPRINT_CONFIG = {
+  // Your public site address, e.g. "https://firstprint.xyz" (used in share links)
+  siteUrl: '',
+  // Social links shown in the footer and on "Coming soon" pages
+  links: {
+    x: '',
+    telegram: '',
+    discord: '',
+  },
+  // Optional waitlist form (Tally, Typeform, Google Forms). Adds "Join the waitlist" buttons.
+  waitlistUrl: '',
+  // Optional CoinGecko demo API key for higher rate limits (free at coingecko.com/en/api)
+  coingeckoApiKey: '',
+};
+
+</script>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Firstprint",
+        "applicationCategory": "FinanceApplication",
+        "operatingSystem": "Any",
+        "description": "Firstprint tracks new token listings across major crypto exchanges and lets you predict where the price lands 72 hours later.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
+  </head>
+  <body data-view="landing">
+    <a class="skip" href="#main">Skip to content</a>
+
+    <!-- ============================================================ Landing -->
+    <div class="landing">
+      <header class="nav-bar" id="nav">
+        <div class="wrap nav-inner">
+          <a class="wordmark" href="#top" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
+          <nav class="nav-links" aria-label="Page sections">
+            <a href="#how">How it works</a>
+            <a href="#outcomes">Outcomes</a>
+            <a href="#try">Try it</a>
+            <a href="#exchanges">Exchanges</a>
+            <a href="#roadmap">Roadmap</a>
+          </nav>
+          <a class="btn btn-solid magnetic" href="#/app">Launch app</a>
+        </div>
+      </header>
+
+      <main id="main">
+        <!-- Hero -->
+        <section class="hero" id="top">
+          <div class="aurora" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div class="wrap hero-inner">
+            <div class="hero-copy">
+              <p class="eyebrow reveal"><span class="dot-live" aria-hidden="true"></span>Live exchange data. Predictions coming soon.</p>
+              <h1 class="hero-title">
+                <span class="line"><span>Predict the</span></span>
+                <span class="line"><span>first <em>72 hours</em></span></span>
+                <span class="line"><span>of every listing.</span></span>
+              </h1>
+              <p class="lede reveal" data-delay="220">A new token lists somewhere almost every day, and the first three days decide its story. Firstprint tracks those listings and lets you call where the price lands.</p>
+              <div class="hero-actions reveal" data-delay="320">
+                <a class="btn btn-solid btn-lg magnetic" href="#/app">Launch app</a>
+                <a class="btn btn-lg magnetic" href="#how">How it works</a>
+              </div>
+            </div>
+
+            <figure class="hero-market reveal" data-delay="180" aria-label="Example of a Firstprint market">
+              <div class="hm-head">
+                <div>
+                  <span class="chip" id="hm-phase">Predictions open</span>
+                  <p class="hm-title"><b>NOVA</b><span id="hm-sub">Lists on a major exchange</span></p>
+                </div>
+                <div class="hm-clock"><span class="muted" id="hm-clock-label">Lists in</span><b id="hm-clock">02:14:09</b></div>
+              </div>
+              <p class="hm-question">Where will NOVA trade 72 hours after listing?</p>
+              <ol class="hm-ladder" id="hm-ladder">
+                <li style="--c: var(--moon)" data-b="moon"><b>Moon</b><span>+50% or better</span><em>0%</em></li>
+                <li style="--c: var(--up)" data-b="up"><b>Up</b><span>+10% to +50%</span><em>0%</em></li>
+                <li style="--c: var(--flat)" data-b="flat"><b>Flat</b><span>−10% to +10%</span><em>0%</em></li>
+                <li style="--c: var(--down)" data-b="down"><b>Down</b><span>−50% to −10%</span><em>0%</em></li>
+                <li style="--c: var(--crash)" data-b="crash"><b>Crash</b><span>−50% or worse</span><em>0%</em></li>
+              </ol>
+              <figcaption class="hm-foot"><span id="hm-foot-text">Share of the pool on each outcome</span><span>Illustration</span></figcaption>
+            </figure>
+          </div>
+
+          <div class="ticker" aria-hidden="true"><div class="ticker-track" id="ticker-track"></div></div>
+        </section>
+
+        <!-- How it works -->
+        <section class="section" id="how">
+          <div class="wrap">
+            <div class="section-head">
+              <p class="eyebrow reveal">How it works</p>
+              <h2 class="reveal" data-delay="60">Four steps, one question,<br />settled on real prices.</h2>
+            </div>
+            <ol class="steps">
+              <li class="reveal"><span class="step-n">01</span><h3>A listing appears</h3><p>Firstprint watches exchange announcements and new trading pairs, then opens a market the moment a listing is confirmed.</p></li>
+              <li class="reveal" data-delay="80"><span class="step-n">02</span><h3>You pick an outcome</h3><p>Choose where the price lands 72 hours after trading opens. Predict early and your share grows.</p></li>
+              <li class="reveal" data-delay="160"><span class="step-n">03</span><h3>Prices are measured</h3><p>The start is the average of the first hour. The finish is the average of the last hour. No single wick decides it.</p></li>
+              <li class="reveal" data-delay="240"><span class="step-n">04</span><h3>Winners split the pool</h3><p>Everyone who called it right shares the pool, and results publish the exact prices used.</p></li>
+            </ol>
+          </div>
+        </section>
+
+        <!-- Outcomes -->
+        <section class="section outcomes" id="outcomes">
+          <div class="wrap">
+            <div class="section-head center">
+              <p class="eyebrow reveal">The scale</p>
+              <h2 class="reveal" data-delay="60">Five outcomes.<br />That’s the whole game.</h2>
+              <p class="sub reveal" data-delay="120">Where is the price 72 hours after listing, compared with its first hour of trading?</p>
+            </div>
+            <div class="scale" role="list">
+              <div class="scale-card reveal" role="listitem" style="--c: var(--crash)"><span class="scale-pct">−50% or worse</span><b>Crash</b><p>The listing unwinds hard, usually when unlocked supply hits the market.</p></div>
+              <div class="scale-card reveal" data-delay="70" role="listitem" style="--c: var(--down)"><span class="scale-pct">−50% to −10%</span><b>Down</b><p>Early sellers outweigh new buyers.</p></div>
+              <div class="scale-card reveal" data-delay="140" role="listitem" style="--c: var(--flat)"><span class="scale-pct">−10% to +10%</span><b>Flat</b><p>The price holds near where it opened.</p></div>
+              <div class="scale-card reveal" data-delay="210" role="listitem" style="--c: var(--up)"><span class="scale-pct">+10% to +50%</span><b>Up</b><p>Demand keeps building past day one.</p></div>
+              <div class="scale-card reveal" data-delay="280" role="listitem" style="--c: var(--moon)"><span class="scale-pct">+50% or better</span><b>Moon</b><p>The listing becomes the story of the week.</p></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Try it -->
+        <section class="section try" id="try">
+          <div class="wrap">
+            <div class="section-head center">
+              <p class="eyebrow reveal">Try it</p>
+              <h2 class="reveal" data-delay="60">Make a call.<br />See how it feels.</h2>
+              <p class="sub reveal" data-delay="120">A practice market with a made-up token. Pick an outcome and watch the 72 hours play out.</p>
+            </div>
+
+            <div class="try-card reveal" data-delay="80">
+              <div class="try-head">
+                <div>
+                  <span class="chip" id="try-chip">Practice market</span>
+                  <p class="hm-title"><b id="try-symbol">VELA</b><span id="try-sub">Lists on a major exchange in 2 hours</span></p>
+                </div>
+                <div class="try-score">
+                  <span class="muted">Your streak</span>
+                  <b id="try-streak">0</b>
+                </div>
+              </div>
+
+              <div class="try-body">
+                <div class="try-chart" id="try-chart" aria-hidden="true">
+                  <svg viewBox="0 0 320 140" preserveAspectRatio="none">
+                    <line class="try-base" x1="0" x2="320" y1="70" y2="70" />
+                    <path class="try-path" id="try-path" d="M0,70" fill="none" />
+                  </svg>
+                  <span class="try-move" id="try-move"></span>
+                </div>
+
+                <div class="try-side">
+                  <p class="try-q" id="try-question">Where will VELA trade 72 hours after listing?</p>
+                  <div class="try-picks" id="try-picks" role="radiogroup" aria-label="Pick an outcome">
+                    <button type="button" role="radio" aria-checked="false" data-pick="moon" style="--c: var(--moon)"><b>Moon</b><span>+50% or better</span><em>2.4×</em></button>
+                    <button type="button" role="radio" aria-checked="false" data-pick="up" style="--c: var(--up)"><b>Up</b><span>+10% to +50%</span><em>1.9×</em></button>
+                    <button type="button" role="radio" aria-checked="false" data-pick="flat" style="--c: var(--flat)"><b>Flat</b><span>−10% to +10%</span><em>3.1×</em></button>
+                    <button type="button" role="radio" aria-checked="false" data-pick="down" style="--c: var(--down)"><b>Down</b><span>−50% to −10%</span><em>2.6×</em></button>
+                    <button type="button" role="radio" aria-checked="false" data-pick="crash" style="--c: var(--crash)"><b>Crash</b><span>−50% or worse</span><em>4.2×</em></button>
+                  </div>
+                  <p class="try-result" id="try-result" role="status" aria-live="polite">Pick an outcome to start.</p>
+                  <button class="btn btn-solid magnetic" type="button" id="try-again" hidden>Run another</button>
+                </div>
+              </div>
+            </div>
+            <p class="try-note reveal">Practice only. Outcomes here are random and nothing is at stake.</p>
+          </div>
+        </section>
+
+        <!-- Fairness -->
+        <section class="section fair">
+          <div class="wrap">
+            <div class="section-head">
+              <p class="eyebrow reveal">Fair by design</p>
+              <h2 class="reveal" data-delay="60">New listings are wild.<br />The rules aren’t.</h2>
+              <p class="sub reveal" data-delay="120">Six rules keep a single trade, whale, or insider from deciding any market.</p>
+            </div>
+            <div class="fair-grid">
+              <article class="tilt reveal"><h3>Averages, not spikes</h3><p>Start and finish prices are one-hour averages, so a wick can’t move the result.</p></article>
+              <article class="tilt reveal" data-delay="60"><h3>More than one exchange</h3><p>When a token trades in several places, a volume-weighted median is used.</p></article>
+              <article class="tilt reveal" data-delay="120"><h3>Limits on every pool</h3><p>Every pool has a size limit and every person has a stake limit.</p></article>
+              <article class="tilt reveal" data-delay="180"><h3>Early beats late</h3><p>Earlier predictions count for more, so waiting to read the chart doesn’t pay.</p></article>
+              <article class="tilt reveal" data-delay="240"><h3>Automatic refunds</h3><p>Delays, halted trading, thin data, or no winners mean everyone gets their stake back.</p></article>
+              <article class="tilt reveal" data-delay="300"><h3>Open results</h3><p>Every settlement publishes the prices used and a fingerprint anyone can check.</p></article>
+            </div>
+          </div>
+        </section>
+
+        <!-- Exchanges -->
+        <section class="section" id="exchanges">
+          <div class="wrap">
+            <div class="section-head split">
+              <div>
+                <p class="eyebrow reveal">Coverage</p>
+                <h2 class="reveal" data-delay="60">The exchanges that<br />list the most.</h2>
+                <p class="sub reveal" data-delay="120">Live volume, trust scores, and top pairs for thirteen majors. Listing tracking starts with seven.</p>
+              </div>
+              <a class="btn btn-solid magnetic reveal" data-delay="160" href="#/app/exchanges">Explore exchanges</a>
+            </div>
+            <dl class="big-stats">
+              <div class="reveal"><dd data-count="13">13</dd><dt>Exchanges tracked</dt></div>
+              <div class="reveal" data-delay="80"><dd data-count="7">7</dd><dt>With listing radar</dt></div>
+              <div class="reveal" data-delay="160"><dd data-count="72" data-suffix="h">72h</dd><dt>Every market’s length</dt></div>
+              <div class="reveal" data-delay="240"><dd data-count="5">5</dd><dt>Possible outcomes</dt></div>
+            </dl>
+            <div class="exchange-grid" id="landing-exchanges"></div>
+          </div>
+        </section>
+
+        <!-- Roadmap -->
+        <section class="section" id="roadmap">
+          <div class="wrap">
+            <div class="section-head">
+              <p class="eyebrow reveal">Roadmap</p>
+              <h2 class="reveal" data-delay="60">Shipping in the open.</h2>
+              <p class="sub reveal" data-delay="120">Small steps, each switched on when it’s ready.</p>
+            </div>
+            <ol class="roadmap">
+              <li class="is-live reveal"><span class="status">Live now</span><h3>Website and exchange explorer</h3><p>Live 24-hour volume, trust scores, and top pairs for the largest exchanges.</p></li>
+              <li class="is-next reveal" data-delay="60"><span class="status">Next</span><h3>Listing radar</h3><p>New listings found automatically from announcements and new trading pairs, with trading start times.</p></li>
+              <li class="reveal" data-delay="120"><span class="status">Planned</span><h3>Predictions with free points</h3><p>Sign in with a Solana wallet, get free points, and predict on every confirmed listing.</p></li>
+              <li class="reveal" data-delay="180"><span class="status">Planned</span><h3>Leaderboards and seasons</h3><p>Weekly rankings, public track records, and community leagues.</p></li>
+              <li class="reveal" data-delay="240"><span class="status">Later</span><h3>On-chain pools on Solana</h3><p>Transparent pools on Solana, only after an independent security audit and legal review.</p></li>
+            </ol>
+          </div>
+        </section>
+
+        <!-- FAQ -->
+        <section class="section faq" id="faq">
+          <div class="wrap">
+            <div class="section-head"><p class="eyebrow reveal">Questions</p><h2 class="reveal" data-delay="60">Good to know.</h2></div>
+            <div class="faq-list reveal" data-delay="100">
+              <details><summary>When can I start predicting?</summary><p>Predictions are coming soon. The exchange explorer is live today and the listing radar is next. Follow our updates to hear the moment predictions open.</p></details>
+              <details><summary>Does it cost anything?</summary><p>No. Predictions will use free points that have no cash value.</p></details>
+              <details><summary>Do I need a crypto wallet?</summary><p>You’ll sign in with a Solana wallet such as Phantom, Solflare, or Backpack. Signing in only signs a message. It never sends a transaction or costs fees.</p></details>
+              <details><summary>Which exchanges are covered?</summary><p>The explorer shows Binance, Coinbase, OKX, Bybit, Upbit, Bitget, Gate, KuCoin, MEXC, Kraken, HTX, Crypto.com, and Bitfinex. Listing tracking starts with Binance, MEXC, Bybit, OKX, Gate, Bitget, and KuCoin.</p></details>
+              <details><summary>Where does the data come from?</summary><p>Exchange volume, trust scores, and pairs come from CoinGecko. Listing tracking and settlement prices come from each exchange’s own public API.</p></details>
+              <details><summary>Is Firstprint connected to any exchange?</summary><p>No. Firstprint is independent and not affiliated with, endorsed by, or sponsored by any exchange.</p></details>
+              <details><summary>Is this financial advice?</summary><p>No. Nothing here is financial advice. New listings are extremely volatile, and some features may not be available in every country.</p></details>
+            </div>
+          </div>
+        </section>
+
+        <!-- CTA -->
+        <section class="cta-band">
+          <div class="wrap cta-inner">
+            <h2 class="reveal">See which exchanges<br />are moving right now.</h2>
+            <div class="hero-actions reveal" data-delay="100">
+              <a class="btn btn-solid btn-lg magnetic" href="#/app">Launch app</a>
+              <a class="btn btn-lg magnetic" data-config="waitlist" hidden>Join the waitlist</a>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ============================================================ App -->
+    <div id="app" class="app" hidden></div>
+
+    <footer class="footer">
+      <div class="wrap footer-inner">
+        <div>
+          <a class="wordmark small" href="#top"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
+          <p class="muted">Independent and not affiliated with any exchange. Nothing here is financial advice. Market data provided by <a href="https://www.coingecko.com" target="_blank" rel="noopener noreferrer">CoinGecko</a>.</p>
+        </div>
+        <nav class="footer-links" aria-label="Footer">
+          <a href="#/app/exchanges">Exchanges</a>
+          <a href="#/app/predictions">Predictions</a>
+          <a href="#roadmap">Roadmap</a>
+          <a data-config="x" hidden>X</a>
+          <a data-config="telegram" hidden>Telegram</a>
+          <a data-config="discord" hidden>Discord</a>
+        </nav>
+      </div>
+    </footer>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script type="module">
+// Exchanges shown in the app. Live numbers come from CoinGecko; these are stable facts
+// used when live data can't load. `radar` = listing tracking supported by Firstprint's tracker.
+
+const EXCHANGES = [
+  { id: 'binance', cg: 'binance', name: 'Binance', founded: 2017, url: 'https://www.binance.com', radar: ['Announcements', 'New trading pairs'] },
+  { id: 'coinbase', cg: 'gdax', name: 'Coinbase Exchange', founded: 2012, url: 'https://www.coinbase.com', radar: [] },
+  { id: 'okx', cg: 'okex', name: 'OKX', founded: 2017, url: 'https://www.okx.com', radar: ['Announcements', 'New trading pairs', 'Listing times'] },
+  { id: 'bybit', cg: 'bybit_spot', name: 'Bybit', founded: 2018, url: 'https://www.bybit.com', radar: ['Announcements', 'New trading pairs'] },
+  { id: 'upbit', cg: 'upbit', name: 'Upbit', founded: 2017, url: 'https://upbit.com', radar: [] },
+  { id: 'bitget', cg: 'bitget', name: 'Bitget', founded: 2018, url: 'https://www.bitget.com', radar: ['Announcements', 'New trading pairs'] },
+  { id: 'gate', cg: 'gate', name: 'Gate', founded: 2013, url: 'https://www.gate.com', radar: ['New trading pairs', 'Listing times'] },
+  { id: 'kucoin', cg: 'kucoin', name: 'KuCoin', founded: 2017, url: 'https://www.kucoin.com', radar: ['Announcements', 'New trading pairs'] },
+  { id: 'mexc', cg: 'mxc', name: 'MEXC', founded: 2018, url: 'https://www.mexc.com', radar: ['New trading pairs'] },
+  { id: 'kraken', cg: 'kraken', name: 'Kraken', founded: 2011, url: 'https://www.kraken.com', radar: [] },
+  { id: 'htx', cg: 'huobi', name: 'HTX', founded: 2013, url: 'https://www.htx.com', radar: [] },
+  { id: 'cryptocom', cg: 'crypto_com', name: 'Crypto.com Exchange', founded: 2016, url: 'https://crypto.com/exchange', radar: [] },
+  { id: 'bitfinex', cg: 'bitfinex', name: 'Bitfinex', founded: 2012, url: 'https://www.bitfinex.com', radar: [] },
+];
+
+;
+// Firstprint website: motion system, landing interactions, and the app
+// (live exchange explorer + coming-soon tabs).
+
+
+const CONFIG = window.FIRSTPRINT_CONFIG ?? { links: {} };
+const CG_BASE = 'https://api.coingecko.com/api/v3';
+const REFRESH_MS = 60_000;
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const state = {
+  list: null,
+  btcUsd: null,
+  updatedAt: null,
+  live: false,
+  search: '',
+  sort: 'volume',
+  detail: new Map(),
+  timer: null,
+};
+
+// ------------------------------------------------------------------ Helpers
+
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+function safeUrl(u) {
+  try {
+    const url = new URL(u);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function usd(n, compact = true) {
+  if (n === null || n === undefined || !Number.isFinite(n)) return '–';
+  if (!compact) return n >= 1 ? `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : `$${n.toPrecision(4)}`;
+  const abs = Math.abs(n);
+  if (abs >= 1e9) return `$${(n / 1e9).toFixed(abs >= 1e10 ? 1 : 2)}B`;
+  if (abs >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
+  return `$${n.toFixed(0)}`;
+}
+
+function ago(ts) {
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  return s < 60 ? `${s}s ago` : `${Math.floor(s / 60)}m ago`;
+}
+
+const monogram = (name) => `<span class="monogram" aria-hidden="true">${esc(name.replace(/[^A-Za-z0-9]/g, '')[0] ?? '?')}</span>`;
+
+let toastTimer;
+function toast(msg) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.className = 'show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.className = ''), 3200);
+}
+
+// ------------------------------------------------------------------ Motion
+
+/** Reveals elements as they scroll in, honouring their data-delay. */
+const revealer = REDUCED
+  ? null
+  : new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          e.target.style.setProperty('--d', `${e.target.dataset.delay ?? 0}ms`);
+          e.target.classList.add('in');
+          revealer.unobserve(e.target);
+        }
+      },
+      { rootMargin: '0px 0px -12% 0px', threshold: 0.15 },
+    );
+
+function watchReveals(root = document) {
+  const items = $$('.reveal', root);
+  if (!revealer) return items.forEach((el) => el.classList.add('in'));
+  items.forEach((el) => (el.classList.contains('in') ? null : revealer.observe(el)));
+}
+
+/**
+ * Fast flick-scrolling can outrun IntersectionObserver callbacks, which would
+ * leave content invisible. After scrolling settles, reveal anything already
+ * on screen.
+ */
+function sweepReveals() {
+  for (const el of $$('.reveal:not(.in)')) {
+    if (el.getBoundingClientRect().top < window.innerHeight) {
+      el.style.setProperty('--d', '0ms');
+      el.classList.add('in');
+      revealer?.unobserve(el);
+    }
+  }
+}
+
+if (revealer) {
+  let sweepTimer;
+  addEventListener(
+    'scroll',
+    () => {
+      clearTimeout(sweepTimer);
+      sweepTimer = setTimeout(sweepReveals, 140);
+      requestAnimationFrame(sweepReveals);
+    },
+    { passive: true },
+  );
+}
+
+const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+
+/** Counts a number up when it first appears. */
+function countUp(el, to, suffix = '', duration = 1100) {
+  if (REDUCED) return (el.textContent = `${to}${suffix}`);
+  const start = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / duration);
+    el.textContent = `${Math.round(easeOut(t) * to)}${suffix}`;
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function watchCounters() {
+  const els = $$('[data-count]');
+  if (REDUCED || !('IntersectionObserver' in window)) return;
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        countUp(e.target, Number(e.target.dataset.count), e.target.dataset.suffix ?? '');
+        io.unobserve(e.target);
+      }
+    },
+    { threshold: 0.6 },
+  );
+  els.forEach((el) => {
+    el.textContent = `0${el.dataset.suffix ?? ''}`;
+    io.observe(el);
+  });
+}
+
+/** Buttons drift slightly toward the pointer, then spring back. */
+function magnetic(el) {
+  if (REDUCED) return;
+  const strength = 0.28;
+  el.addEventListener('pointermove', (e) => {
+    const r = el.getBoundingClientRect();
+    el.style.setProperty('--mx', `${(e.clientX - r.left - r.width / 2) * strength}px`);
+    el.style.setProperty('--my', `${(e.clientY - r.top - r.height / 2) * strength}px`);
+  });
+  el.addEventListener('pointerleave', () => {
+    el.style.setProperty('--mx', '0px');
+    el.style.setProperty('--my', '0px');
+  });
+}
+
+/** Cards light up under the pointer. */
+function spotlight(el) {
+  if (REDUCED) return;
+  el.addEventListener('pointermove', (e) => {
+    const r = el.getBoundingClientRect();
+    el.style.setProperty('--px', `${((e.clientX - r.left) / r.width) * 100}%`);
+    el.style.setProperty('--py', `${((e.clientY - r.top) / r.height) * 100}%`);
+  });
+}
+
+/** The hero card tilts a little with the pointer. */
+function parallaxCard(el) {
+  if (REDUCED || window.matchMedia('(pointer: coarse)').matches) return;
+  const area = el.parentElement;
+  area.addEventListener('pointermove', (e) => {
+    const r = el.getBoundingClientRect();
+    const dx = (e.clientX - (r.left + r.width / 2)) / r.width;
+    const dy = (e.clientY - (r.top + r.height / 2)) / r.height;
+    el.style.setProperty('--ry', `${Math.max(-1, Math.min(1, dx)) * 5}deg`);
+    el.style.setProperty('--rx', `${Math.max(-1, Math.min(1, -dy)) * 4}deg`);
+  });
+  area.addEventListener('pointerleave', () => {
+    el.style.setProperty('--ry', '0deg');
+    el.style.setProperty('--rx', '0deg');
+  });
+}
+
+/** Header hides on scroll down and returns on scroll up. */
+function autoHideNav() {
+  const nav = $('#nav');
+  if (!nav) return;
+  let last = 0;
+  addEventListener(
+    'scroll',
+    () => {
+      const y = window.scrollY;
+      nav.classList.toggle('stuck', y > 12);
+      nav.classList.toggle('hide', y > 420 && y > last + 4);
+      last = y;
+    },
+    { passive: true },
+  );
+}
+
+// ------------------------------------------------------------------ Hero market
+
+/**
+ * The example market plays its own life: predictions build, the listing starts,
+ * the clock runs down, and one outcome wins. Then it resets and runs again.
+ */
+function heroMarket() {
+  const ladder = $('#hm-ladder');
+  if (!ladder) return;
+  const rows = $$('li', ladder);
+  const phase = $('#hm-phase');
+  const sub = $('#hm-sub');
+  const clock = $('#hm-clock');
+  const clockLabel = $('#hm-clock-label');
+  const foot = $('#hm-foot-text');
+
+  const ROUNDS = [
+    { shares: [18, 31, 22, 19, 10], winner: 'up', move: '+28%' },
+    { shares: [9, 17, 24, 28, 22], winner: 'crash', move: '−61%' },
+    { shares: [34, 29, 14, 15, 8], winner: 'moon', move: '+112%' },
+    { shares: [12, 22, 31, 23, 12], winner: 'flat', move: '+3%' },
+  ];
+
+  let round = 0;
+  let timers = [];
+  let countdown = null;
+  const at = (ms, fn) => timers.push(setTimeout(fn, ms));
+  const stopCountdown = () => {
+    if (countdown) clearTimeout(countdown);
+    countdown = null;
+  };
+
+  const setShares = (shares) =>
+    rows.forEach((li, i) => {
+      li.style.setProperty('--share', `${shares[i]}%`);
+      const em = $('em', li);
+      if (REDUCED) return (em.textContent = `${shares[i]}%`);
+      countUp(em, shares[i], '%', 900);
+    });
+
+  function run() {
+    timers.forEach(clearTimeout);
+    timers = [];
+    stopCountdown();
+    const r = ROUNDS[round % ROUNDS.length];
+    round++;
+
+    rows.forEach((li) => li.classList.remove('won', 'dim'));
+    phase.textContent = 'Predictions open';
+    phase.style.color = '';
+    sub.textContent = 'Lists on a major exchange';
+    clockLabel.textContent = 'Lists in';
+    clock.textContent = '02:14:09';
+    clock.style.color = '';
+    foot.textContent = 'Share of the pool on each outcome';
+    setShares([0, 0, 0, 0, 0]);
+
+    at(300, () => setShares(r.shares));
+
+    at(3400, () => {
+      phase.textContent = 'Trading live';
+      sub.textContent = 'Listed. 72-hour window running';
+      clockLabel.textContent = 'Settles in';
+      let left = 71 * 3600 + 59 * 60;
+      const tick = () => {
+        left = Math.max(0, left - 2700);
+        const h = String(Math.floor(left / 3600)).padStart(2, '0');
+        const m = String(Math.floor((left % 3600) / 60)).padStart(2, '0');
+        clock.textContent = `${h}:${m}:00`;
+        countdown = left > 0 ? setTimeout(tick, 45) : null;
+      };
+      tick();
+    });
+
+    at(5700, () => {
+      stopCountdown();
+      const winner = rows.find((li) => li.dataset.b === r.winner);
+      rows.forEach((li) => li !== winner && li.classList.add('dim'));
+      winner.classList.add('won');
+      phase.textContent = 'Settled';
+      clockLabel.textContent = 'Final move';
+      clock.textContent = r.move;
+      clock.style.color = getComputedStyle(winner).getPropertyValue('--c');
+      foot.textContent = `${$('b', winner).textContent} wins the pool`;
+    });
+
+    at(9200, run);
+  }
+
+  if (REDUCED) {
+    setShares(ROUNDS[0].shares);
+    return;
+  }
+  // Runs only while on screen, and never more than one loop at a time.
+  let running = false;
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const e of entries) {
+        if (e.isIntersecting && !running) {
+          running = true;
+          run();
+        } else if (!e.isIntersecting && running) {
+          running = false;
+          timers.forEach(clearTimeout);
+          timers = [];
+          stopCountdown();
+        }
+      }
+    },
+    { threshold: 0.25 },
+  );
+  io.observe(ladder.closest('.hero-market'));
+}
+
+function buildTicker() {
+  const track = $('#ticker-track');
+  if (!track) return;
+  const items = EXCHANGES.map((e) => `<span class="ticker-item"><i aria-hidden="true"></i>${esc(e.name)}</span>`).join('');
+  track.innerHTML = items + items; // duplicated so the loop is seamless
+}
+
+
+// ------------------------------------------------------------------ Practice market
+
+/**
+ * A playable sample market. The visitor picks an outcome, a price path draws
+ * over about four seconds, and the result settles. Streaks are kept locally so
+ * coming back feels like picking up where you left off.
+ */
+function practiceMarket() {
+  const root = $('#try');
+  if (!root) return;
+  const picks = $('#try-picks');
+  const buttons = $$('button', picks);
+  const result = $('#try-result');
+  const again = $('#try-again');
+  const path = $('#try-path');
+  const chart = $('#try-chart');
+  const move = $('#try-move');
+  const streakEl = $('#try-streak');
+  const scoreEl = $('.try-score');
+  const symbolEl = $('#try-symbol');
+  const subEl = $('#try-sub');
+  const chip = $('#try-chip');
+  const question = $('#try-question');
+
+  const NAMES = { crash: 'Crash', down: 'Down', flat: 'Flat', up: 'Up', moon: 'Moon' };
+  const TOKENS = ['VELA', 'NOVA', 'KORA', 'ARCO', 'TIDE', 'MOSS', 'QUILL', 'LUMA'];
+  // Roughly how often each outcome shows up, based on how listings usually behave.
+  const ODDS = [
+    ['crash', 0.18],
+    ['down', 0.26],
+    ['flat', 0.18],
+    ['up', 0.23],
+    ['moon', 0.15],
+  ];
+  const RANGE = { crash: [-0.82, -0.52], down: [-0.48, -0.12], flat: [-0.08, 0.08], up: [0.12, 0.46], moon: [0.55, 1.8] };
+
+  let streak = 0;
+  let best = 0;
+  let plays = 0;
+  try {
+    const saved = JSON.parse(localStorage.getItem('fp:practice') ?? '{}');
+    streak = saved.streak ?? 0;
+    best = saved.best ?? 0;
+    plays = saved.plays ?? 0;
+  } catch {
+    /* storage optional */
+  }
+  const save = () => {
+    try {
+      localStorage.setItem('fp:practice', JSON.stringify({ streak, best, plays }));
+    } catch {
+      /* ignore */
+    }
+  };
+  streakEl.textContent = streak;
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const ORDER = ['moon', 'up', 'flat', 'down', 'crash'];
+
+  /** Fresh crowd split each round; payouts follow from it, minus a 4% fee. */
+  function newPool() {
+    // Squaring spreads the crowd unevenly, the way a real pool sits: a couple of
+    // favourites and a long shot that pays much more.
+    // A moderate spread: favourites near 30-35%, long shots near 8%, which keeps
+    // payouts in a believable 2x to 12x band.
+    const weights = ORDER.map(() => Math.pow(0.5 + Math.random(), 1.8));
+    const total = weights.reduce((a, b) => a + b, 0);
+    const share = Object.fromEntries(ORDER.map((k, i) => [k, Math.max(0.08, weights[i] / total)]));
+    buttons.forEach((b) => {
+      const pays = 0.96 / share[b.dataset.pick];
+      $('em', b).textContent = `${pays >= 10 ? pays.toFixed(0) : pays.toFixed(1)}×`;
+    });
+    return share;
+  }
+  const pickOutcome = () => {
+    let r = Math.random();
+    for (const [name, p] of ODDS) {
+      if ((r -= p) <= 0) return name;
+    }
+    return 'flat';
+  };
+
+  function burst(el) {
+    if (REDUCED) return;
+    const r = el.getBoundingClientRect();
+    const colors = ['--moon', '--up', '--flat', '--down', '--crash'];
+    for (let i = 0; i < 18; i++) {
+      const s = document.createElement('span');
+      s.className = 'spark';
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 60 + Math.random() * 130;
+      s.style.cssText = `left:${r.left + r.width / 2}px;top:${r.top + r.height / 2}px;background:var(${colors[i % colors.length]});--dx:${Math.cos(angle) * dist}px;--dy:${Math.sin(angle) * dist}px;--rot:${Math.random() * 540}deg`;
+      document.body.appendChild(s);
+      setTimeout(() => s.remove(), 1000);
+    }
+  }
+
+  /** Draws a plausible price path to the final return over `ms`. */
+  function drawPath(finalReturn, ms, onDone) {
+    const W = 320;
+    const H = 140;
+    const mid = 70;
+    const steps = 56;
+    const seedA = Math.random() * 10;
+    const seedB = Math.random() * 10;
+    const points = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const drift = finalReturn * (1 - Math.pow(1 - t, 1.8));
+      const wobble = (Math.sin(t * 9 + seedA) * 0.05 + Math.sin(t * 23 + seedB) * 0.028) * (1 - t * 0.55);
+      const spike = t < 0.08 ? Math.sin(t * 38) * 0.09 : 0;
+      const r = drift + wobble + spike;
+      const y = Math.max(6, Math.min(H - 6, mid - r * 58));
+      points.push([(t * W).toFixed(1), y.toFixed(1)]);
+    }
+    if (REDUCED) {
+      path.setAttribute('d', `M${points.map((p) => p.join(',')).join('L')}`);
+      return onDone();
+    }
+    const start = performance.now();
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / ms);
+      const n = Math.max(2, Math.round(t * points.length));
+      path.setAttribute('d', `M${points.slice(0, n).map((p) => p.join(',')).join('L')}`);
+      if (t < 1) requestAnimationFrame(step);
+      else onDone();
+    };
+    requestAnimationFrame(step);
+  }
+
+  function reset() {
+    picks.classList.remove('locked');
+    buttons.forEach((b) => {
+      b.disabled = false;
+      b.setAttribute('aria-checked', 'false');
+      b.classList.remove('win');
+    });
+    again.hidden = true;
+    move.classList.remove('show');
+    path.setAttribute('d', 'M0,70');
+    chart.style.removeProperty('--c');
+    result.className = 'try-result';
+    result.textContent = plays ? 'Pick an outcome to run another.' : 'Pick an outcome to start.';
+    chart.classList.add('idle');
+    newPool();
+    const sym = TOKENS[Math.floor(Math.random() * TOKENS.length)];
+    symbolEl.textContent = sym;
+    subEl.textContent = 'Lists on a major exchange in 2 hours';
+    question.textContent = `Where will ${sym} trade 72 hours after listing?`;
+    chip.textContent = 'Practice market';
+  }
+
+  function play(choice, button) {
+    picks.classList.add('locked');
+    chart.classList.remove('idle');
+    buttons.forEach((b) => (b.disabled = true));
+    button.setAttribute('aria-checked', 'true');
+    chip.textContent = 'Trading live';
+    subEl.textContent = 'Listed. 72-hour window running';
+    result.textContent = 'Running the 72 hours…';
+
+    const outcome = pickOutcome();
+    const r = rand(...RANGE[outcome]);
+    chart.style.setProperty('--c', `var(--${outcome})`);
+
+    drawPath(r, REDUCED ? 0 : 3600, () => {
+      const won = outcome === choice;
+      const pct = `${r > 0 ? '+' : '−'}${Math.abs(r * 100).toFixed(1)}%`;
+      move.textContent = pct;
+      move.classList.add('show');
+      chip.textContent = 'Settled';
+      subEl.textContent = `Final move ${pct}`;
+      const winner = buttons.find((b) => b.dataset.pick === outcome);
+      winner.classList.add('win');
+      winner.setAttribute('aria-checked', 'true');
+
+      plays++;
+      if (won) {
+        streak++;
+        best = Math.max(best, streak);
+        streakEl.textContent = streak;
+        scoreEl.classList.add('bump');
+        setTimeout(() => scoreEl.classList.remove('bump'), 600);
+        burst(winner);
+        result.className = 'try-result win';
+        const pays = $('em', winner).textContent;
+        result.innerHTML = `<b>You called it. ${NAMES[outcome]}, ${pct}.</b>Paid ${pays}. ${streak > 1 ? `${streak} in a row${best === streak ? ', your best yet.' : '.'}` : 'One more?'}`;
+      } else {
+        streak = 0;
+        streakEl.textContent = streak;
+        result.className = 'try-result lose';
+        result.innerHTML = `<b>${NAMES[outcome]} instead, ${pct}.</b>You picked ${NAMES[choice]}.${best ? ` Your best streak is ${best}.` : ''}`;
+      }
+      save();
+      again.hidden = false;
+      again.focus({ preventScroll: true });
+    });
+  }
+
+  picks.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-pick]');
+    if (b && !b.disabled) play(b.dataset.pick, b);
+  });
+  again.addEventListener('click', reset);
+  reset();
+  if (best) result.textContent = `Pick an outcome. Your best streak is ${best}.`;
+}
+
+// ------------------------------------------------------------------ Data
+
+const cache = new Map();
+const STORE_PREFIX = 'fp:cg:';
+const STORE_TTL = 10 * 60_000;
+
+/** Reads a previous response so repeat visits show numbers immediately. */
+function readStore(path) {
+  try {
+    const raw = localStorage.getItem(STORE_PREFIX + path);
+    if (!raw) return null;
+    const { t, data } = JSON.parse(raw);
+    return Date.now() - t < STORE_TTL ? { t, data } : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStore(path, data) {
+  try {
+    localStorage.setItem(STORE_PREFIX + path, JSON.stringify({ t: Date.now(), data }));
+  } catch {
+    /* private mode or quota: caching is optional */
+  }
+}
+
+async function cg(path, ttl = REFRESH_MS) {
+  const hit = cache.get(path) ?? readStore(path);
+  if (hit) cache.set(path, hit);
+  if (hit && Date.now() - hit.t < ttl) return hit.data;
+  const sep = path.includes('?') ? '&' : '?';
+  const key = CONFIG.coingeckoApiKey ? `${sep}x_cg_demo_api_key=${encodeURIComponent(CONFIG.coingeckoApiKey)}` : '';
+  const res = await fetch(`${CG_BASE}${path}${key}`, { signal: AbortSignal.timeout(12_000) });
+  if (!res.ok) throw new Error(res.status === 429 ? 'Rate limited by the data provider' : `Data provider error ${res.status}`);
+  const data = await res.json();
+  cache.set(path, { t: Date.now(), data });
+  writeStore(path, data);
+  return data;
+}
+
+/** Cached copy if one exists, however old. Used when the network fails. */
+function staleData(path) {
+  return (cache.get(path) ?? readStore(path))?.data ?? null;
+}
+
+async function loadExchanges() {
+  const [list, price] = await Promise.allSettled([cg('/exchanges?per_page=100&page=1'), cg('/simple/price?ids=bitcoin&vs_currencies=usd')]);
+  const rows = list.status === 'fulfilled' && Array.isArray(list.value) ? list.value : staleData('/exchanges?per_page=100&page=1');
+  const priceData = price.status === 'fulfilled' ? price.value : staleData('/simple/price?ids=bitcoin&vs_currencies=usd');
+  const live = Array.isArray(rows);
+  const btcUsd = priceData?.bitcoin?.usd ?? null;
+  const byId = new Map(live ? rows.map((x) => [x.id, x]) : []);
+
+  state.btcUsd = btcUsd;
+  state.live = live;
+  state.stale = list.status !== 'fulfilled' && live;
+  state.updatedAt = list.status === 'fulfilled' ? Date.now() : state.updatedAt ?? Date.now();
+  state.list = EXCHANGES.map((ex) => {
+    const row = byId.get(ex.cg);
+    const volBtc = row?.trade_volume_24h_btc ?? null;
+    return {
+      ...ex,
+      country: row?.country ?? null,
+      founded: row?.year_established ?? ex.founded,
+      trust: row?.trust_score ?? null,
+      volumeUsd: volBtc !== null && btcUsd ? volBtc * btcUsd : null,
+    };
+  });
+}
+
+// ------------------------------------------------------------------ Landing
+
+function initLanding() {
+  const grid = $('#landing-exchanges');
+  if (grid) {
+    grid.innerHTML = EXCHANGES.slice(0, 10)
+      .map(
+        (ex, i) => `
+        <a class="ex-tile reveal" data-delay="${i * 40}" href="#/app/exchange/${ex.id}">
+          ${monogram(ex.name)}
+          <span><b>${esc(ex.name)}</b><small>${ex.radar.length ? 'Listing radar at launch' : 'Exchange data'}</small></span>
+        </a>`,
+      )
+      .join('');
+  }
+
+  $$('[data-config]').forEach((el) => {
+    const key = el.dataset.config;
+    const url = safeUrl(key === 'waitlist' ? CONFIG.waitlistUrl : CONFIG.links?.[key]);
+    if (url) {
+      el.href = url;
+      el.target = '_blank';
+      el.rel = 'noopener noreferrer';
+      el.hidden = false;
+    }
+  });
+
+  buildTicker();
+  heroMarket();
+  practiceMarket();
+  autoHideNav();
+  watchReveals();
+  watchCounters();
+  $$('.magnetic').forEach(magnetic);
+  $$('.tilt').forEach(spotlight);
+  const card = $('.hero-market');
+  if (card) parallaxCard(card);
+  requestAnimationFrame(() => document.body.classList.add('is-loaded'));
+}
+
+// ------------------------------------------------------------------ Router
+
+function parseRoute() {
+  const h = location.hash;
+  if (!h.startsWith('#/app')) return { view: 'landing', anchor: h.slice(1) };
+  const parts = h.replace(/^#\/app\/?/, '').split('/').filter(Boolean);
+  if (parts[0] === 'exchange' && parts[1]) return { view: 'app', tab: 'exchanges', exchange: decodeURIComponent(parts[1]) };
+  if (parts[0] === 'predictions') return { view: 'app', tab: 'predictions' };
+  if (parts[0] === 'radar') return { view: 'app', tab: 'radar' };
+  return { view: 'app', tab: 'exchanges' };
+}
+
+let preconnected = false;
+function preconnectData() {
+  if (preconnected) return;
+  preconnected = true;
+  for (const rel of ['preconnect', 'dns-prefetch']) {
+    const l = document.createElement('link');
+    l.rel = rel;
+    l.href = 'https://api.coingecko.com';
+    if (rel === 'preconnect') l.crossOrigin = '';
+    document.head.appendChild(l);
+  }
+}
+
+let lastView = null;
+async function onRoute() {
+  const r = parseRoute();
+  const switched = r.view !== lastView;
+  lastView = r.view;
+  document.body.dataset.view = r.view;
+  $('#app').hidden = r.view !== 'app';
+
+  if (r.view === 'landing') {
+    stopRefresh();
+    document.title = 'Firstprint: predict the first 72 hours of new token listings';
+    if (r.anchor && r.anchor !== 'top') {
+      const target = document.getElementById(r.anchor);
+      if (target) requestAnimationFrame(() => target.scrollIntoView({ behavior: switched ? 'auto' : 'smooth' }));
+    } else if (switched) {
+      window.scrollTo(0, 0);
+    }
+    return;
+  }
+
+  preconnectData();
+  renderAppShell(r);
+  window.scrollTo(0, 0);
+  if (r.tab === 'exchanges' && r.exchange) return renderExchangeDetail(r.exchange);
+  if (r.tab === 'exchanges') return renderExchanges();
+  if (r.tab === 'predictions') return renderPredictionsSoon();
+  if (r.tab === 'radar') return renderRadarSoon();
+}
+
+// ------------------------------------------------------------------ App shell
+
+function renderAppShell(r) {
+  const cur = (tab) => (r.tab === tab ? ' aria-current="page"' : '');
+  $('#app').innerHTML = `
+    <header class="app-bar">
+      <div class="wrap app-bar-inner">
+        <a class="wordmark" href="#top" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
+        <nav class="app-tabs" aria-label="App">
+          <a href="#/app/exchanges"${cur('exchanges')}>Exchanges</a>
+          <a href="#/app/predictions"${cur('predictions')}>Predictions <span class="soon">Soon</span></a>
+          <a href="#/app/radar"${cur('radar')}>Listing radar <span class="soon">Soon</span></a>
+        </nav>
+        <button class="btn btn-disabled" type="button" data-action="wallet-soon">Connect wallet <span class="soon">Soon</span></button>
+      </div>
+    </header>
+    <main class="wrap app-main" id="app-main" tabindex="-1"></main>`;
+}
+
+// ------------------------------------------------------------------ Exchanges
+
+function sortedRows() {
+  const q = state.search.trim().toLowerCase();
+  const rows = (state.list ?? []).filter((r) => !q || r.name.toLowerCase().includes(q) || (r.country ?? '').toLowerCase().includes(q));
+  const by = {
+    volume: (a, b) => (b.volumeUsd ?? -1) - (a.volumeUsd ?? -1),
+    trust: (a, b) => (b.trust ?? -1) - (a.trust ?? -1) || (b.volumeUsd ?? -1) - (a.volumeUsd ?? -1),
+    name: (a, b) => a.name.localeCompare(b.name),
+  }[state.sort];
+  return rows.sort(by);
+}
+
+function dataNote() {
+  if (state.stale) {
+    return `<p class="data-note offline"><span class="dot-live" aria-hidden="true"></span>Showing your last saved data. <button class="btn" data-action="retry" style="padding:3px 12px;font-size:13px">Refresh</button></p>`;
+  }
+  if (state.live) {
+    return `<p class="data-note"><span class="dot-live" aria-hidden="true"></span>Live from CoinGecko, updated <span data-ago="${state.updatedAt}">${ago(state.updatedAt)}</span></p>`;
+  }
+  return `<p class="data-note offline"><span class="dot-live" aria-hidden="true"></span>Live data couldn’t load. Showing basic details. <button class="btn" data-action="retry" style="padding:3px 12px;font-size:13px">Try again</button></p>`;
+}
+
+function exchangesTable(animate = false) {
+  const rows = sortedRows();
+  if (!rows.length) return `<div class="empty">No exchanges match “${esc(state.search)}”.</div>`;
+  return `
+    <div class="table-scroll">
+      <table class="ex-table">
+        <thead><tr>
+          <th class="rank hide-sm">#</th>
+          <th>Exchange</th>
+          <th class="right">24h volume</th>
+          <th class="hide-sm">Trust score</th>
+          <th class="right hide-sm">Founded</th>
+          <th class="right hide-sm">Listing radar</th>
+        </tr></thead>
+        <tbody>
+          ${rows
+            .map(
+              (r, i) => `
+            <tr data-href="#/app/exchange/${r.id}"${animate && !REDUCED ? ` class="row-in" style="animation-delay:${Math.min(i * 35, 500)}ms"` : ''}>
+              <td class="rank hide-sm">${i + 1}</td>
+              <td><a class="ex-name" href="#/app/exchange/${r.id}">${monogram(r.name)}<span><b>${esc(r.name)}</b><small>${esc(r.country ?? '')}</small></span></a></td>
+              <td class="right num">${state.live ? usd(r.volumeUsd) : '–'}</td>
+              <td class="hide-sm">${r.trust !== null ? `<span class="trust"><span class="trust-bar" style="--t:${Number(r.trust)}"><i></i></span>${Number(r.trust)}/10</span>` : '<span class="muted">–</span>'}</td>
+              <td class="right hide-sm">${esc(r.founded ?? '–')}</td>
+              <td class="right hide-sm">${r.radar.length ? '<span class="radar-pill on">At launch</span>' : '<span class="radar-pill off">Later</span>'}</td>
+            </tr>`,
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function renderExchangesBody(animate = false) {
+  if (!$('#ex-body')) return;
+  const total = state.live ? state.list.reduce((s, r) => s + (r.volumeUsd ?? 0), 0) : null;
+  $('#ex-note').innerHTML = dataNote();
+  $('#ex-stats').innerHTML = `
+    <div><dt>Exchanges</dt><dd>${EXCHANGES.length}</dd></div>
+    <div><dt>Combined 24h volume</dt><dd>${total ? usd(total) : '–'}</dd></div>
+    <div><dt>Bitcoin price</dt><dd>${state.btcUsd ? usd(state.btcUsd, false).replace(/\.\d+$/, '') : '–'}</dd></div>
+    <div><dt>Listing radar at launch</dt><dd>${EXCHANGES.filter((e) => e.radar.length).length}</dd></div>`;
+  $('#ex-body').innerHTML = exchangesTable(animate);
+}
+
+/** Coins people are searching for right now, from CoinGecko's trending list. */
+async function renderTrending() {
+  const box = $('#trending');
+  if (!box) return;
+  try {
+    const d = await cg('/search/trending', 5 * 60_000);
+    const coins = (d?.coins ?? []).slice(0, 10).map((c) => c.item).filter(Boolean);
+    if (!coins.length) return box.remove();
+    box.innerHTML = `
+      <div class="trending-head">
+        <h2>Trending searches</h2>
+        <span class="muted" style="font-size:13.5px">Most searched on CoinGecko in the last 24 hours</span>
+      </div>
+      <div class="trend-row">
+        ${coins
+          .map(
+            (c, i) => `
+          <article class="trend-card"${REDUCED ? '' : ` style="animation-delay:${i * 45}ms"`}>
+            <span class="trend-rank">#${i + 1}</span>
+            <b class="trend-sym">${esc((c.symbol ?? '').toUpperCase())}</b>
+            <span class="trend-name">${esc(c.name ?? '')}</span>
+            <span class="trend-cap">${c.market_cap_rank ? `Market cap rank ${c.market_cap_rank}` : 'Unranked'}</span>
+          </article>`,
+          )
+          .join('')}
+      </div>`;
+  } catch {
+    box.remove();
+  }
+}
+
+async function renderExchanges() {
+  document.title = 'Exchanges: Firstprint';
+  $('#app-main').innerHTML = `
+    <h1 class="page-title">Exchanges</h1>
+    <p class="page-lede">Live 24-hour volume and trust scores for the largest crypto exchanges. Open one to see its most traded pairs.</p>
+    <section class="trending" id="trending" aria-label="Trending coins"></section>
+    <dl class="summary-stats" id="ex-stats"></dl>
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <input class="input" id="ex-search" type="search" placeholder="Search exchanges" aria-label="Search exchanges" value="${esc(state.search)}" />
+        <select class="select" id="ex-sort" aria-label="Sort exchanges">
+          <option value="volume"${state.sort === 'volume' ? ' selected' : ''}>Highest volume</option>
+          <option value="trust"${state.sort === 'trust' ? ' selected' : ''}>Trust score</option>
+          <option value="name"${state.sort === 'name' ? ' selected' : ''}>Name</option>
+        </select>
+      </div>
+      <div id="ex-note"></div>
+    </div>
+    <div id="ex-body"><p class="muted">Loading live exchange data</p></div>`;
+
+  if (!state.list) {
+    state.list = EXCHANGES.map((ex) => ({ ...ex, country: null, trust: null, volumeUsd: null }));
+    try {
+      await loadExchanges();
+    } catch {
+      state.live = false;
+    }
+  }
+  renderExchangesBody(true);
+  startRefresh();
+  renderTrending();
+}
+
+function startRefresh() {
+  stopRefresh();
+  state.timer = setInterval(async () => {
+    if (document.hidden) return;
+    const r = parseRoute();
+    if (r.view !== 'app' || r.tab !== 'exchanges' || r.exchange) return;
+    try {
+      await loadExchanges();
+      renderExchangesBody();
+    } catch {
+      /* keep the last good data */
+    }
+  }, REFRESH_MS);
+}
+
+function stopRefresh() {
+  if (state.timer) clearInterval(state.timer);
+  state.timer = null;
+}
+
+// ------------------------------------------------------------------ Exchange detail
+
+async function renderExchangeDetail(id) {
+  const ex = EXCHANGES.find((e) => e.id === id);
+  const main = $('#app-main');
+  if (!ex) {
+    main.innerHTML = `<a class="back" href="#/app/exchanges">All exchanges</a><div class="empty">We don’t cover that exchange yet.</div>`;
+    return;
+  }
+  document.title = `${ex.name}: Firstprint`;
+  const site = safeUrl(ex.url);
+  main.innerHTML = `
+    <a class="back" href="#/app/exchanges">← All exchanges</a>
+    <div class="detail-head">
+      ${monogram(ex.name)}
+      <div><h1 class="page-title">${esc(ex.name)}</h1><p class="muted" id="ex-meta">Founded ${esc(ex.founded)}</p></div>
+      <div class="actions">${site ? `<a class="btn magnetic" href="${site}" target="_blank" rel="noopener noreferrer">Visit website</a>` : ''}</div>
+    </div>
+    <dl class="detail-stats" id="detail-stats">
+      <div><dt>24h volume</dt><dd><span class="skeleton"></span></dd></div>
+      <div><dt>Trust score</dt><dd><span class="skeleton"></span></dd></div>
+      <div><dt>Founded</dt><dd>${esc(ex.founded)}</dd></div>
+      <div><dt>Pairs in top list</dt><dd><span class="skeleton"></span></dd></div>
+    </dl>
+    <div class="detail-cols">
+      <section class="panel">
+        <h2>Most traded pairs</h2>
+        <div id="pairs"><p class="muted">Loading live pairs</p></div>
+      </section>
+      <aside>
+        <section class="panel">
+          <h2>Listing radar</h2>
+          <div class="panel-box">
+            ${
+              ex.radar.length
+                ? `<p>Firstprint will track new ${esc(ex.name)} listings from day one using:</p><ul class="check-list">${ex.radar.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`
+                : `<p>Listing tracking for ${esc(ex.name)} is planned after launch.</p>`
+            }
+            <p class="muted">The listing radar is coming soon.</p>
+          </div>
+        </section>
+        <section class="panel">
+          <h2>Prediction markets</h2>
+          <div class="panel-box">
+            <p>Soon you’ll predict where new ${esc(ex.name)} listings trade 72 hours after they go live.</p>
+            <p><a class="btn magnetic" href="#/app/predictions">See what’s coming</a></p>
+          </div>
+        </section>
+      </aside>
+    </div>`;
+  $$('.magnetic', main).forEach(magnetic);
+
+  try {
+    const d = state.detail.get(ex.id) ?? (await cg(`/exchanges/${encodeURIComponent(ex.cg)}`));
+    state.detail.set(ex.id, d);
+    if (parseRoute().exchange !== id) return;
+    const btc = state.btcUsd ?? (await cg('/simple/price?ids=bitcoin&vs_currencies=usd').then((p) => p?.bitcoin?.usd).catch(() => null));
+    const volUsd = d.trade_volume_24h_btc && btc ? d.trade_volume_24h_btc * btc : null;
+    const meta = [d.country, `founded ${d.year_established ?? ex.founded}`].filter(Boolean).join(', ');
+    $('#ex-meta').textContent = meta.charAt(0).toUpperCase() + meta.slice(1);
+
+    const tickers = Array.isArray(d.tickers) ? d.tickers : [];
+    $('#detail-stats').innerHTML = `
+      <div><dt>24h volume</dt><dd>${usd(volUsd)}</dd></div>
+      <div><dt>Trust score</dt><dd>${d.trust_score ?? '–'}${d.trust_score ? '<span class="muted" style="font-size:16px">/10</span>' : ''}</dd></div>
+      <div><dt>Founded</dt><dd>${esc(d.year_established ?? ex.founded)}</dd></div>
+      <div><dt>Pairs in top list</dt><dd>${tickers.length || '–'}</dd></div>`;
+
+    const top = [...tickers]
+      .filter((t) => t?.converted_volume?.usd)
+      .sort((a, b) => b.converted_volume.usd - a.converted_volume.usd)
+      .slice(0, 15);
+    $('#pairs').innerHTML = top.length
+      ? `<div class="table-scroll"><table class="ex-table pairs">
+          <thead><tr><th>Pair</th><th class="right">Price</th><th class="right">24h volume</th><th class="right hide-sm">Spread</th></tr></thead>
+          <tbody>${top
+            .map((t, i) => {
+              const link = safeUrl(t.trade_url);
+              const pair = `${esc(t.base)}/${esc(t.target)}`;
+              return `<tr${REDUCED ? '' : ` class="row-in" style="animation-delay:${Math.min(i * 30, 400)}ms"`}>
+                <td>${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer"><b>${pair}</b></a>` : `<b>${pair}</b>`}</td>
+                <td class="right num">${usd(t.converted_last?.usd, false)}</td>
+                <td class="right num">${usd(t.converted_volume?.usd)}</td>
+                <td class="right hide-sm">${Number.isFinite(t.bid_ask_spread_percentage) ? `${t.bid_ask_spread_percentage.toFixed(2)}%` : '–'}</td>
+              </tr>`;
+            })
+            .join('')}</tbody></table></div>
+          <p class="muted" style="margin-top:12px;font-size:14px">Live from CoinGecko. Pair links open ${esc(ex.name)}.</p>`
+      : '<div class="empty">No pair data available right now.</div>';
+  } catch (err) {
+    $$('.skeleton', $('#detail-stats')).forEach((s) => (s.outerHTML = '–'));
+    $('#pairs').innerHTML = `<div class="empty">Live pair data couldn’t load (${esc(err.message)}). <button class="btn" data-action="retry">Try again</button></div>`;
+  }
+}
+
+// ------------------------------------------------------------------ Coming soon
+
+function followLinks() {
+  const out = [
+    ['Join the waitlist', CONFIG.waitlistUrl, true],
+    ['Follow on X', CONFIG.links?.x],
+    ['Join Telegram', CONFIG.links?.telegram],
+    ['Join Discord', CONFIG.links?.discord],
+  ]
+    .map(([label, url, solid]) => {
+      const safe = safeUrl(url);
+      return safe ? `<a class="btn magnetic${solid ? ' btn-solid' : ''}" href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>` : '';
+    })
+    .join('');
+  return out || '<a class="btn btn-solid magnetic" href="#/app/exchanges">Explore exchanges</a>';
+}
+
+function renderPredictionsSoon() {
+  document.title = 'Predictions: coming soon on Firstprint';
+  $('#app-main').innerHTML = `
+    <section class="soon-page">
+      <div>
+        <span class="soon soon-badge">Coming soon</span>
+        <h1>Call every<br />new listing.</h1>
+        <p class="lede">Pick where a token trades 72 hours after it lists, from Crash to Moon. Free points, weekly leaderboards, and results settled on real exchange prices.</p>
+        <ul class="check-list">
+          <li>Sign in with Phantom, Solflare, or Backpack</li>
+          <li>1,000 free points to start</li>
+          <li>Markets for new listings on the biggest exchanges</li>
+          <li>Refunds when a listing is delayed or data is thin</li>
+        </ul>
+        <div class="hero-actions">${followLinks()}</div>
+      </div>
+      <div class="preview-card" aria-label="Preview of a prediction market">
+        <div class="hm-head">
+          <div><span class="chip">Preview</span><p class="hm-title"><b>NOVA</b><span>Lists in 2 hours</span></p></div>
+          <div class="hm-clock"><span class="muted">Your pick</span><b style="color:var(--up)">Up</b></div>
+        </div>
+        <p class="hm-question">Where will NOVA trade 72 hours after listing?</p>
+        <ol class="hm-ladder">
+          <li style="--c: var(--moon); --share: 18%"><b>Moon</b><span>+50% or better</span><em>18%</em></li>
+          <li style="--c: var(--up); --share: 31%" class="won"><b>Up</b><span>+10% to +50%</span><em>31%</em></li>
+          <li style="--c: var(--flat); --share: 22%"><b>Flat</b><span>−10% to +10%</span><em>22%</em></li>
+          <li style="--c: var(--down); --share: 19%"><b>Down</b><span>−50% to −10%</span><em>19%</em></li>
+          <li style="--c: var(--crash); --share: 10%"><b>Crash</b><span>−50% or worse</span><em>10%</em></li>
+        </ol>
+      </div>
+    </section>`;
+  $$('.magnetic').forEach(magnetic);
+}
+
+function renderRadarSoon() {
+  document.title = 'Listing radar: coming soon on Firstprint';
+  const tracked = EXCHANGES.filter((e) => e.radar.length);
+  $('#app-main').innerHTML = `
+    <section class="soon-page">
+      <div>
+        <span class="soon soon-badge">Coming soon</span>
+        <h1>Every listing,<br />as it’s announced.</h1>
+        <p class="lede">The radar watches exchange announcements and new trading pairs, then shows each upcoming listing with its trading start time.</p>
+        <p class="muted" style="margin-bottom:10px">Tracking at launch</p>
+        <ul class="check-list">${tracked.map((e) => `<li>${esc(e.name)}: ${esc(e.radar.join(', ').toLowerCase())}</li>`).join('')}</ul>
+        <div class="hero-actions">${followLinks()}</div>
+      </div>
+      <div class="preview-card" aria-label="Preview of the listing radar">
+        <span class="chip">Preview</span>
+        <ul class="radar-preview blur-rows" aria-hidden="true">
+          <li><b>NOVA</b><span>in 5h 12m</span><small>Announcement, new spot listing</small></li>
+          <li><b>ARCO</b><span>in 1d 5h</span><small>Announcement, new spot listing</small></li>
+          <li><b>TIDE</b><span>in 1d 19h</span><small>New trading pair detected</small></li>
+          <li><b>MOSS</b><span>in 2d 3h</span><small>Announcement, new spot listing</small></li>
+        </ul>
+      </div>
+    </section>`;
+  $$('.magnetic').forEach(magnetic);
+}
+
+// ------------------------------------------------------------------ Events
+
+document.addEventListener('click', (e) => {
+  const action = e.target.closest('[data-action]')?.dataset.action;
+  if (action === 'wallet-soon') return toast('Wallet sign-in arrives with predictions. Coming soon.');
+  if (action === 'retry') {
+    cache.clear();
+    state.list = null;
+    state.detail.clear();
+    return onRoute();
+  }
+  const row = e.target.closest('tr[data-href]');
+  if (row && !e.target.closest('a')) location.hash = row.dataset.href;
+});
+
+document.addEventListener('input', (e) => {
+  if (e.target.id === 'ex-search') {
+    state.search = e.target.value;
+    $('#ex-body').innerHTML = exchangesTable();
+  }
+});
+
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'ex-sort') {
+    state.sort = e.target.value;
+    $('#ex-body').innerHTML = exchangesTable(true);
+  }
+});
+
+setInterval(() => {
+  if (document.hidden) return;
+  $$('[data-ago]').forEach((el) => (el.textContent = ago(Number(el.dataset.ago))));
+}, 5_000);
+
+window.addEventListener('hashchange', onRoute);
+initLanding();
+onRoute();
+
+</script>
+  </body>
+</html>

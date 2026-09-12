@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" width="240" height="200" role="img" aria-label="Firstprint mark">
+  <title>Firstprint</title>
+  <g>
+    <rect x="20.0" y="1.0" width="200.0" height="26" rx="13.0" fill="#FFC53D"/>
+    <rect x="42.0" y="44.0" width="156.0" height="26" rx="13.0" fill="#35E0A1"/>
+    <rect x="64.0" y="87.0" width="112.0" height="26" rx="13.0" fill="#A6B0C4"/>
+    <rect x="42.0" y="130.0" width="156.0" height="26" rx="13.0" fill="#FF8A5C"/>
+    <rect x="20.0" y="173.0" width="200.0" height="26" rx="13.0" fill="#FF4D6A"/>
+  </g>
+</svg>
