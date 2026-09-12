@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 500" width="1500" height="500" role="img" aria-label="Firstprint: predict the first 72 hours of every new listing">
+  <title>Firstprint</title>
+  <defs>
+    <radialGradient id="g1" cx="18%" cy="20%" r="60%">
+      <stop offset="0%" stop-color="#35E0A1" stop-opacity="0.30"/>
+      <stop offset="100%" stop-color="#35E0A1" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="g2" cx="88%" cy="10%" r="55%">
+      <stop offset="0%" stop-color="#FFC53D" stop-opacity="0.26"/>
+      <stop offset="100%" stop-color="#FFC53D" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="g3" cx="70%" cy="95%" r="50%">
+      <stop offset="0%" stop-color="#FF4D6A" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#FF4D6A" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="scale" x1="0" x2="1">
+      <stop offset="0%" stop-color="#FF4D6A"/>
+      <stop offset="25%" stop-color="#FF8A5C"/>
+      <stop offset="50%" stop-color="#A6B0C4"/>
+      <stop offset="75%" stop-color="#35E0A1"/>
+      <stop offset="100%" stop-color="#FFC53D"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1500" height="500" fill="#07090F"/>
+  <rect width="1500" height="500" fill="url(#g1)"/>
+  <rect width="1500" height="500" fill="url(#g2)"/>
+  <rect width="1500" height="500" fill="url(#g3)"/>
+  <rect width="1500" height="5" fill="url(#scale)"/>
+
+  <g>
+    <rect x="225.0" y="174.0" width="150.0" height="20" rx="10.0" fill="#FFC53D"/>
+    <rect x="241.5" y="207.0" width="117.0" height="20" rx="10.0" fill="#35E0A1"/>
+    <rect x="258.0" y="240.0" width="84.0" height="20" rx="10.0" fill="#A6B0C4"/>
+    <rect x="241.5" y="273.0" width="117.0" height="20" rx="10.0" fill="#FF8A5C"/>
+    <rect x="225.0" y="306.0" width="150.0" height="20" rx="10.0" fill="#FF4D6A"/>
+  </g>
+
+  <text x="430" y="228" font-family="Bricolage Grotesque, Poppins, DejaVu Sans, sans-serif" font-size="96" font-weight="700" letter-spacing="-4" fill="#F2F5FA">Firstprint</text>
+  <text x="436" y="292" font-family="Poppins, DejaVu Sans, sans-serif" font-size="34" font-weight="500" fill="#8D95A6">Predict the first 72 hours of every new listing.</text>
+
+  <g font-family="Poppins, DejaVu Sans, sans-serif" font-size="24" font-weight="600" transform="translate(436 340)">
+    <rect width="122" height="44" rx="22" fill="#FF4D6A" fill-opacity="0.16"/><text x="61" y="29" text-anchor="middle" fill="#FF4D6A">Crash</text>
+    <rect x="134" width="122" height="44" rx="22" fill="#FF8A5C" fill-opacity="0.16"/><text x="195" y="29" text-anchor="middle" fill="#FF8A5C">Down</text>
+    <rect x="268" width="122" height="44" rx="22" fill="#A6B0C4" fill-opacity="0.16"/><text x="329" y="29" text-anchor="middle" fill="#A6B0C4">Flat</text>
+    <rect x="402" width="122" height="44" rx="22" fill="#35E0A1" fill-opacity="0.16"/><text x="463" y="29" text-anchor="middle" fill="#35E0A1">Up</text>
+    <rect x="536" width="122" height="44" rx="22" fill="#FFC53D" fill-opacity="0.16"/><text x="597" y="29" text-anchor="middle" fill="#FFC53D">Moon</text>
+  </g>
+</svg>
