@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Firstprint">
-  <title>Firstprint</title>
-  <rect width="64" height="64" rx="14" fill="#07090f"/>
-  <rect x="12" y="7.2" width="40" height="6.4" rx="3.20" fill="#ffc53d"/>
-  <rect x="16.4" y="18.0" width="31.2" height="6.4" rx="3.20" fill="#35e0a1"/>
-  <rect x="20.8" y="28.8" width="22.4" height="6.4" rx="3.20" fill="#a6b0c4"/>
-  <rect x="16.4" y="39.6" width="31.2" height="6.4" rx="3.20" fill="#ff8a5c"/>
-  <rect x="12" y="50.4" width="40" height="6.4" rx="3.20" fill="#ff4d6a"/>
-</svg>
