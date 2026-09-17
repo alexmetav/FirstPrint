@@ -617,8 +617,8 @@ async function loadExchanges() {
       founded: row?.year_established ?? ex.founded,
       trust: row?.trust_score ?? null,
       volumeUsd: volBtc !== null && btcUsd ? volBtc * btcUsd : null,
-      // Provider images are accepted only over HTTPS.
-      logo: safeImageUrl(row?.image),
+      // Prefer CoinGecko's current image, but retain a permanent branded fallback.
+      logo: safeImageUrl(row?.image) ?? ex.logo,
     };
   });
 }
