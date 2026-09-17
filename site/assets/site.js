@@ -54,6 +54,21 @@ function ago(ts) {
 
 const monogram = (name) => `<span class="monogram" aria-hidden="true">${esc(name.replace(/[^A-Za-z0-9]/g, '')[0] ?? '?')}</span>`;
 
+function safeImageUrl(u) {
+  try {
+    const url = new URL(u);
+    return url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A live provider logo with an accessible fallback. */
+function exchangeMark(ex, alt = '') {
+  const src = safeImageUrl(ex.logo);
+  return `<span class="ex-logo">${src ? `<img src="${esc(src)}" alt="${esc(alt)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true" />` : ''}${monogram(ex.name)}</span>`;
+}
+
 let toastTimer;
 function toast(msg) {
   const el = $('#toast');
@@ -602,6 +617,8 @@ async function loadExchanges() {
       founded: row?.year_established ?? ex.founded,
       trust: row?.trust_score ?? null,
       volumeUsd: volBtc !== null && btcUsd ? volBtc * btcUsd : null,
+      // Provider images are accepted only over HTTPS.
+      logo: safeImageUrl(row?.image),
     };
   });
 }
@@ -615,7 +632,7 @@ function initLanding() {
       .map(
         (ex, i) => `
         <a class="ex-tile reveal" data-delay="${i * 40}" href="#/app/exchange/${ex.id}">
-          ${monogram(ex.name)}
+          ${exchangeMark(ex)}
           <span><b>${esc(ex.name)}</b><small>${ex.radar.length ? 'Listing radar at launch' : 'Exchange data'}</small></span>
         </a>`,
       )
@@ -762,7 +779,7 @@ function exchangesTable(animate = false) {
               (r, i) => `
             <tr data-href="#/app/exchange/${r.id}"${animate && !REDUCED ? ` class="row-in" style="animation-delay:${Math.min(i * 35, 500)}ms"` : ''}>
               <td class="rank hide-sm">${i + 1}</td>
-              <td><a class="ex-name" href="#/app/exchange/${r.id}">${monogram(r.name)}<span><b>${esc(r.name)}</b><small>${esc(r.country ?? '')}</small></span></a></td>
+              <td><a class="ex-name" href="#/app/exchange/${r.id}">${exchangeMark(r)}<span><b>${esc(r.name)}</b><small>${esc(r.country ?? '')}</small></span></a></td>
               <td class="right num">${state.live ? usd(r.volumeUsd) : '–'}</td>
               <td class="hide-sm">${r.trust !== null ? `<span class="trust"><span class="trust-bar" style="--t:${Number(r.trust)}"><i></i></span>${Number(r.trust)}/10</span>` : '<span class="muted">–</span>'}</td>
               <td class="right hide-sm">${esc(r.founded ?? '–')}</td>
@@ -885,7 +902,7 @@ async function renderExchangeDetail(id) {
   main.innerHTML = `
     <a class="back" href="#/app/exchanges">← All exchanges</a>
     <div class="detail-head">
-      ${monogram(ex.name)}
+      ${exchangeMark(ex, `${ex.name} logo`)}
       <div><h1 class="page-title">${esc(ex.name)}</h1><p class="muted" id="ex-meta">Founded ${esc(ex.founded)}</p></div>
       <div class="actions">${site ? `<a class="btn magnetic" href="${site}" target="_blank" rel="noopener noreferrer">Visit website</a>` : ''}</div>
     </div>
