@@ -816,17 +816,38 @@ body[data-view='landing'] .app {
   color: var(--muted);
   font-size: 12.5px;
 }
-.monogram {
+.ex-logo {
   flex: none;
+  position: relative;
+  display: grid;
+  place-items: center;
   width: 38px;
   height: 38px;
   border-radius: 11px;
+  overflow: hidden;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 58%, transparent);
+}
+.ex-logo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 5px;
+  object-fit: contain;
+  background: var(--surface-2);
+}
+.ex-logo .monogram {
+  width: 100%;
+  height: 100%;
   display: grid;
   place-items: center;
   font-family: var(--display);
   font-weight: 800;
   font-size: 16px;
-  background: var(--surface-2);
+}
+.ex-logo img:not([hidden]) + .monogram {
+  display: none;
 }
 
 /* Roadmap */
@@ -1265,7 +1286,7 @@ body[data-view='landing'] .app {
   gap: 20px;
   flex-wrap: wrap;
 }
-.detail-head .monogram {
+.detail-head .ex-logo {
   width: 66px;
   height: 66px;
   border-radius: 18px;
@@ -1559,8 +1580,16 @@ body[data-view='landing'] .app {
     width: 152px;
     padding: 12px;
   }
-  .ex-name .monogram {
-    display: none;
+  .ex-name .ex-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+  }
+  .ex-name .ex-logo img {
+    padding: 4px;
+  }
+  .ex-name .ex-logo .monogram {
+    font-size: 13px;
   }
   .hide-sm {
     display: none;
