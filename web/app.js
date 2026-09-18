@@ -1475,7 +1475,8 @@ setInterval(() => {
 
 (async function boot() {
   const forceDemo = window.FP_FORCE_DEMO || new URLSearchParams(location.search).has('demo');
-  S.api = !forceDemo && (await backendAvailable()) ? createApi() : new DemoBackend();
+  // A server outage must never silently replace real balances with simulated ones.
+  S.api = forceDemo ? new DemoBackend() : createApi();
   renderDemoBar();
   try {
     await refreshMe();

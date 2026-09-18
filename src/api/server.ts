@@ -6,6 +6,7 @@ import { AppError, DAILY_POINTS, LIVE_PRESETS, MIN_STAKE, SESSION_MS, SUGGESTED_
 import type { Scheduler } from '../workers/scheduler.ts';
 import type { LiveFeed } from '../workers/liveFeed.ts';
 import type { Bucket } from '../engine/engine.ts';
+import { MarketData } from '../services/marketData.ts';
 
 export interface ServerOptions {
   service: FirstprintService;
@@ -45,6 +46,7 @@ const MIME: Record<string, string> = {
 
 export function createApiServer(opts: ServerOptions): Server {
   const { service } = opts;
+  const marketData = new MarketData();
   const routes: { method: string; pattern: RegExp; keys: string[]; handler: Handler }[] = [];
   const route = (method: string, path: string, handler: Handler) => {
     const keys: string[] = [];
@@ -64,7 +66,9 @@ export function createApiServer(opts: ServerOptions): Server {
     const cookies = req.headers.cookie ?? '';
     for (const part of cookies.split(';')) {
       const [k, ...v] = part.trim().split('=');
-      if (k === COOKIE) return decodeURIComponent(v.join('='));
+      if (k === COOKIE) {
+        try { return decodeURIComponent(v.join('=')); } catch { return ''; }
+      }
     }
     return '';
   }
@@ -97,7 +101,20 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // --- Public routes -------------------------------------------------------------
 
-  route('GET', '/api/health', () => ({ ok: true, time: service.clock.now() }));
+  route('GET', '/api/health', () => {
+    service.db.prepare('SELECT 1').get();
+    return { ok: true, time: service.clock.now() };
+  });
+
+  route('GET', '/api/market-data', async ({ url }) => {
+    try { return await marketData.get(url.searchParams.get('path') ?? ''); }
+    catch (err) {
+      if ((err as Error).message === 'Unsupported market data request') {
+        throw new AppError(400, 'bad_path', 'Unsupported market data request.');
+      }
+      throw new AppError(503, 'data_unavailable', 'Market data is temporarily unavailable.');
+    }
+  });
 
   route('GET', '/api/config', () => ({
     minStake: MIN_STAKE,
@@ -396,7 +413,8 @@ export function createApiServer(opts: ServerOptions): Server {
 
     if (!url.pathname.startsWith('/api/')) {
       if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method_not_allowed' });
-      return serveStatic(res, url.pathname);
+      try { return await serveStatic(res, url.pathname); }
+      catch { return send(res, 400, { error: 'bad_path', message: 'Invalid path.' }); }
     }
 
     if (url.pathname === '/api/stream' && req.method === 'GET') return openStream(req, res);
@@ -407,7 +425,11 @@ export function createApiServer(opts: ServerOptions): Server {
     if (!match || !match.m) return send(res, 404, { error: 'not_found', message: 'Unknown endpoint.' });
 
     const params: Record<string, string> = {};
-    match.r.keys.forEach((k, i) => (params[k] = decodeURIComponent(match.m![i + 1])));
+    try {
+      match.r.keys.forEach((k, i) => (params[k] = decodeURIComponent(match.m![i + 1])));
+    } catch {
+      return send(res, 400, { error: 'bad_path', message: 'Invalid path.' });
+    }
 
     let userMemo: UserRow | null | undefined;
     const ctx: Ctx = {
@@ -423,10 +445,11 @@ export function createApiServer(opts: ServerOptions): Server {
         return u;
       },
       requireAdmin: () => {
+        rateLimit(`admin:${req.socket.remoteAddress}`, 30, 60_000);
         const given = String(req.headers['x-admin-key'] ?? '');
         const ok =
           opts.adminKey &&
-          given.length === opts.adminKey.length &&
+          Buffer.byteLength(given) === Buffer.byteLength(opts.adminKey) &&
           timingSafeEqual(Buffer.from(given), Buffer.from(opts.adminKey));
         if (!ok) throw new AppError(403, 'forbidden', 'Admin key required.');
       },
@@ -434,6 +457,10 @@ export function createApiServer(opts: ServerOptions): Server {
 
     try {
       rateLimit(`ip:${req.socket.remoteAddress}`, 300);
+      if (req.method === 'POST' && req.headers.origin) {
+        const expected = opts.publicUrl ? new URL(opts.publicUrl).origin : `http://${req.headers.host}`;
+        if (req.headers.origin !== expected) throw new AppError(403, 'bad_origin', 'Request origin is not allowed.');
+      }
       if (req.method === 'POST' && !String(req.headers['content-type'] ?? '').startsWith('application/json')) {
         throw new AppError(415, 'json_required', 'Requests must use Content-Type: application/json.');
       }
@@ -473,6 +500,7 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
 
 /** Converts a public pagination value into a safe, finite database limit. */
 function boundedLimit(value: string | null, fallback = 50): number {
+  if (value === null || value.trim() === '') return fallback;
   const parsed = Number(value);
   if (!Number.isInteger(parsed)) return fallback;
   return Math.max(1, Math.min(200, parsed));

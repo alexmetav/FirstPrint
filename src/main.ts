@@ -1,5 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.ts';
 import { openDb } from './db/db.ts';
 import { systemClock } from './clock.ts';
@@ -46,7 +47,7 @@ const server = createApiServer({
   secureCookies: cfg.secureCookies,
   publicUrl: cfg.publicUrl,
   solanaChain: cfg.solanaChain,
-  webDir: new URL('../web', import.meta.url).pathname,
+  webDir: fileURLToPath(new URL('../web', import.meta.url)),
 });
 
 server.listen(cfg.port, () => {
