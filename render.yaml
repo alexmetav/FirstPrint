@@ -9,5 +9,3 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.18.0
-      - key: COINGECKO_API_KEY
-        sync: false
