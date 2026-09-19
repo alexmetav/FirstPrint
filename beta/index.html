@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Firstprint Wallet Points Beta</title>
+    <meta name="description" content="Wallet-authenticated Firstprint practice predictions with persistent free points." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wdth,wght@75..100,500..800&display=swap" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="./config.js"></script>
+  </head>
+  <body>
+    <header><a class="brand" href="/">Firstprint</a><button id="wallet" class="button primary">Connect Solana wallet</button></header>
+    <main>
+      <section class="hero">
+        <p class="eyebrow">Closed beta · Free points only</p>
+        <h1>Predict with points.<br />Keep your progress.</h1>
+        <p>Sign a message with your Solana wallet. No transaction, deposit, token, or fee is involved.</p>
+      </section>
+      <div id="notice" class="notice">Connect a wallet to begin with 1,000 persistent practice points.</div>
+      <section id="account" class="account" hidden></section>
+      <section><div class="section-head"><div><p class="eyebrow">Markets</p><h2>Practice predictions</h2></div><button id="refresh" class="button" hidden>Refresh</button></div><div id="markets" class="markets"><div class="empty">Connect your wallet to load markets.</div></div></section>
+      <section id="history-section" hidden><div class="section-head"><div><p class="eyebrow">Portfolio</p><h2>Your predictions</h2></div></div><div id="history" class="panel"></div></section>
+      <section id="leaderboard-section" hidden><div class="section-head"><div><p class="eyebrow">Community</p><h2>Leaderboard</h2></div></div><div id="leaderboard" class="panel"></div></section>
+    </main>
+    <footer>Practice points have no cash value. Firstprint is independent and not financial advice.</footer>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
