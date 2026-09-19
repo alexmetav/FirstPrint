@@ -24,5 +24,9 @@ jobs:
       - run: npm run build:deploy
       - name: Verify public practice-mode lock
         run: grep -q 'window.FP_FORCE_DEMO = true' .deploy/play/index.html
+      - name: Verify wallet beta keeps secrets out of the build
+        run: |
+          grep -q 'SUPABASE_PUBLISHABLE_KEY' .env.example
+          '! grep -R "service_role\|SUPABASE_SECRET_KEY" .deploy --include="*.js" --include="*.html"'
       - name: Reject browser-side provider secrets
         run: '! grep -R "coingeckoApiKey\|api.coingecko.com/api/v3" .deploy --include="*.js"'
