@@ -50,7 +50,7 @@ const server = createApiServer({
   webDir: fileURLToPath(new URL('../web', import.meta.url)),
 });
 
-server.listen(cfg.port, () => {
+server.listen(cfg.port, '0.0.0.0', () => {
   log(`Firstprint running at http://localhost:${cfg.port} (tracking: ${tracked.map((v) => v.id).join(', ') || 'none'})`);
   scheduler.start();
 });

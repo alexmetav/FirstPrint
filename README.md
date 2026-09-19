@@ -4,7 +4,7 @@ Predict where newly listed crypto tokens trade 72 hours after they list.
 
 In trading, the *first print* is a token's very first trade. Firstprint watches seven centralized exchanges for new listings, opens a prediction market for each one, and settles it on real exchange prices. Users sign in with a Solana wallet and stake points on one of five outcomes: Crash, Down, Flat, Up, or Moon.
 
-**Launching the public website?** The static site is in `site/`. Follow [LAUNCH.md](LAUNCH.md) to put it online in minutes.
+**Launching the public demo?** The static source is in `site/`, the isolated read-only API starts with `npm run start:demo`, and [LAUNCH.md](LAUNCH.md) covers the Render and Vercel deployment.
 
 ## What's in this repo
 
@@ -14,7 +14,7 @@ In trading, the *first print* is a token's very first trade. Firstprint watches 
 | **Live data** | Pulls 1-minute candles for settlement and live tickers every few seconds, then streams prices to browsers over Server-Sent Events. |
 | **Market engine** | Outcome buckets, 1-hour average prices at start and end, volume-weighted median across exchanges, pool caps, early-bird weights, payouts, and cancellation rules. |
 | **Accounts** | Sign-In With Solana (Phantom, Solflare, Backpack, or any Wallet Standard wallet), with email and password as a fallback. Users, wallets, points, predictions, and settlements are stored in the database. |
-| **Public website** | `site/`: landing page and app with a live exchange explorer. Predictions and listing radar are marked "Coming soon". Static, so it's free to host. |
+| **Public website** | `site/`: landing page and app with a live exchange explorer. Vercel proxies its allowlisted market-data reads to the isolated Render demo service. Predictions and listing radar are marked "Coming soon". |
 | **Prediction app** | Markets, market page with live chart and outcome ladder, Listing radar, leaderboard, and portfolio with linked wallets. Works on desktop and mobile. |
 | **Solana program** | `solana/`: an Anchor program for on-chain USDC prediction pools with oracle settlement, plus tests and an oracle script. Unaudited, devnet only. |
 
@@ -29,7 +29,7 @@ npm run setup       # creates .env and an admin key
 npm run check       # tests every exchange connection
 npm run dev         # http://localhost:8787 (admin at /#/admin)
 npm run live        # creates 15-minute markets on live tokens
-npm test            # 48 tests
+npm test            # 52 tests
 ```
 
 Offline practice: set `SIM=1`, run `npm run seed`, then `npm run dev`. To preview the website with no server at all, open `dist/firstprint-preview.html`.
@@ -47,6 +47,7 @@ src/
   engine/engine.ts          Market math shared with the browser
   services/firstprint.ts    Accounts, wallets, points ledger, markets, detections, settlement
   api/server.ts             HTTP API, sessions, SSE stream, admin routes, static site
+  demo.ts / demoServer.ts   Isolated read-only public demo service
   exchanges/venues.ts       Binance, MEXC, Bybit, OKX, Gate, Bitget, KuCoin adapters
   exchanges/sim.ts          Simulated exchange for local development
   workers/listingTracker.ts Announcements and new-pair detection

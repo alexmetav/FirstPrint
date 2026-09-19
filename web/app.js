@@ -255,7 +255,7 @@ function renderDemoBar() {
   if (!S.api.demo) return;
   $('#demo-bar').innerHTML = `
     <div class="demo-bar"><div class="demo-bar-inner">
-      <p>Demo with simulated prices. Most markets run 10 minutes instead of 72 hours.</p>
+      <p><strong>Practice only:</strong> simulated prices, browser-only accounts, and no real funds or persisted predictions.</p>
       <button class="btn" data-action="skip">Skip ahead 2 minutes</button>
       <button class="btn" data-action="reset">Reset demo</button>
     </div></div>`;

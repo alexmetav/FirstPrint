@@ -4,7 +4,6 @@
 import { EXCHANGES } from './exchanges.js';
 
 const CONFIG = window.FIRSTPRINT_CONFIG ?? { links: {} };
-const CG_BASE = 'https://api.coingecko.com/api/v3';
 const REFRESH_MS = 60_000;
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -562,16 +561,16 @@ function readStore(path) {
   try {
     const raw = localStorage.getItem(STORE_PREFIX + path);
     if (!raw) return null;
-    const { t, data } = JSON.parse(raw);
-    return Date.now() - t < STORE_TTL ? { t, data } : null;
+    const entry = JSON.parse(raw);
+    return Date.now() - entry.t < STORE_TTL ? entry : null;
   } catch {
     return null;
   }
 }
 
-function writeStore(path, data) {
+function writeStore(path, entry) {
   try {
-    localStorage.setItem(STORE_PREFIX + path, JSON.stringify({ t: Date.now(), data }));
+    localStorage.setItem(STORE_PREFIX + path, JSON.stringify(entry));
   } catch {
     /* private mode or quota: caching is optional */
   }
@@ -581,14 +580,18 @@ async function cg(path, ttl = REFRESH_MS) {
   const hit = cache.get(path) ?? readStore(path);
   if (hit) cache.set(path, hit);
   if (hit && Date.now() - hit.t < ttl) return hit.data;
-  const sep = path.includes('?') ? '&' : '?';
-  const key = CONFIG.coingeckoApiKey ? `${sep}x_cg_demo_api_key=${encodeURIComponent(CONFIG.coingeckoApiKey)}` : '';
-  const res = await fetch(`${CG_BASE}${path}${key}`, { signal: AbortSignal.timeout(12_000) });
-  if (!res.ok) throw new Error(res.status === 429 ? 'Rate limited by the data provider' : `Data provider error ${res.status}`);
-  const data = await res.json();
-  cache.set(path, { t: Date.now(), data });
-  writeStore(path, data);
-  return data;
+  const res = await fetch(`/api/market-data?path=${encodeURIComponent(path)}`, { signal: AbortSignal.timeout(12_000) });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(payload.message ?? `Data service error ${res.status}`);
+  const entry = {
+    t: Date.now(),
+    data: payload.data,
+    updatedAt: Number(payload.updatedAt) || Date.now(),
+    stale: Boolean(payload.stale),
+  };
+  cache.set(path, entry);
+  writeStore(path, entry);
+  return entry.data;
 }
 
 /** Cached copy if one exists, however old. Used when the network fails. */
@@ -597,17 +600,20 @@ function staleData(path) {
 }
 
 async function loadExchanges() {
-  const [list, price] = await Promise.allSettled([cg('/exchanges?per_page=100&page=1'), cg('/simple/price?ids=bitcoin&vs_currencies=usd')]);
-  const rows = list.status === 'fulfilled' && Array.isArray(list.value) ? list.value : staleData('/exchanges?per_page=100&page=1');
-  const priceData = price.status === 'fulfilled' ? price.value : staleData('/simple/price?ids=bitcoin&vs_currencies=usd');
+  const listPath = '/exchanges?per_page=100&page=1';
+  const pricePath = '/simple/price?ids=bitcoin&vs_currencies=usd';
+  const [list, price] = await Promise.allSettled([cg(listPath), cg(pricePath)]);
+  const rows = list.status === 'fulfilled' && Array.isArray(list.value) ? list.value : staleData(listPath);
+  const priceData = price.status === 'fulfilled' ? price.value : staleData(pricePath);
   const live = Array.isArray(rows);
   const btcUsd = priceData?.bitcoin?.usd ?? null;
   const byId = new Map(live ? rows.map((x) => [x.id, x]) : []);
+  const freshness = cache.get(listPath) ?? readStore(listPath);
 
   state.btcUsd = btcUsd;
   state.live = live;
-  state.stale = list.status !== 'fulfilled' && live;
-  state.updatedAt = list.status === 'fulfilled' ? Date.now() : state.updatedAt ?? Date.now();
+  state.stale = Boolean(live && (list.status !== 'fulfilled' || freshness?.stale));
+  state.updatedAt = freshness?.updatedAt ?? freshness?.t ?? state.updatedAt ?? Date.now();
   state.list = EXCHANGES.map((ex) => {
     const row = byId.get(ex.cg);
     const volBtc = row?.trade_volume_24h_btc ?? null;
@@ -675,19 +681,6 @@ function parseRoute() {
   return { view: 'app', tab: 'exchanges' };
 }
 
-let preconnected = false;
-function preconnectData() {
-  if (preconnected) return;
-  preconnected = true;
-  for (const rel of ['preconnect', 'dns-prefetch']) {
-    const l = document.createElement('link');
-    l.rel = rel;
-    l.href = 'https://api.coingecko.com';
-    if (rel === 'preconnect') l.crossOrigin = '';
-    document.head.appendChild(l);
-  }
-}
-
 let lastView = null;
 async function onRoute() {
   const r = parseRoute();
@@ -708,7 +701,6 @@ async function onRoute() {
     return;
   }
 
-  preconnectData();
   renderAppShell(r);
   window.scrollTo(0, 0);
   if (r.tab === 'exchanges' && r.exchange) return renderExchangeDetail(r.exchange);
@@ -751,7 +743,7 @@ function sortedRows() {
 
 function dataNote() {
   if (state.stale) {
-    return `<p class="data-note offline"><span class="dot-live" aria-hidden="true"></span>Showing your last saved data. <button class="btn" data-action="retry" style="padding:3px 12px;font-size:13px">Refresh</button></p>`;
+    return `<p class="data-note offline"><span class="dot-live" aria-hidden="true"></span>Cached CoinGecko data, updated <span data-ago="${state.updatedAt}">${ago(state.updatedAt)}</span>. <button class="btn" data-action="retry" style="padding:3px 12px;font-size:13px">Refresh</button></p>`;
   }
   if (state.live) {
     return `<p class="data-note"><span class="dot-live" aria-hidden="true"></span>Live from CoinGecko, updated <span data-ago="${state.updatedAt}">${ago(state.updatedAt)}</span></p>`;
