@@ -180,7 +180,7 @@ export function createApiServer(opts: ServerOptions): Server {
   route('GET', '/api/markets/:id/activity', ({ params }) => ({ activity: service.activity(params.id) }));
 
   route('GET', '/api/listings/detected', ({ url }) => ({
-    listings: service.detections({ status: 'all', limit: Number(url.searchParams.get('limit') ?? 50) }).filter((d) => d.status !== 'ignored'),
+    listings: service.detections({ status: 'all', limit: boundedLimit(url.searchParams.get('limit')) }).filter((d) => d.status !== 'ignored'),
   }));
 
   route('GET', '/api/leaderboard', ({ optionalUser }) => service.leaderboard(optionalUser()?.id));
@@ -392,6 +392,7 @@ export function createApiServer(opts: ServerOptions): Server {
     res.setHeader('x-content-type-options', 'nosniff');
     res.setHeader('referrer-policy', 'same-origin');
     res.setHeader('x-frame-options', 'DENY');
+    res.setHeader('permissions-policy', 'camera=(), geolocation=(), microphone=(), payment=(), usb=()');
 
     if (!url.pathname.startsWith('/api/')) {
       if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method_not_allowed' });
@@ -468,6 +469,13 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
   } catch {
     throw new AppError(400, 'bad_json', 'Request body must be a JSON object.');
   }
+}
+
+/** Converts a public pagination value into a safe, finite database limit. */
+function boundedLimit(value: string | null, fallback = 50): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.max(1, Math.min(200, parsed));
 }
 
 function toMs(v: unknown): number {
