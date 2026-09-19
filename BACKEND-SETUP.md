@@ -21,6 +21,12 @@ The public website is built from `site/`. A separate prediction interface is cop
 - Connect the Vercel frontend using a same-origin API proxy so HttpOnly sessions work without third-party cookies. PUBLIC_URL must match the browser-facing origin.
 - Test live exchange APIs from the selected hosting region, then test signup, prediction, settlement, and restart recovery end to end.
 
+## Supabase wallet-points beta
+
+The first PostgreSQL migration is `supabase/migrations/202609190001_points_beta.sql`. Run it once in the Supabase SQL editor for the staging project. It creates RLS-protected profiles, an append-only points ledger, rotating practice markets, idempotent predictions, atomic daily claims, deterministic practice settlement, and a limited leaderboard.
+
+In Supabase Auth, enable the Solana Web3 provider and register `https://first-print.vercel.app/**` as a redirect URL. In Vercel, set the public `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` build variables. Never use a secret or service-role key in these browser variables. The beta will then be available at `/beta/`.
+
 ## Local developer check
 
 Requires Node 22.18+.
