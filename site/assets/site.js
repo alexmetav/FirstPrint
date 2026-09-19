@@ -719,7 +719,7 @@ function renderAppShell(r) {
         <a class="wordmark" href="#top" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
         <nav class="app-tabs" aria-label="App">
           <a href="#/app/exchanges"${cur('exchanges')}>Exchanges</a>
-          <a href="#/app/predictions"${cur('predictions')}>Predictions <span class="soon">Soon</span></a>
+          <a href="/play/">Predictions <span class="soon">Practice</span></a>
           <a href="#/app/radar"${cur('radar')}>Listing radar <span class="soon">Soon</span></a>
         </nav>
         <button class="btn btn-disabled" type="button" data-action="wallet-soon">Connect wallet <span class="soon">Soon</span></button>
@@ -924,8 +924,8 @@ async function renderExchangeDetail(id) {
         <section class="panel">
           <h2>Prediction markets</h2>
           <div class="panel-box">
-            <p>Soon you’ll predict where new ${esc(ex.name)} listings trade 72 hours after they go live.</p>
-            <p><a class="btn magnetic" href="#/app/predictions">See what’s coming</a></p>
+            <p>Try a simulated 72-hour prediction now with free browser-only practice points.</p>
+            <p><a class="btn magnetic" href="/play/">Open practice beta</a></p>
           </div>
         </section>
       </aside>
@@ -993,20 +993,20 @@ function followLinks() {
 }
 
 function renderPredictionsSoon() {
-  document.title = 'Predictions: coming soon on Firstprint';
+  document.title = 'Practice predictions: Firstprint';
   $('#app-main').innerHTML = `
     <section class="soon-page">
       <div>
-        <span class="soon soon-badge">Coming soon</span>
-        <h1>Call every<br />new listing.</h1>
-        <p class="lede">Pick where a token trades 72 hours after it lists, from Crash to Moon. Free points, weekly leaderboards, and results settled on real exchange prices.</p>
+        <span class="soon soon-badge">Practice beta live</span>
+        <h1>Test the first<br />72 hours now.</h1>
+        <p class="lede">Use free browser-only points to call Crash, Down, Flat, Up, or Moon in a simulated market.</p>
         <ul class="check-list">
-          <li>Sign in with Phantom, Solflare, or Backpack</li>
-          <li>1,000 free points to start</li>
-          <li>Markets for new listings on the biggest exchanges</li>
-          <li>Refunds when a listing is delayed or data is thin</li>
+          <li>Start immediately with 1,000 points</li>
+          <li>Claim 100 practice points daily</li>
+          <li>Test predictions, settlement, and leaderboards</li>
+          <li>No deposits, transactions, or real money</li>
         </ul>
-        <div class="hero-actions">${followLinks()}</div>
+        <div class="hero-actions"><a class="btn btn-solid magnetic" href="/play/">Open practice beta</a><a class="btn magnetic" href="#/app/exchanges">Explore exchanges</a></div>
       </div>
       <div class="preview-card" aria-label="Preview of a prediction market">
         <div class="hm-head">
