@@ -29,7 +29,7 @@ function setup(targetReturn = -0.3) {
     listingAt,
     config: FAST,
   });
-  const scheduler = new Scheduler(service, async () => {}, { tickMs: 1000, detectVenues: [], detectEveryMs: 1e9 });
+  const scheduler = new Scheduler(service, async () => {}, { tickMs: 1000 });
   return { db, clock, sim, service, marketId, listingAt, scheduler };
 }
 
@@ -103,7 +103,7 @@ test('markets with no price data are voided and fully refunded', async () => {
   const b = (await service.createUser({ username: 'user_b' }));
   service.placePrediction(id, a.id, 'moon', 100);
   service.placePrediction(id, b.id, 'crash', 50);
-  const scheduler = new Scheduler(service, async () => {}, { tickMs: 1000, detectVenues: [], detectEveryMs: 1e9 });
+  const scheduler = new Scheduler(service, async () => {}, { tickMs: 1000 });
 
   let notes: unknown[] = [];
   scheduler.notify = async (n) => void (notes = n);

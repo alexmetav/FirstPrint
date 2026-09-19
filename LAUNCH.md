@@ -1,6 +1,6 @@
 # Launch the Firstprint website
 
-The public website lives in the `site/` folder. It's a static site with no server, no build step, and no database, so you can host it for free in a few minutes.
+The public website source lives in `site/`. Vercel serves the static build and forwards its two read-only API routes to an isolated Render service. The demo has no database and never exposes production prediction writes.
 
 **What visitors get on day 1**
 - A landing page covering how it works, the five outcomes, the fairness rules, exchanges, the roadmap, and an FAQ.
@@ -9,7 +9,7 @@ The public website lives in the `site/` folder. It's a static site with no serve
   - **Exchanges:** live 24-hour volume, trust scores, trending coins, and the most traded pairs for 13 major exchanges.
   - **Predictions** and **Listing radar**, both marked "Coming soon".
 
-The whole site is about 26 KB compressed, with no framework and no build step. It installs as an app on phones and keeps showing your last data when the network drops.
+The site has no frontend framework. It installs as an app on phones and keeps showing recent cached data when the provider is temporarily unavailable.
 
 ## 1. Edit your settings (2 minutes)
 
@@ -19,33 +19,26 @@ Open `site/assets/config.js` and fill in what you have. Empty values stay hidden
 siteUrl: 'https://yourdomain.com',
 links: { x: 'https://x.com/yourhandle', telegram: 'https://t.me/yourgroup', discord: '' },
 waitlistUrl: 'https://tally.so/r/yourform',   // optional: adds "Join the waitlist" buttons
-coingeckoApiKey: '',                            // optional: free demo key for higher limits
 ```
 
 Once you know your domain, open `site/index.html` and change `og:image` to the full address, for example `https://yourdomain.com/og.png`. Social apps need the full address to show the preview image. Also replace `example.com` in `site/robots.txt` and `site/sitemap.xml` with your domain.
 
-## 2. Put it online (pick one)
+## 2. Deploy the read-only API
 
-**Netlify Drop (fastest, no account setup)**
-1. Go to app.netlify.com/drop on a computer.
-2. Drag the `site` folder onto the page.
-3. Your site is live on a netlify.app address. Add your own domain under **Domain management**.
+1. In Render, create a Blueprint from this repository. Render reads `render.yaml` and creates `firstprint-demo-api`.
+2. Optionally add a CoinGecko demo key as the private `COINGECKO_API_KEY` value.
+3. Confirm `https://firstprint-demo-api.onrender.com/api/health` returns `mode: "read-only-demo"`.
+4. If Render assigns a different hostname, update both destinations in the root `vercel.json`.
 
-**Vercel**
-1. Push this project to GitHub.
-2. In Vercel, choose **Add New Project** and import the repo.
-3. Set **Root Directory** to `site`, set **Framework** to **Other**, and leave the build command empty.
-4. Deploy.
+## 3. Deploy the site
 
-**Cloudflare Pages**
-1. Push to GitHub.
-2. Create a Pages project from the repo.
-3. Set **Build command** to empty and **Build output directory** to `site`.
-4. Deploy.
+1. In Vercel, import this repository from GitHub.
+2. Leave the project root at the repository root. The checked-in `vercel.json` supplies the build command, output directory, security headers, and read-only API rewrites.
+3. Deploy and confirm `/api/health` works through the Vercel URL.
 
-Every later update is the same: change files in `site/`, then drag the folder again (Netlify Drop) or push to GitHub (Vercel and Cloudflare).
+Netlify or Cloudflare can host the static files only if you separately reproduce the two same-origin API proxy rules. Direct browser calls to CoinGecko are intentionally unsupported.
 
-## 3. Check before you share it
+## 4. Check before you share it
 
 - [ ] The landing page loads on desktop and phone.
 - [ ] **Launch app** shows exchanges with live volume and a green "Live data" note.
@@ -53,17 +46,18 @@ Every later update is the same: change files in `site/`, then drag the folder ag
 - [ ] Your social and waitlist links work.
 - [ ] Sharing the link shows the preview image (check with a link preview tool).
 - [ ] The practice market in the "Try it" section runs and keeps your streak after a reload.
+- [ ] `/play/` displays the practice-only banner and never creates a network request to prediction or authentication routes.
 - [ ] On a phone, "Add to Home Screen" installs it with the Firstprint icon.
 
-If exchange data shows "couldn't load", CoinGecko's free limit was probably reached. Add a free demo key in `config.js`.
+If exchange data shows "couldn't load", check the read-only Render service and its private `COINGECKO_API_KEY`. Never add a provider key to `config.js` or any browser asset.
 
 ## Day-by-day plan
 
 | When | Goal | What to do |
 |---|---|---|
-| Day 1 | Website live | Deploy `site/`, connect your domain, share the link |
+| Day 1 | Read-only demo live | Deploy the Render Blueprint and Vercel build, connect your domain, then verify the proxy |
 | Day 2 | Audience | Set up X and Telegram, add a waitlist form, add privacy-friendly analytics |
-| Days 3–4 | Backend online | Host the Node server (Railway, Render, or Fly.io with a persistent disk), run `npm run check`, keep it private |
+| Days 3–4 | Full backend staging | Migrate persistence to PostgreSQL, run `npm run check` from the hosting region, and keep prediction writes private |
 | Days 5–6 | Listing radar | Switch the Radar tab from "Coming soon" to live detections from the backend |
 | Days 7–10 | Predictions beta | Turn on wallet sign-in and points, and run 15-minute live test markets with early users |
 | Week 3 | Real listing markets | Approve detected listings into 72-hour markets, then add leaderboards |

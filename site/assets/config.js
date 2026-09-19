@@ -10,6 +10,4 @@ window.FIRSTPRINT_CONFIG = {
   },
   // Optional waitlist form (Tally, Typeform, Google Forms). Adds "Join the waitlist" buttons.
   waitlistUrl: '',
-  // Optional CoinGecko demo API key for higher rate limits (free at coingecko.com/en/api)
-  coingeckoApiKey: '',
 };

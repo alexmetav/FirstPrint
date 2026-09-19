@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: firstprint-demo-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm run start:demo
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22.18.0

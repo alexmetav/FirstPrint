@@ -8,9 +8,12 @@
     "node": ">=22.18"
   },
   "scripts": {
+    "build:deploy": "npm run build:web && node scripts/build-deploy.ts",
     "setup": "node --disable-warning=ExperimentalWarning scripts/setup.ts",
     "dev": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env --watch src/main.ts",
+    "dev:demo": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env --watch src/demo.ts",
     "start": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/main.ts",
+    "start:demo": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/demo.ts",
     "seed": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/seed.ts",
     "test": "node --disable-warning=ExperimentalWarning --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
