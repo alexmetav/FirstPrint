@@ -60,6 +60,8 @@ async function load() {
   if (!supabase) return renderSetup();
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return renderSignedOut();
+  // Wake the trusted detector; stale persisted markets remain usable if it is asleep.
+  await fetch('/api/mexc-focus').catch(() => null);
   const { data, error } = await supabase.rpc('fp_get_dashboard');
   if (error) throw error;
   dashboard = data;
@@ -93,7 +95,7 @@ function render() {
   $('#claim').onclick = claim;
   $('#refresh').hidden = false;
   $('#refresh').onclick = () => load().catch((e) => toast(e.message, true));
-  $('#markets').innerHTML = dashboard.markets.map(marketCard).join('') || '<div class="empty">No practice markets are open right now.</div>';
+  $('#markets').innerHTML = dashboard.markets.map(marketCard).join('') || '<div class="empty">Watching MEXC for the next new USDT listing. Markets appear only after a real pair is detected.</div>';
   document.querySelectorAll('[data-predict]').forEach((button) => button.onclick = predict);
   renderHistory();
   renderLeaderboard();
@@ -101,7 +103,7 @@ function render() {
 
 function marketCard(m) {
   const open = m.status === 'open' && Number(m.closesAt) > Date.now();
-  return `<article class="market"><div class="market-head"><div><span>${safe(m.exchange)}</span><h3>${safe(m.symbol)} <small>${safe(m.name)}</small></h3></div><div class="clock">${open ? `Closes in ${remaining(m.closesAt)}` : safe(m.status)}</div></div><div class="pool">Pool ${points(m.pool)}</div><div class="outcomes">${buckets.map((b) => `<button data-predict data-market="${m.id}" data-bucket="${b}" ${open ? '' : 'disabled'}><b>${labels[b]}</b><span>${points(m.totals?.[b])}</span></button>`).join('')}</div><label class="stake">Stake <input id="stake-${m.id}" type="number" min="10" max="1000" step="10" value="100" ${open ? '' : 'disabled'} /></label>${m.result ? `<p class="result">Result: <b>${labels[m.result]}</b></p>` : ''}</article>`;
+  return `<article class="market"><div class="market-head"><div><span>${safe(m.exchange)} · ${safe(m.pair || `${m.symbol}USDT`)}</span><h3>${safe(m.symbol)} <small>${safe(m.name)}</small></h3></div><div class="clock">${open ? `Closes in ${remaining(m.closesAt)}` : safe(m.status)}</div></div><div class="pool">Opening price ${m.openPrice ? `$${Number(m.openPrice).toLocaleString(undefined, { maximumSignificantDigits: 8 })}` : 'pending'} · Pool ${points(m.pool)}</div><div class="outcomes">${buckets.map((b) => `<button data-predict data-market="${m.id}" data-bucket="${b}" ${open ? '' : 'disabled'}><b>${labels[b]}</b><span>${points(m.totals?.[b])}</span></button>`).join('')}</div><label class="stake">Stake <input id="stake-${m.id}" type="number" min="10" max="1000" step="10" value="100" ${open ? '' : 'disabled'} /></label>${m.result ? `<p class="result">Result: <b>${labels[m.result]}</b></p>` : ''}</article>`;
 }
 
 async function predict(event) {
