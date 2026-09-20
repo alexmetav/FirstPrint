@@ -720,10 +720,10 @@ function renderAppShell(r) {
         <a class="wordmark" href="#top" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
         <nav class="app-tabs" aria-label="App">
           <a href="#/app/exchanges"${cur('exchanges')}>Exchanges</a>
-          <a href="/play/">Predictions <span class="soon">Practice</span></a>
+          <a href="/beta/">Predictions <span class="soon">Beta</span></a>
           <a href="#/app/radar"${cur('radar')}>Listing radar <span class="soon">Soon</span></a>
         </nav>
-        <button class="btn btn-disabled" type="button" data-action="wallet-soon">Connect wallet <span class="soon">Soon</span></button>
+        <a class="btn" href="/beta/">Connect wallet <span class="soon">Beta</span></a>
       </div>
     </header>
     <main class="wrap app-main" id="app-main" tabindex="-1"></main>`;
@@ -939,8 +939,8 @@ async function renderExchangeDetail(id) {
         <section class="panel">
           <h2>Prediction markets</h2>
           <div class="panel-box">
-            <p>Try a simulated 72-hour prediction now with free browser-only practice points.</p>
-            <p><a class="btn magnetic" href="/play/">Open practice beta</a></p>
+            <p>Try a simulated 72-hour prediction with free points saved to your wallet-authenticated profile.</p>
+            <p><a class="btn magnetic" href="/beta/">Open wallet beta</a></p>
           </div>
         </section>
       </aside>
@@ -1014,14 +1014,14 @@ function renderPredictionsSoon() {
       <div>
         <span class="soon soon-badge">Practice beta live</span>
         <h1>Test the first<br />72 hours now.</h1>
-        <p class="lede">Use free browser-only points to call Crash, Down, Flat, Up, or Moon in a simulated market.</p>
+        <p class="lede">Sign in with a Solana wallet and use free persistent points to call Crash, Down, Flat, Up, or Moon in a simulated market.</p>
         <ul class="check-list">
           <li>Start immediately with 1,000 points</li>
           <li>Claim 100 practice points daily</li>
           <li>Test predictions, settlement, and leaderboards</li>
           <li>No deposits, transactions, or real money</li>
         </ul>
-        <div class="hero-actions"><a class="btn btn-solid magnetic" href="/play/">Open practice beta</a><a class="btn magnetic" href="#/app/exchanges">Explore exchanges</a></div>
+        <div class="hero-actions"><a class="btn btn-solid magnetic" href="/beta/">Open wallet beta</a><a class="btn magnetic" href="#/app/exchanges">Explore exchanges</a></div>
       </div>
       <div class="preview-card" aria-label="Preview of a prediction market">
         <div class="hm-head">
