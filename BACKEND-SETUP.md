@@ -21,6 +21,12 @@ The public website is built from `site/`. A separate prediction interface is cop
 - Connect the Vercel frontend using a same-origin API proxy so HttpOnly sessions work without third-party cookies. PUBLIC_URL must match the browser-facing origin.
 - Test live exchange APIs from the selected hosting region, then test signup, prediction, settlement, and restart recovery end to end.
 
+## Supabase wallet-points beta
+
+The first PostgreSQL migration is `supabase/migrations/202609190001_points_beta.sql`. Run it once in the Supabase SQL editor for the staging project. It creates RLS-protected profiles, an append-only points ledger, rotating practice markets, idempotent predictions, atomic daily claims, deterministic practice settlement, and a limited leaderboard.
+
+In Supabase Auth, enable the Solana Web3 provider and register `https://first-print.vercel.app/**` as a redirect URL. In Vercel, set the public `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` build variables. Never use a secret or service-role key in these browser variables. The beta will then be available at `/beta/`.
+
 ## Local developer check
 
 Requires Node 22.18+.
@@ -47,6 +53,12 @@ Visit http://localhost:8787 for the actual backend-connected prediction app. The
 - `GET /api/market-data`
 
 It does not open SQLite or expose authentication, predictions, points, admin routes, settlement, listing tracking, or workers. In Render, create the Blueprint from this repository and add `COINGECKO_API_KEY` as a private environment variable if required. The Vercel rewrites assume the service URL is `https://firstprint-demo-api.onrender.com`; update `vercel.json` if Render assigns another URL.
+
+### Two-market MEXC beta
+
+After applying `202609200001_mexc_daily_focus.sql`, set `SUPABASE_URL` and the private `SUPABASE_SERVICE_ROLE_KEY` on Render only. Never add the service-role key to Vercel or any `PUBLIC_`/browser variable. The worker takes an initial baseline of MEXC USDT pairs, detects additions by comparing later snapshots, and selects at most two new pairs per UTC day. It records the live opening price and settles 24 hours later from MEXC's public ticker. If fewer than two new pairs appear, the beta keeps showing the most recently selected pair(s); it never invents a market to fill the quota.
+
+The free Render service can sleep. `/api/mexc-focus` wakes and rate-limits the worker whenever a signed-in beta user loads the dashboard, while a five-minute timer polls whenever the service is awake. For stricter production timing, move the same worker behind a paid cron or scheduled Supabase Edge Function.
 
 Before sharing the demo, verify from the deployed Vercel site that `/api/health` returns `mode: "read-only-demo"`, every exchange page loads, stale data is labelled, and `/play/` shows the practice-only banner.
 

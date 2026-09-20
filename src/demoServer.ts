@@ -1,19 +1,26 @@
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import { MarketData } from './services/marketData.ts';
+import { MexcFocusWorker } from './workers/mexcFocus.ts';
 
 export interface DemoServerOptions {
   marketData?: MarketData;
   now?: () => number;
+  mexcFocus?: MexcFocusWorker;
 }
 
 /**
- * Creates the public demo API. It intentionally has no database, authentication,
- * prediction, worker, or admin dependencies: only health and allowlisted market
- * data reads are reachable from the public demo deployment.
+ * Creates the public demo API. It exposes health and allowlisted market-data
+ * reads plus one input-free, rate-limited trigger for the trusted MEXC worker.
+ * Authentication, prediction writes, arbitrary database access, and admin
+ * routes remain unreachable from the public deployment.
  */
 export function createDemoServer(options: DemoServerOptions = {}): Server {
   const marketData = options.marketData ?? new MarketData();
   const now = options.now ?? Date.now;
+  const mexcFocus = options.mexcFocus ?? new MexcFocusWorker({
+    supabaseUrl: process.env.SUPABASE_URL,
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  });
 
   return createServer(async (req, res) => {
     setSecurityHeaders(res);
@@ -41,6 +48,14 @@ export function createDemoServer(options: DemoServerOptions = {}): Server {
           return send(res, 400, { error: 'bad_path', message: 'Unsupported market data request.' });
         }
         return send(res, 503, { error: 'data_unavailable', message: 'Market data is temporarily unavailable.' });
+      }
+    }
+
+    if (url.pathname === '/api/mexc-focus') {
+      try {
+        return send(res, 200, await mexcFocus.run());
+      } catch {
+        return send(res, 503, { error: 'sync_unavailable', message: 'MEXC market sync is temporarily unavailable.' });
       }
     }
 

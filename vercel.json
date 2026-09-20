@@ -9,6 +9,10 @@
     {
       "source": "/api/market-data",
       "destination": "https://firstprint-demo-api.onrender.com/api/market-data"
+    },
+    {
+      "source": "/api/mexc-focus",
+      "destination": "https://firstprint-demo-api.onrender.com/api/mexc-focus"
     }
   ],
   "headers": [

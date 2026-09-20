@@ -15,6 +15,7 @@ In trading, the *first print* is a token's very first trade. Firstprint watches 
 | **Market engine** | Outcome buckets, 1-hour average prices at start and end, volume-weighted median across exchanges, pool caps, early-bird weights, payouts, and cancellation rules. |
 | **Accounts** | Sign-In With Solana (Phantom, Solflare, Backpack, or any Wallet Standard wallet), with email and password as a fallback. Users, wallets, points, predictions, and settlements are stored in the database. |
 | **Public website** | `site/`: landing page and app with a live exchange explorer. Vercel proxies its allowlisted market-data reads to the isolated Render demo service. Predictions and listing radar are marked "Coming soon". |
+| **Wallet points beta** | `beta/`: Supabase Web3 sign-in and persistent practice points, focused on at most two newly detected MEXC/USDT pairs per UTC day. |
 | **Prediction app** | Markets, market page with live chart and outcome ladder, Listing radar, leaderboard, and portfolio with linked wallets. Works on desktop and mobile. |
 | **Solana program** | `solana/`: an Anchor program for on-chain USDC prediction pools with oracle settlement, plus tests and an oracle script. Unaudited, devnet only. |
 

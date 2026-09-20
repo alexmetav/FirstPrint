@@ -616,15 +616,16 @@ async function loadExchanges() {
   state.updatedAt = freshness?.updatedAt ?? freshness?.t ?? state.updatedAt ?? Date.now();
   state.list = EXCHANGES.map((ex) => {
     const row = byId.get(ex.cg);
-    const volBtc = row?.trade_volume_24h_btc ?? null;
+    const available = ex.liveData && Boolean(row);
+    const volBtc = available ? (row?.trade_volume_24h_btc ?? null) : null;
     return {
       ...ex,
-      country: row?.country ?? null,
-      founded: row?.year_established ?? ex.founded,
-      trust: row?.trust_score ?? null,
+      country: available ? (row?.country ?? null) : null,
+      founded: available ? (row?.year_established ?? ex.founded) : ex.founded,
+      trust: available ? (row?.trust_score ?? null) : null,
       volumeUsd: volBtc !== null && btcUsd ? volBtc * btcUsd : null,
       // Prefer CoinGecko's current image, but retain a permanent branded fallback.
-      logo: safeImageUrl(row?.image) ?? ex.logo,
+      logo: available ? (safeImageUrl(row?.image) ?? ex.logo) : ex.logo,
     };
   });
 }
@@ -639,7 +640,7 @@ function initLanding() {
         (ex, i) => `
         <a class="ex-tile reveal" data-delay="${i * 40}" href="#/app/exchange/${ex.id}">
           ${exchangeMark(ex)}
-          <span><b>${esc(ex.name)}</b><small>${ex.radar.length ? 'Listing radar at launch' : 'Exchange data'}</small></span>
+          <span><b>${esc(ex.name)}</b><small>${ex.liveData ? 'Live exchange data' : 'Data feed coming soon'}</small></span>
         </a>`,
       )
       .join('');
@@ -719,10 +720,10 @@ function renderAppShell(r) {
         <a class="wordmark" href="#top" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
         <nav class="app-tabs" aria-label="App">
           <a href="#/app/exchanges"${cur('exchanges')}>Exchanges</a>
-          <a href="/play/">Predictions <span class="soon">Practice</span></a>
+          <a href="/beta/">Predictions <span class="soon">Beta</span></a>
           <a href="#/app/radar"${cur('radar')}>Listing radar <span class="soon">Soon</span></a>
         </nav>
-        <button class="btn btn-disabled" type="button" data-action="wallet-soon">Connect wallet <span class="soon">Soon</span></button>
+        <a class="btn" href="/beta/">Connect wallet <span class="soon">Beta</span></a>
       </div>
     </header>
     <main class="wrap app-main" id="app-main" tabindex="-1"></main>`;
@@ -763,7 +764,7 @@ function exchangesTable(animate = false) {
           <th class="right">24h volume</th>
           <th class="hide-sm">Trust score</th>
           <th class="right hide-sm">Founded</th>
-          <th class="right hide-sm">Listing radar</th>
+          <th class="right hide-sm">Data feed</th>
         </tr></thead>
         <tbody>
           ${rows
@@ -775,7 +776,7 @@ function exchangesTable(animate = false) {
               <td class="right num">${state.live ? usd(r.volumeUsd) : '–'}</td>
               <td class="hide-sm">${r.trust !== null ? `<span class="trust"><span class="trust-bar" style="--t:${Number(r.trust)}"><i></i></span>${Number(r.trust)}/10</span>` : '<span class="muted">–</span>'}</td>
               <td class="right hide-sm">${esc(r.founded ?? '–')}</td>
-              <td class="right hide-sm">${r.radar.length ? '<span class="radar-pill on">At launch</span>' : '<span class="radar-pill off">Later</span>'}</td>
+              <td class="right hide-sm">${r.liveData ? '<span class="radar-pill on">Live</span>' : '<span class="radar-pill off">Soon</span>'}</td>
             </tr>`,
             )
             .join('')}
@@ -792,7 +793,7 @@ function renderExchangesBody(animate = false) {
     <div><dt>Exchanges</dt><dd>${EXCHANGES.length}</dd></div>
     <div><dt>Combined 24h volume</dt><dd>${total ? usd(total) : '–'}</dd></div>
     <div><dt>Bitcoin price</dt><dd>${state.btcUsd ? usd(state.btcUsd, false).replace(/\.\d+$/, '') : '–'}</dd></div>
-    <div><dt>Listing radar at launch</dt><dd>${EXCHANGES.filter((e) => e.radar.length).length}</dd></div>`;
+    <div><dt>Live data feeds</dt><dd>${EXCHANGES.filter((e) => e.liveData).length}</dd></div>`;
   $('#ex-body').innerHTML = exchangesTable(animate);
 }
 
@@ -831,7 +832,7 @@ async function renderExchanges() {
   document.title = 'Exchanges: Firstprint';
   $('#app-main').innerHTML = `
     <h1 class="page-title">Exchanges</h1>
-    <p class="page-lede">Live 24-hour volume and trust scores for the largest crypto exchanges. Open one to see its most traded pairs.</p>
+    <p class="page-lede">Live 24-hour volume, trust scores, and traded pairs for Binance, Bybit, and MEXC. More exchanges are clearly marked Soon.</p>
     <section class="trending" id="trending" aria-label="Trending coins"></section>
     <dl class="summary-stats" id="ex-stats"></dl>
     <div class="toolbar">
@@ -889,6 +890,20 @@ async function renderExchangeDetail(id) {
     main.innerHTML = `<a class="back" href="#/app/exchanges">All exchanges</a><div class="empty">We don’t cover that exchange yet.</div>`;
     return;
   }
+  if (!ex.liveData) {
+    document.title = `${ex.name}: coming soon on Firstprint`;
+    const site = safeUrl(ex.url);
+    main.innerHTML = `
+      <a class="back" href="#/app/exchanges">← All exchanges</a>
+      <div class="detail-head">
+        ${exchangeMark(ex, `${ex.name} logo`)}
+        <div><span class="radar-pill off">Soon</span><h1 class="page-title">${esc(ex.name)}</h1><p class="muted">This live data feed is not enabled in the public beta yet.</p></div>
+        <div class="actions">${site ? `<a class="btn magnetic" href="${site}" target="_blank" rel="noopener noreferrer">Visit website</a>` : ''}</div>
+      </div>
+      <section class="panel"><div class="panel-box"><p>Firstprint is starting with three reliable live feeds: Binance, Bybit, and MEXC.</p><p><a class="btn btn-solid magnetic" href="#/app/exchanges">View live exchanges</a></p></div></section>`;
+    $$('.magnetic', main).forEach(magnetic);
+    return;
+  }
   document.title = `${ex.name}: Firstprint`;
   const site = safeUrl(ex.url);
   main.innerHTML = `
@@ -924,8 +939,8 @@ async function renderExchangeDetail(id) {
         <section class="panel">
           <h2>Prediction markets</h2>
           <div class="panel-box">
-            <p>Try a simulated 72-hour prediction now with free browser-only practice points.</p>
-            <p><a class="btn magnetic" href="/play/">Open practice beta</a></p>
+            <p>Try a simulated 72-hour prediction with free points saved to your wallet-authenticated profile.</p>
+            <p><a class="btn magnetic" href="/beta/">Open wallet beta</a></p>
           </div>
         </section>
       </aside>
@@ -999,14 +1014,14 @@ function renderPredictionsSoon() {
       <div>
         <span class="soon soon-badge">Practice beta live</span>
         <h1>Test the first<br />72 hours now.</h1>
-        <p class="lede">Use free browser-only points to call Crash, Down, Flat, Up, or Moon in a simulated market.</p>
+        <p class="lede">Sign in with a Solana wallet and use free persistent points to call Crash, Down, Flat, Up, or Moon in a simulated market.</p>
         <ul class="check-list">
           <li>Start immediately with 1,000 points</li>
           <li>Claim 100 practice points daily</li>
           <li>Test predictions, settlement, and leaderboards</li>
           <li>No deposits, transactions, or real money</li>
         </ul>
-        <div class="hero-actions"><a class="btn btn-solid magnetic" href="/play/">Open practice beta</a><a class="btn magnetic" href="#/app/exchanges">Explore exchanges</a></div>
+        <div class="hero-actions"><a class="btn btn-solid magnetic" href="/beta/">Open wallet beta</a><a class="btn magnetic" href="#/app/exchanges">Explore exchanges</a></div>
       </div>
       <div class="preview-card" aria-label="Preview of a prediction market">
         <div class="hm-head">
