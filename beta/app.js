@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { messageSigningWallet } from './wallet.js';
 
 const cfg = window.FP_SUPABASE ?? {};
 const configured = /^https:\/\/[a-z0-9]+\.supabase\.co$/.test(cfg.url ?? '') && cfg.publishableKey && !cfg.publishableKey.startsWith('__');
@@ -41,8 +42,9 @@ async function connect() {
     if (!address) throw new Error('The wallet did not share an address.');
     const { error } = await supabase.auth.signInWithWeb3({
       chain: 'solana',
-      wallet,
+      wallet: messageSigningWallet(wallet),
       statement: 'Sign in to Firstprint practice points. No transaction or fee will be requested.',
+      options: { url: `${location.origin}${location.pathname}` },
     });
     if (error) throw error;
     const { error: profileError } = await supabase.rpc('fp_bootstrap_profile', { p_wallet: address });
