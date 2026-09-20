@@ -54,6 +54,12 @@ Visit http://localhost:8787 for the actual backend-connected prediction app. The
 
 It does not open SQLite or expose authentication, predictions, points, admin routes, settlement, listing tracking, or workers. In Render, create the Blueprint from this repository and add `COINGECKO_API_KEY` as a private environment variable if required. The Vercel rewrites assume the service URL is `https://firstprint-demo-api.onrender.com`; update `vercel.json` if Render assigns another URL.
 
+### Two-market MEXC beta
+
+After applying `202609200001_mexc_daily_focus.sql`, set `SUPABASE_URL` and the private `SUPABASE_SERVICE_ROLE_KEY` on Render only. Never add the service-role key to Vercel or any `PUBLIC_`/browser variable. The worker takes an initial baseline of MEXC USDT pairs, detects additions by comparing later snapshots, and selects at most two new pairs per UTC day. It records the live opening price and settles 24 hours later from MEXC's public ticker. If fewer than two new pairs appear, the beta keeps showing the most recently selected pair(s); it never invents a market to fill the quota.
+
+The free Render service can sleep. `/api/mexc-focus` wakes and rate-limits the worker whenever a signed-in beta user loads the dashboard, while a five-minute timer polls whenever the service is awake. For stricter production timing, move the same worker behind a paid cron or scheduled Supabase Edge Function.
+
 Before sharing the demo, verify from the deployed Vercel site that `/api/health` returns `mode: "read-only-demo"`, every exchange page loads, stale data is labelled, and `/play/` shows the practice-only banner.
 
 ## Deployment limitations
