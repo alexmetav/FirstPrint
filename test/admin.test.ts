@@ -131,7 +131,7 @@ test('migrations add new columns to an existing database', () => {
 
 test('HTTP admin: ping, create live market, list, cancel', async () => {
   const { service } = setup();
-  const server = createApiServer({ service, adminKey: 'admin-key-for-tests-123456', secureCookies: false, webDir: new URL('../web', import.meta.url).pathname });
+  const server = createApiServer({ service, adminKey: 'admin-key-for-tests-123456', secureCookies: false, trustProxy: 0, webDir: new URL('../web', import.meta.url).pathname });
   await new Promise<void>((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const admin = (path: string, init: RequestInit = {}) =>

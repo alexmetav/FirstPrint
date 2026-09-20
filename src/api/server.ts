@@ -18,6 +18,12 @@ export interface ServerOptions {
   solanaChain?: 'mainnet' | 'devnet' | 'testnet';
   /** Send cookies with the Secure flag (enable behind HTTPS). */
   secureCookies: boolean;
+  /**
+   * Number of trusted reverse proxies in front of this server (Render, Vercel,
+   * Cloudflare, nginx = 1 each). 0 means the socket address is the client.
+   * Getting this too high lets callers forge their own IP and evade limits.
+   */
+  trustProxy: number;
   webDir: string;
 }
 
@@ -42,6 +48,13 @@ const MIME: Record<string, string> = {
   '.png': 'image/png',
   '.json': 'application/json',
   '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json',
+  '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml; charset=utf-8',
+  '.woff2': 'font/woff2',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
 };
 
 export function createApiServer(opts: ServerOptions): Server {
@@ -85,6 +98,29 @@ export function createApiServer(opts: ServerOptions): Server {
     res.setHeader('set-cookie', attrs.join('; '));
   }
 
+  // --- Client identity ----------------------------------------------------------
+
+  /**
+   * The caller's IP. Behind a proxy every socket carries the proxy's address, so
+   * without this every limiter below would collapse into one shared bucket and
+   * a single busy minute would lock out the whole site.
+   *
+   * `trustProxy` is the number of proxies in front of this server. Counting from
+   * the right of X-Forwarded-For skips the entries a client can forge: only the
+   * trusted hops append, so the entry `trustProxy` places from the end is the
+   * first address this deployment actually vouches for.
+   */
+  function clientIp(req: IncomingMessage): string {
+    const socketIp = req.socket.remoteAddress ?? 'unknown';
+    if (opts.trustProxy <= 0) return socketIp;
+    const forwarded = String(req.headers['x-forwarded-for'] ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (forwarded.length === 0) return socketIp;
+    return forwarded[Math.max(0, forwarded.length - opts.trustProxy)] ?? socketIp;
+  }
+
   // --- Rate limiting (per user or IP, writes only) -----------------------------
 
   const hits = new Map<string, { count: number; reset: number }>();
@@ -93,7 +129,9 @@ export function createApiServer(opts: ServerOptions): Server {
     const h = hits.get(key);
     if (!h || h.reset < now) {
       hits.set(key, { count: 1, reset: now + windowMs });
-      if (hits.size > 50_000) hits.clear();
+      // Drop only what has already expired, so a flood of new keys can't wipe
+      // the counters that are currently throttling someone.
+      if (hits.size > 50_000) for (const [k, v] of hits) if (v.reset < now) hits.delete(k);
       return;
     }
     if (++h.count > limit) throw new AppError(429, 'rate_limited', 'Too many requests. Try again in a few seconds.');
@@ -130,12 +168,12 @@ export function createApiServer(opts: ServerOptions): Server {
   }
 
   route('GET', '/api/auth/wallet/challenge', ({ req, url }) => {
-    rateLimit(`challenge:${req.socket.remoteAddress}`, 20, 60_000);
+    rateLimit(`challenge:${clientIp(req)}`, 20, 60_000);
     return service.walletChallenge(String(url.searchParams.get('address') ?? ''), siteFor(req));
   });
 
   route('POST', '/api/auth/wallet/verify', async ({ req, res, body }) => {
-    rateLimit(`wallet:${req.socket.remoteAddress}`, 20, 60_000);
+    rateLimit(`wallet:${clientIp(req)}`, 20, 60_000);
     const b = await body();
     const { user, created } = service.walletSignIn({
       address: String(b.address ?? ''),
@@ -149,7 +187,7 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('POST', '/api/auth/signup', async ({ req, res, body }) => {
-    rateLimit(`signup:${req.socket.remoteAddress}`, 5, 60_000);
+    rateLimit(`signup:${clientIp(req)}`, 5, 60_000);
     const b = await body();
     const user = await service.createUser({
       email: String(b.email ?? ''),
@@ -163,7 +201,7 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('POST', '/api/auth/login', async ({ req, res, body }) => {
     const b = await body();
-    rateLimit(`login:${req.socket.remoteAddress}`, 10, 60_000);
+    rateLimit(`login:${clientIp(req)}`, 10, 60_000);
     rateLimit(`login:${String(b.email ?? '').toLowerCase()}`, 10, 10 * 60_000);
     const user = await service.authenticate(String(b.email ?? ''), String(b.password ?? ''));
     const session = service.createSession(user.id);
@@ -404,11 +442,34 @@ export function createApiServer(opts: ServerOptions): Server {
     });
   }
 
+  /**
+   * The UI builds every view by interpolating into innerHTML, so a CSP is the
+   * backstop if any value ever reaches a template unescaped.
+   *
+   * script-src stays free of 'unsafe-inline': neither page has an inline script.
+   * The one exception is the practice-build flag that build-deploy injects, which
+   * is allowlisted by hash so that build still works if it is served from here.
+   * Inline styles are allowed because the UI sets ~55 of them.
+   */
+  const CSP = [
+    "default-src 'self'",
+    `script-src 'self' 'sha256-m5oyY7T1NbfnFY6fOhWQQ3KJNvT3mVXkvGa2KgGRxLg='`,
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: https://cdn.simpleicons.org",
+    "connect-src 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     res.setHeader('x-content-type-options', 'nosniff');
     res.setHeader('referrer-policy', 'same-origin');
     res.setHeader('x-frame-options', 'DENY');
+    res.setHeader('content-security-policy', CSP);
     res.setHeader('permissions-policy', 'camera=(), geolocation=(), microphone=(), payment=(), usb=()');
 
     if (!url.pathname.startsWith('/api/')) {
@@ -445,7 +506,7 @@ export function createApiServer(opts: ServerOptions): Server {
         return u;
       },
       requireAdmin: () => {
-        rateLimit(`admin:${req.socket.remoteAddress}`, 30, 60_000);
+        rateLimit(`admin:${clientIp(req)}`, 30, 60_000);
         const given = String(req.headers['x-admin-key'] ?? '');
         const ok =
           opts.adminKey &&
@@ -456,7 +517,7 @@ export function createApiServer(opts: ServerOptions): Server {
     };
 
     try {
-      rateLimit(`ip:${req.socket.remoteAddress}`, 300);
+      rateLimit(`ip:${clientIp(req)}`, 300);
       if (req.method === 'POST' && req.headers.origin) {
         const expected = opts.publicUrl ? new URL(opts.publicUrl).origin : `http://${req.headers.host}`;
         if (req.headers.origin !== expected) throw new AppError(403, 'bad_origin', 'Request origin is not allowed.');

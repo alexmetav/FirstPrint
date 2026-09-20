@@ -1,4 +1,6 @@
 services:
+  # Read-only public demo API. No database, auth, predictions, or admin routes:
+  # it backs the practice-mode site and only proxies allowlisted market data.
   - type: web
     name: firstprint-demo-api
     runtime: node
@@ -9,3 +11,48 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.18.0
+
+  # The live site: real accounts, wallet sign-in, points, and markets settled on
+  # real exchange prices. Serves the marketing site at / and the app at /play from
+  # the same origin as the API, which the SameSite=Lax session cookie requires.
+  #
+  # Not on the free plan on purpose. Free instances sleep and have an ephemeral
+  # filesystem, so the SQLite file — every account and every point balance — is
+  # destroyed on each restart. The disk below is what makes balances survive.
+  - type: web
+    name: firstprint
+    runtime: node
+    plan: starter
+    buildCommand: npm ci && npm run build:live
+    startCommand: npm run start:live
+    healthCheckPath: /api/health
+    disk:
+      name: firstprint-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 22.18.0
+      - key: NODE_ENV
+        value: production
+      - key: DB_PATH
+        value: /var/data/firstprint.db
+      - key: WEB_DIR
+        value: ./.deploy
+      # Render terminates TLS and forwards one hop. Without this every visitor
+      # shares one rate-limit bucket and a busy minute locks out the whole site.
+      - key: TRUST_PROXY
+        value: "1"
+      - key: SOLANA_CHAIN
+        value: mainnet
+      # Start with the tracker off until `npm run check` passes from this host.
+      # Detected listings need admin approval unless AUTO_CREATE_MARKETS=1.
+      - key: TRACK_VENUES
+        value: ""
+      - key: AUTO_CREATE_MARKETS
+        value: "0"
+      # Set these in the Render dashboard, not here.
+      - key: PUBLIC_URL
+        sync: false
+      - key: ADMIN_KEY
+        sync: false

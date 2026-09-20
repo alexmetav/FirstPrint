@@ -6,6 +6,8 @@ In trading, the *first print* is a token's very first trade. Firstprint watches 
 
 **Launching the public demo?** The static source is in `site/`, the isolated read-only API starts with `npm run start:demo`, and [LAUNCH.md](LAUNCH.md) covers the Render and Vercel deployment.
 
+**Taking it live with real accounts and real prices?** [GO-LIVE.md](GO-LIVE.md) covers `npm run build:live`, the single-origin requirement, the persistent disk, and what to check before opening sign-ups.
+
 ## What's in this repo
 
 | Area | What it does |
@@ -29,7 +31,7 @@ npm run setup       # creates .env and an admin key
 npm run check       # tests every exchange connection
 npm run dev         # http://localhost:8787 (admin at /#/admin)
 npm run live        # creates 15-minute markets on live tokens
-npm test            # 52 tests
+npm test            # 53 tests
 ```
 
 Offline practice: set `SIM=1`, run `npm run seed`, then `npm run dev`. To preview the website with no server at all, open `dist/firstprint-preview.html`.

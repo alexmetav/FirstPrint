@@ -26,3 +26,6 @@ jobs:
         run: grep -q 'window.FP_FORCE_DEMO = true' .deploy/play/index.html
       - name: Reject browser-side provider secrets
         run: '! grep -R "coingeckoApiKey\|api.coingecko.com/api/v3" .deploy --include="*.js"'
+      - run: npm run build:live
+      - name: Verify the live build talks to the real backend
+        run: '! grep -q FP_FORCE_DEMO .deploy/play/index.html'
