@@ -8,6 +8,8 @@ In trading, the *first print* is a token's very first trade. Firstprint watches 
 
 **Taking it live with real accounts and real prices?** [GO-LIVE.md](GO-LIVE.md) covers `npm run build:live`, the single-origin requirement, the persistent disk, and what to check before opening sign-ups.
 
+**Testing before you launch?** [TESTING.md](TESTING.md) runs the real product locally against live exchange prices and walks every function with a checklist.
+
 ## What's in this repo
 
 | Area | What it does |
