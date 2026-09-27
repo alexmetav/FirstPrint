@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
-import { extname, join, normalize, resolve } from 'node:path';
+import { dirname, extname, join, normalize, resolve } from 'node:path';
 import { AppError, DAILY_POINTS, LIVE_PRESETS, MIN_STAKE, SESSION_MS, SUGGESTED_LIVE_TOKENS, type FirstprintService, type UserRow } from '../services/firstprint.ts';
 import type { Scheduler } from '../workers/scheduler.ts';
 import type { LiveFeed } from '../workers/liveFeed.ts';
@@ -407,7 +407,48 @@ export function createApiServer(opts: ServerOptions): Server {
 
   const webRoot = resolve(opts.webDir);
 
-  async function serveStatic(res: ServerResponse, pathname: string) {
+  /**
+   * Stamps a content fingerprint onto the page's own script and stylesheet
+   * references, so `./app.js` is requested as `./app.js?v=<hash>`.
+   *
+   * Without this, a deploy or a `git pull` left browsers running whatever
+   * JavaScript they had cached: the HTML is revalidated but the asset URL never
+   * changes, so a stale script kept being used until the cache expired. That
+   * silently mixes old code with a new API — the symptom is a feature that is
+   * plainly in the source but missing on screen. Because the URL now changes
+   * whenever the bytes change, the fingerprinted response can also be cached
+   * hard, which is both safer and faster than the previous short window.
+   *
+   * Only local, root-relative references are touched; external ones (fonts) and
+   * anything already carrying a query are left as they are.
+   */
+  const fingerprints = new Map<string, string>();
+  async function fingerprint(file: string): Promise<string | null> {
+    try {
+      const s = await stat(file);
+      const key = `${file}:${s.mtimeMs}:${s.size}`;
+      const cached = fingerprints.get(key);
+      if (cached) return cached;
+      const hash = createHash('sha256').update(await readFile(file)).digest('hex').slice(0, 12);
+      fingerprints.clear(); // the set is tiny; drop stale mtime keys rather than grow
+      fingerprints.set(key, hash);
+      return hash;
+    } catch {
+      return null;
+    }
+  }
+
+  async function stampAssets(html: string, dir: string): Promise<string> {
+    const refs = [...html.matchAll(/(src|href)="(\.\/[^"?#]+\.(?:js|css))"/g)];
+    let out = html;
+    for (const [match, attr, ref] of refs) {
+      const hash = await fingerprint(join(dir, ref.slice(2)));
+      if (hash) out = out.replace(match, `${attr}="${ref}?v=${hash}"`);
+    }
+    return out;
+  }
+
+  async function serveStatic(res: ServerResponse, pathname: string, query: URLSearchParams) {
     const rel = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '');
     let file = join(webRoot, rel === '/' ? 'index.html' : rel);
     if (!file.startsWith(webRoot)) return send(res, 404, { error: 'not_found', message: 'Not found.' });
@@ -418,12 +459,17 @@ export function createApiServer(opts: ServerOptions): Server {
       file = join(webRoot, 'index.html'); // SPA fallback
     }
     try {
-      const data = await readFile(file);
+      const ext = extname(file);
+      const isHtml = ext === '.html';
+      let body: Buffer | string = await readFile(file);
+      if (isHtml) body = await stampAssets(body.toString('utf8'), dirname(file));
       res.writeHead(200, {
-        'content-type': MIME[extname(file)] ?? 'application/octet-stream',
-        'cache-control': extname(file) === '.html' ? 'no-cache' : 'public, max-age=300',
+        'content-type': MIME[ext] ?? 'application/octet-stream',
+        // A fingerprinted URL can be held indefinitely, because a change of
+        // content is a change of URL. Everything else must be revalidated.
+        'cache-control': !isHtml && query.has('v') ? 'public, max-age=31536000, immutable' : 'no-cache',
       });
-      res.end(data);
+      res.end(body);
     } catch {
       send(res, 404, { error: 'not_found', message: 'Not found.' });
     }
@@ -483,7 +529,7 @@ export function createApiServer(opts: ServerOptions): Server {
 
     if (!url.pathname.startsWith('/api/')) {
       if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method_not_allowed' });
-      try { return await serveStatic(res, url.pathname); }
+      try { return await serveStatic(res, url.pathname, url.searchParams); }
       catch { return send(res, 400, { error: 'bad_path', message: 'Invalid path.' }); }
     }
 

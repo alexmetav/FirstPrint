@@ -60,3 +60,36 @@ test('behind a proxy, rate limits follow the forwarded client and resist forged 
   assert.equal((await signup('198.51.100.7, 203.0.113.9', 101)).status, 429);
   db.prepare('SELECT 1').get();
 });
+
+test('asset URLs carry a content fingerprint so browsers cannot run stale code', async (t) => {
+  const db = openDb(':memory:');
+  const service = new FirstprintService(db, systemClock, []);
+  const server = createApiServer({ service, adminKey: 'secret', secureCookies: false, trustProxy: 0,
+    publicUrl: 'https://firstprint.example', webDir: fileURLToPath(new URL('../web/', import.meta.url)) });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise<void>((r) => server.close(() => r())); db.close(); });
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+  const html = await (await fetch(`${base}/`)).text();
+  const script = /src="(\.\/app\.js\?v=[a-f0-9]{12})"/.exec(html);
+  const style = /href="(\.\/styles\.css\?v=[a-f0-9]{12})"/.exec(html);
+  assert.ok(script, 'app.js reference must carry ?v=<hash>');
+  assert.ok(style, 'styles.css reference must carry ?v=<hash>');
+
+  // External references must be left alone.
+  assert.match(html, /href="https:\/\/fonts\.googleapis\.com/);
+  assert.doesNotMatch(html, /fonts\.googleapis\.com[^"]*\?v=/);
+
+  // The page itself is always revalidated, so a new hash is always seen.
+  const page = await fetch(`${base}/`);
+  assert.equal(page.headers.get('cache-control'), 'no-cache');
+
+  // A fingerprinted URL is safe to cache forever: its content cannot change.
+  const hashed = await fetch(`${base}/${script![1].slice(2)}`);
+  assert.equal(hashed.status, 200);
+  assert.match(hashed.headers.get('cache-control') ?? '', /immutable/);
+
+  // An unversioned hit must not be cached, or the old bug returns.
+  const plain = await fetch(`${base}/app.js`);
+  assert.equal(plain.headers.get('cache-control'), 'no-cache');
+});

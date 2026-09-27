@@ -157,6 +157,18 @@ These cannot be checked from localhost:
 3. **Mobile wallet apps.** Connecting inside Phantom's or Solflare's in-app
    browser needs a public URL.
 
+## If a change does not appear after a pull
+
+It should now. The server fingerprints its script and stylesheet URLs, so new
+code reaches the browser on a plain refresh — no hard refresh or private window
+needed. If something you expect is still missing:
+
+- Confirm the code is on disk: `findstr "Earn points" web\app.js` on Windows,
+  `grep "Earn points" web/app.js` elsewhere. Nothing printed means the pull did
+  not land, which is a git problem, not a browser one.
+- Confirm you are signed in. Profile and Earn points only render for a
+  logged-in account; otherwise Portfolio shows just a connect prompt.
+
 ## Reporting a problem
 
 For anything that fails, the useful details are:
