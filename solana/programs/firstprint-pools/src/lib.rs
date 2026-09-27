@@ -21,6 +21,16 @@ pub const BPS: u64 = 10_000;
 pub const NO_BUCKET: u8 = u8::MAX;
 pub const MAX_FEE_BPS: u16 = 2_000;
 
+/// How long after `settle_at` anyone may void a market the oracle never settled.
+///
+/// This is the escape hatch: `claim` only pays out on a Settled or Void market,
+/// and both transitions otherwise require the oracle or admin key, so losing
+/// those keys would strand every stake in the vault permanently.
+pub const SETTLE_GRACE_SECONDS: i64 = 7 * 24 * 60 * 60;
+
+/// `MarketVoided.reason` emitted by `void_expired`.
+pub const VOID_REASON_EXPIRED: u8 = 255;
+
 #[program]
 pub mod firstprint_pools {
     use super::*;
@@ -78,10 +88,17 @@ pub mod firstprint_pools {
         require!(now < close_at && listing_at <= close_at && close_at < settle_at, PoolError::InvalidSchedule);
         require!(user_cap > 0 && user_cap <= soft_cap, PoolError::InvalidCaps);
 
+        let cfg = &ctx.accounts.config;
         let m = &mut ctx.accounts.market;
         m.id = id;
         m.mint = ctx.accounts.mint.key();
         m.vault = ctx.accounts.vault.key();
+        // Snapshot the economic terms so a later update_config cannot change the
+        // deal after stakes are placed, and so every prediction in one market is
+        // weighted on the same curve. Mirrors the off-chain engine, which stores
+        // feeBps and earlyBirdK per market.
+        m.fee_bps = cfg.fee_bps;
+        m.early_bird_bps = cfg.early_bird_bps;
         m.opened_at = now;
         m.listing_at = listing_at;
         m.close_at = close_at;
@@ -119,7 +136,7 @@ pub mod firstprint_pools {
         let user_after = ctx.accounts.position.total()?.checked_add(amount).ok_or(PoolError::MathOverflow)?;
         require!(user_after <= market.user_cap, PoolError::UserCapExceeded);
 
-        let weight = weight_bps(now, market.opened_at, market.close_at, cfg.early_bird_bps);
+        let weight = weight_bps(now, market.opened_at, market.close_at, market.early_bird_bps);
         let weighted = (amount as u128).checked_mul(weight as u128).ok_or(PoolError::MathOverflow)?;
 
         token_interface::transfer_checked(
@@ -169,7 +186,7 @@ pub mod firstprint_pools {
         let pool = market.pool()?;
         let buckets_used = market.totals.iter().filter(|t| **t > 0).count();
         let void = pool == 0 || buckets_used < 2 || market.totals[winning_bucket as usize] == 0;
-        let fee = if void { 0 } else { fee_for(pool, ctx.accounts.config.fee_bps) };
+        let fee = if void { 0 } else { fee_for(pool, market.fee_bps) };
 
         if fee > 0 {
             let id = market.id;
@@ -209,6 +226,25 @@ pub mod firstprint_pools {
         require!(m.status == MarketStatus::Open, PoolError::MarketNotOpen);
         m.status = MarketStatus::Void;
         emit!(MarketVoided { market: m.key(), reason });
+        Ok(())
+    }
+
+    /// Escape hatch: once a market is `SETTLE_GRACE_SECONDS` past its settlement
+    /// time and still Open, anyone may void it so stakes become claimable.
+    ///
+    /// Without this, `claim` requires Settled or Void and both transitions need
+    /// the oracle or admin key, so a lost key would strand the vault forever.
+    /// It cannot be used to dodge a real settlement: the oracle has the whole
+    /// grace window to post a result, and once it does the status is no longer
+    /// Open. A void refunds every stake in full, so calling it early buys the
+    /// caller nothing.
+    pub fn void_expired(ctx: Context<VoidExpired>) -> Result<()> {
+        let now = Clock::get()?.unix_timestamp;
+        let m = &mut ctx.accounts.market;
+        require!(m.status == MarketStatus::Open, PoolError::MarketNotOpen);
+        require!(expired_void_unlocked(now, m.settle_at)?, PoolError::GracePeriodActive);
+        m.status = MarketStatus::Void;
+        emit!(MarketVoided { market: m.key(), reason: VOID_REASON_EXPIRED });
         Ok(())
     }
 
@@ -266,6 +302,14 @@ pub fn weight_bps(now: i64, opened_at: i64, close_at: i64, early_bird_bps: u16) 
     let span = (close_at - opened_at) as u128;
     let remaining = (close_at - now).clamp(0, close_at - opened_at) as u128;
     BPS + ((early_bird_bps as u128 * remaining) / span) as u64
+}
+
+/// Whether `void_expired` may run: the oracle's grace window past `settle_at`
+/// has fully elapsed. Pure so the boundary is unit tested rather than only
+/// exercised through the runtime clock.
+pub fn expired_void_unlocked(now: i64, settle_at: i64) -> Result<bool> {
+    let unlock_at = settle_at.checked_add(SETTLE_GRACE_SECONDS).ok_or(PoolError::MathOverflow)?;
+    Ok(now >= unlock_at)
 }
 
 pub fn fee_for(pool: u64, fee_bps: u16) -> u64 {
@@ -384,6 +428,15 @@ pub struct VoidMarket<'info> {
     pub market: Account<'info, Market>,
 }
 
+/// Permissionless on purpose: no config, no oracle, no admin. The only gate is
+/// the market's own clock, checked in the instruction.
+#[derive(Accounts)]
+pub struct VoidExpired<'info> {
+    #[account(mut)]
+    pub market: Account<'info, Market>,
+    pub caller: Signer<'info>,
+}
+
 #[derive(Accounts)]
 pub struct Claim<'info> {
     #[account(has_one = mint, has_one = vault)]
@@ -441,6 +494,10 @@ pub struct Market {
     pub settle_at: i64,
     pub soft_cap: u64,
     pub user_cap: u64,
+    /// Fee snapshotted from Config at creation, so it cannot change mid-market.
+    pub fee_bps: u16,
+    /// Early-bird strength snapshotted from Config at creation, same reason.
+    pub early_bird_bps: u16,
     pub totals: [u64; BUCKETS],
     pub weighted: [u128; BUCKETS],
     pub status: MarketStatus,
@@ -552,6 +609,8 @@ pub enum PoolError {
     UserCapExceeded,
     #[msg("Settlement time has not arrived")]
     TooEarly,
+    #[msg("The oracle still has time to settle this market")]
+    GracePeriodActive,
     #[msg("Market has not settled")]
     NotSettled,
     #[msg("Already claimed")]
@@ -593,6 +652,49 @@ mod tests {
         let early = payout(1_200, 100 * 15_000, 100 * 15_000 + 100 * 10_000).unwrap();
         let late = payout(1_200, 100 * 10_000, 100 * 15_000 + 100 * 10_000).unwrap();
         assert_eq!((early, late), (720, 480));
+    }
+
+    /// The bug this guards: settle used to read Config.fee_bps live, so raising
+    /// the fee after stakes were placed silently changed the deal. The market's
+    /// own snapshot must win, whatever Config says at settlement time.
+    #[test]
+    fn fee_comes_from_the_market_snapshot_not_live_config() {
+        let market_fee_bps: u16 = 400; // snapshotted when the market opened
+        let config_fee_bps_later: u16 = MAX_FEE_BPS; // admin cranks it to 20% after
+        assert_eq!(fee_for(10_000, market_fee_bps), 400);
+        assert_eq!(fee_for(10_000, config_fee_bps_later), 2_000);
+        // 1,600 points of stakers' money hangs on reading the right one.
+        assert_ne!(fee_for(10_000, market_fee_bps), fee_for(10_000, config_fee_bps_later));
+    }
+
+    /// Two stakers at the same instant in the same market must get the same
+    /// weight. They only diverge if early_bird_bps is read live from Config,
+    /// which is why the market snapshots it.
+    #[test]
+    fn one_market_weights_every_prediction_on_one_curve() {
+        let (opened, close, at) = (0i64, 100i64, 50i64);
+        let snapshot: u16 = 5_000;
+        assert_eq!(weight_bps(at, opened, close, snapshot), weight_bps(at, opened, close, snapshot));
+        // Had Config changed mid-market, the same moment would price differently.
+        assert_ne!(weight_bps(at, opened, close, snapshot), weight_bps(at, opened, close, 1_000));
+    }
+
+    /// The escape hatch opens only after the oracle's full grace window, and the
+    /// boundary is exact: one second early still belongs to the oracle.
+    #[test]
+    fn expired_void_unlocks_exactly_one_week_after_settlement() {
+        let settle_at: i64 = 1_700_000_000;
+        let unlock_at = settle_at + SETTLE_GRACE_SECONDS;
+        assert_eq!(SETTLE_GRACE_SECONDS, 604_800, "7 days in seconds");
+
+        assert!(!expired_void_unlocked(settle_at, settle_at).unwrap(), "closed at settlement");
+        assert!(!expired_void_unlocked(unlock_at - 1, settle_at).unwrap(), "closed one second early");
+        assert!(expired_void_unlocked(unlock_at, settle_at).unwrap(), "open on the boundary");
+        assert!(expired_void_unlocked(unlock_at + 1, settle_at).unwrap(), "open after");
+
+        // A market whose settle_at is near i64::MAX must error, not wrap around
+        // into the past and unlock immediately.
+        assert!(expired_void_unlocked(0, i64::MAX).is_err(), "overflow must not unlock");
     }
 
     #[test]

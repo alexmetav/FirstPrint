@@ -131,7 +131,7 @@ test('migrations add new columns to an existing database', () => {
 
 test('HTTP admin: ping, create live market, list, cancel', async () => {
   const { service } = setup();
-  const server = createApiServer({ service, adminKey: 'admin-key-for-tests-123456', secureCookies: false, webDir: new URL('../web', import.meta.url).pathname });
+  const server = createApiServer({ service, adminKey: 'admin-key-for-tests-123456', secureCookies: false, trustProxy: 0, webDir: new URL('../web', import.meta.url).pathname });
   await new Promise<void>((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const admin = (path: string, init: RequestInit = {}) =>
@@ -157,4 +157,46 @@ test('HTTP admin: ping, create live market, list, cancel', async () => {
   } finally {
     server.close();
   }
+});
+
+test('a cancelled market reports the pool that was actually staked', async () => {
+  const { service } = setup();
+  const { marketId } = await service.createLiveMarket({ symbol: 'SOL' });
+  const a = await service.createUser({ username: 'pool_a' });
+  const b = await service.createUser({ username: 'pool_b' });
+  service.placePrediction(marketId, a.id, 'up', 300);
+  service.placePrediction(marketId, b.id, 'down', 200);
+  assert.equal(service.getMarket(marketId).pool, 500);
+
+  service.cancelMarket(marketId);
+
+  // The regression: the read model sums `accepted` once a market leaves 'open',
+  // and cancel left it NULL, so the UI showed an empty pool on a market that had
+  // really taken 500 points while the stored settlement said 500.
+  const view = service.getMarket(marketId);
+  assert.equal(view.status, 'void');
+  assert.equal(view.pool, 500, 'cancelled market must not display an empty pool');
+  assert.equal(view.totals.up, 300);
+  assert.equal(view.totals.down, 200);
+  assert.equal(view.predictors, 2);
+  assert.equal(service.settlement(marketId).result.pool, 500);
+});
+
+test('corrections reject unknown markets and ones that already settled', async () => {
+  const { service } = setup();
+  const { marketId } = await service.createLiveMarket({ symbol: 'SOL' });
+
+  // Used to silently no-op and report success on a mistyped id.
+  assert.throws(() => service.retract('no-such-market'), /Market not found/);
+  assert.throws(() => service.addHalt('no-such-market', 1000), /Market not found/);
+  assert.throws(() => service.addHalt(marketId, -5), /positive number/);
+
+  service.addHalt(marketId, 90_000);
+  service.retract(marketId);
+
+  service.cancelMarket(marketId);
+  // After settlement these change nothing, so they should say so rather than
+  // quietly rewriting a settled record.
+  assert.throws(() => service.retract(marketId), /already settled/);
+  assert.throws(() => service.addHalt(marketId, 1000), /already settled/);
 });

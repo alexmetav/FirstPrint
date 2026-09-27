@@ -6,6 +6,10 @@ In trading, the *first print* is a token's very first trade. Firstprint watches 
 
 **Launching the public demo?** The static source is in `site/`, the isolated read-only API starts with `npm run start:demo`, and [LAUNCH.md](LAUNCH.md) covers the Render and Vercel deployment.
 
+**Taking it live with real accounts and real prices?** [GO-LIVE.md](GO-LIVE.md) covers `npm run build:live`, the single-origin requirement, the persistent disk, and what to check before opening sign-ups.
+
+**Testing before you launch?** [TESTING.md](TESTING.md) runs the real product locally against live exchange prices and walks every function with a checklist.
+
 ## What's in this repo
 
 | Area | What it does |
@@ -29,7 +33,7 @@ npm run setup       # creates .env and an admin key
 npm run check       # tests every exchange connection
 npm run dev         # http://localhost:8787 (admin at /#/admin)
 npm run live        # creates 15-minute markets on live tokens
-npm test            # 52 tests
+npm test            # 62 tests
 ```
 
 Offline practice: set `SIM=1`, run `npm run seed`, then `npm run dev`. To preview the website with no server at all, open `dist/firstprint-preview.html`.
@@ -101,6 +105,8 @@ Signed-in requests use the `fp_session` HttpOnly cookie (or `Authorization: Bear
 | POST | `/api/me/profile` | `{ username }` |
 | GET, POST | `/api/me/wallets` | List wallets, or link one (same signed-message body) |
 | POST | `/api/me/claim-daily` | +100 points per UTC day |
+| GET | `/api/me/tasks` | Onboarding tasks, with `done` and `claimed` per task |
+| POST | `/api/me/tasks/:id/claim` | Collects a finished task's reward, once |
 | GET | `/api/me/predictions` | |
 | GET | `/api/markets?filter=open\|live\|settled\|all` | |
 | GET | `/api/markets/:id` | Includes live price and your predictions |

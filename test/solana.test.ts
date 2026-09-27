@@ -98,7 +98,7 @@ test('linking wallets to accounts', async () => {
 
 test('HTTP: wallet challenge → verify → session → profile', async () => {
   const { service } = setup();
-  const server = createApiServer({ service, adminKey: null, secureCookies: false, publicUrl: 'https://firstprint.test', solanaChain: 'devnet', webDir: new URL('../web', import.meta.url).pathname });
+  const server = createApiServer({ service, adminKey: null, secureCookies: false, trustProxy: 0, publicUrl: 'https://firstprint.test', solanaChain: 'devnet', webDir: new URL('../web', import.meta.url).pathname });
   await new Promise<void>((r) => server.listen(0, r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   let cookie = '';

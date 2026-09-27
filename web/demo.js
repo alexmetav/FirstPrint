@@ -42,6 +42,17 @@ function demoPrice(m, ts) {
   return Math.max(1e-9, trend * (1 + noise));
 }
 
+// Mirrors ONBOARDING_TASKS in src/services/firstprint.ts. Kept in step by
+// test/tasks.test.ts, which fails if the two lists drift apart.
+const DEMO_TASKS = [
+  { id: 'connect_wallet', title: 'Connect a Solana wallet', detail: 'Sign in with Phantom, Solflare, or Backpack. Signing is free and sends no transaction.', points: 250 },
+  { id: 'pick_username', title: 'Choose your username', detail: 'Pick the name that shows on the leaderboard.', points: 100 },
+  { id: 'first_prediction', title: 'Make your first prediction', detail: 'Stake points on any outcome in any open market.', points: 250 },
+  { id: 'three_markets', title: 'Predict on three different markets', detail: 'Spread your points across three separate markets.', points: 500 },
+  { id: 'see_a_settlement', title: 'See a market settle', detail: 'Hold a prediction on a market that reaches its result, win or lose.', points: 250 },
+  { id: 'link_second_wallet', title: 'Link a second wallet', detail: 'Add another wallet to the same account from your portfolio.', points: 250 },
+];
+
 const BOT_NAMES = ['moonmaxi', 'rektless', 'gridqueen', 'deltaneutral', 'unlockwatcher', 'airdropdan', 'thetaburn', 'bidwall', 'fdvfinder', 'cexhunter'];
 
 // Markets relative to page load. `at` is minutes from now until listing.
@@ -366,6 +377,40 @@ export class DemoBackend {
       u.points += 100;
       return this.publicUser(u);
     });
+  }
+
+  /** Same task surface as the real backend, so the UI behaves identically here. */
+  tasks() {
+    return this.run(() => this.taskList_());
+  }
+
+  claimTask(id) {
+    return this.run(() => {
+      const u = this.me_();
+      const task = this.taskList_().find((t) => t.id === id);
+      if (!task) throw new ApiError(404, 'unknown_task', 'That task does not exist.');
+      if (!task.done) throw new ApiError(409, 'task_incomplete', `Finish "${task.title}" first.`);
+      if (task.claimed) throw new ApiError(409, 'already_claimed', 'You already collected this reward.');
+      (u.claimedTasks ??= []).push(id);
+      u.points += task.points;
+      return { user: this.publicUser(u), tasks: this.taskList_(), awarded: task.points };
+    });
+  }
+
+  taskList_() {
+    const u = this.me_();
+    const mine = this.predictionList.filter((p) => p.userId === u.id);
+    const marketOf = (id) => this.marketList.find((m) => m.id === id);
+    const done = {
+      connect_wallet: (u.wallets ?? []).length >= 1,
+      pick_username: !u.needsUsername,
+      first_prediction: mine.length >= 1,
+      three_markets: new Set(mine.map((p) => p.marketId)).size >= 3,
+      see_a_settlement: mine.some((p) => ['resolved', 'void'].includes(marketOf(p.marketId)?.status)),
+      link_second_wallet: (u.wallets ?? []).length >= 2,
+    };
+    const claimed = u.claimedTasks ?? [];
+    return DEMO_TASKS.map((t) => ({ ...t, done: Boolean(done[t.id]), claimed: claimed.includes(t.id) }));
   }
 
   markets(filter) {

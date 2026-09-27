@@ -264,6 +264,49 @@ h3 {
   gap: 8px;
 }
 
+.task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.task {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.task:last-child {
+  border-bottom: 0;
+}
+.task-mark {
+  flex: none;
+  width: 20px;
+  text-align: center;
+  font-weight: 700;
+}
+.task-done .task-mark {
+  color: var(--up);
+}
+.task-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.task-action {
+  flex: none;
+  align-self: center;
+}
+@media (max-width: 480px) {
+  .task {
+    flex-wrap: wrap;
+  }
+  .task-action {
+    width: 100%;
+    padding-left: 32px;
+  }
+}
+
 .wallet-list {
   list-style: none;
   padding: 0;
@@ -1882,6 +1925,8 @@ function createApi(baseUrl = '') {
     login: (body) => post('/api/auth/login', body),
     logout: () => post('/api/auth/logout'),
     claimDaily: () => post('/api/me/claim-daily'),
+    tasks: () => request('/api/me/tasks'),
+    claimTask: (id) => post(`/api/me/tasks/${id}/claim`),
     myPredictions: () => request('/api/me/predictions'),
     markets: (filter) => request(`/api/markets?filter=${filter}`),
     market: (m) => request(`/api/markets/${id(m)}`),
@@ -2125,6 +2170,17 @@ function demoPrice(m, ts) {
   const noise = (demoHash(`${m.symbol}:${ts}`) - 0.5) * 2 * p.noise;
   return Math.max(1e-9, trend * (1 + noise));
 }
+
+// Mirrors ONBOARDING_TASKS in src/services/firstprint.ts. Kept in step by
+// test/tasks.test.ts, which fails if the two lists drift apart.
+const DEMO_TASKS = [
+  { id: 'connect_wallet', title: 'Connect a Solana wallet', detail: 'Sign in with Phantom, Solflare, or Backpack. Signing is free and sends no transaction.', points: 250 },
+  { id: 'pick_username', title: 'Choose your username', detail: 'Pick the name that shows on the leaderboard.', points: 100 },
+  { id: 'first_prediction', title: 'Make your first prediction', detail: 'Stake points on any outcome in any open market.', points: 250 },
+  { id: 'three_markets', title: 'Predict on three different markets', detail: 'Spread your points across three separate markets.', points: 500 },
+  { id: 'see_a_settlement', title: 'See a market settle', detail: 'Hold a prediction on a market that reaches its result, win or lose.', points: 250 },
+  { id: 'link_second_wallet', title: 'Link a second wallet', detail: 'Add another wallet to the same account from your portfolio.', points: 250 },
+];
 
 const BOT_NAMES = ['moonmaxi', 'rektless', 'gridqueen', 'deltaneutral', 'unlockwatcher', 'airdropdan', 'thetaburn', 'bidwall', 'fdvfinder', 'cexhunter'];
 
@@ -2450,6 +2506,40 @@ class DemoBackend {
       u.points += 100;
       return this.publicUser(u);
     });
+  }
+
+  /** Same task surface as the real backend, so the UI behaves identically here. */
+  tasks() {
+    return this.run(() => this.taskList_());
+  }
+
+  claimTask(id) {
+    return this.run(() => {
+      const u = this.me_();
+      const task = this.taskList_().find((t) => t.id === id);
+      if (!task) throw new ApiError(404, 'unknown_task', 'That task does not exist.');
+      if (!task.done) throw new ApiError(409, 'task_incomplete', `Finish "${task.title}" first.`);
+      if (task.claimed) throw new ApiError(409, 'already_claimed', 'You already collected this reward.');
+      (u.claimedTasks ??= []).push(id);
+      u.points += task.points;
+      return { user: this.publicUser(u), tasks: this.taskList_(), awarded: task.points };
+    });
+  }
+
+  taskList_() {
+    const u = this.me_();
+    const mine = this.predictionList.filter((p) => p.userId === u.id);
+    const marketOf = (id) => this.marketList.find((m) => m.id === id);
+    const done = {
+      connect_wallet: (u.wallets ?? []).length >= 1,
+      pick_username: !u.needsUsername,
+      first_prediction: mine.length >= 1,
+      three_markets: new Set(mine.map((p) => p.marketId)).size >= 3,
+      see_a_settlement: mine.some((p) => ['resolved', 'void'].includes(marketOf(p.marketId)?.status)),
+      link_second_wallet: (u.wallets ?? []).length >= 2,
+    };
+    const claimed = u.claimedTasks ?? [];
+    return DEMO_TASKS.map((t) => ({ ...t, done: Boolean(done[t.id]), claimed: claimed.includes(t.id) }));
   }
 
   markets(filter) {
@@ -2875,7 +2965,8 @@ async function loadRoute() {
       view.innerHTML = radarView(listings);
     } else if (S.route.name === 'portfolio') {
       const preds = S.me ? (await S.api.myPredictions()).predictions : [];
-      view.innerHTML = portfolioView(preds);
+      const tasks = S.me ? (await S.api.tasks()).tasks : [];
+      view.innerHTML = portfolioView(preds, tasks);
     }
     document.title = titleFor();
   } catch (err) {
@@ -3462,7 +3553,37 @@ function leaderboardView(lb) {
     ${S.me && !lb.me ? '<p class="fine">You’ll appear here after one of your predictions settles.</p>' : ''}`;
 }
 
-function portfolioView(preds) {
+/** Onboarding rewards: what to do, whether it is done, and a collect button. */
+function tasksSection(tasks) {
+  if (!tasks.length) return '';
+  const unclaimed = tasks.filter((t) => t.done && !t.claimed);
+  const outstanding = tasks.reduce((n, t) => n + (t.claimed ? 0 : t.points), 0);
+  return `
+    <section class="section">
+      <h2>Earn points${unclaimed.length ? ` <span class="tag tag-you">${unclaimed.length} ready</span>` : ''}</h2>
+      <p class="muted">${
+        outstanding
+          ? `${fmtPts(outstanding)} still available from these one-off tasks.`
+          : 'Every task collected. Daily points keep coming.'
+      }</p>
+      <ul class="task-list">${tasks
+        .map((t) => {
+          const action = t.claimed
+            ? '<span class="muted">Collected</span>'
+            : t.done
+              ? `<button class="btn btn-solid" data-action="claim-task" data-task="${esc(t.id)}">Collect ${fmtPts(t.points)}</button>`
+              : `<span class="muted">${fmtPts(t.points)}</span>`;
+          return `<li class="task${t.claimed ? ' task-done' : ''}">
+            <span class="task-mark" aria-hidden="true">${t.done ? '✓' : '○'}</span>
+            <span class="task-text"><b>${esc(t.title)}</b><br><span class="muted">${esc(t.detail)}</span></span>
+            <span class="task-action">${action}</span>
+          </li>`;
+        })
+        .join('')}</ul>
+    </section>`;
+}
+
+function portfolioView(preds, tasks = []) {
   if (!S.me) {
     return `
       <h1 class="page-title">Portfolio</h1>
@@ -3494,6 +3615,15 @@ function portfolioView(preds) {
       }
       <button class="btn" data-action="logout">Log out</button>
     </div>
+    <section class="section">
+      <h2>Profile</h2>
+      <ul class="wallet-list">
+        <li><span>Username</span><span class="muted">${esc(S.me.username)}</span>
+          <button class="btn" data-action="username">Change</button></li>
+        ${S.me.hasEmail ? '<li><span>Sign-in</span><span class="muted">Email and password</span></li>' : ''}
+      </ul>
+    </section>
+    ${tasksSection(tasks)}
     <section class="section">
       <h2>Wallets</h2>
       ${
@@ -4064,6 +4194,18 @@ document.addEventListener('click', async (e) => {
       try {
         S.me = await S.api.claimDaily();
         toast('Added 100 points');
+        renderTop();
+        return loadRoute();
+      } catch (err) {
+        return toast(err.message, true);
+      }
+    case 'username':
+      return openAuth('username');
+    case 'claim-task':
+      try {
+        const out = await S.api.claimTask(t.closest('[data-task]').dataset.task);
+        S.me = out.user;
+        toast(`Added ${fmtPts(out.awarded)}`);
         renderTop();
         return loadRoute();
       } catch (err) {

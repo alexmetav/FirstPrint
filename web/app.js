@@ -205,7 +205,8 @@ async function loadRoute() {
       view.innerHTML = radarView(listings);
     } else if (S.route.name === 'portfolio') {
       const preds = S.me ? (await S.api.myPredictions()).predictions : [];
-      view.innerHTML = portfolioView(preds);
+      const tasks = S.me ? (await S.api.tasks()).tasks : [];
+      view.innerHTML = portfolioView(preds, tasks);
     }
     document.title = titleFor();
   } catch (err) {
@@ -792,7 +793,37 @@ function leaderboardView(lb) {
     ${S.me && !lb.me ? '<p class="fine">You’ll appear here after one of your predictions settles.</p>' : ''}`;
 }
 
-function portfolioView(preds) {
+/** Onboarding rewards: what to do, whether it is done, and a collect button. */
+function tasksSection(tasks) {
+  if (!tasks.length) return '';
+  const unclaimed = tasks.filter((t) => t.done && !t.claimed);
+  const outstanding = tasks.reduce((n, t) => n + (t.claimed ? 0 : t.points), 0);
+  return `
+    <section class="section">
+      <h2>Earn points${unclaimed.length ? ` <span class="tag tag-you">${unclaimed.length} ready</span>` : ''}</h2>
+      <p class="muted">${
+        outstanding
+          ? `${fmtPts(outstanding)} still available from these one-off tasks.`
+          : 'Every task collected. Daily points keep coming.'
+      }</p>
+      <ul class="task-list">${tasks
+        .map((t) => {
+          const action = t.claimed
+            ? '<span class="muted">Collected</span>'
+            : t.done
+              ? `<button class="btn btn-solid" data-action="claim-task" data-task="${esc(t.id)}">Collect ${fmtPts(t.points)}</button>`
+              : `<span class="muted">${fmtPts(t.points)}</span>`;
+          return `<li class="task${t.claimed ? ' task-done' : ''}">
+            <span class="task-mark" aria-hidden="true">${t.done ? '✓' : '○'}</span>
+            <span class="task-text"><b>${esc(t.title)}</b><br><span class="muted">${esc(t.detail)}</span></span>
+            <span class="task-action">${action}</span>
+          </li>`;
+        })
+        .join('')}</ul>
+    </section>`;
+}
+
+function portfolioView(preds, tasks = []) {
   if (!S.me) {
     return `
       <h1 class="page-title">Portfolio</h1>
@@ -824,6 +855,15 @@ function portfolioView(preds) {
       }
       <button class="btn" data-action="logout">Log out</button>
     </div>
+    <section class="section">
+      <h2>Profile</h2>
+      <ul class="wallet-list">
+        <li><span>Username</span><span class="muted">${esc(S.me.username)}</span>
+          <button class="btn" data-action="username">Change</button></li>
+        ${S.me.hasEmail ? '<li><span>Sign-in</span><span class="muted">Email and password</span></li>' : ''}
+      </ul>
+    </section>
+    ${tasksSection(tasks)}
     <section class="section">
       <h2>Wallets</h2>
       ${
@@ -1394,6 +1434,18 @@ document.addEventListener('click', async (e) => {
       try {
         S.me = await S.api.claimDaily();
         toast('Added 100 points');
+        renderTop();
+        return loadRoute();
+      } catch (err) {
+        return toast(err.message, true);
+      }
+    case 'username':
+      return openAuth('username');
+    case 'claim-task':
+      try {
+        const out = await S.api.claimTask(t.closest('[data-task]').dataset.task);
+        S.me = out.user;
+        toast(`Added ${fmtPts(out.awarded)}`);
         renderTop();
         return loadRoute();
       } catch (err) {

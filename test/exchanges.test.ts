@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { binance, bitget, bybit, extractListingTime, extractSymbols, gate, kucoin, mexc, okx, type Http, type Venue } from '../src/exchanges/venues.ts';
+import { binance, bitget, bybit, extractListingTime, extractSymbols, gate, kucoin, mexc, okx, safeLink, type Http, type Venue } from '../src/exchanges/venues.ts';
 import { openDb } from '../src/db/db.ts';
 import { ManualClock } from '../src/clock.ts';
 import { FirstprintService } from '../src/services/firstprint.ts';
@@ -219,4 +219,14 @@ test('live feed emits price events with projected outcome', async () => {
   assert.equal(price!.marketId, id);
   assert.ok((price!.returnPct as number) > 0.1);
   assert.ok(['up', 'moon'].includes(price!.projectedBucket as string));
+});
+
+test('announcement links keep only http(s) schemes', () => {
+  // Exchange JSON is external input and lands in an href on the public Listing
+  // radar, where escaping stops attribute breakout but not the scheme itself.
+  for (const bad of ['javascript:alert(1)', 'data:text/html,<script>alert(1)</script>', 'JavaScript:alert(1)', 'not a url', '']) {
+    assert.equal(safeLink(bad), null, `rejected: ${bad}`);
+  }
+  assert.equal(safeLink('https://announcements.bybit.com/x'), 'https://announcements.bybit.com/x');
+  assert.equal(safeLink('http://example.com/a'), 'http://example.com/a');
 });

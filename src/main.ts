@@ -45,9 +45,10 @@ const server = createApiServer({
   live,
   adminKey: cfg.adminKey,
   secureCookies: cfg.secureCookies,
+  trustProxy: cfg.trustProxy,
   publicUrl: cfg.publicUrl,
   solanaChain: cfg.solanaChain,
-  webDir: fileURLToPath(new URL('../web', import.meta.url)),
+  webDir: cfg.webDir ?? fileURLToPath(new URL('../web', import.meta.url)),
 });
 
 server.listen(cfg.port, '0.0.0.0', () => {

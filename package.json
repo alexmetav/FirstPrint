@@ -20,7 +20,9 @@
     "build:web": "node scripts/build-web.ts",
     "check": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/check-exchanges.ts",
     "live": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/live-markets.ts",
-    "build:site": "node --disable-warning=ExperimentalWarning scripts/build-site.ts"
+    "build:site": "node --disable-warning=ExperimentalWarning scripts/build-site.ts",
+    "build:live": "npm run build:web && node scripts/build-deploy.ts --live",
+    "start:live": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/main.ts"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",

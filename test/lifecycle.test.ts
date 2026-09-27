@@ -186,7 +186,7 @@ test('HTTP API: signup, cookie session, predict, quote, admin', async () => {
     service,
     scheduler,
     adminKey: 'secret-admin-key-for-tests',
-    secureCookies: false,
+    secureCookies: false, trustProxy: 0,
     webDir: new URL('../web', import.meta.url).pathname,
   });
   await new Promise<void>((r) => server.listen(0, r));

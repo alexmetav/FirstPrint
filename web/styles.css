@@ -251,6 +251,49 @@ h3 {
   gap: 8px;
 }
 
+.task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.task {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.task:last-child {
+  border-bottom: 0;
+}
+.task-mark {
+  flex: none;
+  width: 20px;
+  text-align: center;
+  font-weight: 700;
+}
+.task-done .task-mark {
+  color: var(--up);
+}
+.task-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.task-action {
+  flex: none;
+  align-self: center;
+}
+@media (max-width: 480px) {
+  .task {
+    flex-wrap: wrap;
+  }
+  .task-action {
+    width: 100%;
+    padding-left: 32px;
+  }
+}
+
 .wallet-list {
   list-style: none;
   padding: 0;

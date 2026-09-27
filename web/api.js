@@ -35,6 +35,8 @@ export function createApi(baseUrl = '') {
     login: (body) => post('/api/auth/login', body),
     logout: () => post('/api/auth/logout'),
     claimDaily: () => post('/api/me/claim-daily'),
+    tasks: () => request('/api/me/tasks'),
+    claimTask: (id) => post(`/api/me/tasks/${id}/claim`),
     myPredictions: () => request('/api/me/predictions'),
     markets: (filter) => request(`/api/markets?filter=${filter}`),
     market: (m) => request(`/api/markets/${id(m)}`),

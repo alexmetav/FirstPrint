@@ -20,6 +20,7 @@ An Anchor program for **on-chain prediction pools** (USDC or any SPL token), mat
 | `place_prediction(bucket, amount)` | user | Transfers tokens into the vault |
 | `settle(winning_bucket, return_bps, data_hash)` | oracle | After `settle_at`; takes the fee |
 | `void_market(reason)` | oracle or admin | Cancels an open market |
+| `void_expired()` | anyone | Voids a market left unsettled for 7 days past `settle_at`, so stakes stay claimable if the oracle key is lost |
 | `claim()` | user | Payout for winners, refund for void markets |
 
 PDAs: `["config"]`, `["market", id]`, `["vault", market]`, `["position", market, user]`. The on-chain `id` is the first 16 bytes of `sha256(firstprint market id)`.
@@ -58,5 +59,12 @@ Keep the oracle key separate from the admin key, and consider a multisig (for ex
 
 ## Differences from the off-chain engine
 
+- `create_market` copies `fee_bps` and `early_bird_bps` out of `Config` into the
+  market, and settlement and weighting read that snapshot. A later `update_config`
+  therefore applies only to markets opened after it, matching the off-chain engine,
+  which stores both per market. Changing `Config` cannot alter the terms of a
+  market that already has money in it.
+- `update_config` still moves the oracle, treasury and pause flag for every market,
+  including open ones. Those are operational controls, not economic terms.
 - The volume-based hard cap and latest-first refunds at close are enforced off-chain only. On-chain, the pool cap and per-user cap apply at prediction time, and the oracle can void a market it believes was manipulated.
 - Rounding dust stays in the vault. Add a sweep instruction after a claim deadline if needed.
