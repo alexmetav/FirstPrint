@@ -3615,6 +3615,14 @@ function portfolioView(preds, tasks = []) {
       }
       <button class="btn" data-action="logout">Log out</button>
     </div>
+    <section class="section">
+      <h2>Profile</h2>
+      <ul class="wallet-list">
+        <li><span>Username</span><span class="muted">${esc(S.me.username)}</span>
+          <button class="btn" data-action="username">Change</button></li>
+        ${S.me.hasEmail ? '<li><span>Sign-in</span><span class="muted">Email and password</span></li>' : ''}
+      </ul>
+    </section>
     ${tasksSection(tasks)}
     <section class="section">
       <h2>Wallets</h2>
@@ -4191,6 +4199,8 @@ document.addEventListener('click', async (e) => {
       } catch (err) {
         return toast(err.message, true);
       }
+    case 'username':
+      return openAuth('username');
     case 'claim-task':
       try {
         const out = await S.api.claimTask(t.closest('[data-task]').dataset.task);

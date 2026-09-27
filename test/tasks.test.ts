@@ -136,3 +136,22 @@ test('new accounts start unchanged by the tasks feature', async () => {
   assert.equal(service.getUser(u.id).points, START_POINTS);
   assert.equal(service.tasks(u.id).filter((t) => t.claimed).length, 0);
 });
+
+test('username can be changed after sign-up, not only at first sign-in', async () => {
+  const { service } = setup();
+  const u = await service.createUser({ username: 'firstname', password: 'password123' });
+  assert.equal(service.getUser(u.id).username, 'firstname');
+
+  // The portfolio Profile section drives this; before it existed the name chosen
+  // at sign-up could never be changed from the UI.
+  const updated = service.setUsername(u.id, 'secondname');
+  assert.equal(updated.username, 'secondname');
+  assert.equal(updated.needs_username, 0);
+
+  const other = await service.createUser({ username: 'taken', password: 'password123' });
+  assert.throws(() => service.setUsername(u.id, 'taken'), /taken/);
+  assert.throws(() => service.setUsername(u.id, 'no'), /3–20/);
+  assert.throws(() => service.setUsername(u.id, 'bad name!'), /3–20/);
+  assert.equal(service.getUser(u.id).username, 'secondname', 'a rejected rename must not stick');
+  assert.equal(service.getUser(other.id).username, 'taken');
+});

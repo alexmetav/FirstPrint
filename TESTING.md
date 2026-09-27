@@ -61,6 +61,9 @@ trading starts, predictions close, it settles, points move.
 - [ ] **Log out**, then sign in again with the same wallet — same account, same points, not a new one
 - [ ] Rejecting the signature in the wallet shows an error and does not sign you in
 - [ ] Email signup and login also work (the fallback path)
+- [ ] **Portfolio → Profile** shows your username with a **Change** button
+- [ ] Changing it updates the header and the leaderboard name
+- [ ] A name already in use, or one shorter than 3 characters, is refused
 - [ ] From **Portfolio**, link a second wallet to the same account
 - [ ] Trying to link a wallet already attached to another account is refused
 
@@ -128,6 +131,19 @@ trading starts, predictions close, it settles, points move.
 - [ ] Refreshing mid-session never loses your balance
 - [ ] Stopping and restarting the server keeps all accounts and points
 - [ ] No red errors in the browser console (F12 → Console)
+
+## Predictions do not touch the blockchain
+
+Worth stating plainly, because it looks like a bug when it is not: **placing a
+prediction creates no on-chain transaction and nothing appears in your wallet.**
+Points live in this app's own database. The wallet is used once, to sign a
+sign-in message — free, and never a transaction.
+
+The Anchor program under `solana/` is a separate, unfinished piece that the web
+app does not call. There is no code path from a prediction to the chain: the
+frontend has no `@solana/web3.js`, no Anchor client, and never calls
+`signAndSendTransaction`. Wiring real on-chain pools is a much later step and
+needs an audit plus legal clearance first — see `solana/README.md`.
 
 ## Only testable on a real host
 
