@@ -7,30 +7,29 @@ three items under **Only testable on a real host** at the end.
 
 ## Start it
 
+Two commands. No files to edit.
+
 ```bash
 npm run setup        # once — creates .env and prints your admin key. Copy the key.
-npm run build:live
-```
-
-Then open `.env` and set one line:
-
-```
-WEB_DIR=./.deploy
-```
-
-Start it:
-
-```bash
 npm run dev
 ```
 
-Open **http://localhost:8787**
+Open **http://localhost:8787** — that is the real app, on real prices.
+Admin is at **http://localhost:8787/#/admin**; paste the key `npm run setup` printed.
 
-- `/` — the marketing site
-- `/play` — the app
-- `/play/#/admin` — admin, paste the key from `npm run setup`
+Leave that terminal running. It restarts by itself when files change, and
+`Ctrl+C` stops it.
 
-Leave that terminal running. It restarts automatically when files change.
+<details>
+<summary>Optional: also see the marketing site, exactly as it deploys</summary>
+
+The two commands above serve the app by itself at `/`. To get the layout the
+server uses in production — marketing site at `/`, app at `/play` — run
+`npm run build:live`, add `WEB_DIR=./.deploy` to `.env`, and restart. Every
+check below then lives under `/play` instead of `/`. Worth doing once before
+launch; not needed to test the functions.
+
+</details>
 
 ## Create something to test against
 
@@ -42,7 +41,7 @@ npm run live -- SOL BTC ETH       # pick your own
 npm run live -- --length=hour SOL # 1 hour instead of 15 minutes
 ```
 
-Or from `/play/#/admin`, choose **Create all (15 min)**.
+Or from **http://localhost:8787/#/admin**, choose **Create all (15 min)**.
 
 A 15-minute market is the fastest way to see a full cycle: predictions open,
 trading starts, predictions close, it settles, points move.
@@ -51,7 +50,8 @@ trading starts, predictions close, it settles, points move.
 
 ### Accounts and wallet
 
-- [ ] `/play` loads with no "practice mode" banner (if you see one, `WEB_DIR` is wrong)
+- [ ] The app loads with no "practice mode" banner (if you see one you are on the
+      simulation, not the real backend — stop and check you ran `npm run dev`)
 - [ ] **Connect wallet** lists your installed wallets (Phantom, Solflare, Backpack)
 - [ ] Approving the signature signs you in — no transaction, no fee requested
 - [ ] The signing prompt shows `localhost:8787` as the site
