@@ -140,6 +140,72 @@ export const SUGGESTED_LIVE_TOKENS = [
   { symbol: 'ETH', name: 'Ethereum', note: 'Major, always available' },
 ];
 
+/**
+ * One-off onboarding rewards. Each task's `done` is derived from data the app
+ * already records, so nothing has to be tracked as it happens and the check is
+ * always consistent with reality — a task cannot be marked complete by a client
+ * claiming it was.
+ *
+ * `points` values are deliberately small next to the 1,000-point starting
+ * balance: the tasks are a guided tour, not the main way to get points.
+ */
+export interface TaskDef {
+  id: string;
+  title: string;
+  detail: string;
+  points: number;
+  /** SQL returning one row with `done` non-zero once the task is satisfied. */
+  sql: string;
+}
+
+export const ONBOARDING_TASKS: readonly TaskDef[] = [
+  {
+    id: 'connect_wallet',
+    title: 'Connect a Solana wallet',
+    detail: 'Sign in with Phantom, Solflare, or Backpack. Signing is free and sends no transaction.',
+    points: 250,
+    sql: 'SELECT EXISTS(SELECT 1 FROM wallets WHERE user_id = ?) AS done',
+  },
+  {
+    id: 'pick_username',
+    title: 'Choose your username',
+    detail: 'Pick the name that shows on the leaderboard.',
+    points: 100,
+    sql: 'SELECT (SELECT needs_username FROM users WHERE id = ?) = 0 AS done',
+  },
+  {
+    id: 'first_prediction',
+    title: 'Make your first prediction',
+    detail: 'Stake points on any outcome in any open market.',
+    points: 250,
+    sql: 'SELECT EXISTS(SELECT 1 FROM predictions WHERE user_id = ?) AS done',
+  },
+  {
+    id: 'three_markets',
+    title: 'Predict on three different markets',
+    detail: 'Spread your points across three separate markets.',
+    points: 500,
+    sql: 'SELECT (SELECT COUNT(DISTINCT market_id) FROM predictions WHERE user_id = ?) >= 3 AS done',
+  },
+  {
+    id: 'see_a_settlement',
+    title: 'See a market settle',
+    detail: 'Hold a prediction on a market that reaches its result, win or lose.',
+    points: 250,
+    sql: `SELECT EXISTS(
+            SELECT 1 FROM predictions p JOIN markets m ON m.id = p.market_id
+            WHERE p.user_id = ? AND m.status IN ('resolved', 'void')
+          ) AS done`,
+  },
+  {
+    id: 'link_second_wallet',
+    title: 'Link a second wallet',
+    detail: 'Add another wallet to the same account from your portfolio.',
+    points: 250,
+    sql: 'SELECT (SELECT COUNT(*) FROM wallets WHERE user_id = ?) >= 2 AS done',
+  },
+];
+
 export interface Notification {
   userId: string;
   marketId: string;
@@ -369,6 +435,39 @@ export class FirstprintService {
       this.db.prepare('UPDATE users SET last_claim_day = ? WHERE id = ?').run(day, userId);
       this.credit(userId, DAILY_POINTS, 'daily', day);
       return this.getUser(userId);
+    });
+  }
+
+  /** Onboarding tasks with whether each is finished and whether it was paid. */
+  tasks(userId: string) {
+    this.getUser(userId);
+    const claimed = new Set(
+      as<{ task_id: string }[]>(this.db.prepare('SELECT task_id FROM task_claims WHERE user_id = ?').all(userId)).map((r) => r.task_id),
+    );
+    return ONBOARDING_TASKS.map((t) => ({
+      id: t.id,
+      title: t.title,
+      detail: t.detail,
+      points: t.points,
+      done: Boolean(as<{ done: number }>(this.db.prepare(t.sql).get(userId)).done),
+      claimed: claimed.has(t.id),
+    }));
+  }
+
+  /** Pays a finished task once. The primary key makes a double claim impossible. */
+  claimTask(userId: string, taskId: string) {
+    const task = ONBOARDING_TASKS.find((t) => t.id === taskId);
+    if (!task) throw new AppError(404, 'unknown_task', 'That task does not exist.');
+    return tx(this.db, () => {
+      this.getUser(userId);
+      const done = Boolean(as<{ done: number }>(this.db.prepare(task.sql).get(userId)).done);
+      if (!done) throw new AppError(409, 'task_incomplete', `Finish "${task.title}" first.`);
+      const res = this.db
+        .prepare('INSERT OR IGNORE INTO task_claims (user_id, task_id, points, claimed_at) VALUES (?, ?, ?, ?)')
+        .run(userId, task.id, task.points, this.clock.now());
+      if (res.changes !== 1) throw new AppError(409, 'already_claimed', 'You already collected this reward.');
+      this.credit(userId, task.points, 'task', task.id);
+      return { user: this.getUser(userId), tasks: this.tasks(userId), awarded: task.points };
     });
   }
 

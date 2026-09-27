@@ -70,6 +70,17 @@ trading starts, predictions close, it settles, points move.
 - [ ] Claiming twice on the same day is refused
 - [ ] Balance in the header matches Portfolio
 
+### Earn-points tasks (Portfolio → Earn points)
+
+- [ ] Six tasks are listed, with a tick on the ones you have already done
+- [ ] A finished task shows a **Collect** button; an unfinished one shows only its points
+- [ ] Collecting adds exactly that many points and the row turns to "Collected"
+- [ ] The same task cannot be collected twice
+- [ ] Making your first prediction turns on **Make your first prediction**
+- [ ] Predicting on three separate markets turns on **Predict on three different markets**
+- [ ] Linking a second wallet turns on **Link a second wallet**
+- [ ] After a market you predicted on settles, **See a market settle** turns on
+
 ### Predicting
 
 - [ ] A market page shows the five outcomes with their percentage ranges

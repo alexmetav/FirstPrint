@@ -106,6 +106,16 @@ CREATE TABLE IF NOT EXISTS settlements (
   settled_at  INTEGER NOT NULL
 );
 
+-- Onboarding tasks a user has already been paid for. One row per task per user,
+-- so the reward cannot be claimed twice even under concurrent requests.
+CREATE TABLE IF NOT EXISTS task_claims (
+  user_id     TEXT NOT NULL REFERENCES users(id),
+  task_id     TEXT NOT NULL,
+  points      INTEGER NOT NULL,
+  claimed_at  INTEGER NOT NULL,
+  PRIMARY KEY (user_id, task_id)
+);
+
 CREATE TABLE IF NOT EXISTS known_symbols (
   venue       TEXT NOT NULL,
   symbol      TEXT NOT NULL,

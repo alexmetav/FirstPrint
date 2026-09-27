@@ -271,6 +271,15 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('GET', '/api/me/predictions', ({ user }) => ({ predictions: service.myPredictions(user().id) }));
 
+  route('GET', '/api/me/tasks', ({ user }) => ({ tasks: service.tasks(user().id) }));
+
+  route('POST', '/api/me/tasks/:id/claim', ({ params, user }) => {
+    const u = user();
+    rateLimit(`task:${u.id}`, 20, 60_000);
+    const out = service.claimTask(u.id, params.id);
+    return { ...out, user: publicUser(out.user, service.clock.now(), service.walletsFor(u.id)) };
+  });
+
   route('POST', '/api/me/claim-daily', ({ user }) => {
     const u = user();
     rateLimit(`claim:${u.id}`, 5);
