@@ -485,7 +485,12 @@ export class FirstprintService {
         const alreadyRefunded = p.refund ?? 0;
         const give = p.stake - alreadyRefunded;
         if (give > 0) this.credit(p.user_id, give, 'refund', p.id);
-        this.db.prepare('UPDATE predictions SET refund = ?, payout = 0 WHERE id = ?').run(p.stake, p.id);
+        // Also pin `accepted`: the read model sums it for any non-open market, so
+        // leaving it NULL made a cancelled market show a pool of 0 in the UI while
+        // its stored settlement showed the true amount.
+        this.db
+          .prepare('UPDATE predictions SET accepted = COALESCE(accepted, ?), refund = ?, payout = 0 WHERE id = ?')
+          .run(p.stake, p.stake, p.id);
       }
       const result = {
         pool: rows.reduce((s, p) => s + p.stake, 0),
@@ -565,12 +570,30 @@ export class FirstprintService {
     this.db.prepare('UPDATE markets SET listing_at = ? WHERE id = ?').run(listingAt, marketId);
   }
 
+  /**
+   * Marks a listing as retracted by the exchange, which voids the market at
+   * settlement. Both corrections below check the market first: they used to
+   * accept any id and any state, so a typo reported success while changing
+   * nothing, and retracting an already-settled market silently corrupted the
+   * record without altering the payouts already made.
+   */
   retract(marketId: string) {
+    const m = this.row(marketId);
+    if (m.status === 'resolved' || m.status === 'void') {
+      throw new AppError(409, 'already_settled', 'This market has already settled. Retracting it now would not change any payouts.');
+    }
     this.db.prepare('UPDATE markets SET retracted = 1 WHERE id = ?').run(marketId);
   }
 
   addHalt(marketId: string, ms: number) {
-    this.db.prepare('UPDATE markets SET halted_ms = halted_ms + ? WHERE id = ?').run(Math.max(0, ms), marketId);
+    const m = this.row(marketId);
+    if (m.status === 'resolved' || m.status === 'void') {
+      throw new AppError(409, 'already_settled', 'This market has already settled. Recording a halt now would not change the result.');
+    }
+    if (!Number.isFinite(ms) || ms < 0) {
+      throw new AppError(400, 'bad_halt', 'Halt length must be a positive number of milliseconds.');
+    }
+    this.db.prepare('UPDATE markets SET halted_ms = halted_ms + ? WHERE id = ?').run(Math.floor(ms), marketId);
   }
 
   // --- Predictions -----------------------------------------------------------

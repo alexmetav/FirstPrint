@@ -47,9 +47,12 @@ npm run setup
 npm run check
 ```
 
-Every exchange you plan to use must show `PASS`. These adapters have never been
-verified against the live APIs — the fixture tests cover parsing only, and the
-README says so. Expect to fix response-format differences.
+Every exchange you plan to use must show `PASS`.
+
+All seven adapters were confirmed working against the live APIs on 2026-09-27
+from a developer machine. That does not carry over to the hosting region:
+exchanges block by country, so run this again **on the deployed host** before
+opening sign-ups.
 
 - Binance blocks some countries, including the US. Drop `binance` from
   `TRACK_VENUES` if it fails.
@@ -144,9 +147,8 @@ Open items from the code review that are not fixed yet:
 - The settlement `data_hash` cannot be reproduced from the public
   `/api/markets/:id/settlement` response, so the verifiability claim does not
   hold yet.
-- Markets cancelled before close display a pool of 0 (refunds are correct).
-- `retract()` and `addHalt()` validate neither the market's existence nor its
-  status.
-- On-chain: fee and early-bird are read live from `Config` instead of being
-  snapshotted per market, and there is no permissionless escape hatch if the
-  oracle key is lost.
+
+Fixed since that review: the proxy rate-limiting collapse, the missing CSP, the
+cancelled-market pool display, unvalidated `retract`/`addHalt`, unchecked URL
+schemes on announcement links, and on-chain the live-config fee/early-bird read
+plus the missing escape hatch (`void_expired`).

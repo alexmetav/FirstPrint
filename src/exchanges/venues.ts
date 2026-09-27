@@ -138,13 +138,32 @@ function finalize(candles: Candle[], startMs: number, endMs: number): Candle[] {
   return [...byTs.values()].sort((a, b) => a.ts - b.ts);
 }
 
+/**
+ * Keeps only links we are willing to render as an `href`.
+ *
+ * Announcement URLs come straight out of each exchange's JSON and end up in an
+ * anchor on the public Listing radar. HTML-escaping stops an attribute
+ * breakout but not a `javascript:` or `data:` scheme, so the scheme is checked
+ * here — at the one place every adapter funnels through — rather than relying
+ * on each render site to remember.
+ */
+export function safeLink(url: unknown): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(String(url));
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : null;
+  } catch {
+    return null;
+  }
+}
+
 function announcement(exchange: string, id: unknown, title: unknown, url: unknown, publishedAt: unknown, body = '', listingAt: number | null = null): Announcement {
   const t = String(title ?? '');
   return {
     exchange,
     id: String(id ?? t),
     title: t,
-    url: url ? String(url) : null,
+    url: safeLink(url),
     publishedAt: toMs(publishedAt),
     listingAt: listingAt ?? extractListingTime(`${t}\n${body}`),
     symbols: extractSymbols(t).length ? extractSymbols(t) : extractSymbols(body),
