@@ -70,19 +70,27 @@ Each step builds on code already in this repo:
 
 We'll connect each piece to the public site as you reach it.
 
-## Launch the full app (accounts, points, admin panel, markets)
+## Launch the full app (accounts, points, admin panel, markets), free
 
-The static site and the read-only demo above don't have accounts. The full app is a second Render service, `firstprint-app`, defined in `render.yaml`. It runs the whole server with its database on a 1 GB persistent disk. It must stay a **single instance**: the database is one SQLite file, so don't scale it out. Persistent disks need Render's paid Starter plan.
+The static site and the read-only demo above don't have accounts. The full app is a second Render service, `firstprint-app`, defined in `render.yaml`. It needs **no payment**: it runs on Render's free plan and keeps its database safe in a free Supabase Storage bucket.
 
-1. In Render, open the Blueprint for this repository and apply the update, which adds `firstprint-app`. Render asks for the values marked "sync: false":
-   - `PUBLIC_URL`: the address people will type, with no trailing slash, e.g. `https://app.firstprint.fun`. It must match exactly, or wallet sign-in fails.
-   - `GOOGLE_CLIENT_ID`, `RESEND_API_KEY`, `MAIL_FROM`: optional. Leave one blank and that sign-in option stays hidden. Setup for each is in the README under "Signing in".
-2. Wait for the deploy to go green, then open `https://<service>.onrender.com/api/health`. It should return `{"ok":true,...}`.
-3. Read the generated admin key in Render → `firstprint-app` → Environment → `ADMIN_KEY`. Open `<your app address>/#/admin` and paste it. Keep it private.
-4. Custom domain: in Render → Settings → Custom Domains add `app.firstprint.fun`, then add the DNS record Render shows you. Set `PUBLIC_URL` to that address and redeploy.
-5. Point the marketing site at it: in Vercel → Settings → Environment Variables add `APP_URL` = your app address (`https://...`), then redeploy. The "practice" buttons on the site then open the full app. Without `APP_URL` the site keeps linking to the browser-only practice build at `/play/`.
-6. Google only: in Google Cloud Console add your `PUBLIC_URL` as an Authorized JavaScript origin on the OAuth client.
+**How the database survives.** Render's free plan wipes the disk whenever the server restarts or goes to sleep. So the server restores its database from Supabase when it starts, saves a copy every minute if anything changed, and saves once more when Render shuts it down. The admin page shows when the last copy was saved. If the saved copy exists but can't be downloaded, the server refuses to start rather than begin empty and overwrite it. It also keeps one dated copy per day. At most the last minute of activity can be lost if the server is killed without warning.
 
-To try it before setting up email or Google, leave `RESEND_API_KEY` and `GOOGLE_CLIENT_ID` empty and sign in with a Solana wallet (set on devnet by default).
+**Free-plan limits to know about.** The server sleeps after 15 minutes without visits and takes about a minute to wake up. It must stay a single instance. When it wakes, markets whose timer ended close on the first tick. Both free Render services share 750 hours a month, so keeping this one awake around the clock would leave the demo API asleep.
 
-Back up the database by taking a disk snapshot in Render before big changes. Moving to PostgreSQL (see BACKEND-SETUP.md) is only needed if you want more than one instance.
+### Steps
+
+1. **Supabase (free):** at supabase.com create a project named `firstprint`. Then **Storage → New bucket**, name `firstprint-backups`, and leave **Public bucket off**. Under **Project Settings → API** copy the **Project URL** and the **service_role** key. That key is a secret: only ever paste it into Render, never into chat or the repo.
+2. **Render:** open the Blueprint for this repository and apply the update, which adds `firstprint-app`. Render asks for the values marked "sync: false":
+   - `PUBLIC_URL`: the address people will type, no trailing slash, e.g. `https://app.firstprint.fun`. It must match exactly, or wallet sign-in fails.
+   - `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` from step 1.
+   - `GOOGLE_CLIENT_ID`, `RESEND_API_KEY`, `MAIL_FROM`: optional. Leave one blank and that option stays hidden. See the README under "Signing in".
+3. Wait for the deploy to go green, then open `https://<service>.onrender.com/api/health`. It should return `{"ok":true,...}`.
+4. Read the generated admin key in Render → `firstprint-app` → Environment → `ADMIN_KEY`. Open `<your app address>/#/admin` and paste it. The page should say "Database backup: last saved ...". Keep the key private.
+5. Custom domain: in Render → Settings → Custom Domains add `app.firstprint.fun`, then add the DNS record Render shows you. Set `PUBLIC_URL` to that address and redeploy.
+6. Point the marketing site at it: in Vercel → Settings → Environment Variables add `APP_URL` = your app address (`https://...`), then redeploy. The "practice" buttons on the site then open the full app. Without `APP_URL` the site keeps linking to the browser-only practice build at `/play/`.
+7. Google only: in Google Cloud Console add your `PUBLIC_URL` as an Authorized JavaScript origin on the OAuth client.
+
+**What's free and what isn't.** Wallet and Google sign-in are free. Email codes work without payment only to your own address in Resend's test mode; sending to everyone needs a domain verified in Resend, which uses a domain you own (you already own firstprint.fun, so it costs nothing extra). To try the app before that, sign in with a Solana wallet (devnet by default).
+
+Upgrading later: for a persistent disk instead of backups, see the comment in `render.yaml`. Moving to PostgreSQL (BACKEND-SETUP.md) is only needed for more than one instance.

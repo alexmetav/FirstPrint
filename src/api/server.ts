@@ -23,6 +23,8 @@ export interface ServerOptions {
   mailer?: Mailer | null;
   /** Return the code in the API response (development only, when no real mailer is configured). */
   devEmailCodes?: boolean;
+  /** Database backup health, shown in the admin panel. */
+  backupStatus?: () => { enabled: boolean; lastOkAt: number | null; lastError: string | null };
   /** True when exchange auto-detection and live prices are off and admins run every market. */
   manualOnly?: boolean;
   /** Public site URL used in wallet sign-in messages, e.g. https://firstprint.xyz */
@@ -451,6 +453,7 @@ export function createApiServer(opts: ServerOptions): Server {
       venues: service.venueList(),
       exchanges: service.exchangeSettings(),
       manualOnly: opts.manualOnly ?? false,
+      backup: opts.backupStatus?.() ?? { enabled: false, lastOkAt: null, lastError: null },
       presets: Object.entries(LIVE_PRESETS).map(([id, p]) => ({ id, label: p.label })),
       suggestedTokens: SUGGESTED_LIVE_TOKENS,
     };

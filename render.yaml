@@ -10,26 +10,24 @@ services:
       - key: NODE_VERSION
         value: 22.18.0
 
-  # The full app: accounts, points, admin panel, manual markets. One instance only,
-  # because the database is a SQLite file on the persistent disk below.
+  # The full app: accounts, points, admin panel, manual markets. Runs on Render's free plan, which has no
+  # persistent disk, so the server keeps its SQLite database in a private Supabase Storage bucket: it
+  # restores it at start-up, copies it every minute when something changed, and once more on shutdown.
+  # One instance only. To use a persistent disk instead, set plan: starter, add
+  #   disk: { name: firstprint-data, mountPath: /data, sizeGB: 1 }
+  # set DB_PATH to /data/firstprint.db, and remove the two SUPABASE_ variables.
   - type: web
     name: firstprint-app
     runtime: node
-    plan: starter # persistent disks need a paid plan
+    plan: free
     buildCommand: npm ci --omit=dev
     startCommand: npm start
     healthCheckPath: /api/health
-    disk:
-      name: firstprint-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: 22.18.0
       - key: NODE_ENV
         value: production
-      - key: DB_PATH
-        value: /data/firstprint.db
       - key: MANUAL_ONLY
         value: "1"
       - key: SOLANA_CHAIN
@@ -39,6 +37,11 @@ services:
         generateValue: true
       # The address people type in the browser, e.g. https://app.firstprint.fun (no trailing slash).
       - key: PUBLIC_URL
+        sync: false
+      # Database backup (Supabase free plan): the project URL and its service_role key. Secret, enter in Render only.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
         sync: false
       # Optional sign-in methods; each is hidden in the app until it is set.
       - key: GOOGLE_CLIENT_ID

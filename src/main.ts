@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.ts';
 import { openDb } from './db/db.ts';
+import { DbBackup, backupConfigFromEnv, restoreIfMissing } from './db/backup.ts';
 import { systemClock } from './clock.ts';
 import { FirstprintService } from './services/firstprint.ts';
 import { Scheduler } from './workers/scheduler.ts';
@@ -18,7 +19,16 @@ const log = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
 
 const cfg = loadConfig();
 if (cfg.dbPath !== ':memory:') mkdirSync(dirname(cfg.dbPath), { recursive: true });
+
+// Hosts without a persistent disk (Render's free plan) lose the database file on every restart,
+// so it is restored from, and regularly copied to, a private Supabase Storage bucket.
+const backupCfg = cfg.dbPath === ':memory:' ? null : backupConfigFromEnv();
+if (backupCfg) await restoreIfMissing(cfg.dbPath, backupCfg, log);
+else if (process.env.NODE_ENV === 'production') {
+  log('WARNING: no SUPABASE_URL / SUPABASE_SERVICE_KEY set. Unless DB_PATH is on a persistent disk, accounts and points are lost whenever this server restarts.');
+}
 const db = openDb(cfg.dbPath);
+const backup = backupCfg ? new DbBackup(db, cfg.dbPath, backupCfg, log) : null;
 
 const venues: Venue[] = allVenues();
 if (cfg.sim) {
@@ -53,6 +63,7 @@ const server = createApiServer({
   live,
   adminKey: cfg.adminKey,
   manualOnly: cfg.manualOnly,
+  backupStatus: () => backup?.status() ?? { enabled: false, lastOkAt: null, lastError: null },
   googleClientId: cfg.googleClientId,
   mailer,
   devEmailCodes,
@@ -65,16 +76,21 @@ const server = createApiServer({
 server.listen(cfg.port, '0.0.0.0', () => {
   log(`Firstprint running at http://localhost:${cfg.port} (tracking: ${tracked.map((v) => v.id).join(', ') || 'none'})`);
   scheduler.start();
+  backup?.start();
+  if (backup) void backup.runOnce(true); // first copy right away, so a brand-new database is protected too
 });
 
 const shutdown = () => {
   log('shutting down');
   scheduler.stop();
   server.close(() => {
-    db.close();
-    process.exit(0);
+    // Last copy before the host stops us, so a restart doesn't lose the latest minute of activity.
+    void (backup?.stop() ?? Promise.resolve()).finally(() => {
+      db.close();
+      process.exit(0);
+    });
   });
-  setTimeout(() => process.exit(0), 3_000).unref();
+  setTimeout(() => process.exit(0), 20_000).unref();
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

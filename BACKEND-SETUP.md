@@ -2,7 +2,7 @@
 
 ## Current status
 
-> **Update:** the launch path is now the single-instance `firstprint-app` Render service on a persistent disk (see the end of LAUNCH.md). A SQLite file on a persistent disk is safe with exactly one instance. The PostgreSQL/Supabase migration described below is only needed for more than one instance; the "not on an ephemeral filesystem" warning still applies.
+> **Update:** the launch path is now the single-instance `firstprint-app` Render service (see the end of LAUNCH.md). It needs no payment: the SQLite file is backed up to a private Supabase Storage bucket and restored at start-up. A persistent disk also works with exactly one instance. The PostgreSQL/Supabase migration described below is only needed for more than one instance; the "not on an ephemeral filesystem" warning still applies.
 
 The existing Node/TypeScript backend runs locally and provides email/password and wallet accounts, a points ledger, predictions, listing detection, live events, and settlement. It uses **SQLite**, not Supabase/PostgreSQL, and its own authentication, not Supabase Auth. This preparation does not complete that migration or launch a cloud backend.
 
