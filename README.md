@@ -18,6 +18,18 @@ In trading, the *first print* is a token's very first trade. Firstprint watches 
 | **Prediction app** | Markets, market page with live chart and outcome ladder, Listing radar, leaderboard, and portfolio with linked wallets. Works on desktop and mobile. |
 | **Solana program** | `solana/`: an Anchor program for on-chain USDC prediction pools with oracle settlement, plus tests and an oracle script. Unaudited, devnet only. |
 
+## Running markets from the admin panel
+
+By default (`MANUAL_ONLY=1`) nothing is fetched from exchanges. Admins run every market at `/#/admin`:
+
+1. **Exchanges:** switch exchanges on or off. Only enabled exchanges can be used in new markets.
+2. **Create a market:** token, start price, which exchanges, when predictions close, when the result is expected, a description, and optional outcome ranges, fee and pool limit. Save as a draft (users can't see it) or publish.
+3. **Edit:** drafts are fully editable. After users have predicted, the token, start price, ranges and pool rules lock; the description, exchanges and a *later* close time can still change. You can unpublish only while nobody has predicted, and cancel with a full refund at any time before the result.
+4. **Timer ends:** the market closes automatically and waits under "Waiting for your result". Nothing settles by itself.
+5. **Post the result:** enter the final price. The panel previews the winning outcome, the winners and each payout; confirm to pay. The result, final price, your note and the winners then appear on the market page. You can override the outcome if the price source was disputed. If nobody picked the winning outcome, or everyone picked the same one, the market is cancelled and refunded.
+
+Set `MANUAL_ONLY=0` to bring back the exchange scanner, live prices and live test markets.
+
 ## Quick start
 
 **New here? Follow [START-HERE.md](START-HERE.md)** to run the site with live tokens and real exchange prices before hosting.

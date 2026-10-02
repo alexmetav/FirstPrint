@@ -1462,3 +1462,44 @@ code {
     grid-template-columns: 1fr;
   }
 }
+
+/* Admin: manual markets */
+.admin-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: var(--r-sm);
+  padding: 9px 10px;
+  font: inherit;
+  resize: vertical;
+}
+.admin-result {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  align-items: end;
+}
+.admin-result .admin-list,
+.admin-preview {
+  grid-column: 1 / -1;
+}
+.admin-preview {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+}
+.admin-preview p {
+  margin: 0 0 6px;
+}
+.admin-row-actions {
+  white-space: nowrap;
+}
+.admin-row-actions .btn {
+  margin-left: 6px;
+}
+.m-note {
+  color: var(--muted);
+  margin: 0 0 10px;
+  max-width: 62ch;
+}
+.admin-result > div:first-child {
+  grid-column: 1 / -1;
+}

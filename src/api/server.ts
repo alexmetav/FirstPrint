@@ -13,6 +13,8 @@ export interface ServerOptions {
   scheduler?: Scheduler;
   live?: LiveFeed;
   adminKey: string | null;
+  /** True when exchange auto-detection and live prices are off and admins run every market. */
+  manualOnly?: boolean;
   /** Public site URL used in wallet sign-in messages, e.g. https://firstprint.xyz */
   publicUrl?: string | null;
   solanaChain?: 'mainnet' | 'devnet' | 'testnet';
@@ -283,6 +285,83 @@ export function createApiServer(opts: ServerOptions): Server {
     return { ok: true };
   });
 
+  // --- Admin: manual markets (the admin panel runs the whole market lifecycle) ---------
+
+  const manualBody = (b: Record<string, unknown>) => ({
+    symbol: b.symbol as string,
+    name: b.name as string | undefined,
+    exchanges: Array.isArray(b.exchanges) ? b.exchanges.map(String) : (b.exchanges as never),
+    pairs: b.pairs as Record<string, string> | undefined,
+    basePrice: b.basePrice === undefined ? (undefined as never) : Number(b.basePrice),
+    closeAt: b.closeAt === undefined ? (undefined as never) : toMs(b.closeAt),
+    resultAt: b.resultAt === undefined || b.resultAt === '' ? undefined : toMs(b.resultAt),
+    config: b.config as never,
+    note: b.note as string | undefined,
+    sourceUrl: b.sourceUrl as string | undefined,
+  });
+
+  route('GET', '/api/admin/exchanges', ({ requireAdmin }) => {
+    requireAdmin();
+    return { exchanges: service.exchangeSettings() };
+  });
+
+  route('POST', '/api/admin/exchanges/:id', async ({ params, body, requireAdmin }) => {
+    requireAdmin();
+    return { exchanges: service.setExchangeEnabled(params.id, Boolean((await body()).enabled)) };
+  });
+
+  route('POST', '/api/admin/manual-markets', async ({ body, requireAdmin }) => {
+    requireAdmin();
+    const b = await body();
+    const id = service.createManualMarket({ ...manualBody(b), publish: b.publish === true });
+    return service.getMarket(id, undefined, true);
+  });
+
+  route('POST', '/api/admin/manual-markets/:id', async ({ params, body, requireAdmin }) => {
+    requireAdmin();
+    const b = await body();
+    const patch = Object.fromEntries(Object.entries(manualBody(b)).filter(([, v]) => v !== undefined));
+    service.updateManualMarket(params.id, patch);
+    return service.getMarket(params.id, undefined, true);
+  });
+
+  route('POST', '/api/admin/manual-markets/:id/publish', ({ params, requireAdmin }) => {
+    requireAdmin();
+    service.publishMarket(params.id);
+    return service.getMarket(params.id, undefined, true);
+  });
+
+  route('POST', '/api/admin/manual-markets/:id/unpublish', ({ params, requireAdmin }) => {
+    requireAdmin();
+    service.unpublishMarket(params.id);
+    return service.getMarket(params.id, undefined, true);
+  });
+
+  route('POST', '/api/admin/manual-markets/:id/delete', ({ params, requireAdmin }) => {
+    requireAdmin();
+    service.deleteDraft(params.id);
+    return { ok: true };
+  });
+
+  const resolveBody = (b: Record<string, unknown>) => ({
+    finalPrice: Number(b.finalPrice),
+    basePrice: b.basePrice === undefined || b.basePrice === '' || b.basePrice === null ? undefined : Number(b.basePrice),
+    winningBucket: (b.winningBucket || undefined) as Bucket | undefined,
+    note: b.note as string | undefined,
+  });
+
+  route('POST', '/api/admin/manual-markets/:id/preview', async ({ params, body, requireAdmin }) => {
+    requireAdmin();
+    return service.previewResolution(params.id, resolveBody(await body()));
+  });
+
+  route('POST', '/api/admin/manual-markets/:id/resolve', async ({ params, body, requireAdmin }) => {
+    requireAdmin();
+    const out = service.resolveManualMarket(params.id, resolveBody(await body()));
+    await opts.scheduler?.notify(out.notes);
+    return out.summary;
+  });
+
   route('GET', '/api/admin/detected', ({ url, requireAdmin }) => {
     requireAdmin();
     const status = (url.searchParams.get('status') ?? 'pending') as 'pending' | 'approved' | 'ignored' | 'all';
@@ -318,6 +397,8 @@ export function createApiServer(opts: ServerOptions): Server {
     return {
       ok: true,
       venues: service.venueList(),
+      exchanges: service.exchangeSettings(),
+      manualOnly: opts.manualOnly ?? false,
       presets: Object.entries(LIVE_PRESETS).map(([id, p]) => ({ id, label: p.label })),
       suggestedTokens: SUGGESTED_LIVE_TOKENS,
     };

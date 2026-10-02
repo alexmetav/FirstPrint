@@ -11,6 +11,8 @@ export interface AppConfig {
   trackEveryMs: number;
   autoCreateMarkets: boolean;
   sim: boolean;
+  /** Admin-run markets only: no exchange scanning or live price feeds. */
+  manualOnly: boolean;
 }
 
 const ALL_VENUES = ['binance', 'mexc', 'bybit', 'okx', 'gate', 'bitget', 'kucoin'];
@@ -31,6 +33,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     trackEveryMs: Number(env.TRACK_EVERY_MS ?? 120_000),
     autoCreateMarkets: env.AUTO_CREATE_MARKETS === '1',
     sim: env.SIM === '1',
+    manualOnly: env.MANUAL_ONLY !== '0',
   };
   if (production && (!cfg.adminKey || cfg.adminKey.length < 24)) {
     throw new Error('Set ADMIN_KEY to a random string of at least 24 characters in production.');

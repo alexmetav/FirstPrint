@@ -10,6 +10,7 @@ import {
   DEFAULT_CONFIG,
   applyCaps,
   bucketForReturn,
+  computePayouts,
   emptyTotals,
   hardCapFor,
   quote as engineQuote,
@@ -75,6 +76,10 @@ interface MarketRow {
   retracted: number;
   halted_ms: number;
   created_at: number;
+  mode: 'auto' | 'manual';
+  published: number;
+  base_price: number | null;
+  note: string | null;
 }
 
 interface PredictionRow {
@@ -114,6 +119,34 @@ export interface CreateMarketInput {
   config?: Partial<MarketConfig>;
   scorecard?: Scorecard;
   kind?: 'listing' | 'live_test';
+}
+
+export interface ManualMarketInput {
+  symbol: string;
+  name?: string;
+  /** Exchange ids, e.g. ['binance', 'okx']. */
+  exchanges: string[];
+  /** Optional trading pair per exchange; defaults to SYMBOLUSDT in each exchange's format. */
+  pairs?: Record<string, string>;
+  /** Reference price the outcome is measured against. */
+  basePrice: number;
+  /** When predictions stop (ms). */
+  closeAt: number;
+  /** When the admin expects to share the result (ms). Informational. */
+  resultAt?: number;
+  config?: Partial<MarketConfig>;
+  note?: string;
+  sourceUrl?: string;
+  publish?: boolean;
+}
+
+export interface ResolveInput {
+  finalPrice: number;
+  /** Overrides the start price entered when the market was created. */
+  basePrice?: number;
+  /** Overrides the bucket implied by the prices (e.g. when the price source was disputed). */
+  winningBucket?: Bucket;
+  note?: string;
 }
 
 const MIN_MS = 60_000;
@@ -573,6 +606,253 @@ export class FirstprintService {
     this.db.prepare('UPDATE markets SET halted_ms = halted_ms + ? WHERE id = ?').run(Math.max(0, ms), marketId);
   }
 
+  // --- Markets: manual (admin-run) ---------------------------------------------
+  //
+  // An admin creates a draft, publishes it, and users predict until the close
+  // time. The market then waits (status "locked", phase "awaiting_result")
+  // until the admin enters the final price, which picks the winning bucket and
+  // pays the pool out. No exchange data is fetched.
+
+  exchangeSettings() {
+    const off = this.disabledExchanges();
+    return [...this.venues.values()].map((v) => ({ id: v.id, name: v.name, enabled: !off.has(v.id) }));
+  }
+
+  setExchangeEnabled(id: string, enabled: boolean) {
+    if (!this.venues.has(id)) throw new AppError(404, 'unknown_venue', `Unknown exchange "${id}".`);
+    const off = this.disabledExchanges();
+    if (enabled) off.delete(id);
+    else off.add(id);
+    this.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('exchanges_disabled', JSON.stringify([...off]));
+    return this.exchangeSettings();
+  }
+
+  private disabledExchanges(): Set<string> {
+    const r = as<{ value: string } | undefined>(this.db.prepare("SELECT value FROM settings WHERE key = 'exchanges_disabled'").get());
+    return new Set(r ? (JSON.parse(r.value) as string[]) : []);
+  }
+
+  private manualFields(input: ManualMarketInput, now: number) {
+    const symbol = String(input.symbol ?? '').trim().toUpperCase();
+    if (!/^[A-Z0-9]{2,15}$/.test(symbol)) throw new AppError(400, 'bad_symbol', 'Token symbol must be 2–15 letters or digits.');
+    const exchanges = [...new Set((input.exchanges ?? []).map(String))];
+    if (exchanges.length === 0) throw new AppError(400, 'bad_exchanges', 'Choose at least one exchange.');
+    const off = this.disabledExchanges();
+    for (const id of exchanges) {
+      if (!this.venues.has(id)) throw new AppError(400, 'unknown_venue', `Unknown exchange "${id}".`);
+      if (off.has(id)) throw new AppError(400, 'exchange_off', `${this.venues.get(id)!.name} is switched off in Admin → Exchanges.`);
+    }
+    const basePrice = Number(input.basePrice);
+    if (!(basePrice > 0) || !Number.isFinite(basePrice)) throw new AppError(400, 'bad_price', 'Start price must be a number above 0.');
+    const closeAt = Number(input.closeAt);
+    if (!Number.isFinite(closeAt)) throw new AppError(400, 'bad_close_time', 'Prediction close time is required.');
+    const resultAt = input.resultAt === undefined || input.resultAt === null ? closeAt + 24 * 60 * MINUTE : Number(input.resultAt);
+    if (!(resultAt > closeAt)) throw new AppError(400, 'bad_result_time', 'Expected result time must be after the close time.');
+    const cfg = mergeConfig({
+      ...input.config,
+      baselineMs: 0,
+      durationMs: resultAt - closeAt,
+      settleWindowMs: 0,
+    });
+    const pairs = input.pairs ?? {};
+    const venues: VenueRef[] = exchanges.map((id) => ({ venue: id, symbol: pairs[id] || this.venues.get(id)!.pair(symbol) }));
+    const exchangeLabel = exchanges.map((id) => this.venues.get(id)!.name).join(', ');
+    const name = input.name ? String(input.name).trim().slice(0, 80) : null;
+    const note = input.note ? String(input.note).trim().slice(0, 2000) : null;
+    const sourceUrl = input.sourceUrl ? String(input.sourceUrl).trim().slice(0, 500) : null;
+    void now;
+    return { symbol, name, venues, exchangeLabel, basePrice, closeAt, cfg, note, sourceUrl };
+  }
+
+  /** Creates a draft (hidden from users) or, with publish: true, an open market. */
+  createManualMarket(input: ManualMarketInput): string {
+    const now = this.clock.now();
+    const f = this.manualFields(input, now);
+    if (f.closeAt <= now) throw new AppError(400, 'bad_close_time', 'Prediction close time must be in the future.');
+    const id = `${f.symbol.toLowerCase()}-m-${randomUUID().slice(0, 6)}`;
+    this.db
+      .prepare(
+        `INSERT INTO markets (id, symbol, name, exchange, venues, source_url, announced_listing_at, listing_at,
+          opened_at, config, scorecard, status, kind, created_at, mode, published, base_price, note)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', 'listing', ?, 'manual', ?, ?, ?)`,
+      )
+      .run(id, f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, now, JSON.stringify(f.cfg), now, input.publish ? 1 : 0, f.basePrice, f.note);
+    this.log(`manual market ${input.publish ? 'published' : 'drafted'} ${id}`);
+    if (input.publish) this.onEvent('market', { marketId: id });
+    return id;
+  }
+
+  /**
+   * Edits a manual market that has not closed. Once users have predicted, the
+   * rules they predicted under (price, thresholds, fee, caps) are locked and
+   * the close time can only move later.
+   */
+  updateManualMarket(marketId: string, patch: Partial<ManualMarketInput>): string {
+    const m = this.manualRow(marketId);
+    const now = this.clock.now();
+    if (m.status !== 'open') throw new AppError(409, 'not_editable', 'Only markets that are still taking predictions can be edited.');
+    const hasPredictions = this.predictions(marketId).length > 0;
+    const cfg = parseConfig(m);
+    const current: ManualMarketInput = {
+      symbol: m.symbol,
+      name: m.name ?? undefined,
+      exchanges: (JSON.parse(m.venues) as VenueRef[]).map((v) => v.venue),
+      pairs: Object.fromEntries((JSON.parse(m.venues) as VenueRef[]).map((v) => [v.venue, v.symbol])),
+      basePrice: m.base_price ?? 0,
+      closeAt: m.listing_at,
+      resultAt: m.listing_at + cfg.durationMs,
+      config: cfg,
+      note: m.note ?? undefined,
+      sourceUrl: m.source_url ?? undefined,
+    };
+    if (m.published === 1 && hasPredictions) {
+      const locked = ['symbol', 'basePrice', 'config'] as const;
+      for (const k of locked) {
+        if (patch[k] !== undefined) throw new AppError(409, 'locked_field', `"${k}" can't change after users have predicted. Cancel and refund the market instead.`);
+      }
+      if (patch.closeAt !== undefined && Number(patch.closeAt) < m.listing_at) {
+        throw new AppError(409, 'locked_field', 'The close time can only be moved later once users have predicted.');
+      }
+    }
+    const merged: ManualMarketInput = { ...current, ...patch, config: { ...current.config, ...patch.config } };
+    // A new exchange list must produce new pairs, not keep the old ones.
+    if (patch.exchanges && !patch.pairs) merged.pairs = {};
+    const f = this.manualFields(merged, now);
+    if (f.closeAt <= now) throw new AppError(400, 'bad_close_time', 'Prediction close time must be in the future.');
+    this.db
+      .prepare(
+        `UPDATE markets SET symbol = ?, name = ?, exchange = ?, venues = ?, source_url = ?, announced_listing_at = ?,
+          listing_at = ?, config = ?, base_price = ?, note = ? WHERE id = ?`,
+      )
+      .run(f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, JSON.stringify(f.cfg), f.basePrice, f.note, marketId);
+    this.onEvent('market', { marketId });
+    return marketId;
+  }
+
+  publishMarket(marketId: string) {
+    const m = this.manualRow(marketId);
+    const now = this.clock.now();
+    if (m.status !== 'open') throw new AppError(409, 'not_editable', 'This market is no longer open.');
+    if (m.published === 1) return;
+    if (m.listing_at <= now) throw new AppError(409, 'bad_close_time', 'The prediction close time has passed. Edit it before publishing.');
+    this.db.prepare('UPDATE markets SET published = 1, opened_at = ? WHERE id = ?').run(now, marketId);
+    this.onEvent('market', { marketId });
+    this.log(`manual market published ${marketId}`);
+  }
+
+  /** Pulls a published market back to draft. Only possible while nobody has predicted. */
+  unpublishMarket(marketId: string) {
+    const m = this.manualRow(marketId);
+    if (m.status !== 'open' || m.published === 0) return;
+    if (this.predictions(marketId).length > 0) {
+      throw new AppError(409, 'has_predictions', 'Users have already predicted. Cancel and refund the market instead.');
+    }
+    this.db.prepare('UPDATE markets SET published = 0 WHERE id = ?').run(marketId);
+    this.onEvent('market', { marketId });
+  }
+
+  deleteDraft(marketId: string) {
+    const m = this.manualRow(marketId);
+    if (m.published === 1 || this.predictions(marketId).length > 0) {
+      throw new AppError(409, 'not_a_draft', 'Only unpublished drafts can be deleted. Cancel a published market to refund it.');
+    }
+    this.db.prepare('DELETE FROM markets WHERE id = ?').run(marketId);
+  }
+
+  /** Shows what resolving would do (winning bucket, winners, payouts) without paying anything. */
+  previewResolution(marketId: string, input: ResolveInput) {
+    const { m, plan } = this.planResolution(marketId, input);
+    return this.describeResolution(m, plan);
+  }
+
+  /** Records the admin's result and pays the pool out. Returns user notifications. */
+  resolveManualMarket(marketId: string, input: ResolveInput): { summary: ReturnType<FirstprintService['describeResolution']>; notes: Notification[] } {
+    const { m, plan, rows } = this.planResolution(marketId, input);
+    const now = this.clock.now();
+    const stored = {
+      ...plan.result,
+      manual: { resolvedBy: 'admin', note: plan.note, overridden: plan.overridden, basePrice: plan.base, finalPrice: plan.final },
+    };
+    const dataHash = sha256(JSON.stringify({ marketId, base: plan.base, final: plan.final, bucket: plan.result.winningBucket, note: plan.note, at: now }));
+    const notes = this.commitSettlement(m, rows, stored, dataHash, now);
+    return { summary: this.describeResolution(m, plan, true), notes };
+  }
+
+  private manualRow(marketId: string): MarketRow {
+    const m = this.row(marketId);
+    if (m.mode !== 'manual') throw new AppError(409, 'not_manual', 'This market is settled automatically from exchange data.');
+    return m;
+  }
+
+  private planResolution(marketId: string, input: ResolveInput) {
+    let m = this.manualRow(marketId);
+    // The scheduler locks markets on its next tick; don't make the admin wait for it.
+    if (m.status === 'open' && m.published === 1 && this.clock.now() >= m.listing_at) {
+      this.closeDueMarkets();
+      m = this.manualRow(marketId);
+    }
+    if (m.status === 'open') throw new AppError(409, 'still_open', 'Predictions are still open. Results can be entered after the close time.');
+    if (m.status !== 'locked') throw new AppError(409, 'already_settled', 'This market has already been settled.');
+
+    const cfg = parseConfig(m);
+    const final = Number(input.finalPrice);
+    if (!(final >= 0) || !Number.isFinite(final)) throw new AppError(400, 'bad_price', 'Final price must be a number.');
+    const base = input.basePrice === undefined || input.basePrice === null || input.basePrice === ('' as never) ? (m.base_price ?? 0) : Number(input.basePrice);
+    if (!(base > 0) || !Number.isFinite(base)) throw new AppError(400, 'bad_price', 'Start price must be a number above 0.');
+
+    const ret = returnPct(base, final);
+    const computed = bucketForReturn(ret, cfg.thresholds);
+    let bucket = computed;
+    if (input.winningBucket !== undefined && input.winningBucket !== null && (input.winningBucket as string) !== '') {
+      if (!BUCKETS.includes(input.winningBucket)) throw new AppError(400, 'bad_bucket', 'Choose Crash, Down, Flat, Up, or Moon.');
+      bucket = input.winningBucket;
+    }
+
+    const rows = this.predictions(marketId);
+    const accepted = rows.map((r) => ({ ...toEnginePrediction(r), accepted: r.accepted ?? 0, refund: r.refund ?? 0, weight: r.weight ?? 1 }));
+    const pool = computePayouts(accepted, bucket, cfg);
+    const w = windows(cfg, m.listing_at);
+    const result: SettlementResult = {
+      ...pool,
+      baseline: { start: m.opened_at, end: w.closeAt, price: base, venues: [] },
+      final: { start: w.closeAt, end: w.settleAt, price: final, venues: [] },
+      returnPct: ret,
+      winningBucket: pool.voidReason ? null : bucket,
+    };
+    const note = input.note ? String(input.note).trim().slice(0, 2000) : null;
+    return { m, rows, plan: { base, final, ret, computed, overridden: bucket !== computed, bucket, result, note } };
+  }
+
+  private describeResolution(m: MarketRow, plan: ReturnType<FirstprintService['planResolution']>['plan'], includeAll = false) {
+    const usernames = new Map(
+      as<{ id: string; username: string }[]>(
+        this.db.prepare('SELECT DISTINCT u.id, u.username FROM predictions p JOIN users u ON u.id = p.user_id WHERE p.market_id = ?').all(m.id),
+      ).map((r) => [r.id, r.username]),
+    );
+    const winners = plan.result.payouts
+      .filter((p) => p.payout > 0)
+      .sort((a, b) => b.payout - a.payout)
+      .map((p) => ({ username: usernames.get(p.userId) ?? 'user', bucket: p.bucket, stake: p.accepted, payout: p.payout }));
+    return {
+      marketId: m.id,
+      symbol: m.symbol,
+      basePrice: plan.base,
+      finalPrice: plan.final,
+      returnPct: plan.ret,
+      computedBucket: plan.computed,
+      winningBucket: plan.result.winningBucket,
+      overridden: plan.overridden,
+      voidReason: plan.result.voidReason,
+      pool: plan.result.pool,
+      fee: plan.result.fee,
+      netPool: plan.result.netPool,
+      winnerCount: winners.length,
+      totalPaid: winners.reduce((s, w) => s + w.payout, 0),
+      winners: includeAll ? winners : winners.slice(0, 50),
+      resolved: includeAll,
+    };
+  }
+
   // --- Predictions -----------------------------------------------------------
 
   placePrediction(marketId: string, userId: string, bucket: Bucket, stake: number) {
@@ -586,6 +866,7 @@ export class FirstprintService {
       const cfg = parseConfig(m);
       const { closeAt } = windows(cfg, m.listing_at);
       const now = this.clock.now();
+      if (m.published === 0) throw new AppError(404, 'market_not_found', 'Market not found.');
       if (m.status !== 'open' || now >= closeAt) {
         throw new AppError(409, 'market_closed', 'Predictions for this market are closed.');
       }
@@ -623,7 +904,7 @@ export class FirstprintService {
 
   quote(marketId: string, bucket: Bucket, stake: number) {
     if (!BUCKETS.includes(bucket)) throw new AppError(400, 'bad_bucket', 'Choose Crash, Down, Flat, Up, or Moon.');
-    const m = this.row(marketId);
+    const m = this.publicRow(marketId);
     const cfg = parseConfig(m);
     const { closeAt } = windows(cfg, m.listing_at);
     const preds = this.predictions(marketId).map(toEnginePrediction);
@@ -637,7 +918,7 @@ export class FirstprintService {
     const now = this.clock.now();
     const nowFloor = Math.floor(now / MINUTE) * MINUTE;
     const markets = as<MarketRow[]>(
-      this.db.prepare("SELECT * FROM markets WHERE status IN ('open', 'locked') AND listing_at <= ?").all(now),
+      this.db.prepare("SELECT * FROM markets WHERE mode = 'auto' AND status IN ('open', 'locked') AND listing_at <= ?").all(now),
     );
     for (const m of markets) {
       const cfg = parseConfig(m);
@@ -670,7 +951,7 @@ export class FirstprintService {
   closeDueMarkets(): string[] {
     const now = this.clock.now();
     const closed: string[] = [];
-    const markets = as<MarketRow[]>(this.db.prepare("SELECT * FROM markets WHERE status = 'open'").all());
+    const markets = as<MarketRow[]>(this.db.prepare("SELECT * FROM markets WHERE status = 'open' AND published = 1").all());
     for (const m of markets) {
       const cfg = parseConfig(m);
       const w = windows(cfg, m.listing_at);
@@ -702,7 +983,7 @@ export class FirstprintService {
   settleDueMarkets(): Notification[] {
     const now = this.clock.now();
     const notes: Notification[] = [];
-    const markets = as<MarketRow[]>(this.db.prepare("SELECT * FROM markets WHERE status = 'locked'").all());
+    const markets = as<MarketRow[]>(this.db.prepare("SELECT * FROM markets WHERE mode = 'auto' AND status = 'locked'").all());
 
     for (const m of markets) {
       const cfg = parseConfig(m);
@@ -729,46 +1010,52 @@ export class FirstprintService {
       };
       const result = settleMarket(input);
       const dataHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
-      const status = result.voidReason ? 'void' : 'resolved';
-
-      tx(this.db, () => {
-        const update = this.db.prepare('UPDATE predictions SET payout = ?, refund = ? WHERE id = ?');
-        const perUser = new Map<string, Notification>();
-        for (const p of result.payouts) {
-          const row = rows.find((r) => r.id === p.predictionId)!;
-          const alreadyRefunded = row.refund ?? 0;
-          const extraRefund = p.refund - alreadyRefunded;
-          update.run(p.payout, p.refund, p.predictionId);
-          if (extraRefund > 0) this.credit(p.userId, extraRefund, 'refund', p.predictionId);
-          if (p.payout > 0) this.credit(p.userId, p.payout, 'payout', p.predictionId);
-
-          const n = perUser.get(p.userId) ?? {
-            userId: p.userId,
-            marketId: m.id,
-            symbol: m.symbol,
-            status,
-            voidReason: result.voidReason,
-            winningBucket: result.winningBucket,
-            staked: 0,
-            payout: 0,
-            refund: 0,
-          };
-          n.staked += row.stake;
-          n.payout += p.payout;
-          n.refund += p.refund;
-          perUser.set(p.userId, n);
-        }
-        this.db
-          .prepare('INSERT INTO settlements (market_id, result, data_hash, settled_at) VALUES (?, ?, ?, ?)')
-          .run(m.id, JSON.stringify(result), dataHash, now);
-        this.db.prepare('UPDATE markets SET status = ? WHERE id = ?').run(status, m.id);
-
-        for (const n of perUser.values()) notes.push(n);
-      });
-      this.livePrices.delete(m.id);
-      this.onEvent('market', { marketId: m.id });
-      this.log(`market ${status} ${m.id}${result.voidReason ? ` (${result.voidReason})` : ` → ${result.winningBucket}`}`);
+      notes.push(...this.commitSettlement(m, rows, result, dataHash, now));
     }
+    return notes;
+  }
+
+
+  /** Pays out (or refunds) a settled market, stores the audit record, and returns per-user notifications. */
+  private commitSettlement(m: MarketRow, rows: PredictionRow[], result: SettlementResult & Record<string, unknown>, dataHash: string, now: number): Notification[] {
+    const status = result.voidReason ? 'void' : 'resolved';
+    const notes: Notification[] = [];
+    tx(this.db, () => {
+      const update = this.db.prepare('UPDATE predictions SET payout = ?, refund = ? WHERE id = ?');
+      const perUser = new Map<string, Notification>();
+      for (const p of result.payouts) {
+        const row = rows.find((r) => r.id === p.predictionId)!;
+        const alreadyRefunded = row.refund ?? 0;
+        const extraRefund = p.refund - alreadyRefunded;
+        update.run(p.payout, p.refund, p.predictionId);
+        if (extraRefund > 0) this.credit(p.userId, extraRefund, 'refund', p.predictionId);
+        if (p.payout > 0) this.credit(p.userId, p.payout, 'payout', p.predictionId);
+
+        const n = perUser.get(p.userId) ?? {
+          userId: p.userId,
+          marketId: m.id,
+          symbol: m.symbol,
+          status,
+          voidReason: result.voidReason,
+          winningBucket: result.winningBucket,
+          staked: 0,
+          payout: 0,
+          refund: 0,
+        };
+        n.staked += row.stake;
+        n.payout += p.payout;
+        n.refund += p.refund;
+        perUser.set(p.userId, n);
+      }
+      this.db
+        .prepare('INSERT INTO settlements (market_id, result, data_hash, settled_at) VALUES (?, ?, ?, ?)')
+        .run(m.id, JSON.stringify(result), dataHash, now);
+      this.db.prepare('UPDATE markets SET status = ? WHERE id = ?').run(status, m.id);
+      for (const n of perUser.values()) notes.push(n);
+    });
+    this.livePrices.delete(m.id);
+    this.onEvent('market', { marketId: m.id });
+    this.log(`market ${status} ${m.id}${result.voidReason ? ` (${result.voidReason})` : ` → ${result.winningBucket}`}`);
     return notes;
   }
 
@@ -871,7 +1158,7 @@ export class FirstprintService {
   tradingMarkets() {
     const now = this.clock.now();
     return as<{ id: string; venues: string }[]>(
-      this.db.prepare("SELECT id, venues FROM markets WHERE status IN ('open', 'locked') AND listing_at <= ?").all(now),
+      this.db.prepare("SELECT id, venues FROM markets WHERE mode = 'auto' AND status IN ('open', 'locked') AND listing_at <= ?").all(now),
     ).map((m) => ({ id: m.id, venues: JSON.parse(m.venues) as VenueRef[] }));
   }
 
@@ -887,12 +1174,15 @@ export class FirstprintService {
             ? "status IN ('resolved', 'void')"
             : '1 = 1';
     const order = filter === 'settled' ? 'listing_at DESC' : 'listing_at ASC';
-    const rows = as<MarketRow[]>(this.db.prepare(`SELECT * FROM markets WHERE ${where} ORDER BY ${order} LIMIT 50`).all());
+    const rows = as<MarketRow[]>(this.db.prepare(`SELECT * FROM markets WHERE published = 1 AND ${where} ORDER BY ${order} LIMIT 50`).all());
     return rows.map((r) => this.view(r, userId));
   }
 
-  getMarket(id: string, userId?: string) {
-    return this.view(this.row(id), userId);
+  /** Public read. Unpublished drafts are only visible to the admin panel (asAdmin). */
+  getMarket(id: string, userId?: string, asAdmin = false) {
+    const m = this.row(id);
+    if (m.published === 0 && !asAdmin) throw new AppError(404, 'market_not_found', 'Market not found.');
+    return this.view(m, userId);
   }
 
   settlement(id: string) {
@@ -905,7 +1195,7 @@ export class FirstprintService {
 
   /** Downsampled price series for charts. */
   chart(id: string, points = 120) {
-    const m = this.row(id);
+    const m = this.publicRow(id);
     const byVenue = this.candlesByVenue(m.id);
     const primary = Object.entries(byVenue).sort(
       (a, b) => b[1].reduce((s, c) => s + c.volume, 0) - a[1].reduce((s, c) => s + c.volume, 0),
@@ -924,7 +1214,7 @@ export class FirstprintService {
 
   /** Recent predictions on a market, newest first. */
   activity(marketId: string, limit = 30) {
-    this.row(marketId);
+    this.publicRow(marketId);
     const rows = as<{ username: string; bucket: Bucket; stake: number; placed_at: number }[]>(
       this.db
         .prepare(
@@ -992,6 +1282,12 @@ export class FirstprintService {
 
   // --- Helpers ------------------------------------------------------------------
 
+  private publicRow(id: string): MarketRow {
+    const m = this.row(id);
+    if (m.published === 0) throw new AppError(404, 'market_not_found', 'Market not found.');
+    return m;
+  }
+
   private row(id: string): MarketRow {
     const m = as<MarketRow | undefined>(this.db.prepare('SELECT * FROM markets WHERE id = ?').get(id));
     if (!m) throw new AppError(404, 'market_not_found', 'Market not found.');
@@ -1015,6 +1311,18 @@ export class FirstprintService {
     return out;
   }
 
+  private manualResultExtras(marketId: string, s: SettlementResult & { manual?: { note: string | null } }) {
+    const winners = as<{ username: string; bucket: Bucket; accepted: number; payout: number }[]>(
+      this.db
+        .prepare(
+          `SELECT u.username, p.bucket, p.accepted, p.payout FROM predictions p
+           JOIN users u ON u.id = p.user_id WHERE p.market_id = ? AND p.payout > 0 ORDER BY p.payout DESC LIMIT 25`,
+        )
+        .all(marketId),
+    );
+    return { note: s.manual?.note ?? null, winners: winners.map((w) => ({ username: w.username, bucket: w.bucket, stake: w.accepted, payout: w.payout })) };
+  }
+
   private view(m: MarketRow, userId?: string) {
     const cfg = parseConfig(m);
     const w = windows(cfg, m.listing_at);
@@ -1030,8 +1338,16 @@ export class FirstprintService {
     }
     const pool = Object.values(totals).reduce((s, n) => s + n, 0);
 
-    const phase =
-      m.status === 'open'
+    const manual = m.mode === 'manual';
+    const phase = manual
+      ? m.published === 0
+        ? 'draft'
+        : m.status === 'open'
+          ? 'baseline'
+          : m.status === 'locked'
+            ? 'awaiting_result'
+            : m.status
+      : m.status === 'open'
         ? now < m.listing_at
           ? 'pre_listing'
           : 'baseline'
@@ -1040,7 +1356,7 @@ export class FirstprintService {
           : m.status;
 
     let live: null | { basePrice: number | null; lastPrice: number | null; returnPct: number | null; projectedBucket: Bucket | null; provisional: boolean } = null;
-    if ((m.status === 'open' || m.status === 'locked') && now >= m.listing_at) {
+    if (!manual && (m.status === 'open' || m.status === 'locked') && now >= m.listing_at) {
       const byVenue = this.candlesByVenue(m.id);
       const baseEnd = Math.min(w.baseline.end, Math.floor(now / MINUTE) * MINUTE);
       const base = venueMedian(
@@ -1080,6 +1396,7 @@ export class FirstprintService {
         finalPrice: s.final.price,
         pool: s.pool,
         fee: s.fee,
+        ...(manual ? this.manualResultExtras(m.id, s as SettlementResult & { manual?: { note: string | null } }) : {}),
       };
     }
 
@@ -1100,6 +1417,10 @@ export class FirstprintService {
 
     return {
       id: m.id,
+      mode: m.mode ?? 'auto',
+      published: m.published !== 0,
+      basePrice: m.base_price,
+      note: m.note,
       kind: m.kind ?? 'listing',
       symbol: m.symbol,
       name: m.name,

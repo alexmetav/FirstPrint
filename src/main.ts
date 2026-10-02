@@ -26,8 +26,8 @@ if (cfg.sim) {
 }
 
 const service = new FirstprintService(db, systemClock, venues, log);
-const live = new LiveFeed(service);
-const tracked = venues.filter((v) => cfg.trackVenues.includes(v.id));
+const live = new LiveFeed(service);  // still serves the browser event stream; prices are only polled when not manual-only
+const tracked = cfg.manualOnly ? [] : venues.filter((v) => cfg.trackVenues.includes(v.id));
 const tracker = tracked.length ? new ListingTracker(service, tracked, { autoCreate: cfg.autoCreateMarkets }) : null;
 
 // Settlement notifications are logged; plug in email or web push here.
@@ -36,7 +36,7 @@ const scheduler = new Scheduler(
   async (notes) => {
     for (const n of notes) log(`notify ${n.userId}: ${n.symbol} ${n.status} payout=${n.payout} refund=${n.refund}`);
   },
-  { tickMs: cfg.tickMs, liveMs: cfg.liveMs, trackEveryMs: cfg.trackEveryMs, tracker, live },
+  { tickMs: cfg.tickMs, liveMs: cfg.liveMs, trackEveryMs: cfg.trackEveryMs, tracker, live: cfg.manualOnly ? null : live },
 );
 
 const server = createApiServer({
@@ -44,6 +44,7 @@ const server = createApiServer({
   scheduler,
   live,
   adminKey: cfg.adminKey,
+  manualOnly: cfg.manualOnly,
   secureCookies: cfg.secureCookies,
   publicUrl: cfg.publicUrl,
   solanaChain: cfg.solanaChain,

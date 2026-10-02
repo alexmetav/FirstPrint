@@ -92,6 +92,15 @@ export function createAdminApi(key, baseUrl = '') {
     approve: (id, body) => post(`/api/admin/detected/${id}/approve`, body),
     ignore: (id) => post(`/api/admin/detected/${id}/ignore`),
     track: () => post('/api/admin/track'),
+    exchanges: () => request('/api/admin/exchanges'),
+    setExchange: (id, enabled) => post(`/api/admin/exchanges/${encodeURIComponent(id)}`, { enabled }),
+    createManual: (body) => post('/api/admin/manual-markets', body),
+    updateManual: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}`, body),
+    publish: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/publish`),
+    unpublish: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/unpublish`),
+    deleteDraft: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/delete`),
+    previewResult: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/preview`, body),
+    resolve: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/resolve`, body),
   };
 }
 
