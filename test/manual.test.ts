@@ -293,3 +293,16 @@ test('HTTP admin: exchanges → draft → publish → predict → result', async
     server.close();
   }
 });
+
+test('editing a draft is not broadcast to visitors; editing a published market is', () => {
+  const { service } = setup();
+  const events: unknown[] = [];
+  service.onEvent = (type, data) => events.push([type, data]);
+  const id = service.createManualMarket(draft());
+  service.updateManualMarket(id, { name: 'Renamed draft' });
+  assert.deepEqual(events, [], 'drafts stay private');
+  service.publishMarket(id);
+  events.length = 0;
+  service.updateManualMarket(id, { name: 'Renamed live' });
+  assert.deepEqual(events, [['market', { marketId: id }]]);
+});

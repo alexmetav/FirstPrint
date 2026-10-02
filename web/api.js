@@ -63,7 +63,6 @@ export function createApi(baseUrl = '') {
     demo: false,
     config: () => request('/api/config'),
     me: () => request('/api/me'),
-    signup: (body) => post('/api/auth/signup', body),
     login: (body) => post('/api/auth/login', body),
     logout: () => post('/api/auth/logout'),
     claimDaily: () => post('/api/me/claim-daily'),

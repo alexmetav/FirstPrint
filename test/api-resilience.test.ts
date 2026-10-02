@@ -27,3 +27,11 @@ test('API rejects bad inputs and cross-origin writes without crashing', async (t
   assert.equal((await fetch(base + '/api/health')).status, 200);
   assert.equal((await fetch(base + '/api/listings/detected')).status, 200);
 });
+
+test('the Vercel site sends the same Content-Security-Policy as the app server', async () => {
+  const { CSP } = await import('../src/api/server.ts');
+  const { readFileSync } = await import('node:fs');
+  const vercel = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+  const sent = vercel.headers.flatMap((h: { headers: { key: string; value: string }[] }) => h.headers).find((h: { key: string }) => h.key === 'Content-Security-Policy');
+  assert.equal(sent?.value, CSP);
+});

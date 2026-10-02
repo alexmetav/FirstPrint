@@ -50,6 +50,25 @@ interface Ctx {
   requireAdmin: () => void;
 }
 
+/**
+ * No inline scripts and no third-party scripts except Google sign-in, so an injected tag can't run
+ * (the admin key sits in sessionStorage). Inline styles stay allowed: the UI sets CSS variables in style="".
+ * Images may come from any https host (exchange and token logos). Keep in step with vercel.json.
+ */
+export const CSP = [
+  "default-src 'self'",
+  "script-src 'self' https://accounts.google.com/gsi/client",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: https:",
+  "connect-src 'self' https://accounts.google.com/gsi/",
+  'frame-src https://accounts.google.com/gsi/',
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -77,6 +96,8 @@ export function createApiServer(opts: ServerOptions): Server {
     const chain = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
     return chain.length >= proxyHops ? chain[chain.length - proxyHops] : direct;
   }
+  /** The rate-limit key for a visitor: their IPv4 address, or their IPv6 /64 (one home or server usually gets a whole /64). */
+  const visitor = (req: IncomingMessage) => ipBucket(clientIp(req));
   const { service } = opts;
   const marketData = new MarketData();
   const routes: { method: string; pattern: RegExp; keys: string[]; handler: Handler }[] = [];
@@ -123,12 +144,23 @@ export function createApiServer(opts: ServerOptions): Server {
   // --- Rate limiting (per user or IP, writes only) -----------------------------
 
   const hits = new Map<string, { count: number; reset: number }>();
+  /**
+   * Keeps the table bounded without wiping everyone's counters at once (which would let a flood of
+   * new keys reset every limit): expired entries go first, then the oldest ones.
+   */
+  function pruneHits(now: number) {
+    for (const [k, h] of hits) if (h.reset < now) hits.delete(k);
+    for (const k of hits.keys()) {
+      if (hits.size <= 40_000) break;
+      hits.delete(k);
+    }
+  }
   function rateLimit(key: string, limit = 30, windowMs = 10_000) {
     const now = Date.now();
     const h = hits.get(key);
     if (!h || h.reset < now) {
       hits.set(key, { count: 1, reset: now + windowMs });
-      if (hits.size > 50_000) hits.clear();
+      if (hits.size > 50_000) pruneHits(now);
       return;
     }
     if (++h.count > limit) throw new AppError(429, 'rate_limited', 'Too many requests. Try again in a few seconds.');
@@ -166,7 +198,7 @@ export function createApiServer(opts: ServerOptions): Server {
   route('POST', '/api/auth/email/start', async ({ req, body }) => {
     if (!opts.mailer) throw new AppError(503, 'email_off', 'Email sign-in isn’t set up yet. Use Google or a wallet.');
     const b = await body();
-    rateLimit(`emailcode:${clientIp(req)}`, 10, 10 * 60_000);
+    rateLimit(`emailcode:${visitor(req)}`, 10, 10 * 60_000);
     const email = String(b.email ?? '').trim().toLowerCase();
     rateLimit(`emailcode:${email}`, 5, 60 * 60_000);
     const { code, expiresAt } = service.startEmailLogin(email);
@@ -181,7 +213,8 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('POST', '/api/auth/email/verify', async ({ req, res, body }) => {
     const b = await body();
-    rateLimit(`emailverify:${clientIp(req)}`, 20, 10 * 60_000);
+    rateLimit(`emailverify:${visitor(req)}`, 20, 10 * 60_000);
+    rateLimit(`emailverify:${String(b.email ?? '').trim().toLowerCase()}`, 10, 10 * 60_000);
     const { user, created } = service.verifyEmailCode(String(b.email ?? ''), String(b.code ?? ''));
     const session = service.createSession(user.id);
     setSessionCookie(res, session.token, SESSION_MS);
@@ -190,7 +223,7 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('POST', '/api/auth/google', async ({ req, res, body }) => {
     if (!opts.googleClientId) throw new AppError(503, 'google_off', 'Google sign-in isn’t set up yet.');
-    rateLimit(`google:${clientIp(req)}`, 20, 10 * 60_000);
+    rateLimit(`google:${visitor(req)}`, 20, 10 * 60_000);
     const b = await body();
     const who = await verifyGoogleIdToken(String(b.credential ?? ''), opts.googleClientId, opts.googleJwks ?? (googleJwks ??= cachedGoogleJwks()));
     if (!who) throw new AppError(401, 'bad_google_token', 'Google sign-in failed. Try again.');
@@ -209,12 +242,12 @@ export function createApiServer(opts: ServerOptions): Server {
   }
 
   route('GET', '/api/auth/wallet/challenge', ({ req, url }) => {
-    rateLimit(`challenge:${clientIp(req)}`, 20, 60_000);
+    rateLimit(`challenge:${visitor(req)}`, 20, 60_000);
     return service.walletChallenge(String(url.searchParams.get('address') ?? ''), siteFor(req));
   });
 
   route('POST', '/api/auth/wallet/verify', async ({ req, res, body }) => {
-    rateLimit(`wallet:${clientIp(req)}`, 20, 60_000);
+    rateLimit(`wallet:${visitor(req)}`, 20, 60_000);
     const b = await body();
     const { user, created } = service.walletSignIn({
       address: String(b.address ?? ''),
@@ -227,22 +260,9 @@ export function createApiServer(opts: ServerOptions): Server {
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created, token: session.token };
   });
 
-  route('POST', '/api/auth/signup', async ({ req, res, body }) => {
-    rateLimit(`signup:${clientIp(req)}`, 5, 60_000);
-    const b = await body();
-    const user = await service.createUser({
-      email: String(b.email ?? ''),
-      username: String(b.username ?? ''),
-      password: String(b.password ?? ''),
-    });
-    const session = service.createSession(user.id);
-    setSessionCookie(res, session.token, SESSION_MS);
-    return { user: publicUser(user, service.clock.now(), []), token: session.token };
-  });
-
   route('POST', '/api/auth/login', async ({ req, res, body }) => {
     const b = await body();
-    rateLimit(`login:${clientIp(req)}`, 10, 60_000);
+    rateLimit(`login:${visitor(req)}`, 10, 60_000);
     rateLimit(`login:${String(b.email ?? '').toLowerCase()}`, 10, 10 * 60_000);
     const user = await service.authenticate(String(b.email ?? ''), String(b.password ?? ''));
     const session = service.createSession(user.id);
@@ -592,6 +612,8 @@ export function createApiServer(opts: ServerOptions): Server {
     res.setHeader('referrer-policy', 'same-origin');
     res.setHeader('x-frame-options', 'DENY');
     res.setHeader('permissions-policy', 'camera=(), geolocation=(), microphone=(), payment=(), usb=()');
+    res.setHeader('content-security-policy', CSP);
+    if (opts.secureCookies) res.setHeader('strict-transport-security', 'max-age=63072000');
 
     if (!url.pathname.startsWith('/api/')) {
       if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method_not_allowed' });
@@ -627,7 +649,7 @@ export function createApiServer(opts: ServerOptions): Server {
         return u;
       },
       requireAdmin: () => {
-        rateLimit(`admin:${clientIp(req)}`, 30, 60_000);
+        rateLimit(`admin:${visitor(req)}`, 30, 60_000);
         const given = String(req.headers['x-admin-key'] ?? '');
         const ok =
           opts.adminKey &&
@@ -638,7 +660,7 @@ export function createApiServer(opts: ServerOptions): Server {
     };
 
     try {
-      rateLimit(`ip:${clientIp(req)}`, 300);
+      rateLimit(`ip:${visitor(req)}`, 300);
       if (req.method === 'POST' && req.headers.origin) {
         const expected = opts.publicUrl ? new URL(opts.publicUrl).origin : `http://${req.headers.host}`;
         if (req.headers.origin !== expected) throw new AppError(403, 'bad_origin', 'Request origin is not allowed.');
@@ -654,6 +676,19 @@ export function createApiServer(opts: ServerOptions): Server {
       send(res, 500, { error: 'server_error', message: 'Something went wrong on our side. Try again.' });
     }
   });
+}
+
+/** Groups IPv6 addresses by /64 for rate limits; IPv4 (including IPv4-mapped IPv6) is used as is. */
+export function ipBucket(ip: string): string {
+  if (!ip.includes(':')) return ip;
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped) return mapped[1];
+  const [head, tail = ''] = ip.split('%')[0].toLowerCase().split('::');
+  const left = head ? head.split(':') : [];
+  const right = ip.includes('::') && tail ? tail.split(':') : [];
+  const groups = ip.includes('::') ? [...left, ...Array(Math.max(0, 8 - left.length - right.length)).fill('0'), ...right] : left;
+  if (groups.length !== 8 || groups.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return ip;
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':')}::/64`;
 }
 
 function send(res: ServerResponse, status: number, body: unknown) {

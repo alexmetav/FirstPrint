@@ -4,12 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Firstprint: predict the first 72 hours of new token listings</title>
-    <meta name="description" content="Firstprint tracks new token listings across the biggest crypto exchanges and lets you predict where the price lands 72 hours later. Explore live exchange data today; predictions are coming soon." />
+    <meta name="description" content="Explore live crypto exchange data and test Firstprint predictions with free practice points. Wallet-based persistent points are coming next." />
     <meta name="theme-color" content="#07090f" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Firstprint: predict the first 72 hours of new listings" />
-    <meta property="og:description" content="Track new listings across major exchanges. Predictions are coming soon." />
-    <meta property="og:image" content="og.png" />
+    <meta property="og:description" content="Track major exchanges and try prediction markets with free practice points." />
+    <meta property="og:image" content="https://www.firstprint.fun/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="canonical" href="./" id="canonical" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%20role%3D%22img%22%20aria-label%3D%22Firstprint%22%3E%0A%20%20%3Ctitle%3EFirstprint%3C%2Ftitle%3E%0A%20%20%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%2307090f%22%2F%3E%0A%20%20%3Crect%20x%3D%2212%22%20y%3D%227.2%22%20width%3D%2240%22%20height%3D%226.4%22%20rx%3D%223.20%22%20fill%3D%22%23ffc53d%22%2F%3E%0A%20%20%3Crect%20x%3D%2216.4%22%20y%3D%2218.0%22%20width%3D%2231.2%22%20height%3D%226.4%22%20rx%3D%223.20%22%20fill%3D%22%2335e0a1%22%2F%3E%0A%20%20%3Crect%20x%3D%2220.8%22%20y%3D%2228.8%22%20width%3D%2222.4%22%20height%3D%226.4%22%20rx%3D%223.20%22%20fill%3D%22%23a6b0c4%22%2F%3E%0A%20%20%3Crect%20x%3D%2216.4%22%20y%3D%2239.6%22%20width%3D%2231.2%22%20height%3D%226.4%22%20rx%3D%223.20%22%20fill%3D%22%23ff8a5c%22%2F%3E%0A%20%20%3Crect%20x%3D%2212%22%20y%3D%2250.4%22%20width%3D%2240%22%20height%3D%226.4%22%20rx%3D%223.20%22%20fill%3D%22%23ff4d6a%22%2F%3E%0A%3C%2Fsvg%3E%0A" type="image/svg+xml" />
@@ -18,8 +18,7 @@
     <meta name="apple-mobile-web-app-title" content="Firstprint" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wdth,wght@75..100,600..800&display=swap" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wdth,wght@75..100,600..800&display=swap" media="print" onload="this.media='all'" />
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wdth,wght@75..100,600..800&display=swap" /></noscript>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wdth,wght@75..100,600..800&display=swap" />
     <style>
 /* Firstprint
    Near-black canvas, one accent scale (Crash → Moon), generous space.
@@ -839,17 +838,38 @@ body[data-view='landing'] .app {
   color: var(--muted);
   font-size: 12.5px;
 }
-.monogram {
+.ex-logo {
   flex: none;
+  position: relative;
+  display: grid;
+  place-items: center;
   width: 38px;
   height: 38px;
   border-radius: 11px;
+  overflow: hidden;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--line) 58%, transparent);
+}
+.ex-logo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 5px;
+  object-fit: contain;
+  background: var(--surface-2);
+}
+.ex-logo .monogram {
+  width: 100%;
+  height: 100%;
   display: grid;
   place-items: center;
   font-family: var(--display);
   font-weight: 800;
   font-size: 16px;
-  background: var(--surface-2);
+}
+.ex-logo img:not([hidden]) + .monogram {
+  display: none;
 }
 
 /* Roadmap */
@@ -1288,7 +1308,7 @@ body[data-view='landing'] .app {
   gap: 20px;
   flex-wrap: wrap;
 }
-.detail-head .monogram {
+.detail-head .ex-logo {
   width: 66px;
   height: 66px;
   border-radius: 18px;
@@ -1582,8 +1602,16 @@ body[data-view='landing'] .app {
     width: 152px;
     padding: 12px;
   }
-  .ex-name .monogram {
-    display: none;
+  .ex-name .ex-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+  }
+  .ex-name .ex-logo img {
+    padding: 4px;
+  }
+  .ex-name .ex-logo .monogram {
+    font-size: 13px;
   }
   .hide-sm {
     display: none;
@@ -1934,8 +1962,6 @@ window.FIRSTPRINT_CONFIG = {
   },
   // Optional waitlist form (Tally, Typeform, Google Forms). Adds "Join the waitlist" buttons.
   waitlistUrl: '',
-  // Optional CoinGecko demo API key for higher rate limits (free at coingecko.com/en/api)
-  coingeckoApiKey: '',
 };
 
 </script>
@@ -1962,11 +1988,11 @@ window.FIRSTPRINT_CONFIG = {
           <nav class="nav-links" aria-label="Page sections">
             <a href="#how">How it works</a>
             <a href="#outcomes">Outcomes</a>
-            <a href="#try">Try it</a>
+            <a href="/play/">Practice beta</a>
             <a href="#exchanges">Exchanges</a>
             <a href="#roadmap">Roadmap</a>
           </nav>
-          <a class="btn btn-solid magnetic" href="#/app">Launch app</a>
+          <a class="btn btn-solid magnetic" href="/play/">Try practice beta</a>
         </div>
       </header>
 
@@ -1976,17 +2002,18 @@ window.FIRSTPRINT_CONFIG = {
           <div class="aurora" aria-hidden="true"><span></span><span></span><span></span></div>
           <div class="wrap hero-inner">
             <div class="hero-copy">
-              <p class="eyebrow reveal"><span class="dot-live" aria-hidden="true"></span>Live exchange data. Predictions coming soon.</p>
+              <p class="eyebrow reveal"><span class="dot-live" aria-hidden="true"></span>Live data preview · Free points only</p>
               <h1 class="hero-title">
                 <span class="line"><span>Predict the</span></span>
                 <span class="line"><span>first <em>72 hours</em></span></span>
                 <span class="line"><span>of every listing.</span></span>
               </h1>
-              <p class="lede reveal" data-delay="220">A new token lists somewhere almost every day, and the first three days decide its story. Firstprint tracks those listings and lets you call where the price lands.</p>
+              <p class="lede reveal" data-delay="220">Follow the first 72 hours of new exchange listings with transparent market rules, live prices, and practice predictions using free points.</p>
               <div class="hero-actions reveal" data-delay="320">
-                <a class="btn btn-solid btn-lg magnetic" href="#/app">Launch app</a>
-                <a class="btn btn-lg magnetic" href="#how">How it works</a>
+                <a class="btn btn-solid btn-lg magnetic" href="/play/">Try practice predictions</a>
+                <a class="btn btn-lg magnetic" href="#/app">Explore live data</a>
               </div>
+              <p class="try-note reveal" data-delay="380">Preview mode: Firstprint uses free points only. No wallet transaction or real funds are needed.</p>
             </div>
 
             <figure class="hero-market reveal" data-delay="180" aria-label="Example of a Firstprint market">
@@ -2145,7 +2172,7 @@ window.FIRSTPRINT_CONFIG = {
             <ol class="roadmap">
               <li class="is-live reveal"><span class="status">Live now</span><h3>Website and exchange explorer</h3><p>Live 24-hour volume, trust scores, and top pairs for the largest exchanges.</p></li>
               <li class="is-next reveal" data-delay="60"><span class="status">Next</span><h3>Listing radar</h3><p>New listings found automatically from announcements and new trading pairs, with trading start times.</p></li>
-              <li class="reveal" data-delay="120"><span class="status">Planned</span><h3>Predictions with free points</h3><p>Sign in with a Solana wallet, get free points, and predict on every confirmed listing.</p></li>
+              <li class="is-live reveal" data-delay="120"><span class="status">Practice beta live</span><h3>Predictions with free points</h3><p>Test the full prediction flow with browser-only practice points. Wallet-based persistent points are coming next.</p></li>
               <li class="reveal" data-delay="180"><span class="status">Planned</span><h3>Leaderboards and seasons</h3><p>Weekly rankings, public track records, and community leagues.</p></li>
               <li class="reveal" data-delay="240"><span class="status">Later</span><h3>On-chain pools on Solana</h3><p>Transparent pools on Solana, only after an independent security audit and legal review.</p></li>
             </ol>
@@ -2157,7 +2184,7 @@ window.FIRSTPRINT_CONFIG = {
           <div class="wrap">
             <div class="section-head"><p class="eyebrow reveal">Questions</p><h2 class="reveal" data-delay="60">Good to know.</h2></div>
             <div class="faq-list reveal" data-delay="100">
-              <details><summary>When can I start predicting?</summary><p>Predictions are coming soon. The exchange explorer is live today and the listing radar is next. Follow our updates to hear the moment predictions open.</p></details>
+              <details><summary>When can I start predicting?</summary><p>The practice beta is live now with free browser-only points. Wallet sign-in and persistent points will open after the database beta passes testing.</p></details>
               <details><summary>Does it cost anything?</summary><p>No. Predictions will use free points that have no cash value.</p></details>
               <details><summary>Do I need a crypto wallet?</summary><p>You’ll sign in with a Solana wallet such as Phantom, Solflare, or Backpack. Signing in only signs a message. It never sends a transaction or costs fees.</p></details>
               <details><summary>Which exchanges are covered?</summary><p>The explorer shows Binance, Coinbase, OKX, Bybit, Upbit, Bitget, Gate, KuCoin, MEXC, Kraken, HTX, Crypto.com, and Bitfinex. Listing tracking starts with Binance, MEXC, Bybit, OKX, Gate, Bitget, and KuCoin.</p></details>
@@ -2173,7 +2200,8 @@ window.FIRSTPRINT_CONFIG = {
           <div class="wrap cta-inner">
             <h2 class="reveal">See which exchanges<br />are moving right now.</h2>
             <div class="hero-actions reveal" data-delay="100">
-              <a class="btn btn-solid btn-lg magnetic" href="#/app">Launch app</a>
+              <a class="btn btn-solid btn-lg magnetic" href="/play/">Try practice predictions</a>
+              <a class="btn btn-lg magnetic" href="#/app">Explore live data</a>
               <a class="btn btn-lg magnetic" data-config="waitlist" hidden>Join the waitlist</a>
             </div>
           </div>
@@ -2192,7 +2220,7 @@ window.FIRSTPRINT_CONFIG = {
         </div>
         <nav class="footer-links" aria-label="Footer">
           <a href="#/app/exchanges">Exchanges</a>
-          <a href="#/app/predictions">Predictions</a>
+          <a href="/play/">Practice predictions</a>
           <a href="#roadmap">Roadmap</a>
           <a data-config="x" hidden>X</a>
           <a data-config="telegram" hidden>Telegram</a>
@@ -2207,19 +2235,19 @@ window.FIRSTPRINT_CONFIG = {
 // used when live data can't load. `radar` = listing tracking supported by Firstprint's tracker.
 
 const EXCHANGES = [
-  { id: 'binance', cg: 'binance', name: 'Binance', founded: 2017, url: 'https://www.binance.com', radar: ['Announcements', 'New trading pairs'] },
-  { id: 'coinbase', cg: 'gdax', name: 'Coinbase Exchange', founded: 2012, url: 'https://www.coinbase.com', radar: [] },
-  { id: 'okx', cg: 'okex', name: 'OKX', founded: 2017, url: 'https://www.okx.com', radar: ['Announcements', 'New trading pairs', 'Listing times'] },
-  { id: 'bybit', cg: 'bybit_spot', name: 'Bybit', founded: 2018, url: 'https://www.bybit.com', radar: ['Announcements', 'New trading pairs'] },
-  { id: 'upbit', cg: 'upbit', name: 'Upbit', founded: 2017, url: 'https://upbit.com', radar: [] },
-  { id: 'bitget', cg: 'bitget', name: 'Bitget', founded: 2018, url: 'https://www.bitget.com', radar: ['Announcements', 'New trading pairs'] },
-  { id: 'gate', cg: 'gate', name: 'Gate', founded: 2013, url: 'https://www.gate.com', radar: ['New trading pairs', 'Listing times'] },
-  { id: 'kucoin', cg: 'kucoin', name: 'KuCoin', founded: 2017, url: 'https://www.kucoin.com', radar: ['Announcements', 'New trading pairs'] },
-  { id: 'mexc', cg: 'mxc', name: 'MEXC', founded: 2018, url: 'https://www.mexc.com', radar: ['New trading pairs'] },
-  { id: 'kraken', cg: 'kraken', name: 'Kraken', founded: 2011, url: 'https://www.kraken.com', radar: [] },
-  { id: 'htx', cg: 'huobi', name: 'HTX', founded: 2013, url: 'https://www.htx.com', radar: [] },
-  { id: 'cryptocom', cg: 'crypto_com', name: 'Crypto.com Exchange', founded: 2016, url: 'https://crypto.com/exchange', radar: [] },
-  { id: 'bitfinex', cg: 'bitfinex', name: 'Bitfinex', founded: 2012, url: 'https://www.bitfinex.com', radar: [] },
+  { id: 'binance', logo: 'https://cdn.simpleicons.org/binance/F0B90B', cg: 'binance', name: 'Binance', founded: 2017, url: 'https://www.binance.com', radar: ['Announcements', 'New trading pairs'] },
+  { id: 'coinbase', logo: 'https://cdn.simpleicons.org/coinbase/0052FF', cg: 'gdax', name: 'Coinbase Exchange', founded: 2012, url: 'https://www.coinbase.com', radar: [] },
+  { id: 'okx', logo: 'https://cdn.simpleicons.org/okx/FFFFFF', cg: 'okex', name: 'OKX', founded: 2017, url: 'https://www.okx.com', radar: ['Announcements', 'New trading pairs', 'Listing times'] },
+  { id: 'bybit', logo: 'https://cdn.simpleicons.org/bybit/F7A600', cg: 'bybit_spot', name: 'Bybit', founded: 2018, url: 'https://www.bybit.com', radar: ['Announcements', 'New trading pairs'] },
+  { id: 'upbit', logo: 'https://cdn.simpleicons.org/upbit/093687', cg: 'upbit', name: 'Upbit', founded: 2017, url: 'https://upbit.com', radar: [] },
+  { id: 'bitget', logo: 'https://cdn.simpleicons.org/bitget/00F0B5', cg: 'bitget', name: 'Bitget', founded: 2018, url: 'https://www.bitget.com', radar: ['Announcements', 'New trading pairs'] },
+  { id: 'gate', logo: 'https://cdn.simpleicons.org/gateio/2354E6', cg: 'gate', name: 'Gate', founded: 2013, url: 'https://www.gate.com', radar: ['New trading pairs', 'Listing times'] },
+  { id: 'kucoin', logo: 'https://cdn.simpleicons.org/kucoin/23AF91', cg: 'kucoin', name: 'KuCoin', founded: 2017, url: 'https://www.kucoin.com', radar: ['Announcements', 'New trading pairs'] },
+  { id: 'mexc', logo: 'https://cdn.simpleicons.org/mexc/00A4DB', cg: 'mxc', name: 'MEXC', founded: 2018, url: 'https://www.mexc.com', radar: ['New trading pairs'] },
+  { id: 'kraken', logo: 'https://cdn.simpleicons.org/kraken/5741D9', cg: 'kraken', name: 'Kraken', founded: 2011, url: 'https://www.kraken.com', radar: [] },
+  { id: 'htx', logo: 'https://cdn.simpleicons.org/htx/2A5ADA', cg: 'huobi', name: 'HTX', founded: 2013, url: 'https://www.htx.com', radar: [] },
+  { id: 'cryptocom', logo: 'https://cdn.simpleicons.org/cryptocom/1199FA', cg: 'crypto_com', name: 'Crypto.com Exchange', founded: 2016, url: 'https://crypto.com/exchange', radar: [] },
+  { id: 'bitfinex', logo: 'https://cdn.simpleicons.org/bitfinex/16B157', cg: 'bitfinex', name: 'Bitfinex', founded: 2012, url: 'https://www.bitfinex.com', radar: [] },
 ];
 
 ;
@@ -2228,7 +2256,6 @@ const EXCHANGES = [
 
 
 const CONFIG = window.FIRSTPRINT_CONFIG ?? { links: {} };
-const CG_BASE = 'https://api.coingecko.com/api/v3';
 const REFRESH_MS = 60_000;
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -2277,6 +2304,21 @@ function ago(ts) {
 }
 
 const monogram = (name) => `<span class="monogram" aria-hidden="true">${esc(name.replace(/[^A-Za-z0-9]/g, '')[0] ?? '?')}</span>`;
+
+function safeImageUrl(u) {
+  try {
+    const url = new URL(u);
+    return url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A live provider logo with an accessible fallback. */
+function exchangeMark(ex, alt = '') {
+  const src = safeImageUrl(ex.logo);
+  return `<span class="ex-logo">${src ? `<img src="${esc(src)}" alt="${esc(alt)}" loading="lazy" referrerpolicy="no-referrer" />` : ''}${monogram(ex.name)}</span>`;
+}
 
 let toastTimer;
 function toast(msg) {
@@ -2771,16 +2813,16 @@ function readStore(path) {
   try {
     const raw = localStorage.getItem(STORE_PREFIX + path);
     if (!raw) return null;
-    const { t, data } = JSON.parse(raw);
-    return Date.now() - t < STORE_TTL ? { t, data } : null;
+    const entry = JSON.parse(raw);
+    return Date.now() - entry.t < STORE_TTL ? entry : null;
   } catch {
     return null;
   }
 }
 
-function writeStore(path, data) {
+function writeStore(path, entry) {
   try {
-    localStorage.setItem(STORE_PREFIX + path, JSON.stringify({ t: Date.now(), data }));
+    localStorage.setItem(STORE_PREFIX + path, JSON.stringify(entry));
   } catch {
     /* private mode or quota: caching is optional */
   }
@@ -2790,14 +2832,18 @@ async function cg(path, ttl = REFRESH_MS) {
   const hit = cache.get(path) ?? readStore(path);
   if (hit) cache.set(path, hit);
   if (hit && Date.now() - hit.t < ttl) return hit.data;
-  const sep = path.includes('?') ? '&' : '?';
-  const key = CONFIG.coingeckoApiKey ? `${sep}x_cg_demo_api_key=${encodeURIComponent(CONFIG.coingeckoApiKey)}` : '';
-  const res = await fetch(`${CG_BASE}${path}${key}`, { signal: AbortSignal.timeout(12_000) });
-  if (!res.ok) throw new Error(res.status === 429 ? 'Rate limited by the data provider' : `Data provider error ${res.status}`);
-  const data = await res.json();
-  cache.set(path, { t: Date.now(), data });
-  writeStore(path, data);
-  return data;
+  const res = await fetch(`/api/market-data?path=${encodeURIComponent(path)}`, { signal: AbortSignal.timeout(12_000) });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(payload.message ?? `Data service error ${res.status}`);
+  const entry = {
+    t: Date.now(),
+    data: payload.data,
+    updatedAt: Number(payload.updatedAt) || Date.now(),
+    stale: Boolean(payload.stale),
+  };
+  cache.set(path, entry);
+  writeStore(path, entry);
+  return entry.data;
 }
 
 /** Cached copy if one exists, however old. Used when the network fails. */
@@ -2806,17 +2852,20 @@ function staleData(path) {
 }
 
 async function loadExchanges() {
-  const [list, price] = await Promise.allSettled([cg('/exchanges?per_page=100&page=1'), cg('/simple/price?ids=bitcoin&vs_currencies=usd')]);
-  const rows = list.status === 'fulfilled' && Array.isArray(list.value) ? list.value : staleData('/exchanges?per_page=100&page=1');
-  const priceData = price.status === 'fulfilled' ? price.value : staleData('/simple/price?ids=bitcoin&vs_currencies=usd');
+  const listPath = '/exchanges?per_page=100&page=1';
+  const pricePath = '/simple/price?ids=bitcoin&vs_currencies=usd';
+  const [list, price] = await Promise.allSettled([cg(listPath), cg(pricePath)]);
+  const rows = list.status === 'fulfilled' && Array.isArray(list.value) ? list.value : staleData(listPath);
+  const priceData = price.status === 'fulfilled' ? price.value : staleData(pricePath);
   const live = Array.isArray(rows);
   const btcUsd = priceData?.bitcoin?.usd ?? null;
   const byId = new Map(live ? rows.map((x) => [x.id, x]) : []);
+  const freshness = cache.get(listPath) ?? readStore(listPath);
 
   state.btcUsd = btcUsd;
   state.live = live;
-  state.stale = list.status !== 'fulfilled' && live;
-  state.updatedAt = list.status === 'fulfilled' ? Date.now() : state.updatedAt ?? Date.now();
+  state.stale = Boolean(live && (list.status !== 'fulfilled' || freshness?.stale));
+  state.updatedAt = freshness?.updatedAt ?? freshness?.t ?? state.updatedAt ?? Date.now();
   state.list = EXCHANGES.map((ex) => {
     const row = byId.get(ex.cg);
     const volBtc = row?.trade_volume_24h_btc ?? null;
@@ -2826,6 +2875,8 @@ async function loadExchanges() {
       founded: row?.year_established ?? ex.founded,
       trust: row?.trust_score ?? null,
       volumeUsd: volBtc !== null && btcUsd ? volBtc * btcUsd : null,
+      // Prefer CoinGecko's current image, but retain a permanent branded fallback.
+      logo: safeImageUrl(row?.image) ?? ex.logo,
     };
   });
 }
@@ -2839,7 +2890,7 @@ function initLanding() {
       .map(
         (ex, i) => `
         <a class="ex-tile reveal" data-delay="${i * 40}" href="#/app/exchange/${ex.id}">
-          ${monogram(ex.name)}
+          ${exchangeMark(ex)}
           <span><b>${esc(ex.name)}</b><small>${ex.radar.length ? 'Listing radar at launch' : 'Exchange data'}</small></span>
         </a>`,
       )
@@ -2882,19 +2933,6 @@ function parseRoute() {
   return { view: 'app', tab: 'exchanges' };
 }
 
-let preconnected = false;
-function preconnectData() {
-  if (preconnected) return;
-  preconnected = true;
-  for (const rel of ['preconnect', 'dns-prefetch']) {
-    const l = document.createElement('link');
-    l.rel = rel;
-    l.href = 'https://api.coingecko.com';
-    if (rel === 'preconnect') l.crossOrigin = '';
-    document.head.appendChild(l);
-  }
-}
-
 let lastView = null;
 async function onRoute() {
   const r = parseRoute();
@@ -2915,7 +2953,6 @@ async function onRoute() {
     return;
   }
 
-  preconnectData();
   renderAppShell(r);
   window.scrollTo(0, 0);
   if (r.tab === 'exchanges' && r.exchange) return renderExchangeDetail(r.exchange);
@@ -2934,7 +2971,7 @@ function renderAppShell(r) {
         <a class="wordmark" href="#top" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
         <nav class="app-tabs" aria-label="App">
           <a href="#/app/exchanges"${cur('exchanges')}>Exchanges</a>
-          <a href="#/app/predictions"${cur('predictions')}>Predictions <span class="soon">Soon</span></a>
+          <a href="/play/">Predictions <span class="soon">Practice</span></a>
           <a href="#/app/radar"${cur('radar')}>Listing radar <span class="soon">Soon</span></a>
         </nav>
         <button class="btn btn-disabled" type="button" data-action="wallet-soon">Connect wallet <span class="soon">Soon</span></button>
@@ -2958,7 +2995,7 @@ function sortedRows() {
 
 function dataNote() {
   if (state.stale) {
-    return `<p class="data-note offline"><span class="dot-live" aria-hidden="true"></span>Showing your last saved data. <button class="btn" data-action="retry" style="padding:3px 12px;font-size:13px">Refresh</button></p>`;
+    return `<p class="data-note offline"><span class="dot-live" aria-hidden="true"></span>Cached CoinGecko data, updated <span data-ago="${state.updatedAt}">${ago(state.updatedAt)}</span>. <button class="btn" data-action="retry" style="padding:3px 12px;font-size:13px">Refresh</button></p>`;
   }
   if (state.live) {
     return `<p class="data-note"><span class="dot-live" aria-hidden="true"></span>Live from CoinGecko, updated <span data-ago="${state.updatedAt}">${ago(state.updatedAt)}</span></p>`;
@@ -2986,7 +3023,7 @@ function exchangesTable(animate = false) {
               (r, i) => `
             <tr data-href="#/app/exchange/${r.id}"${animate && !REDUCED ? ` class="row-in" style="animation-delay:${Math.min(i * 35, 500)}ms"` : ''}>
               <td class="rank hide-sm">${i + 1}</td>
-              <td><a class="ex-name" href="#/app/exchange/${r.id}">${monogram(r.name)}<span><b>${esc(r.name)}</b><small>${esc(r.country ?? '')}</small></span></a></td>
+              <td><a class="ex-name" href="#/app/exchange/${r.id}">${exchangeMark(r)}<span><b>${esc(r.name)}</b><small>${esc(r.country ?? '')}</small></span></a></td>
               <td class="right num">${state.live ? usd(r.volumeUsd) : '–'}</td>
               <td class="hide-sm">${r.trust !== null ? `<span class="trust"><span class="trust-bar" style="--t:${Number(r.trust)}"><i></i></span>${Number(r.trust)}/10</span>` : '<span class="muted">–</span>'}</td>
               <td class="right hide-sm">${esc(r.founded ?? '–')}</td>
@@ -3109,7 +3146,7 @@ async function renderExchangeDetail(id) {
   main.innerHTML = `
     <a class="back" href="#/app/exchanges">← All exchanges</a>
     <div class="detail-head">
-      ${monogram(ex.name)}
+      ${exchangeMark(ex, `${ex.name} logo`)}
       <div><h1 class="page-title">${esc(ex.name)}</h1><p class="muted" id="ex-meta">Founded ${esc(ex.founded)}</p></div>
       <div class="actions">${site ? `<a class="btn magnetic" href="${site}" target="_blank" rel="noopener noreferrer">Visit website</a>` : ''}</div>
     </div>
@@ -3139,8 +3176,8 @@ async function renderExchangeDetail(id) {
         <section class="panel">
           <h2>Prediction markets</h2>
           <div class="panel-box">
-            <p>Soon you’ll predict where new ${esc(ex.name)} listings trade 72 hours after they go live.</p>
-            <p><a class="btn magnetic" href="#/app/predictions">See what’s coming</a></p>
+            <p>Try a simulated 72-hour prediction now with free browser-only practice points.</p>
+            <p><a class="btn magnetic" href="/play/">Open practice beta</a></p>
           </div>
         </section>
       </aside>
@@ -3157,9 +3194,10 @@ async function renderExchangeDetail(id) {
     $('#ex-meta').textContent = meta.charAt(0).toUpperCase() + meta.slice(1);
 
     const tickers = Array.isArray(d.tickers) ? d.tickers : [];
+    const trust = Number(d.trust_score) || 0; // a number from the provider; never inserted as raw text
     $('#detail-stats').innerHTML = `
       <div><dt>24h volume</dt><dd>${usd(volUsd)}</dd></div>
-      <div><dt>Trust score</dt><dd>${d.trust_score ?? '–'}${d.trust_score ? '<span class="muted" style="font-size:16px">/10</span>' : ''}</dd></div>
+      <div><dt>Trust score</dt><dd>${trust ? `${trust}<span class="muted" style="font-size:16px">/10</span>` : '–'}</dd></div>
       <div><dt>Founded</dt><dd>${esc(d.year_established ?? ex.founded)}</dd></div>
       <div><dt>Pairs in top list</dt><dd>${tickers.length || '–'}</dd></div>`;
 
@@ -3208,20 +3246,20 @@ function followLinks() {
 }
 
 function renderPredictionsSoon() {
-  document.title = 'Predictions: coming soon on Firstprint';
+  document.title = 'Practice predictions: Firstprint';
   $('#app-main').innerHTML = `
     <section class="soon-page">
       <div>
-        <span class="soon soon-badge">Coming soon</span>
-        <h1>Call every<br />new listing.</h1>
-        <p class="lede">Pick where a token trades 72 hours after it lists, from Crash to Moon. Free points, weekly leaderboards, and results settled on real exchange prices.</p>
+        <span class="soon soon-badge">Practice beta live</span>
+        <h1>Test the first<br />72 hours now.</h1>
+        <p class="lede">Use free browser-only points to call Crash, Down, Flat, Up, or Moon in a simulated market.</p>
         <ul class="check-list">
-          <li>Sign in with Phantom, Solflare, or Backpack</li>
-          <li>1,000 free points to start</li>
-          <li>Markets for new listings on the biggest exchanges</li>
-          <li>Refunds when a listing is delayed or data is thin</li>
+          <li>Start immediately with 1,000 points</li>
+          <li>Claim 100 practice points daily</li>
+          <li>Test predictions, settlement, and leaderboards</li>
+          <li>No deposits, transactions, or real money</li>
         </ul>
-        <div class="hero-actions">${followLinks()}</div>
+        <div class="hero-actions"><a class="btn btn-solid magnetic" href="/play/">Open practice beta</a><a class="btn magnetic" href="#/app/exchanges">Explore exchanges</a></div>
       </div>
       <div class="preview-card" aria-label="Preview of a prediction market">
         <div class="hm-head">
@@ -3268,6 +3306,12 @@ function renderRadarSoon() {
 }
 
 // ------------------------------------------------------------------ Events
+
+// Hide provider logos that fail to load (the monogram behind them shows instead). Error events
+// don't bubble, so listen in the capture phase; no inline handlers, so the CSP can forbid them.
+document.addEventListener('error', (e) => {
+  if (e.target instanceof HTMLImageElement && e.target.closest('.ex-logo')) e.target.hidden = true;
+}, true);
 
 document.addEventListener('click', (e) => {
   const action = e.target.closest('[data-action]')?.dataset.action;

@@ -65,7 +65,7 @@ function safeImageUrl(u) {
 /** A live provider logo with an accessible fallback. */
 function exchangeMark(ex, alt = '') {
   const src = safeImageUrl(ex.logo);
-  return `<span class="ex-logo">${src ? `<img src="${esc(src)}" alt="${esc(alt)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true" />` : ''}${monogram(ex.name)}</span>`;
+  return `<span class="ex-logo">${src ? `<img src="${esc(src)}" alt="${esc(alt)}" loading="lazy" referrerpolicy="no-referrer" />` : ''}${monogram(ex.name)}</span>`;
 }
 
 let toastTimer;
@@ -942,9 +942,10 @@ async function renderExchangeDetail(id) {
     $('#ex-meta').textContent = meta.charAt(0).toUpperCase() + meta.slice(1);
 
     const tickers = Array.isArray(d.tickers) ? d.tickers : [];
+    const trust = Number(d.trust_score) || 0; // a number from the provider; never inserted as raw text
     $('#detail-stats').innerHTML = `
       <div><dt>24h volume</dt><dd>${usd(volUsd)}</dd></div>
-      <div><dt>Trust score</dt><dd>${d.trust_score ?? '–'}${d.trust_score ? '<span class="muted" style="font-size:16px">/10</span>' : ''}</dd></div>
+      <div><dt>Trust score</dt><dd>${trust ? `${trust}<span class="muted" style="font-size:16px">/10</span>` : '–'}</dd></div>
       <div><dt>Founded</dt><dd>${esc(d.year_established ?? ex.founded)}</dd></div>
       <div><dt>Pairs in top list</dt><dd>${tickers.length || '–'}</dd></div>`;
 
@@ -1053,6 +1054,12 @@ function renderRadarSoon() {
 }
 
 // ------------------------------------------------------------------ Events
+
+// Hide provider logos that fail to load (the monogram behind them shows instead). Error events
+// don't bubble, so listen in the capture phase; no inline handlers, so the CSP can forbid them.
+document.addEventListener('error', (e) => {
+  if (e.target instanceof HTMLImageElement && e.target.closest('.ex-logo')) e.target.hidden = true;
+}, true);
 
 document.addEventListener('click', (e) => {
   const action = e.target.closest('[data-action]')?.dataset.action;

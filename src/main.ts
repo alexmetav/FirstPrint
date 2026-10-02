@@ -84,14 +84,16 @@ server.listen(cfg.port, '0.0.0.0', () => {
 const shutdown = () => {
   log('shutting down');
   scheduler.stop();
-  server.close(() => {
-    // Last copy before the host stops us, so a restart doesn't lose the latest minute of activity.
-    void (backup?.stop() ?? Promise.resolve()).finally(() => {
-      db.close();
-      process.exit(0);
-    });
+  // Stop taking requests, and end open live-update streams: they never close on their own,
+  // so waiting for them would let the host kill us before the final backup.
+  server.close();
+  server.closeAllConnections();
+  // Last copy before the host stops us, so a restart doesn't lose the latest minute of activity.
+  void (backup?.stop() ?? Promise.resolve()).finally(() => {
+    db.close();
+    process.exit(0);
   });
-  setTimeout(() => process.exit(0), 20_000).unref();
+  setTimeout(() => process.exit(0), 25_000).unref();
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
