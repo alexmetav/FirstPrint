@@ -26,3 +26,9 @@ jobs:
         run: grep -q 'window.FP_FORCE_DEMO = true' .deploy/play/index.html
       - name: Reject browser-side provider secrets
         run: '! grep -R "coingeckoApiKey\|api.coingecko.com/api/v3" .deploy --include="*.js"'
+      - name: Verify the live app copy is not locked to practice mode
+        run: '! grep -q FP_FORCE_DEMO .deploy/app/index.html'
+      - name: Verify vercel.json is valid and routes the app's API
+        run: node -e "const v=JSON.parse(require('fs').readFileSync('vercel.json','utf8')); if(!v.rewrites.some(r=>r.source==='/api/:path*')) process.exit(1)"
+      - name: Verify launch links point at the live app
+        run: APP_URL=/app/ npm run build:deploy && grep -q 'href="/app/">Launch app' .deploy/index.html && ! grep -q 'href="/play/"' .deploy/index.html

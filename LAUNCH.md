@@ -78,6 +78,18 @@ The static site and the read-only demo above don't have accounts. The full app i
 
 **Free-plan limits to know about.** The server sleeps after 15 minutes without visits and takes about a minute to wake up. It must stay a single instance. When it wakes, markets whose timer ended close on the first tick. Both free Render services share 750 hours a month, so keeping this one awake around the clock would leave the demo API asleep.
 
+### Show the live app on your main domain
+
+The marketing site (`www.firstprint.fun`) serves the live app at **`/app/`**, and Vercel forwards the app's `/api` requests to Render behind the scenes. Visitors never leave your domain, there is no DNS record to add, and the login session works because everything is on one address. This is configured in `vercel.json`:
+
+- `build.env.APP_URL = /app/` turns the site's buttons into "Launch app" links to `/app/`.
+- the rewrite `/api/:path*` sends API calls to `https://firstprint-app.onrender.com`. **If your Render address is different, change it there** (it is the `….onrender.com` link at the top of the service page in Render).
+- `/play/` stays a browser-only practice copy, and the exchange explorer keeps using the demo API.
+
+Then in Render set `PUBLIC_URL` to `https://www.firstprint.fun` and `TRUST_PROXY_HOPS` to `2` (already the default in `render.yaml`), and add `https://www.firstprint.fun` as the Authorized JavaScript origin if you use Google sign-in.
+
+Some page copy on the landing page still describes the practice beta (the FAQ, for example); edit `site/index.html` when you want it to talk about the live app.
+
 ### Steps
 
 1. **Supabase (free):** at supabase.com create a project named `firstprint`. Then **Storage → New bucket**, name `firstprint-backups`, and leave **Public bucket off**. Under **Project Settings → API** copy the **Project URL** and the **service_role** key. That key is a secret: only ever paste it into Render, never into chat or the repo.
@@ -87,8 +99,8 @@ The static site and the read-only demo above don't have accounts. The full app i
    - `GOOGLE_CLIENT_ID`, `RESEND_API_KEY`, `MAIL_FROM`: optional. Leave one blank and that option stays hidden. See the README under "Signing in".
 3. Wait for the deploy to go green, then open `https://<service>.onrender.com/api/health`. It should return `{"ok":true,...}`.
 4. Read the generated admin key in Render → `firstprint-app` → Environment → `ADMIN_KEY`. Open `<your app address>/#/admin` and paste it. The page should say "Database backup: last saved ...". Keep the key private.
-5. Custom domain: in Render → Settings → Custom Domains add `app.firstprint.fun`, then add the DNS record Render shows you. Set `PUBLIC_URL` to that address and redeploy.
-6. Point the marketing site at it: in Vercel → Settings → Environment Variables add `APP_URL` = your app address (`https://...`), then redeploy. The "practice" buttons on the site then open the full app. Without `APP_URL` the site keeps linking to the browser-only practice build at `/play/`.
+5. Your own address: either the `/app/` setup above (no DNS record needed), or a separate address such as `app.firstprint.fun`: in Render → Settings → Custom Domains add it, add the DNS record Render shows you at your DNS provider, set `PUBLIC_URL` to it, and set `TRUST_PROXY_HOPS` to `1`.
+6. Pointing the marketing site at a separate address instead: set `APP_URL` to it (`https://...`) in `vercel.json` under `build.env`. Without `APP_URL` the site keeps linking to the browser-only practice build at `/play/`.
 7. Google only: in Google Cloud Console add your `PUBLIC_URL` as an Authorized JavaScript origin on the OAuth client.
 
 **What's free and what isn't.** Wallet and Google sign-in are free. Email codes work without payment only to your own address in Resend's test mode; sending to everyone needs a domain verified in Resend, which uses a domain you own (you already own firstprint.fun, so it costs nothing extra). To try the app before that, sign in with a Solana wallet (devnet by default).

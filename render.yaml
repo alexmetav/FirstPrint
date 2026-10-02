@@ -35,9 +35,14 @@ services:
       # Render creates a random key. Read it in the dashboard (Environment) to open /#/admin.
       - key: ADMIN_KEY
         generateValue: true
-      # The address people type in the browser, e.g. https://app.firstprint.fun (no trailing slash).
+      # The address people type in the browser, no trailing slash. With the app served on the main site
+      # through Vercel (see vercel.json) this is https://www.firstprint.fun
       - key: PUBLIC_URL
         sync: false
+      # Proxies in front of the server: Render's load balancer plus Vercel's rewrite. Used to tell visitors
+      # apart for rate limits. Use 1 if people reach the app directly on its onrender.com address instead.
+      - key: TRUST_PROXY_HOPS
+        value: "2"
       # Database backup (Supabase free plan): the project URL and its service_role key. Secret, enter in Render only.
       - key: SUPABASE_URL
         sync: false
