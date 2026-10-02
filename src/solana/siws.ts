@@ -15,7 +15,12 @@ export interface SiwsFields {
   address: string;
   statement: string;
   uri: string;
-  chainId: 'mainnet' | 'devnet' | 'testnet';
+  /**
+   * Optional, and left out by the server. Wallets such as Phantom compare this line with the network the
+   * wallet is currently on and refuse to show the request if they differ. Signing in only signs a
+   * message, so the network is irrelevant to it.
+   */
+  chainId?: 'mainnet' | 'devnet' | 'testnet';
   nonce: string;
   issuedAt: string;
   expirationTime: string;
@@ -30,7 +35,7 @@ export function buildSiwsMessage(f: SiwsFields): string {
     '',
     `URI: ${f.uri}`,
     'Version: 1',
-    `Chain ID: ${f.chainId}`,
+    ...(f.chainId ? [`Chain ID: ${f.chainId}`] : []),
     `Nonce: ${f.nonce}`,
     `Issued At: ${f.issuedAt}`,
     `Expiration Time: ${f.expirationTime}`,

@@ -199,7 +199,8 @@ export function createApiServer(opts: ServerOptions): Server {
 
   function siteFor(req: IncomingMessage) {
     const url = opts.publicUrl ? new URL(opts.publicUrl) : new URL(`http://${req.headers.host ?? 'localhost'}`);
-    return { domain: url.host, uri: url.origin, chainId: opts.solanaChain ?? 'mainnet' };
+    // No chain ID in the sign-in message: wallets refuse it when it differs from their current network.
+    return { domain: url.host, uri: url.origin };
   }
 
   route('GET', '/api/auth/wallet/challenge', ({ req, url }) => {
