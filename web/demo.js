@@ -316,7 +316,7 @@ export class DemoBackend {
   // --- Public API (matches createApi) ----------------------------------------------
 
   config() {
-    return this.run(() => ({ minStake: 10, dailyPoints: 100, demo: true }));
+    return this.run(() => ({ minStake: 10, dailyPoints: 100, demo: true, signIn: { google: null, email: true } }));
   }
 
   me() {
@@ -338,6 +338,34 @@ export class DemoBackend {
       this.accounts.set(email, { userId: u.id, password });
       this.sessionUserId = u.id;
       return { user: this.publicUser(u) };
+    });
+  }
+
+  /** Practice mode has no mail server: the code is always shown on screen. */
+  emailStart(email) {
+    return this.run(() => {
+      email = String(email ?? '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ApiError(400, 'bad_email', 'Enter a valid email address.');
+      return { ok: true, devCode: '123456' };
+    });
+  }
+
+  emailVerify(email, code) {
+    return this.run(() => {
+      email = String(email ?? '').trim().toLowerCase();
+      if (String(code ?? '').trim() !== '123456') throw new ApiError(401, 'bad_code', 'That code is wrong. In practice mode it is 123456.');
+      let acc = this.accounts.get(email);
+      const created = !acc;
+      if (!acc) {
+        const base = (email.split('@')[0].replace(/[^A-Za-z0-9_]+/g, '_').slice(0, 16) || 'player').padEnd(3, '_');
+        let username = base;
+        for (let i = 2; [...this.users.values()].some((u) => u.username.toLowerCase() === username.toLowerCase()); i++) username = `${base}${i}`;
+        const u = this.addUser(username, 1_000);
+        acc = { userId: u.id, password: null };
+        this.accounts.set(email, acc);
+      }
+      this.sessionUserId = acc.userId;
+      return { user: this.publicUser(this.users.get(acc.userId)), created };
     });
   }
 

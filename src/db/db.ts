@@ -22,6 +22,10 @@ function migrate(db: DB) {
   };
   ensure('users', 'needs_username', "needs_username INTEGER NOT NULL DEFAULT 0");
   ensure('markets', 'kind', "kind TEXT NOT NULL DEFAULT 'listing'");
+  ensure('markets', 'mode', "mode TEXT NOT NULL DEFAULT 'auto'");
+  ensure('markets', 'published', 'published INTEGER NOT NULL DEFAULT 1');
+  ensure('markets', 'base_price', 'base_price REAL');
+  ensure('markets', 'note', 'note TEXT');
 }
 
 /** Runs fn inside a transaction; rolls back if it throws. */

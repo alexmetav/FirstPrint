@@ -1476,6 +1476,86 @@ code {
   }
 }
 
+/* Admin: manual markets */
+.admin-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: var(--r-sm);
+  padding: 9px 10px;
+  font: inherit;
+  resize: vertical;
+}
+.admin-result {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  align-items: end;
+}
+.admin-result .admin-list,
+.admin-preview {
+  grid-column: 1 / -1;
+}
+.admin-preview {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+}
+.admin-preview p {
+  margin: 0 0 6px;
+}
+.admin-row-actions {
+  white-space: nowrap;
+}
+.admin-row-actions .btn {
+  margin-left: 6px;
+}
+.m-note {
+  color: var(--muted);
+  margin: 0 0 10px;
+  max-width: 62ch;
+}
+.admin-result > div:first-child {
+  grid-column: 1 / -1;
+}
+
+/* Sign-in popup */
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.google-slot {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: 16px;
+}
+.code-input {
+  font-size: 28px;
+  letter-spacing: 0.4em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.dev-code {
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+}
+.modal .switch:disabled {
+  opacity: 0.6;
+  cursor: default;
+  text-decoration: none;
+}
+
 </style>
   </head>
   <body>
@@ -1890,6 +1970,9 @@ function createApi(baseUrl = '') {
     chart: (m) => request(`/api/markets/${id(m)}/chart`),
     activity: (m) => request(`/api/markets/${id(m)}/activity`),
     leaderboard: () => request('/api/leaderboard'),
+    emailStart: (email) => post('/api/auth/email/start', { email }),
+    emailVerify: (email, code) => post('/api/auth/email/verify', { email, code }),
+    googleSignIn: (credential) => post('/api/auth/google', { credential }),
     walletChallenge: (address) => request(`/api/auth/wallet/challenge?address=${encodeURIComponent(address)}`),
     walletVerify: (body) => post('/api/auth/wallet/verify', body),
     linkWallet: (body) => post('/api/me/wallets', body),
@@ -1939,6 +2022,15 @@ function createAdminApi(key, baseUrl = '') {
     approve: (id, body) => post(`/api/admin/detected/${id}/approve`, body),
     ignore: (id) => post(`/api/admin/detected/${id}/ignore`),
     track: () => post('/api/admin/track'),
+    exchanges: () => request('/api/admin/exchanges'),
+    setExchange: (id, enabled) => post(`/api/admin/exchanges/${encodeURIComponent(id)}`, { enabled }),
+    createManual: (body) => post('/api/admin/manual-markets', body),
+    updateManual: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}`, body),
+    publish: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/publish`),
+    unpublish: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/unpublish`),
+    deleteDraft: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/delete`),
+    previewResult: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/preview`, body),
+    resolve: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/resolve`, body),
   };
 }
 
@@ -2400,7 +2492,7 @@ class DemoBackend {
   // --- Public API (matches createApi) ----------------------------------------------
 
   config() {
-    return this.run(() => ({ minStake: 10, dailyPoints: 100, demo: true }));
+    return this.run(() => ({ minStake: 10, dailyPoints: 100, demo: true, signIn: { google: null, email: true } }));
   }
 
   me() {
@@ -2422,6 +2514,34 @@ class DemoBackend {
       this.accounts.set(email, { userId: u.id, password });
       this.sessionUserId = u.id;
       return { user: this.publicUser(u) };
+    });
+  }
+
+  /** Practice mode has no mail server: the code is always shown on screen. */
+  emailStart(email) {
+    return this.run(() => {
+      email = String(email ?? '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ApiError(400, 'bad_email', 'Enter a valid email address.');
+      return { ok: true, devCode: '123456' };
+    });
+  }
+
+  emailVerify(email, code) {
+    return this.run(() => {
+      email = String(email ?? '').trim().toLowerCase();
+      if (String(code ?? '').trim() !== '123456') throw new ApiError(401, 'bad_code', 'That code is wrong. In practice mode it is 123456.');
+      let acc = this.accounts.get(email);
+      const created = !acc;
+      if (!acc) {
+        const base = (email.split('@')[0].replace(/[^A-Za-z0-9_]+/g, '_').slice(0, 16) || 'player').padEnd(3, '_');
+        let username = base;
+        for (let i = 2; [...this.users.values()].some((u) => u.username.toLowerCase() === username.toLowerCase()); i++) username = `${base}${i}`;
+        const u = this.addUser(username, 1_000);
+        acc = { userId: u.id, password: null };
+        this.accounts.set(email, acc);
+      }
+      this.sessionUserId = acc.userId;
+      return { user: this.publicUser(this.users.get(acc.userId)), created };
     });
   }
 
@@ -2687,6 +2807,7 @@ const VOID_REASONS = {
   no_winners: 'nobody picked the winning outcome',
   empty_pool: 'nobody made a prediction',
 };
+const isManual = (m) => m.mode === 'manual';
 
 const S = {
   api: null,
@@ -2804,7 +2925,7 @@ async function loadMarket(id) {
   const m = await S.api.market(id);
   syncClock(m.serverTime);
   const [chart, activity] = await Promise.all([
-    m.phase === 'pre_listing' ? Promise.resolve(null) : S.api.chart(id),
+    m.phase === 'pre_listing' || isManual(m) ? Promise.resolve(null) : S.api.chart(id),
     S.api.activity(id),
   ]);
   if (S.market?.id !== id) {
@@ -2915,7 +3036,7 @@ function renderTop() {
           S.me
             ? `<a class="points" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${fmtPts(S.me.points)}</a>
                <a class="wallet-chip" href="#/portfolio">${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</a>`
-            : `<button class="btn btn-solid" data-action="connect">Connect wallet</button>`
+            : `<button class="btn btn-solid" data-action="connect">Log in</button>`
         }
       </div>
     </div>`;
@@ -2964,12 +3085,34 @@ function homeView() {
 }
 
 function emptyText() {
-  if (S.filter === 'live') return '<p>No markets are running right now. Upcoming markets move here once predictions close.</p><button class="btn" data-filter="open">See upcoming</button>';
-  if (S.filter === 'settled') return '<p>No settled markets yet. Results appear here 72 hours after each listing.</p>';
-  return '<p>No upcoming listings match this filter. New markets open as soon as exchanges announce listings.</p>';
+  if (S.filter === 'live') return '<p>No markets are waiting for a result. Markets move here once predictions close.</p><button class="btn" data-filter="open">See upcoming</button>';
+  if (S.filter === 'settled') return '<p>No settled markets yet. Results appear here after Firstprint posts them.</p>';
+  return '<p>No open markets right now. New markets are published here by Firstprint.</p>';
 }
 
 function featuredView(m) {
+  if (isManual(m)) {
+    return `
+    <section class="featured" aria-labelledby="featured-title">
+      <div>
+        <h1 id="featured-title">${esc(m.symbol)} market is open
+          <span class="countdown">predictions close in ${until(m.closeAt)}</span>
+        </h1>
+        <p class="lede">Predict where ${esc(m.name || m.symbol)} is priced at the result, compared with the start price of ${fmtPrice(m.basePrice)}.
+          ${m.pool ? `${fmtPts(m.pool)} in the pool from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'}.` : 'Nobody has predicted yet.'}</p>
+        <div class="actions">
+          <a class="btn btn-solid" href="#/market/${encodeURIComponent(m.id)}">Make a prediction</a>
+          <a class="btn" href="#how">How it works</a>
+        </div>
+      </div>
+      <div class="mini-ladder" aria-label="Pool split by outcome">
+        ${LADDER.map((b) => {
+          const pct = share(m, b) * 100;
+          return `<div class="mini-rung" style="--c:var(--${b});--share:${pct}%"><b>${NAMES[b]}</b><span class="muted">${rangeLabel(b, m.thresholds)}</span><span class="pct">${Math.round(pct)}%</span></div>`;
+        }).join('')}
+      </div>
+    </section>`;
+  }
   const pre = m.phase === 'pre_listing';
   const test = m.kind === 'live_test';
   const verb = test ? (pre ? 'market starts' : 'market is live') : `${pre ? 'lists' : 'is trading'} on ${esc(m.exchange)}`;
@@ -2999,6 +3142,7 @@ function cardView(m) {
   const lead = leader(m);
   let leadText;
   if (m.status === 'resolved') leadText = `Settled in ${outcome(m.result.winningBucket)} at ${fmtPct(m.result.returnPct)}`;
+  else if (m.phase === 'awaiting_result') leadText = `Predictions closed. ${fmtPts(m.pool)} in the pool, result coming soon`;
   else if (m.status === 'void') leadText = 'Cancelled. Points were returned.';
   else if (m.live?.projectedBucket) leadText = `Now ${fmtPct(m.live.returnPct)}, tracking ${outcome(m.live.projectedBucket)}`;
   else if (lead) leadText = `${outcome(lead)} leads with ${Math.round(share(m, lead) * 100)}% of the pool`;
@@ -3008,6 +3152,7 @@ function cardView(m) {
   if (m.phase === 'pre_listing') when = `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}`;
   else if (m.phase === 'baseline') when = `Closes in ${until(m.closeAt)}`;
   else if (m.phase === 'running') when = `Result in ${until(m.settleAt)}`;
+  else if (m.phase === 'awaiting_result') when = 'Awaiting result';
   else when = fmtDate(m.settleAt);
 
   return `
@@ -3027,7 +3172,7 @@ function howItWorks() {
     <section class="section" id="how" style="margin-top:36px">
       <h2>How it works</h2>
       <ol class="rules">
-        <li>Firstprint watches seven exchanges for new listings and opens a market when one is confirmed. Connect a Solana wallet to get 1,000 free points.</li>
+        <li>Firstprint watches seven exchanges for new listings and opens a market when one is confirmed. Sign in with Google, email, or a Solana wallet to get 1,000 free points.</li>
         <li>Pick one of five outcomes for the price 72 hours after listing, from Crash to Moon. Predictions stay open until 1 hour after trading starts, and earlier predictions earn a bigger share.</li>
         <li>The starting price is the average over the first hour of trading. The final price is the average over the last hour, so a single spike can’t decide a market.</li>
         <li>Everyone who picked the winning outcome splits the pool, minus a 4% fee. If nobody picked it, everyone gets their points back.</li>
@@ -3062,10 +3207,14 @@ function statusLine(m) {
         ? `Starts in <strong>${until(m.listingAt)}</strong>. Predictions close ${fmtSpan(m.closeAt - m.listingAt)} after it starts.`
         : `Lists in <strong>${until(m.listingAt)}</strong>. Predictions close ${fmtSpan(m.closeAt - m.listingAt)} after trading starts.`;
     case 'baseline':
+      if (isManual(m)) return `Predictions close in <strong>${until(m.closeAt)}</strong>. The result is expected around ${fmtDate(m.settleAt)}.`;
       return `${m.kind === 'live_test' ? 'The market has started.' : 'Trading started.'} Predictions close in <strong>${until(m.closeAt)}</strong>.`;
     case 'running':
       return `Predictions are closed. Result in <strong>${until(m.settleAt)}</strong>.`;
+    case 'awaiting_result':
+      return `Predictions are closed. Waiting for Firstprint to post the final price. Expected around <strong>${fmtDate(m.settleAt)}</strong>.`;
     case 'resolved':
+      if (isManual(m)) return `Result posted: ${fmtPrice(m.result.basePrice)} → <strong>${fmtPrice(m.result.finalPrice)}</strong> (${fmtPct(m.result.returnPct)}), so ${outcome(m.result.winningBucket)} wins.`;
       return `Settled in ${outcome(m.result.winningBucket)} at <strong>${fmtPct(m.result.returnPct)}</strong> on ${fmtDate(m.settleAt)}.`;
     case 'void':
       return `Cancelled because ${VOID_REASONS[m.result?.voidReason] ?? 'of a data problem'}. All points were returned.`;
@@ -3112,22 +3261,27 @@ function marketMain(m) {
         (m.phase === 'baseline' || m.phase === 'running') && S.live ? '<span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Live price</span>' : ''
       }</div>
       <p class="m-question">${
-        m.kind === 'live_test'
+        isManual(m)
+          ? `Where will ${esc(m.name || m.symbol)} be priced at the result, compared with the start price of ${fmtPrice(m.basePrice)}?`
+          : m.kind === 'live_test'
           ? `Where will ${esc(m.name || m.symbol)} trade ${span} after this market starts?`
           : `Where will ${esc(m.name || m.symbol)} trade ${span} after listing on ${esc(m.exchange)}?`
       }</p>
       <p class="m-status">${statusLine(m)}</p>
-      <p class="m-venues">${m.kind === 'live_test' ? '<span class="tag tag-test">Live test</span> ' : ''}Prices from ${esc(venueNames(m))}</p>
+      <p class="m-venues">${m.kind === 'live_test' ? '<span class="tag tag-test">Live test</span> ' : ''}${isManual(m) ? `Reference exchanges: ${esc(venueNames(m))}` : `Prices from ${esc(venueNames(m))}`}</p>
     </header>
 
     <dl class="stats">
       <div><dt>Pool</dt><dd>${fmtPts(m.pool)}</dd></div>
       <div><dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
-      <div><dt>${m.kind === 'live_test' ? 'Starts' : 'Listing'}</dt><dd>${fmtDate(m.listingAt)}</dd></div>
-      <div><dt>Result</dt><dd>${fmtDate(m.settleAt)}</dd></div>
+      ${
+        isManual(m)
+          ? `<div><dt>Start price</dt><dd>${fmtPrice(m.basePrice)}</dd></div><div><dt>Closes</dt><dd>${fmtDate(m.closeAt)}</dd></div>`
+          : `<div><dt>${m.kind === 'live_test' ? 'Starts' : 'Listing'}</dt><dd>${fmtDate(m.listingAt)}</dd></div><div><dt>Result</dt><dd>${fmtDate(m.settleAt)}</dd></div>`
+      }
     </dl>
 
-    ${chartView(m)}
+    ${isManual(m) ? manualPanel(m) : chartView(m)}
 
     <div class="ladder${settled ? ' settled' : ''}" role="group" aria-label="Outcomes">
       <div class="ladder-head"><span>Price after ${span}</span><span>Crowd</span><span>Pays</span><span class="pool-col">Pool</span></div>
@@ -3137,7 +3291,8 @@ function marketMain(m) {
 
     <section class="section">
       <h2>How this market settles</h2>
-      <ol class="rules">
+      ${isManual(m) ? manualRules(m) : ''}
+      <ol class="rules"${isManual(m) ? ' hidden' : ''}>
         <li>Starting price: the average price over the first ${fmtSpan(m.closeAt - m.listingAt)} ${m.kind === 'live_test' ? 'after the market starts' : 'of trading'}, from ${esc(venueNames(m))}.</li>
         <li>Final price: the average over the last ${fmtSpan(m.closeAt - m.listingAt)} before ${fmtDate(m.settleAt)}. If the token trades on several exchanges, the volume-weighted median is used.</li>
         <li>Predictions close ${fmtSpan(m.closeAt - m.listingAt)} after trading starts. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
@@ -3190,6 +3345,42 @@ function fmtAgo(ts) {
   const ms = now() - ts;
   if (ms < 60_000) return 'just now';
   return `${fmtDur(ms).split(' ')[0]} ago`;
+}
+
+function manualPanel(m) {
+  const r = m.result;
+  if (!r || r.finalPrice == null) {
+    return `<div class="chart"><div class="chart-empty">${
+      m.phase === 'awaiting_result' ? 'Predictions are closed. The final price will appear here when the result is posted.' : `Start price ${fmtPrice(m.basePrice)}. The final price is posted after predictions close.`
+    }</div></div>`;
+  }
+  const b = r.winningBucket ?? 'flat';
+  return `
+    <div class="chart">
+      <div class="chart-head">
+        <div><div>Result</div><div class="muted">Start ${fmtPrice(r.basePrice)} → final ${fmtPrice(r.finalPrice)}</div></div>
+        <div class="now" style="color:var(--${b})">${fmtPct(r.returnPct)}</div>
+      </div>
+    </div>
+    ${
+      r.winners?.length
+        ? `<section class="section"><h2>Winners</h2><ul class="activity">${r.winners
+            .map((w) => `<li><span>${esc(w.username)} picked ${outcome(w.bucket)}</span><span class="muted">${fmtPts(w.stake)} → <b>${fmtPts(w.payout)}</b></span></li>`)
+            .join('')}</ul></section>`
+        : ''
+    }`;
+}
+
+function manualRules(m) {
+  return `
+    ${m.note ? `<p class="m-note">${esc(m.note)}</p>` : ''}
+    <ol class="rules">
+      <li>Start price: ${fmtPrice(m.basePrice)}. The result is the final price compared with it, using the ranges shown above.</li>
+      <li>Predictions close ${fmtDate(m.closeAt)}. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
+      <li>After that the market waits for Firstprint to post the final price. The result and winners appear on this page.</li>
+      <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
+      <li>The market is cancelled and refunded if nobody picks the winning outcome, everyone picks the same outcome, or Firstprint cancels it.</li>
+    </ol>`;
 }
 
 function chartView(m) {
@@ -3303,7 +3494,7 @@ function renderTrade() {
 }
 
 function positionsView(m, mode) {
-  if (!S.me) return mode === 'open' ? '' : '<p class="fine">Connect a wallet to track your predictions.</p>';
+  if (!S.me) return mode === 'open' ? '' : '<p class="fine">Log in to track your predictions.</p>';
   if (!m.mine.length) return mode === 'open' ? '' : '<p class="fine">You didn’t predict on this market.</p>';
   const rows = m.mine
     .map((p) => {
@@ -3339,7 +3530,7 @@ function updateSummary() {
 
   const cta = $('#trade-cta');
   if (!S.me) {
-    cta.textContent = 'Connect wallet to predict';
+    cta.textContent = 'Log in to predict';
     cta.disabled = false;
   } else if (!b) {
     cta.textContent = 'Pick an outcome';
@@ -3351,7 +3542,7 @@ function updateSummary() {
 
   $('#trade-fine').textContent = S.me
     ? `You have ${fmtPts(S.me.points)}. Limit ${fmtPts(m.userCap)} per market. Minimum ${m.minStake} pts.`
-    : 'Connect a Solana wallet to start with 1,000 free points.';
+    : 'Log in to start with 1,000 free points.';
 }
 
 let quoteTimer;
@@ -3466,8 +3657,8 @@ function portfolioView(preds) {
   if (!S.me) {
     return `
       <h1 class="page-title">Portfolio</h1>
-      <div class="empty"><p>Connect a Solana wallet to see your points and predictions. New accounts start with 1,000 free points.</p>
-        <button class="btn btn-solid" data-action="connect">Connect wallet</button></div>`;
+      <div class="empty"><p>Log in to see your points and predictions. New accounts start with 1,000 free points.</p>
+        <button class="btn btn-solid" data-action="connect">Log in</button></div>`;
   }
   const active = preds.filter((p) => p.marketStatus === 'open' || p.marketStatus === 'locked');
   const settled = preds.filter((p) => p.marketStatus === 'resolved' || p.marketStatus === 'void');
@@ -3583,21 +3774,36 @@ function walletButtons(purpose) {
     </div>`;
 }
 
+const GOOGLE_SCRIPT = 'https://accounts.google.com/gsi/client';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function openAuth(kind) {
   S.modal = kind;
   S.modalBusy = false;
   closeSheet();
+  if (kind === 'connect') S.auth = { step: 'start', email: '', devCode: null, resendAt: 0 };
+  renderAuth();
+  if (kind === 'connect' && !S.signIn) {
+    // The server says which sign-in options are switched on. Show the defaults until it answers.
+    S.api
+      .config()
+      .then((c) => (S.signIn = c.signIn ?? { google: null, email: true }))
+      .catch(() => (S.signIn = { google: null, email: true }))
+      .then(() => S.modal === 'connect' && S.auth.step === 'start' && renderAuth());
+  }
+}
+
+function renderAuth() {
+  const kind = S.modal;
   let html;
-  if (kind === 'connect' || kind === 'link') {
-    const linking = kind === 'link';
+  if (kind === 'link') {
     html = modalShell(
-      linking ? 'Link a Solana wallet' : 'Connect a Solana wallet',
-      linking ? 'Sign a message to prove you own the wallet. It’s free and sends no transaction.' : 'Sign in by signing a message. It’s free, sends no transaction, and new accounts get 1,000 points.',
-      `${walletButtons(kind)}
-       ${S.api.demo ? `<button class="btn" style="width:100%;margin-top:10px" data-action="demo-wallet" data-purpose="${kind}">Use a demo wallet</button>` : ''}
+      'Link a Solana wallet',
+      'Sign a message to prove you own the wallet. It’s free and sends no transaction.',
+      `${walletButtons('link')}
+       ${S.api.demo ? `<button class="btn" style="width:100%;margin-top:10px" data-action="demo-wallet" data-purpose="link">Use a demo wallet</button>` : ''}
        <p class="form-error" id="auth-error" role="alert"></p>
-       <p class="fine" id="auth-status"></p>
-       ${linking ? '' : '<p class="fine">Prefer email? <button class="switch" data-action="login">Log in with email</button> or <button class="switch" data-action="signup">create an email account</button>.</p>'}`,
+       <p class="fine" id="auth-status"></p>`,
     );
   } else if (kind === 'username') {
     html = modalShell(
@@ -3610,24 +3816,149 @@ function openAuth(kind) {
        </form>
        <p class="fine"><button class="switch" data-action="close-modal">Skip for now</button></p>`,
     );
-  } else {
-    const signup = kind === 'signup';
+  } else if (S.auth.step === 'code') {
     html = modalShell(
-      signup ? 'Create an email account' : 'Log in with email',
-      signup ? 'Start with 1,000 free points. You can link a wallet later.' : '',
-      `<form id="auth-form" novalidate>
-         <label><span class="field-label">Email</span><input name="email" type="email" autocomplete="email" required /></label>
-         ${signup ? '<label><span class="field-label">Username</span><input name="username" autocomplete="username" minlength="3" maxlength="20" required /></label>' : ''}
-         <label><span class="field-label">Password</span><input name="password" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" minlength="8" required /></label>
-         <button class="cta" style="--c:var(--text)" type="submit">${signup ? 'Create account' : 'Log in'}</button>
+      'Check your email',
+      `We sent a 6-digit code to <b>${esc(S.auth.email)}</b>. It expires in 10 minutes.`,
+      `<form id="auth-code-form" novalidate>
+         <label><span class="field-label">Code</span>
+           <input id="auth-code" name="code" class="code-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" required /></label>
+         <button class="cta" style="--c:var(--text)" type="submit">Continue</button>
          <p class="form-error" id="auth-error" role="alert"></p>
        </form>
-       <p class="fine"><button class="switch" data-action="connect">Connect a wallet instead</button></p>
-       ${S.api.demo && !signup ? `<p class="fine">Demo account: ${DEMO_LOGIN.email} with password ${DEMO_LOGIN.password}</p>` : ''}`,
+       ${S.auth.devCode ? `<p class="fine dev-code">No email provider is connected here, so your code is <b>${esc(S.auth.devCode)}</b>.</p>` : ''}
+       <p class="fine"><button class="switch" data-action="auth-resend" id="auth-resend">Send a new code</button> · <button class="switch" data-action="auth-change-email">Use a different email</button></p>`,
+    );
+  } else {
+    const si = S.signIn ?? { google: null, email: true };
+    html = modalShell(
+      'Log in or sign up',
+      'New accounts start with 1,000 free points. Use any option below. They all lead to the same account.',
+      `${si.google ? '<div id="google-button" class="google-slot" aria-label="Continue with Google"></div>' : ''}
+       ${
+         si.email
+           ? `${si.google ? '<div class="or"><span>or</span></div>' : ''}
+              <form id="auth-email-form" novalidate>
+                <label><span class="field-label">Email</span><input name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" value="${esc(S.auth.email)}" required /></label>
+                <button class="cta" style="--c:var(--text)" type="submit">Continue with email</button>
+              </form>`
+           : ''
+       }
+       <div class="or"><span>${si.google || si.email ? 'or connect a wallet' : 'connect a wallet'}</span></div>
+       ${walletButtons('connect')}
+       ${S.api.demo ? `<button class="btn" style="width:100%;margin-top:10px" data-action="demo-wallet" data-purpose="connect">Use a demo wallet</button>` : ''}
+       <p class="form-error" id="auth-error" role="alert"></p>
+       <p class="fine" id="auth-status"></p>
+       <p class="fine">Points are for play and have no cash value.</p>`,
     );
   }
   $('#modal-root').innerHTML = html;
   ($('#modal-root input') || $('#modal-root button.wallet-option') || $('#modal-root button'))?.focus();
+  if (kind === 'connect' && S.auth.step === 'start' && S.signIn?.google) mountGoogleButton(S.signIn.google);
+  if (kind === 'connect' && S.auth.step === 'code') tickResend();
+}
+
+/** Loads Google's sign-in script once and draws its official button. Falls back quietly if blocked. */
+function mountGoogleButton(clientId) {
+  const draw = () => {
+    const slot = $('#google-button');
+    if (!slot || !window.google?.accounts?.id) return;
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: (r) => googleSignIn(r.credential),
+      ux_mode: 'popup',
+      auto_select: false,
+    });
+    window.google.accounts.id.renderButton(slot, { theme: 'outline', size: 'large', shape: 'pill', text: 'continue_with', logo_alignment: 'center', width: Math.min(360, slot.clientWidth || 340) });
+  };
+  if (window.google?.accounts?.id) return draw();
+  if (document.querySelector(`script[src="${GOOGLE_SCRIPT}"]`)) return;
+  const el = document.createElement('script');
+  el.src = GOOGLE_SCRIPT;
+  el.async = true;
+  el.onload = draw;
+  el.onerror = () => {
+    const slot = $('#google-button');
+    if (slot) slot.innerHTML = '<p class="fine">Google sign-in couldn’t load. Use email or a wallet.</p>';
+  };
+  document.head.appendChild(el);
+}
+
+async function googleSignIn(credential) {
+  if (S.modalBusy) return;
+  S.modalBusy = true;
+  try {
+    const out = await S.api.googleSignIn(credential);
+    await afterSignIn(out.user, out.created);
+  } catch (err) {
+    const e = $('#auth-error');
+    if (e) e.textContent = err.message;
+    S.modalBusy = false;
+  }
+}
+
+async function submitEmail(form) {
+  const email = String(new FormData(form).get('email') || '').trim().toLowerCase();
+  const err = $('#auth-error');
+  if (!EMAIL_RE.test(email)) return err && (err.textContent = 'Enter a valid email address.');
+  const btn = form.querySelector('button[type=submit]');
+  btn.disabled = true;
+  try {
+    const out = await S.api.emailStart(email);
+    S.auth = { step: 'code', email, devCode: out.devCode ?? null, resendAt: Date.now() + 30_000 };
+    renderAuth();
+  } catch (e) {
+    if (err) err.textContent = e.message;
+    btn.disabled = false;
+  }
+}
+
+async function submitCode(form) {
+  if (S.modalBusy) return;
+  const code = String(new FormData(form).get('code') || '').replace(/\D/g, '');
+  const err = $('#auth-error');
+  if (code.length !== 6) return err && (err.textContent = 'Enter the 6-digit code.');
+  S.modalBusy = true;
+  const btn = form.querySelector('button[type=submit]');
+  btn.disabled = true;
+  try {
+    const out = await S.api.emailVerify(S.auth.email, code);
+    S.modalBusy = false;
+    await afterSignIn(out.user, out.created);
+  } catch (e) {
+    S.modalBusy = false;
+    if (err) err.textContent = e.message;
+    btn.disabled = false;
+    const input = $('#auth-code');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+  }
+}
+
+async function resendCode() {
+  if (Date.now() < S.auth.resendAt) return;
+  const err = $('#auth-error');
+  try {
+    const out = await S.api.emailStart(S.auth.email);
+    S.auth.devCode = out.devCode ?? null;
+    S.auth.resendAt = Date.now() + 30_000;
+    renderAuth();
+    toast('New code sent');
+  } catch (e) {
+    if (err) err.textContent = e.message;
+  }
+}
+
+/** Disables "Send a new code" for 30 seconds after each send and shows the countdown. */
+function tickResend() {
+  const btn = $('#auth-resend');
+  if (!btn || S.modal !== 'connect' || S.auth.step !== 'code') return;
+  const left = Math.ceil((S.auth.resendAt - Date.now()) / 1000);
+  btn.disabled = left > 0;
+  btn.textContent = left > 0 ? `Send a new code (${left}s)` : 'Send a new code';
+  if (left > 0) setTimeout(tickResend, 1000);
 }
 
 function closeModal() {
@@ -3678,19 +4009,6 @@ async function walletFlow(purpose, entry) {
     if (status) status.textContent = '';
     document.querySelectorAll('.wallet-option').forEach((b) => (b.disabled = false));
     S.modalBusy = false;
-  }
-}
-
-async function submitAuth(form) {
-  const data = Object.fromEntries(new FormData(form));
-  const btn = form.querySelector('button[type=submit]');
-  btn.disabled = true;
-  try {
-    const out = S.modal === 'signup' ? await S.api.signup(data) : await S.api.login(data);
-    await afterSignIn(out.user, S.modal === 'signup');
-  } catch (err) {
-    $('#auth-error').textContent = err.message;
-    btn.disabled = false;
   }
 }
 
@@ -3753,7 +4071,7 @@ function onLive(type, data) {
 // ------------------------------------------------------------------ Admin
 
 const ADMIN_KEY_STORE = 'fp_admin_key';
-const A = { api: null, info: null, checks: null, busy: '' };
+const A = { api: null, info: null, checks: null, busy: '', edit: null, preview: null };
 
 function readAdminKey() {
   try {
@@ -3802,14 +4120,60 @@ async function renderAdmin() {
     return;
   }
 
-  const [{ markets }, { detected }] = await Promise.all([A.api.markets(), A.api.detected()]);
+  const manualOnly = Boolean(A.info.manualOnly);
+  const [{ markets }, detected] = await Promise.all([A.api.markets(), manualOnly ? Promise.resolve([]) : A.api.detected().then((d) => d.detected)]);
   const venues = A.info.venues;
+  const editing = markets.find((m) => m.id === A.edit && m.mode === 'manual' && m.status === 'open') ?? null;
+  if (A.edit && !editing) A.edit = null;
+  const waiting = markets.filter((m) => m.mode === 'manual' && m.phase === 'awaiting_result');
   view.innerHTML = `
     <div class="admin-head">
       <h1 class="page-title">Admin</h1>
       <button class="btn" data-action="admin-logout">Lock admin</button>
     </div>
 
+    ${waiting.length ? `<section class="section"><h2>Waiting for your result <span class="tag tag-now">${waiting.length}</span></h2>
+      <p class="muted">Predictions have closed. Enter the final price to pick the winners and pay out the pool.</p>
+      ${waiting.map(resultForm).join('')}</section>` : ''}
+
+    <section class="section" id="admin-market-section">
+      <h2>${editing ? `Edit ${esc(editing.symbol)} market` : 'Create a market'}</h2>
+      <p class="muted">Save a draft, check it, then publish. Users only see published markets. When the close time passes, the market waits here for your result.</p>
+      ${marketForm(editing)}
+    </section>
+
+    <section class="section">
+      <h2>Exchanges</h2>
+      <p class="muted">Switch off an exchange to stop it being used in new markets. Nothing is fetched from these exchanges; they are shown to users as the reference for the price you enter.</p>
+      <div class="admin-list">${A.info.exchanges
+        .map((e) => `<label class="check"><input type="checkbox" data-action="admin-exchange" data-id="${esc(e.id)}"${e.enabled ? ' checked' : ''} /> ${esc(e.name)}</label>`)
+        .join('')}</div>
+    </section>
+
+    ${manualOnly ? '' : legacyAdminSections(venues, detected)}
+
+    <section class="section">
+      <h2>All markets</h2>
+      ${
+        markets.length
+          ? `<div class="table-scroll"><table class="table"><thead><tr><th>Market</th><th class="hide-sm">Type</th><th>Status</th><th class="right">Pool</th><th class="right"></th></tr></thead><tbody>${markets
+              .map(
+                (m) => `<tr>
+                  <td>${m.published ? `<a href="#/market/${encodeURIComponent(m.id)}">${esc(m.symbol)}</a>` : `<b>${esc(m.symbol)}</b>`} <span class="muted hide-sm">${esc(venueNames(m))}</span></td>
+                  <td class="hide-sm">${m.mode === 'manual' ? 'Manual' : m.kind === 'live_test' ? 'Live test' : 'Listing'}</td>
+                  <td>${esc(adminPhase(m))}</td>
+                  <td class="right">${fmtNum(m.pool)}</td>
+                  <td class="right admin-row-actions">${marketActions(m)}</td>
+                </tr>`,
+              )
+              .join('')}</tbody></table></div>`
+          : '<p class="muted">No markets yet.</p>'
+      }
+    </section>`;
+}
+
+function legacyAdminSections(venues, detected) {
+  return `
     <section class="section">
       <h2>Create a live test market</h2>
       <p class="muted">Uses real prices for a token that already trades. Every selected exchange is checked first, and the market uses all that have a live USDT price.</p>
@@ -3857,29 +4221,105 @@ async function renderAdmin() {
               .join('')}</div>`
           : '<p class="muted">Nothing waiting. New listings appear here after each scan.</p>'
       }
-    </section>
-
-    <section class="section">
-      <h2>All markets</h2>
-      ${
-        markets.length
-          ? `<table class="table"><thead><tr><th>Market</th><th class="hide-sm">Type</th><th>Status</th><th class="right">Pool</th><th class="right"></th></tr></thead><tbody>${markets
-              .map(
-                (m) => `<tr>
-                  <td><a href="#/market/${encodeURIComponent(m.id)}">${esc(m.symbol)}</a> <span class="muted hide-sm">${esc(venueNames(m))}</span></td>
-                  <td class="hide-sm">${m.kind === 'live_test' ? 'Live test' : 'Listing'}</td>
-                  <td>${esc(adminPhase(m))}</td>
-                  <td class="right">${fmtNum(m.pool)}</td>
-                  <td class="right">${m.status === 'open' || m.status === 'locked' ? `<button class="btn" data-action="admin-cancel" data-id="${esc(m.id)}">Cancel and refund</button>` : ''}</td>
-                </tr>`,
-              )
-              .join('')}</tbody></table>`
-          : '<p class="muted">No markets yet.</p>'
-      }
     </section>`;
 }
 
+/** Create / edit form for an admin-run market. Fields are locked once users have predicted. */
+function marketForm(m) {
+  const locked = Boolean(m && m.published && m.predictors > 0);
+  const lock = locked ? ' disabled' : '';
+  const t = m?.thresholds ?? { crash: -0.5, down: -0.1, up: 0.1, moon: 0.5 };
+  const chosen = new Set(m ? m.venues.map((v) => v.id) : A.info.exchanges.filter((e) => e.enabled).map((e) => e.id));
+  const soon = Math.ceil((Date.now() + 24 * 3_600_000) / 3_600_000) * 3_600_000;
+  const pct = (n) => String(Math.round(n * 1000) / 10);
+  return `
+    <form id="admin-market" class="admin-form admin-grid" data-id="${m ? esc(m.id) : ''}">
+      ${locked ? '<p class="muted" style="grid-column:1/-1">Users have already predicted, so the token, start price, ranges, and pool rules are locked. You can still edit the description, exchanges, and move the close time later. To change anything else, cancel and refund the market.</p>' : ''}
+      <label><span class="field-label">Token symbol</span><input name="symbol" placeholder="XYZ" value="${esc(m?.symbol ?? '')}" required autocomplete="off"${lock} /></label>
+      <label><span class="field-label">Token name (optional)</span><input name="name" placeholder="XYZ Protocol" value="${esc(m?.name ?? '')}" autocomplete="off" /></label>
+      <label><span class="field-label">Start price (USD)</span><input name="basePrice" type="number" step="any" min="0" placeholder="0.25" value="${m?.basePrice ?? ''}" required${lock} /></label>
+      <label><span class="field-label">Predictions close (your time)</span><input name="closeAt" type="datetime-local" value="${toLocalInput(m?.closeAt ?? soon)}" required /></label>
+      <label><span class="field-label">Result expected by (your time)</span><input name="resultAt" type="datetime-local" value="${toLocalInput(m?.settleAt ?? soon + 24 * 3_600_000)}" required /></label>
+      <fieldset class="venues"><legend class="field-label">Reference exchanges</legend>
+        ${A.info.exchanges
+          .filter((e) => e.enabled || chosen.has(e.id))
+          .map((e) => `<label class="check"><input type="checkbox" name="exchanges" value="${esc(e.id)}"${chosen.has(e.id) ? ' checked' : ''} /> ${esc(e.name)}</label>`)
+          .join('')}
+      </fieldset>
+      <label style="grid-column:1/-1"><span class="field-label">Description and result rules (shown to users)</span>
+        <textarea name="note" rows="3" maxlength="2000" placeholder="e.g. Result is the XYZ/USDT closing price on Binance at 12:00 UTC.">${esc(m?.note ?? '')}</textarea></label>
+      <details style="grid-column:1/-1"><summary class="field-label">Outcome ranges and pool rules</summary>
+        <div class="admin-grid" style="margin-top:10px">
+          <label><span class="field-label">Crash at or below (%)</span><input name="crash" type="number" step="any" value="${pct(t.crash)}"${lock} /></label>
+          <label><span class="field-label">Down at or below (%)</span><input name="down" type="number" step="any" value="${pct(t.down)}"${lock} /></label>
+          <label><span class="field-label">Up at or above (%)</span><input name="up" type="number" step="any" value="${pct(t.up)}"${lock} /></label>
+          <label><span class="field-label">Moon at or above (%)</span><input name="moon" type="number" step="any" value="${pct(t.moon)}"${lock} /></label>
+          <label><span class="field-label">Fee (%)</span><input name="fee" type="number" step="any" min="0" max="20" value="${(m?.feeBps ?? 400) / 100}"${lock} /></label>
+          <label><span class="field-label">Pool limit (points)</span><input name="softCap" type="number" min="100" step="1" value="${m?.softCap ?? 50000}"${lock} /></label>
+        </div>
+      </details>
+      <div class="admin-actions" style="grid-column:1/-1">
+        ${
+          m
+            ? `<button class="btn btn-solid" type="submit" name="intent" value="save">Save changes</button>
+               ${m.published ? '' : '<button class="btn btn-solid" type="submit" name="intent" value="publish">Save and publish</button>'}
+               <button class="btn" type="button" data-action="admin-edit-cancel">Stop editing</button>`
+            : `<button class="btn btn-solid" type="submit" name="intent" value="publish">Publish market</button>
+               <button class="btn" type="submit" name="intent" value="draft">Save as draft</button>`
+        }
+      </div>
+    </form>`;
+}
+
+/** One awaiting-result market: enter the final price, preview winners, then confirm. */
+function resultForm(m) {
+  const p = A.preview?.id === m.id ? A.preview : null;
+  const v = p?.inputs ?? {};
+  const s = p?.summary;
+  const dist = LADDER.map((b) => `${NAMES[b]} ${fmtNum(m.totals[b])}`).join(' · ');
+  return `
+    <form class="admin-detect admin-result" data-resolve="${esc(m.id)}">
+      <div><b>${esc(m.symbol)}</b> <span class="muted">${esc(venueNames(m))}</span><br>
+        <span class="muted">Start price ${fmtPrice(m.basePrice)} · Pool ${fmtPts(m.pool)} from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'} · ${dist}</span><br>
+        <span class="muted">${LADDER.map((b) => `${NAMES[b]} ${rangeLabel(b, m.thresholds)}`).join(' · ')}</span></div>
+      <label><span class="field-label">Final price (USD)</span><input name="finalPrice" type="number" step="any" min="0" value="${esc(v.finalPrice ?? '')}" required /></label>
+      <label><span class="field-label">Winning outcome</span>
+        <select name="winningBucket"><option value="">Pick from the price (recommended)</option>${LADDER.map((b) => `<option value="${b}"${v.winningBucket === b ? ' selected' : ''}>${NAMES[b]}</option>`).join('')}</select></label>
+      <label style="grid-column:1/-1"><span class="field-label">Note shown to users (optional)</span><input name="note" maxlength="2000" value="${esc(v.note ?? '')}" placeholder="e.g. Binance XYZ/USDT close at 12:00 UTC" /></label>
+      ${
+        s
+          ? `<div class="admin-preview" style="grid-column:1/-1">
+              <p><b>Preview:</b> ${fmtPrice(s.basePrice)} → ${fmtPrice(s.finalPrice)} is <b>${fmtPct(s.returnPct)}</b>, ${s.voidReason ? `so the market would be <b>cancelled and refunded</b> (${esc(VOID_REASONS[s.voidReason] ?? s.voidReason)})` : `so <b>${NAMES[s.winningBucket]}</b> wins${s.overridden ? ` (you overrode ${NAMES[s.computedBucket]} from the price)` : ''}`}.</p>
+              <p class="muted">${s.voidReason ? '' : `${s.winnerCount} winner${s.winnerCount === 1 ? '' : 's'} share ${fmtPts(s.netPool)} (pool ${fmtPts(s.pool)} minus ${fmtPts(s.fee)} fee).`}</p>
+              ${s.winners.length ? `<ul class="activity">${s.winners.slice(0, 10).map((w) => `<li><span>${esc(w.username)} picked ${outcome(w.bucket)}</span><span class="muted">${fmtPts(w.stake)} → <b>${fmtPts(w.payout)}</b></span></li>`).join('')}</ul>` : ''}
+            </div>`
+          : ''
+      }
+      <div class="admin-actions" style="grid-column:1/-1">
+        <button class="btn${s ? '' : ' btn-solid'}" type="submit" name="intent" value="preview">Preview result</button>
+        ${s ? '<button class="btn btn-solid" type="submit" name="intent" value="resolve">Confirm and pay winners</button>' : ''}
+        <button class="btn" type="button" data-action="admin-cancel" data-id="${esc(m.id)}">Cancel and refund</button>
+      </div>
+    </form>`;
+}
+
+function marketActions(m) {
+  const btn = (action, label) => `<button class="btn" data-action="${action}" data-id="${esc(m.id)}">${label}</button>`;
+  const manualOpen = m.mode === 'manual' && m.status === 'open';
+  const out = [];
+  if (manualOpen) out.push(btn('admin-edit', 'Edit'));
+  if (manualOpen && !m.published) out.push(btn('admin-publish', 'Publish'), btn('admin-delete', 'Delete'));
+  if (manualOpen && m.published && m.predictors === 0) out.push(btn('admin-unpublish', 'Unpublish'));
+  if ((m.status === 'open' || m.status === 'locked') && (m.published || m.mode !== 'manual')) out.push(btn('admin-cancel', 'Cancel and refund'));
+  return out.join(' ');
+}
+
 function adminPhase(m) {
+  if (m.mode === 'manual') {
+    if (m.phase === 'draft') return 'Draft, not published';
+    if (m.phase === 'baseline') return `Open, closes in ${fmtDur(m.closeAt - now())}`;
+    if (m.phase === 'awaiting_result') return 'Awaiting your result';
+  }
   return { pre_listing: `Starts in ${fmtDur(m.listingAt - now())}`, baseline: 'Open, trading', running: `Running, ${fmtDur(m.settleAt - now())} left`, resolved: `Settled: ${NAMES[m.result?.winningBucket] ?? ''}`, void: 'Cancelled' }[m.phase] ?? m.phase;
 }
 
@@ -3917,6 +4357,8 @@ async function onAdminAction(action, el) {
       A.api = null;
       A.info = null;
       A.checks = null;
+      A.edit = null;
+      A.preview = null;
       saveAdminKey('');
       return renderAdmin();
     case 'admin-check':
@@ -3952,10 +4394,40 @@ async function onAdminAction(action, el) {
     case 'admin-ignore':
       await A.api.ignore(Number(el.dataset.id));
       return renderAdmin();
+    case 'admin-exchange':
+      try {
+        await A.api.setExchange(el.dataset.id, el.checked);
+        A.info = await A.api.ping();
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
+    case 'admin-edit':
+      A.edit = el.dataset.id;
+      await renderAdmin();
+      return $('#admin-market-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    case 'admin-edit-cancel':
+      A.edit = null;
+      return renderAdmin();
+    case 'admin-publish':
+    case 'admin-unpublish':
+    case 'admin-delete':
+      if (action === 'admin-delete' && !confirm('Delete this draft?')) return;
+      if (action === 'admin-publish' && !confirm('Publish this market? Users will be able to predict straight away.')) return;
+      try {
+        if (action === 'admin-publish') await A.api.publish(el.dataset.id);
+        else if (action === 'admin-unpublish') await A.api.unpublish(el.dataset.id);
+        else await A.api.deleteDraft(el.dataset.id);
+        toast(action === 'admin-publish' ? 'Market published' : action === 'admin-unpublish' ? 'Market moved back to drafts' : 'Draft deleted');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
     case 'admin-cancel':
       if (!confirm('Cancel this market and refund every prediction?')) return;
       try {
         await A.api.cancel(el.dataset.id);
+        if (A.preview?.id === el.dataset.id) A.preview = null;
         toast('Market cancelled and refunded');
       } catch (err) {
         toast(err.message, true);
@@ -3964,7 +4436,7 @@ async function onAdminAction(action, el) {
   }
 }
 
-async function onAdminSubmit(form) {
+async function onAdminSubmit(form, submitter) {
   if (form.id === 'admin-login') {
     const key = String(new FormData(form).get('key') || '');
     A.api = createAdminApi(key);
@@ -3977,6 +4449,8 @@ async function onAdminSubmit(form) {
     }
     return renderAdmin();
   }
+  if (form.id === 'admin-market') return submitAdminMarket(form, submitter?.value || 'save');
+  if (form.dataset.resolve) return submitAdminResult(form, submitter?.value || 'preview');
   if (form.id === 'admin-live') {
     const data = new FormData(form);
     const body = {
@@ -4005,6 +4479,79 @@ async function onAdminSubmit(form) {
     }
     return renderAdmin();
   }
+}
+
+
+const inputMs = (v) => new Date(String(v)).getTime();
+
+async function submitAdminMarket(form, intent) {
+  const d = new FormData(form);
+  const pct = (name) => Number(d.get(name)) / 100;
+  const body = {
+    name: String(d.get('name') || '').trim(),
+    exchanges: d.getAll('exchanges').map(String),
+    closeAt: inputMs(d.get('closeAt')),
+    resultAt: inputMs(d.get('resultAt')),
+    note: String(d.get('note') || '').trim(),
+  };
+  // Disabled (locked) fields are absent from FormData and stay unchanged on the server.
+  if (d.has('symbol')) body.symbol = String(d.get('symbol') || '').trim();
+  if (d.has('basePrice')) body.basePrice = Number(d.get('basePrice'));
+  if (d.has('crash')) {
+    body.config = {
+      thresholds: { crash: pct('crash'), down: pct('down'), up: pct('up'), moon: pct('moon') },
+      feeBps: Math.round(Number(d.get('fee')) * 100),
+      softCap: Number(d.get('softCap')),
+    };
+  }
+  if (!Number.isFinite(body.closeAt) || !Number.isFinite(body.resultAt)) return toast('Choose the close time and the expected result time.', true);
+  if (intent === 'publish' && !confirm('Publish this market? Users will be able to predict straight away.')) return;
+  const buttons = form.querySelectorAll('button');
+  buttons.forEach((b) => (b.disabled = true));
+  try {
+    const id = form.dataset.id;
+    let m;
+    if (id) m = await A.api.updateManual(id, body);
+    else m = await A.api.createManual({ ...body, publish: intent === 'publish' });
+    if (id && intent === 'publish') m = await A.api.publish(id);
+    A.edit = null;
+    toast(m.published ? `${m.symbol} market is live` : `${m.symbol} saved as a draft`);
+  } catch (err) {
+    toast(err.message, true);
+    buttons.forEach((b) => (b.disabled = false));
+    return;
+  }
+  return renderAdmin();
+}
+
+async function submitAdminResult(form, intent) {
+  const id = form.dataset.resolve;
+  const d = new FormData(form);
+  const inputs = { finalPrice: String(d.get('finalPrice') || ''), winningBucket: String(d.get('winningBucket') || ''), note: String(d.get('note') || '').trim() };
+  const key = JSON.stringify(inputs);
+  const body = { finalPrice: Number(inputs.finalPrice), winningBucket: inputs.winningBucket || undefined, note: inputs.note || undefined };
+  const buttons = form.querySelectorAll('button');
+  buttons.forEach((b) => (b.disabled = true));
+  try {
+    // Money moves only after the admin has seen a preview of exactly these inputs.
+    if (intent === 'resolve' && A.preview?.id === id && A.preview.key === key) {
+      const s = A.preview.summary;
+      const what = s.voidReason ? 'Cancel this market and refund everyone' : `Declare ${NAMES[s.winningBucket]} the winner and pay ${s.winnerCount} winner${s.winnerCount === 1 ? '' : 's'} ${fmtPts(s.totalPaid)}`;
+      if (!confirm(`${what}? This can’t be undone.`)) {
+        buttons.forEach((b) => (b.disabled = false));
+        return;
+      }
+      const out = await A.api.resolve(id, body);
+      A.preview = null;
+      toast(out.voidReason ? 'Market cancelled and refunded' : `Result posted. ${out.winnerCount} winner${out.winnerCount === 1 ? '' : 's'} paid.`);
+    } else {
+      A.preview = { id, key, inputs, summary: await A.api.previewResult(id, body) };
+      if (intent === 'resolve') toast('Check the preview, then confirm.');
+    }
+  } catch (err) {
+    toast(err.message, true);
+  }
+  return renderAdmin();
 }
 
 // ------------------------------------------------------------------ Events
@@ -4046,7 +4593,12 @@ document.addEventListener('click', async (e) => {
     case 'login':
     case 'signup':
     case 'connect':
-      return openAuth(action);
+      return openAuth('connect');
+    case 'auth-resend':
+      return resendCode();
+    case 'auth-change-email':
+      S.auth = { ...S.auth, step: 'start', devCode: null };
+      return renderAuth();
     case 'link-wallet':
       return openAuth('link');
     case 'demo-wallet':
@@ -4100,6 +4652,12 @@ document.addEventListener('input', (e) => {
   }
 });
 
+document.addEventListener('input', (e) => {
+  if (e.target.id !== 'auth-code') return;
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
+  if (e.target.value.length === 6) submitCode(e.target.form);
+});
+
 document.addEventListener('change', (e) => {
   if (e.target.id === 'exchange-filter') {
     S.exchange = e.target.value;
@@ -4108,15 +4666,18 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('submit', (e) => {
-  if (e.target.id === 'auth-form') {
+  if (e.target.id === 'auth-email-form') {
     e.preventDefault();
-    submitAuth(e.target);
+    submitEmail(e.target);
+  } else if (e.target.id === 'auth-code-form') {
+    e.preventDefault();
+    submitCode(e.target);
   } else if (e.target.id === 'username-form') {
     e.preventDefault();
     submitUsername(e.target);
   } else if (S.route.name === 'admin') {
     e.preventDefault();
-    onAdminSubmit(e.target);
+    onAdminSubmit(e.target, e.submitter);
   }
 });
 
@@ -4162,7 +4723,7 @@ setInterval(() => {
     }
   });
   onWalletsChanged(() => {
-    if ((S.modal === 'connect' || S.modal === 'link') && !S.modalBusy) openAuth(S.modal);
+    if ((S.modal === 'link' || (S.modal === 'connect' && S.auth?.step === 'start')) && !S.modalBusy) renderAuth();
   });
 })();
 

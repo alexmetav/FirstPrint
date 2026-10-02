@@ -69,7 +69,11 @@ CREATE TABLE IF NOT EXISTS markets (
   hard_cap              INTEGER,
   retracted             INTEGER NOT NULL DEFAULT 0,
   halted_ms             INTEGER NOT NULL DEFAULT 0,
-  created_at            INTEGER NOT NULL
+  created_at            INTEGER NOT NULL,
+  mode                  TEXT NOT NULL DEFAULT 'auto',  -- auto: exchange data settles it; manual: an admin enters the result
+  published             INTEGER NOT NULL DEFAULT 1,    -- 0 = admin draft, hidden from users
+  base_price            REAL,                          -- manual markets: reference price set by the admin
+  note                  TEXT                           -- manual markets: description / resolution rules shown to users
 );
 CREATE INDEX IF NOT EXISTS markets_status ON markets(status, listing_at);
 
@@ -129,3 +133,18 @@ CREATE TABLE IF NOT EXISTS detected_listings (
   market_id     TEXT REFERENCES markets(id)
 );
 CREATE INDEX IF NOT EXISTS detected_status ON detected_listings(status, detected_at);
+
+-- Small key/value store for admin settings (e.g. which exchanges can be used).
+CREATE TABLE IF NOT EXISTS settings (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
+
+-- One-time sign-in codes sent by email. Only a hash of the code is stored.
+CREATE TABLE IF NOT EXISTS email_codes (
+  email       TEXT PRIMARY KEY,
+  code_hash   TEXT NOT NULL,
+  expires_at  INTEGER NOT NULL,
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL
+);

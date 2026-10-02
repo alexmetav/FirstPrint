@@ -12,6 +12,7 @@ import { createApiServer } from './api/server.ts';
 import { allVenues } from './exchanges/venues.ts';
 import { SimVenue, simProfileFromDb } from './exchanges/sim.ts';
 import type { Venue } from './exchanges/types.ts';
+import { ConsoleMailer, ResendMailer, type Mailer } from './auth/mailer.ts';
 
 const log = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
 
@@ -25,9 +26,16 @@ if (cfg.sim) {
   log('simulated venue enabled');
 }
 
+// Email codes: a real mailer in production; outside production a console mailer that also
+// returns the code to the browser so sign-in can be tried without an email provider.
+const production = process.env.NODE_ENV === 'production';
+const mailer: Mailer | null =
+  cfg.resendApiKey && cfg.mailFrom ? new ResendMailer(cfg.resendApiKey, cfg.mailFrom) : production ? null : new ConsoleMailer(log);
+const devEmailCodes = !production && !(cfg.resendApiKey && cfg.mailFrom);
+
 const service = new FirstprintService(db, systemClock, venues, log);
-const live = new LiveFeed(service);
-const tracked = venues.filter((v) => cfg.trackVenues.includes(v.id));
+const live = new LiveFeed(service);  // still serves the browser event stream; prices are only polled when not manual-only
+const tracked = cfg.manualOnly ? [] : venues.filter((v) => cfg.trackVenues.includes(v.id));
 const tracker = tracked.length ? new ListingTracker(service, tracked, { autoCreate: cfg.autoCreateMarkets }) : null;
 
 // Settlement notifications are logged; plug in email or web push here.
@@ -36,7 +44,7 @@ const scheduler = new Scheduler(
   async (notes) => {
     for (const n of notes) log(`notify ${n.userId}: ${n.symbol} ${n.status} payout=${n.payout} refund=${n.refund}`);
   },
-  { tickMs: cfg.tickMs, liveMs: cfg.liveMs, trackEveryMs: cfg.trackEveryMs, tracker, live },
+  { tickMs: cfg.tickMs, liveMs: cfg.liveMs, trackEveryMs: cfg.trackEveryMs, tracker, live: cfg.manualOnly ? null : live },
 );
 
 const server = createApiServer({
@@ -44,6 +52,10 @@ const server = createApiServer({
   scheduler,
   live,
   adminKey: cfg.adminKey,
+  manualOnly: cfg.manualOnly,
+  googleClientId: cfg.googleClientId,
+  mailer,
+  devEmailCodes,
   secureCookies: cfg.secureCookies,
   publicUrl: cfg.publicUrl,
   solanaChain: cfg.solanaChain,

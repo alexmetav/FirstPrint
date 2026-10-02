@@ -1462,3 +1462,83 @@ code {
     grid-template-columns: 1fr;
   }
 }
+
+/* Admin: manual markets */
+.admin-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  border-radius: var(--r-sm);
+  padding: 9px 10px;
+  font: inherit;
+  resize: vertical;
+}
+.admin-result {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  align-items: end;
+}
+.admin-result .admin-list,
+.admin-preview {
+  grid-column: 1 / -1;
+}
+.admin-preview {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+}
+.admin-preview p {
+  margin: 0 0 6px;
+}
+.admin-row-actions {
+  white-space: nowrap;
+}
+.admin-row-actions .btn {
+  margin-left: 6px;
+}
+.m-note {
+  color: var(--muted);
+  margin: 0 0 10px;
+  max-width: 62ch;
+}
+.admin-result > div:first-child {
+  grid-column: 1 / -1;
+}
+
+/* Sign-in popup */
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.google-slot {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: 16px;
+}
+.code-input {
+  font-size: 28px;
+  letter-spacing: 0.4em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.dev-code {
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+}
+.modal .switch:disabled {
+  opacity: 0.6;
+  cursor: default;
+  text-decoration: none;
+}
