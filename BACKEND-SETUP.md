@@ -2,6 +2,8 @@
 
 ## Current status
 
+> **Update:** the launch path is now the single-instance `firstprint-app` Render service on a persistent disk (see the end of LAUNCH.md). A SQLite file on a persistent disk is safe with exactly one instance. The PostgreSQL/Supabase migration described below is only needed for more than one instance; the "not on an ephemeral filesystem" warning still applies.
+
 The existing Node/TypeScript backend runs locally and provides email/password and wallet accounts, a points ledger, predictions, listing detection, live events, and settlement. It uses **SQLite**, not Supabase/PostgreSQL, and its own authentication, not Supabase Auth. This preparation does not complete that migration or launch a cloud backend.
 
 The public website is built from `site/`. A separate prediction interface is copied to `/play/` and forced into browser-only practice mode during the deployment build. It never calls prediction, authentication, database, worker, or admin routes.

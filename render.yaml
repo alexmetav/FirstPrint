@@ -9,3 +9,41 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.18.0
+
+  # The full app: accounts, points, admin panel, manual markets. One instance only,
+  # because the database is a SQLite file on the persistent disk below.
+  - type: web
+    name: firstprint-app
+    runtime: node
+    plan: starter # persistent disks need a paid plan
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    disk:
+      name: firstprint-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 22.18.0
+      - key: NODE_ENV
+        value: production
+      - key: DB_PATH
+        value: /data/firstprint.db
+      - key: MANUAL_ONLY
+        value: "1"
+      - key: SOLANA_CHAIN
+        value: devnet
+      # Render creates a random key. Read it in the dashboard (Environment) to open /#/admin.
+      - key: ADMIN_KEY
+        generateValue: true
+      # The address people type in the browser, e.g. https://app.firstprint.fun (no trailing slash).
+      - key: PUBLIC_URL
+        sync: false
+      # Optional sign-in methods; each is hidden in the app until it is set.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
