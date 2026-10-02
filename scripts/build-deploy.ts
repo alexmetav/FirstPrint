@@ -12,3 +12,15 @@ const html = readFileSync(playIndex, 'utf8').replace(
 );
 writeFileSync(playIndex, html);
 console.log('Built public site and prediction app into .deploy/');
+
+// APP_URL points the marketing site's "launch" links at the hosted full app (accounts, real markets)
+// instead of the browser-only practice build. Leave it unset to keep linking to /play/.
+const appUrl = (process.env.APP_URL ?? '').trim().replace(/\/+$/, '');
+if (appUrl) {
+  if (!/^https:\/\/[^\s"'<>]+$/.test(appUrl)) throw new Error('APP_URL must be an https:// address.');
+  for (const file of ['index.html', 'assets/site.js']) {
+    const url = new URL(file, out);
+    writeFileSync(url, readFileSync(url, 'utf8').replaceAll('href="/play/"', `href="${appUrl}/"`));
+  }
+  console.log(`Site links to the full app at ${appUrl}`);
+}

@@ -4142,6 +4142,8 @@ async function renderAdmin() {
       ${marketForm(editing)}
     </section>
 
+    ${backupLine(A.info.backup)}
+
     <section class="section">
       <h2>Exchanges</h2>
       <p class="muted">Switch off an exchange to stop it being used in new markets. Nothing is fetched from these exchanges; they are shown to users as the reference for the price you enter.</p>
@@ -4170,6 +4172,14 @@ async function renderAdmin() {
           : '<p class="muted">No markets yet.</p>'
       }
     </section>`;
+}
+
+function backupLine(b) {
+  if (!b?.enabled) return '';
+  const ok = b.lastOkAt && !b.lastError;
+  return `<p class="${ok ? 'muted' : 'form-error'}" role="status">Database backup: ${
+    b.lastError ? `failing (${esc(b.lastError)})` : b.lastOkAt ? `last saved ${fmtAgo(b.lastOkAt)}` : 'waiting for the first copy'
+  }.</p>`;
 }
 
 function legacyAdminSections(venues, detected) {
