@@ -316,7 +316,7 @@ export class DemoBackend {
   // --- Public API (matches createApi) ----------------------------------------------
 
   config() {
-    return this.run(() => ({ minStake: 10, dailyPoints: 100, demo: true, signIn: { google: null, email: true } }));
+    return this.run(() => ({ minStake: 10, dailyPoints: 100, demo: true, manualOnly: false, signIn: { google: null, email: true } }));
   }
 
   me() {
@@ -457,6 +457,11 @@ export class DemoBackend {
         .map((p) => ({ username: this.users.get(p.userId).username, bucket: p.bucket, stake: p.stake, placedAt: p.placedAt }));
       return { activity };
     });
+  }
+
+  /** Practice mode keeps no points history. */
+  ledger() {
+    return this.run(() => ({ entries: [] }));
   }
 
   myPredictions() {

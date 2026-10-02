@@ -1542,3 +1542,15 @@ code {
   cursor: default;
   text-decoration: none;
 }
+
+/* Waking-up notice (free hosting sleeps when idle) */
+.wake-bar {
+  background: var(--raised);
+  border-bottom: 1px solid var(--line);
+}
+.wake-bar p {
+  margin: 0;
+  padding: 10px 16px;
+  text-align: center;
+  font-size: 14px;
+}

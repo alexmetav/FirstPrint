@@ -1,7 +1,7 @@
 // Firstprint website. Vanilla ES modules, no build step.
 
 import { bucketRangeLabel } from './engine.js';
-import { ApiError, backendAvailable, createAdminApi, createApi } from './api.js';
+import { ApiError, backendAvailable, createAdminApi, createApi, wake } from './api.js';
 import { DemoBackend } from './demo.js';
 import { INSTALL_LINKS, connectAndSign, disconnectWallets, isMobileDevice, listWallets, mobileWalletLinks, onWalletsChanged, shortAddress } from './wallet.js';
 
@@ -201,12 +201,16 @@ async function loadRoute() {
       view.innerHTML = leaderboardView(lb);
     } else if (S.route.name === 'admin') {
       await renderAdmin();
+    } else if (S.route.name === 'radar' && S.cfg?.manualOnly) {
+      location.replace('#/');
+      return;
     } else if (S.route.name === 'radar') {
       const { listings } = await S.api.detectedListings();
       view.innerHTML = radarView(listings);
     } else if (S.route.name === 'portfolio') {
       const preds = S.me ? (await S.api.myPredictions()).predictions : [];
-      view.innerHTML = portfolioView(preds);
+      const history = S.me && S.api.ledger ? (await S.api.ledger().catch(() => ({ entries: [] }))).entries : [];
+      view.innerHTML = portfolioView(preds, history);
     }
     document.title = titleFor();
   } catch (err) {
@@ -237,7 +241,7 @@ function renderTop() {
       <a class="wordmark" href="#/" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
       <nav class="nav" aria-label="Main">
         <a href="#/"${cur('home')}>Markets</a>
-        <a href="#/radar"${cur('radar')}>Listing radar</a>
+        ${S.cfg?.manualOnly ? '' : `<a href="#/radar"${cur('radar')}>Listing radar</a>`}
         <a href="#/leaderboard"${cur('leaderboard')}>Leaderboard</a>
         <a href="#/portfolio"${cur('portfolio')}>Portfolio</a>
       </nav>
@@ -378,6 +382,18 @@ function cardView(m) {
 }
 
 function howItWorks() {
+  if (S.cfg?.manualOnly) {
+    return `
+    <section class="section" id="how" style="margin-top:36px">
+      <h2>How it works</h2>
+      <ol class="rules">
+        <li>Firstprint publishes a market for a token listed on major exchanges, with a start price. Log in with Google, email, or a Solana wallet to get 1,000 free points.</li>
+        <li>Pick one of five outcomes for where the price ends up compared with the start price, from Crash to Moon. Predictions close at the time shown, and earlier predictions earn a bigger share.</li>
+        <li>After they close, Firstprint posts the final price and the winners on the market page.</li>
+        <li>Everyone who picked the winning outcome splits the pool, minus a 4% fee. If nobody picked it, everyone gets their points back.</li>
+      </ol>
+    </section>`;
+  }
   return `
     <section class="section" id="how" style="margin-top:36px">
       <h2>How it works</h2>
@@ -863,7 +879,7 @@ function leaderboardView(lb) {
     ${S.me && !lb.me ? '<p class="fine">You’ll appear here after one of your predictions settles.</p>' : ''}`;
 }
 
-function portfolioView(preds) {
+function portfolioView(preds, history = []) {
   if (!S.me) {
     return `
       <h1 class="page-title">Portfolio</h1>
@@ -907,7 +923,32 @@ function portfolioView(preds) {
       <button class="btn" data-action="link-wallet">Link ${S.me.wallets.length ? 'another' : 'a Solana'} wallet</button>
     </section>
     <section class="section"><h2>Active predictions</h2>${table(active, 'No active predictions. Pick an upcoming listing to get started.')}</section>
-    <section class="section"><h2>Settled</h2>${table(settled, 'Your results appear here after markets settle.')}</section>`;
+    <section class="section"><h2>Settled</h2>${table(settled, 'Your results appear here after markets settle.')}</section>
+    ${historyView(history)}`;
+}
+
+const HISTORY_LABELS = {
+  signup: () => 'Welcome bonus',
+  daily: () => 'Daily claim',
+  stake: (e) => `Prediction${e.symbol ? ` on ${e.symbol}` : ''}`,
+  refund: (e) => `Refund${e.symbol ? ` from ${e.symbol}` : ''}`,
+  payout: (e) => `Won${e.symbol ? ` on ${e.symbol}` : ''}`,
+};
+
+/** Every change to the balance, so points never seem to appear or vanish. */
+function historyView(entries) {
+  if (!entries.length) return '';
+  return `
+    <section class="section">
+      <h2>Points history</h2>
+      <ul class="activity">${entries
+        .map((e) => {
+          const label = (HISTORY_LABELS[e.reason] ?? (() => e.reason))(e);
+          const name = e.marketId ? `<a href="#/market/${encodeURIComponent(e.marketId)}">${esc(label)}</a>` : esc(label);
+          return `<li><span>${name}</span><span><b class="${e.delta >= 0 ? 'profit-pos' : ''}">${e.delta >= 0 ? '+' : '−'}${fmtNum(Math.abs(e.delta))}</b> <span class="muted">${fmtAgo(e.at)}</span></span></li>`;
+        })
+        .join('')}</ul>
+    </section>`;
 }
 
 // ------------------------------------------------------------------ Listing radar
@@ -1331,7 +1372,11 @@ async function renderAdmin() {
   }
 
   const manualOnly = Boolean(A.info.manualOnly);
-  const [{ markets }, detected] = await Promise.all([A.api.markets(), manualOnly ? Promise.resolve([]) : A.api.detected().then((d) => d.detected)]);
+  const [{ markets }, detected, { log }] = await Promise.all([
+    A.api.markets(),
+    manualOnly ? Promise.resolve([]) : A.api.detected().then((d) => d.detected),
+    A.api.log().catch(() => ({ log: [] })),
+  ]);
   const venues = A.info.venues;
   const editing = markets.find((m) => m.id === A.edit && m.mode === 'manual' && m.status === 'open') ?? null;
   if (A.edit && !editing) A.edit = null;
@@ -1380,6 +1425,39 @@ async function renderAdmin() {
               )
               .join('')}</tbody></table></div>`
           : '<p class="muted">No markets yet.</p>'
+      }
+    </section>
+
+    ${adminLogView(log)}`;
+}
+
+const ADMIN_ACTIONS = {
+  market_drafted: 'Saved a draft',
+  market_published: 'Published a market',
+  market_unpublished: 'Moved a market back to drafts',
+  market_edited: 'Edited a market',
+  draft_deleted: 'Deleted a draft',
+  result_posted: 'Posted a result',
+  market_voided: 'Settled as cancelled and refunded',
+  market_cancelled: 'Cancelled and refunded a market',
+  exchange_on: 'Switched an exchange on',
+  exchange_off: 'Switched an exchange off',
+};
+
+/** The last things done in this panel, so a payout or cancellation can always be traced. */
+function adminLogView(log) {
+  return `
+    <section class="section">
+      <h2>Recent admin activity</h2>
+      ${
+        log.length
+          ? `<ul class="activity">${log
+              .map(
+                (e) =>
+                  `<li><span><b>${esc(ADMIN_ACTIONS[e.action] ?? e.action)}</b>${e.target ? ` <span class="muted">${esc(e.target)}</span>` : ''}${e.detail ? `<br><span class="muted">${esc(e.detail)}</span>` : ''}</span><span class="muted">${fmtAgo(e.at)}</span></li>`,
+              )
+              .join('')}</ul>`
+          : '<p class="muted">Nothing yet. Every market change and result posted from this panel is recorded here.</p>'
       }
     </section>`;
 }
@@ -1929,6 +2007,17 @@ setInterval(() => {
   // A server outage must never silently replace real balances with simulated ones.
   S.api = forceDemo ? new DemoBackend() : createApi();
   renderDemoBar();
+  wake.onWaking = () => {
+    if (!$('.wake-bar')) {
+      $('#demo-bar').innerHTML = '<div class="wake-bar" role="status"><p>Waking up the server. The first visit after a quiet period can take up to a minute. This page will load by itself.</p></div>';
+    }
+  };
+  wake.onAwake = () => {
+    if ($('.wake-bar')) $('#demo-bar').innerHTML = '';
+    renderDemoBar();
+  };
+  S.cfg = await S.api.config().catch(() => ({}));
+  S.signIn = S.cfg.signIn ?? S.signIn;
   try {
     await refreshMe();
   } catch (err) {

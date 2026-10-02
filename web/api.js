@@ -8,18 +8,50 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Free hosting puts the server to sleep when nobody visits, and the first request after that fails with a
+ * gateway error until it has started (up to about a minute). Reads are retried while that happens, and the
+ * page is told so it can say so instead of showing an error. Writes are never retried: they aren't safe to repeat.
+ */
+export const wake = { onWaking: () => {}, onAwake: () => {} };
+const WAKE_RETRIES = 16;
+const WAKE_WAIT_MS = 4_000;
+const GATEWAY = new Set([502, 503, 504, 520, 521, 522, 523, 524]);
+
 export function createApi(baseUrl = '') {
   async function request(path, init = {}) {
-    let res;
-    try {
-      res = await fetch(baseUrl + path, {
-        ...init,
-        credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
-      });
-    } catch {
-      throw new ApiError(0, 'offline', 'Can’t reach Firstprint. Check your connection and try again.');
+    const canRetry = !init.method || init.method === 'GET';
+    let waking = false;
+    for (let attempt = 0; ; attempt++) {
+      let res;
+      try {
+        res = await fetch(baseUrl + path, {
+          ...init,
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+        });
+      } catch {
+        if (canRetry && attempt < WAKE_RETRIES) {
+          waking = true;
+          wake.onWaking();
+          await new Promise((r) => setTimeout(r, WAKE_WAIT_MS));
+          continue;
+        }
+        if (waking) wake.onAwake();
+        throw new ApiError(0, 'offline', 'Can’t reach Firstprint. Check your connection and try again.');
+      }
+      if (GATEWAY.has(res.status) && canRetry && attempt < WAKE_RETRIES) {
+        waking = true;
+        wake.onWaking();
+        await new Promise((r) => setTimeout(r, WAKE_WAIT_MS));
+        continue;
+      }
+      if (waking) wake.onAwake();
+      return finish(res);
     }
+  }
+
+  async function finish(res) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new ApiError(res.status, data.error ?? 'error', data.message ?? 'Request failed.');
     return data;
@@ -36,6 +68,7 @@ export function createApi(baseUrl = '') {
     logout: () => post('/api/auth/logout'),
     claimDaily: () => post('/api/me/claim-daily'),
     myPredictions: () => request('/api/me/predictions'),
+    ledger: () => request('/api/me/ledger'),
     markets: (filter) => request(`/api/markets?filter=${filter}`),
     market: (m) => request(`/api/markets/${id(m)}`),
     quote: (m, bucket, stake) => request(`/api/markets/${id(m)}/quote?bucket=${bucket}&stake=${stake}`),
@@ -95,6 +128,7 @@ export function createAdminApi(key, baseUrl = '') {
     approve: (id, body) => post(`/api/admin/detected/${id}/approve`, body),
     ignore: (id) => post(`/api/admin/detected/${id}/ignore`),
     track: () => post('/api/admin/track'),
+    log: () => request('/api/admin/log'),
     exchanges: () => request('/api/admin/exchanges'),
     setExchange: (id, enabled) => post(`/api/admin/exchanges/${encodeURIComponent(id)}`, { enabled }),
     createManual: (body) => post('/api/admin/manual-markets', body),
