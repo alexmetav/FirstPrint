@@ -1017,7 +1017,7 @@ export class FirstprintService {
 
 
   /** Pays out (or refunds) a settled market, stores the audit record, and returns per-user notifications. */
-  private commitSettlement(m: MarketRow, rows: PredictionRow[], result: SettlementResult & Record<string, unknown>, dataHash: string, now: number): Notification[] {
+  private commitSettlement(m: MarketRow, rows: PredictionRow[], result: SettlementResult, dataHash: string, now: number): Notification[] {
     const status = result.voidReason ? 'void' : 'resolved';
     const notes: Notification[] = [];
     tx(this.db, () => {
