@@ -20,9 +20,21 @@ console.log('Built public site and prediction app into .deploy/');
 const appUrl = (process.env.APP_URL ?? '').trim().replace(/\/+$/, '');
 if (appUrl) {
   if (!/^https:\/\/[^\s"'<>]+$/.test(appUrl)) throw new Error('APP_URL must be an https:// address.');
+  // The full app has real accounts, so its links shouldn't call it "practice".
+  const labels: [string, string][] = [
+    ['>Try practice beta<', '>Open the app<'],
+    ['>Try practice predictions<', '>Start predicting<'],
+    ['>Open practice beta<', '>Open the app<'],
+    ['>Practice beta<', '>Play<'],
+    ['>Practice predictions<', '>Predictions<'],
+    ['>Predictions <span class="soon">Practice</span><', '>Predictions<'],
+  ];
   for (const file of ['index.html', 'assets/site.js']) {
     const url = new URL(file, out);
-    writeFileSync(url, readFileSync(url, 'utf8').replaceAll('href="/play/"', `href="${appUrl}/"`));
+    let text = readFileSync(url, 'utf8');
+    for (const [from, to] of labels) text = text.replaceAll(`href="/play/"${from}`, `href="${appUrl}/"${to}`);
+    if (text.includes('href="/play/"')) throw new Error(`${file} has a /play/ link with an unexpected label; add it to build-deploy.ts.`);
+    writeFileSync(url, text);
   }
   console.log(`Site links to the full app at ${appUrl}`);
 }
