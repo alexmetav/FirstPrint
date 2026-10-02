@@ -15,6 +15,8 @@ export interface ServerOptions {
   scheduler?: Scheduler;
   live?: LiveFeed;
   adminKey: string | null;
+  /** How many proxies sit between visitors and this server (0 = none). Used to find the visitor's address for rate limits. */
+  trustProxyHops?: number;
   /** Google OAuth client ID (public). Enables "Continue with Google". */
   googleClientId?: string | null;
   /** Override for tests: where Google's signing keys come from. */
@@ -60,6 +62,21 @@ const MIME: Record<string, string> = {
 
 export function createApiServer(opts: ServerOptions): Server {
   let googleJwks: JwksFetcher | undefined;
+  const proxyHops = Math.max(0, Math.floor(opts.trustProxyHops ?? 0));
+
+  /**
+   * The visitor's address, for rate limits. Hosts put load balancers in front of this server, so the
+   * connecting address is the balancer's, shared by every visitor. Each trusted proxy appends the address
+   * it received the request from to X-Forwarded-For, so with N trusted proxies the visitor is the Nth entry
+   * from the right. Entries further left can be forged by the visitor and are never used. If the header has
+   * fewer entries than expected, fall back to the connecting address instead of trusting it.
+   */
+  function clientIp(req: IncomingMessage): string {
+    const direct = req.socket.remoteAddress ?? 'unknown';
+    if (proxyHops === 0) return direct;
+    const chain = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    return chain.length >= proxyHops ? chain[chain.length - proxyHops] : direct;
+  }
   const { service } = opts;
   const marketData = new MarketData();
   const routes: { method: string; pattern: RegExp; keys: string[]; handler: Handler }[] = [];
@@ -144,7 +161,7 @@ export function createApiServer(opts: ServerOptions): Server {
   route('POST', '/api/auth/email/start', async ({ req, body }) => {
     if (!opts.mailer) throw new AppError(503, 'email_off', 'Email sign-in isn’t set up yet. Use Google or a wallet.');
     const b = await body();
-    rateLimit(`emailcode:${req.socket.remoteAddress}`, 10, 10 * 60_000);
+    rateLimit(`emailcode:${clientIp(req)}`, 10, 10 * 60_000);
     const email = String(b.email ?? '').trim().toLowerCase();
     rateLimit(`emailcode:${email}`, 5, 60 * 60_000);
     const { code, expiresAt } = service.startEmailLogin(email);
@@ -159,7 +176,7 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('POST', '/api/auth/email/verify', async ({ req, res, body }) => {
     const b = await body();
-    rateLimit(`emailverify:${req.socket.remoteAddress}`, 20, 10 * 60_000);
+    rateLimit(`emailverify:${clientIp(req)}`, 20, 10 * 60_000);
     const { user, created } = service.verifyEmailCode(String(b.email ?? ''), String(b.code ?? ''));
     const session = service.createSession(user.id);
     setSessionCookie(res, session.token, SESSION_MS);
@@ -168,7 +185,7 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('POST', '/api/auth/google', async ({ req, res, body }) => {
     if (!opts.googleClientId) throw new AppError(503, 'google_off', 'Google sign-in isn’t set up yet.');
-    rateLimit(`google:${req.socket.remoteAddress}`, 20, 10 * 60_000);
+    rateLimit(`google:${clientIp(req)}`, 20, 10 * 60_000);
     const b = await body();
     const who = await verifyGoogleIdToken(String(b.credential ?? ''), opts.googleClientId, opts.googleJwks ?? (googleJwks ??= cachedGoogleJwks()));
     if (!who) throw new AppError(401, 'bad_google_token', 'Google sign-in failed. Try again.');
@@ -186,12 +203,12 @@ export function createApiServer(opts: ServerOptions): Server {
   }
 
   route('GET', '/api/auth/wallet/challenge', ({ req, url }) => {
-    rateLimit(`challenge:${req.socket.remoteAddress}`, 20, 60_000);
+    rateLimit(`challenge:${clientIp(req)}`, 20, 60_000);
     return service.walletChallenge(String(url.searchParams.get('address') ?? ''), siteFor(req));
   });
 
   route('POST', '/api/auth/wallet/verify', async ({ req, res, body }) => {
-    rateLimit(`wallet:${req.socket.remoteAddress}`, 20, 60_000);
+    rateLimit(`wallet:${clientIp(req)}`, 20, 60_000);
     const b = await body();
     const { user, created } = service.walletSignIn({
       address: String(b.address ?? ''),
@@ -205,7 +222,7 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('POST', '/api/auth/signup', async ({ req, res, body }) => {
-    rateLimit(`signup:${req.socket.remoteAddress}`, 5, 60_000);
+    rateLimit(`signup:${clientIp(req)}`, 5, 60_000);
     const b = await body();
     const user = await service.createUser({
       email: String(b.email ?? ''),
@@ -219,7 +236,7 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('POST', '/api/auth/login', async ({ req, res, body }) => {
     const b = await body();
-    rateLimit(`login:${req.socket.remoteAddress}`, 10, 60_000);
+    rateLimit(`login:${clientIp(req)}`, 10, 60_000);
     rateLimit(`login:${String(b.email ?? '').toLowerCase()}`, 10, 10 * 60_000);
     const user = await service.authenticate(String(b.email ?? ''), String(b.password ?? ''));
     const session = service.createSession(user.id);
@@ -581,7 +598,7 @@ export function createApiServer(opts: ServerOptions): Server {
         return u;
       },
       requireAdmin: () => {
-        rateLimit(`admin:${req.socket.remoteAddress}`, 30, 60_000);
+        rateLimit(`admin:${clientIp(req)}`, 30, 60_000);
         const given = String(req.headers['x-admin-key'] ?? '');
         const ok =
           opts.adminKey &&
@@ -592,7 +609,7 @@ export function createApiServer(opts: ServerOptions): Server {
     };
 
     try {
-      rateLimit(`ip:${req.socket.remoteAddress}`, 300);
+      rateLimit(`ip:${clientIp(req)}`, 300);
       if (req.method === 'POST' && req.headers.origin) {
         const expected = opts.publicUrl ? new URL(opts.publicUrl).origin : `http://${req.headers.host}`;
         if (req.headers.origin !== expected) throw new AppError(403, 'bad_origin', 'Request origin is not allowed.');

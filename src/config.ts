@@ -13,6 +13,7 @@ export interface AppConfig {
   sim: boolean;
   /** Admin-run markets only: no exchange scanning or live price feeds. */
   manualOnly: boolean;
+  trustProxyHops: number;
   googleClientId: string | null;
   resendApiKey: string | null;
   mailFrom: string | null;
@@ -37,6 +38,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     autoCreateMarkets: env.AUTO_CREATE_MARKETS === '1',
     sim: env.SIM === '1',
     manualOnly: env.MANUAL_ONLY !== '0',
+    // Render's load balancer is one proxy. Add one for each more in front (for example Vercel rewrites).
+    trustProxyHops: env.TRUST_PROXY_HOPS === undefined ? (production ? 1 : 0) : Math.max(0, Math.floor(Number(env.TRUST_PROXY_HOPS)) || 0),
     googleClientId: env.GOOGLE_CLIENT_ID || null,
     resendApiKey: env.RESEND_API_KEY || null,
     mailFrom: env.MAIL_FROM || null,

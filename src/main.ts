@@ -63,6 +63,7 @@ const server = createApiServer({
   live,
   adminKey: cfg.adminKey,
   manualOnly: cfg.manualOnly,
+  trustProxyHops: cfg.trustProxyHops,
   backupStatus: () => backup?.status() ?? { enabled: false, lastOkAt: null, lastError: null },
   googleClientId: cfg.googleClientId,
   mailer,
