@@ -2,7 +2,7 @@
 
 import { bucketRangeLabel } from './engine.js';
 import { ApiError, backendAvailable, createAdminApi, createApi } from './api.js';
-import { DEMO_LOGIN, DemoBackend } from './demo.js';
+import { DemoBackend } from './demo.js';
 import { INSTALL_LINKS, connectAndSign, disconnectWallets, isMobileDevice, listWallets, mobileWalletLinks, onWalletsChanged, shortAddress } from './wallet.js';
 
 const LADDER = ['moon', 'up', 'flat', 'down', 'crash'];
@@ -246,7 +246,7 @@ function renderTop() {
           S.me
             ? `<a class="points" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${fmtPts(S.me.points)}</a>
                <a class="wallet-chip" href="#/portfolio">${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</a>`
-            : `<button class="btn btn-solid" data-action="connect">Connect wallet</button>`
+            : `<button class="btn btn-solid" data-action="connect">Log in</button>`
         }
       </div>
     </div>`;
@@ -382,7 +382,7 @@ function howItWorks() {
     <section class="section" id="how" style="margin-top:36px">
       <h2>How it works</h2>
       <ol class="rules">
-        <li>Firstprint watches seven exchanges for new listings and opens a market when one is confirmed. Connect a Solana wallet to get 1,000 free points.</li>
+        <li>Firstprint watches seven exchanges for new listings and opens a market when one is confirmed. Sign in with Google, email, or a Solana wallet to get 1,000 free points.</li>
         <li>Pick one of five outcomes for the price 72 hours after listing, from Crash to Moon. Predictions stay open until 1 hour after trading starts, and earlier predictions earn a bigger share.</li>
         <li>The starting price is the average over the first hour of trading. The final price is the average over the last hour, so a single spike can’t decide a market.</li>
         <li>Everyone who picked the winning outcome splits the pool, minus a 4% fee. If nobody picked it, everyone gets their points back.</li>
@@ -704,7 +704,7 @@ function renderTrade() {
 }
 
 function positionsView(m, mode) {
-  if (!S.me) return mode === 'open' ? '' : '<p class="fine">Connect a wallet to track your predictions.</p>';
+  if (!S.me) return mode === 'open' ? '' : '<p class="fine">Log in to track your predictions.</p>';
   if (!m.mine.length) return mode === 'open' ? '' : '<p class="fine">You didn’t predict on this market.</p>';
   const rows = m.mine
     .map((p) => {
@@ -740,7 +740,7 @@ function updateSummary() {
 
   const cta = $('#trade-cta');
   if (!S.me) {
-    cta.textContent = 'Connect wallet to predict';
+    cta.textContent = 'Log in to predict';
     cta.disabled = false;
   } else if (!b) {
     cta.textContent = 'Pick an outcome';
@@ -752,7 +752,7 @@ function updateSummary() {
 
   $('#trade-fine').textContent = S.me
     ? `You have ${fmtPts(S.me.points)}. Limit ${fmtPts(m.userCap)} per market. Minimum ${m.minStake} pts.`
-    : 'Connect a Solana wallet to start with 1,000 free points.';
+    : 'Log in to start with 1,000 free points.';
 }
 
 let quoteTimer;
@@ -867,8 +867,8 @@ function portfolioView(preds) {
   if (!S.me) {
     return `
       <h1 class="page-title">Portfolio</h1>
-      <div class="empty"><p>Connect a Solana wallet to see your points and predictions. New accounts start with 1,000 free points.</p>
-        <button class="btn btn-solid" data-action="connect">Connect wallet</button></div>`;
+      <div class="empty"><p>Log in to see your points and predictions. New accounts start with 1,000 free points.</p>
+        <button class="btn btn-solid" data-action="connect">Log in</button></div>`;
   }
   const active = preds.filter((p) => p.marketStatus === 'open' || p.marketStatus === 'locked');
   const settled = preds.filter((p) => p.marketStatus === 'resolved' || p.marketStatus === 'void');
@@ -984,21 +984,36 @@ function walletButtons(purpose) {
     </div>`;
 }
 
+const GOOGLE_SCRIPT = 'https://accounts.google.com/gsi/client';
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function openAuth(kind) {
   S.modal = kind;
   S.modalBusy = false;
   closeSheet();
+  if (kind === 'connect') S.auth = { step: 'start', email: '', devCode: null, resendAt: 0 };
+  renderAuth();
+  if (kind === 'connect' && !S.signIn) {
+    // The server says which sign-in options are switched on. Show the defaults until it answers.
+    S.api
+      .config()
+      .then((c) => (S.signIn = c.signIn ?? { google: null, email: true }))
+      .catch(() => (S.signIn = { google: null, email: true }))
+      .then(() => S.modal === 'connect' && S.auth.step === 'start' && renderAuth());
+  }
+}
+
+function renderAuth() {
+  const kind = S.modal;
   let html;
-  if (kind === 'connect' || kind === 'link') {
-    const linking = kind === 'link';
+  if (kind === 'link') {
     html = modalShell(
-      linking ? 'Link a Solana wallet' : 'Connect a Solana wallet',
-      linking ? 'Sign a message to prove you own the wallet. It’s free and sends no transaction.' : 'Sign in by signing a message. It’s free, sends no transaction, and new accounts get 1,000 points.',
-      `${walletButtons(kind)}
-       ${S.api.demo ? `<button class="btn" style="width:100%;margin-top:10px" data-action="demo-wallet" data-purpose="${kind}">Use a demo wallet</button>` : ''}
+      'Link a Solana wallet',
+      'Sign a message to prove you own the wallet. It’s free and sends no transaction.',
+      `${walletButtons('link')}
+       ${S.api.demo ? `<button class="btn" style="width:100%;margin-top:10px" data-action="demo-wallet" data-purpose="link">Use a demo wallet</button>` : ''}
        <p class="form-error" id="auth-error" role="alert"></p>
-       <p class="fine" id="auth-status"></p>
-       ${linking ? '' : '<p class="fine">Prefer email? <button class="switch" data-action="login">Log in with email</button> or <button class="switch" data-action="signup">create an email account</button>.</p>'}`,
+       <p class="fine" id="auth-status"></p>`,
     );
   } else if (kind === 'username') {
     html = modalShell(
@@ -1011,24 +1026,149 @@ function openAuth(kind) {
        </form>
        <p class="fine"><button class="switch" data-action="close-modal">Skip for now</button></p>`,
     );
-  } else {
-    const signup = kind === 'signup';
+  } else if (S.auth.step === 'code') {
     html = modalShell(
-      signup ? 'Create an email account' : 'Log in with email',
-      signup ? 'Start with 1,000 free points. You can link a wallet later.' : '',
-      `<form id="auth-form" novalidate>
-         <label><span class="field-label">Email</span><input name="email" type="email" autocomplete="email" required /></label>
-         ${signup ? '<label><span class="field-label">Username</span><input name="username" autocomplete="username" minlength="3" maxlength="20" required /></label>' : ''}
-         <label><span class="field-label">Password</span><input name="password" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" minlength="8" required /></label>
-         <button class="cta" style="--c:var(--text)" type="submit">${signup ? 'Create account' : 'Log in'}</button>
+      'Check your email',
+      `We sent a 6-digit code to <b>${esc(S.auth.email)}</b>. It expires in 10 minutes.`,
+      `<form id="auth-code-form" novalidate>
+         <label><span class="field-label">Code</span>
+           <input id="auth-code" name="code" class="code-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000" required /></label>
+         <button class="cta" style="--c:var(--text)" type="submit">Continue</button>
          <p class="form-error" id="auth-error" role="alert"></p>
        </form>
-       <p class="fine"><button class="switch" data-action="connect">Connect a wallet instead</button></p>
-       ${S.api.demo && !signup ? `<p class="fine">Demo account: ${DEMO_LOGIN.email} with password ${DEMO_LOGIN.password}</p>` : ''}`,
+       ${S.auth.devCode ? `<p class="fine dev-code">No email provider is connected here, so your code is <b>${esc(S.auth.devCode)}</b>.</p>` : ''}
+       <p class="fine"><button class="switch" data-action="auth-resend" id="auth-resend">Send a new code</button> · <button class="switch" data-action="auth-change-email">Use a different email</button></p>`,
+    );
+  } else {
+    const si = S.signIn ?? { google: null, email: true };
+    html = modalShell(
+      'Log in or sign up',
+      'New accounts start with 1,000 free points. Use any option below. They all lead to the same account.',
+      `${si.google ? '<div id="google-button" class="google-slot" aria-label="Continue with Google"></div>' : ''}
+       ${
+         si.email
+           ? `${si.google ? '<div class="or"><span>or</span></div>' : ''}
+              <form id="auth-email-form" novalidate>
+                <label><span class="field-label">Email</span><input name="email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" value="${esc(S.auth.email)}" required /></label>
+                <button class="cta" style="--c:var(--text)" type="submit">Continue with email</button>
+              </form>`
+           : ''
+       }
+       <div class="or"><span>${si.google || si.email ? 'or connect a wallet' : 'connect a wallet'}</span></div>
+       ${walletButtons('connect')}
+       ${S.api.demo ? `<button class="btn" style="width:100%;margin-top:10px" data-action="demo-wallet" data-purpose="connect">Use a demo wallet</button>` : ''}
+       <p class="form-error" id="auth-error" role="alert"></p>
+       <p class="fine" id="auth-status"></p>
+       <p class="fine">Points are for play and have no cash value.</p>`,
     );
   }
   $('#modal-root').innerHTML = html;
   ($('#modal-root input') || $('#modal-root button.wallet-option') || $('#modal-root button'))?.focus();
+  if (kind === 'connect' && S.auth.step === 'start' && S.signIn?.google) mountGoogleButton(S.signIn.google);
+  if (kind === 'connect' && S.auth.step === 'code') tickResend();
+}
+
+/** Loads Google's sign-in script once and draws its official button. Falls back quietly if blocked. */
+function mountGoogleButton(clientId) {
+  const draw = () => {
+    const slot = $('#google-button');
+    if (!slot || !window.google?.accounts?.id) return;
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: (r) => googleSignIn(r.credential),
+      ux_mode: 'popup',
+      auto_select: false,
+    });
+    window.google.accounts.id.renderButton(slot, { theme: 'outline', size: 'large', shape: 'pill', text: 'continue_with', logo_alignment: 'center', width: Math.min(360, slot.clientWidth || 340) });
+  };
+  if (window.google?.accounts?.id) return draw();
+  if (document.querySelector(`script[src="${GOOGLE_SCRIPT}"]`)) return;
+  const el = document.createElement('script');
+  el.src = GOOGLE_SCRIPT;
+  el.async = true;
+  el.onload = draw;
+  el.onerror = () => {
+    const slot = $('#google-button');
+    if (slot) slot.innerHTML = '<p class="fine">Google sign-in couldn’t load. Use email or a wallet.</p>';
+  };
+  document.head.appendChild(el);
+}
+
+async function googleSignIn(credential) {
+  if (S.modalBusy) return;
+  S.modalBusy = true;
+  try {
+    const out = await S.api.googleSignIn(credential);
+    await afterSignIn(out.user, out.created);
+  } catch (err) {
+    const e = $('#auth-error');
+    if (e) e.textContent = err.message;
+    S.modalBusy = false;
+  }
+}
+
+async function submitEmail(form) {
+  const email = String(new FormData(form).get('email') || '').trim().toLowerCase();
+  const err = $('#auth-error');
+  if (!EMAIL_RE.test(email)) return err && (err.textContent = 'Enter a valid email address.');
+  const btn = form.querySelector('button[type=submit]');
+  btn.disabled = true;
+  try {
+    const out = await S.api.emailStart(email);
+    S.auth = { step: 'code', email, devCode: out.devCode ?? null, resendAt: Date.now() + 30_000 };
+    renderAuth();
+  } catch (e) {
+    if (err) err.textContent = e.message;
+    btn.disabled = false;
+  }
+}
+
+async function submitCode(form) {
+  if (S.modalBusy) return;
+  const code = String(new FormData(form).get('code') || '').replace(/\D/g, '');
+  const err = $('#auth-error');
+  if (code.length !== 6) return err && (err.textContent = 'Enter the 6-digit code.');
+  S.modalBusy = true;
+  const btn = form.querySelector('button[type=submit]');
+  btn.disabled = true;
+  try {
+    const out = await S.api.emailVerify(S.auth.email, code);
+    S.modalBusy = false;
+    await afterSignIn(out.user, out.created);
+  } catch (e) {
+    S.modalBusy = false;
+    if (err) err.textContent = e.message;
+    btn.disabled = false;
+    const input = $('#auth-code');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+  }
+}
+
+async function resendCode() {
+  if (Date.now() < S.auth.resendAt) return;
+  const err = $('#auth-error');
+  try {
+    const out = await S.api.emailStart(S.auth.email);
+    S.auth.devCode = out.devCode ?? null;
+    S.auth.resendAt = Date.now() + 30_000;
+    renderAuth();
+    toast('New code sent');
+  } catch (e) {
+    if (err) err.textContent = e.message;
+  }
+}
+
+/** Disables "Send a new code" for 30 seconds after each send and shows the countdown. */
+function tickResend() {
+  const btn = $('#auth-resend');
+  if (!btn || S.modal !== 'connect' || S.auth.step !== 'code') return;
+  const left = Math.ceil((S.auth.resendAt - Date.now()) / 1000);
+  btn.disabled = left > 0;
+  btn.textContent = left > 0 ? `Send a new code (${left}s)` : 'Send a new code';
+  if (left > 0) setTimeout(tickResend, 1000);
 }
 
 function closeModal() {
@@ -1079,19 +1219,6 @@ async function walletFlow(purpose, entry) {
     if (status) status.textContent = '';
     document.querySelectorAll('.wallet-option').forEach((b) => (b.disabled = false));
     S.modalBusy = false;
-  }
-}
-
-async function submitAuth(form) {
-  const data = Object.fromEntries(new FormData(form));
-  const btn = form.querySelector('button[type=submit]');
-  btn.disabled = true;
-  try {
-    const out = S.modal === 'signup' ? await S.api.signup(data) : await S.api.login(data);
-    await afterSignIn(out.user, S.modal === 'signup');
-  } catch (err) {
-    $('#auth-error').textContent = err.message;
-    btn.disabled = false;
   }
 }
 
@@ -1676,7 +1803,12 @@ document.addEventListener('click', async (e) => {
     case 'login':
     case 'signup':
     case 'connect':
-      return openAuth(action);
+      return openAuth('connect');
+    case 'auth-resend':
+      return resendCode();
+    case 'auth-change-email':
+      S.auth = { ...S.auth, step: 'start', devCode: null };
+      return renderAuth();
     case 'link-wallet':
       return openAuth('link');
     case 'demo-wallet':
@@ -1730,6 +1862,12 @@ document.addEventListener('input', (e) => {
   }
 });
 
+document.addEventListener('input', (e) => {
+  if (e.target.id !== 'auth-code') return;
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
+  if (e.target.value.length === 6) submitCode(e.target.form);
+});
+
 document.addEventListener('change', (e) => {
   if (e.target.id === 'exchange-filter') {
     S.exchange = e.target.value;
@@ -1738,9 +1876,12 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('submit', (e) => {
-  if (e.target.id === 'auth-form') {
+  if (e.target.id === 'auth-email-form') {
     e.preventDefault();
-    submitAuth(e.target);
+    submitEmail(e.target);
+  } else if (e.target.id === 'auth-code-form') {
+    e.preventDefault();
+    submitCode(e.target);
   } else if (e.target.id === 'username-form') {
     e.preventDefault();
     submitUsername(e.target);
@@ -1792,6 +1933,6 @@ setInterval(() => {
     }
   });
   onWalletsChanged(() => {
-    if ((S.modal === 'connect' || S.modal === 'link') && !S.modalBusy) openAuth(S.modal);
+    if ((S.modal === 'link' || (S.modal === 'connect' && S.auth?.step === 'start')) && !S.modalBusy) renderAuth();
   });
 })();

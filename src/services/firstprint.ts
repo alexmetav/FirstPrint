@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomInt, randomUUID, timingSafeEqual } from 'node:crypto';
 import { hashPassword, verifyPassword } from '../auth/passwords.ts';
 import { isSolanaAddress } from '../solana/base58.ts';
 import { buildSiwsMessage, decodeSignature, verifyEd25519 } from '../solana/siws.ts';
@@ -261,6 +261,83 @@ export class FirstprintService {
     const ok = await verifyPassword(String(password ?? ''), u?.password_hash ?? 'scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AA==');
     if (!u || !ok) throw new AppError(401, 'bad_credentials', 'Email or password is incorrect.');
     return u;
+  }
+
+  // --- Email codes and identity sign-in (Google, email) --------------------------
+
+  /**
+   * Creates a one-time sign-in code for an email address. The caller sends it.
+   * Replaces any earlier code and refuses to issue a new one within 30 seconds.
+   */
+  startEmailLogin(emailInput: string): { email: string; code: string; expiresAt: number } {
+    const email = String(emailInput ?? '').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) {
+      throw new AppError(400, 'bad_email', 'Enter a valid email address.');
+    }
+    const now = this.clock.now();
+    const prev = as<{ created_at: number } | undefined>(this.db.prepare('SELECT created_at FROM email_codes WHERE email = ?').get(email));
+    if (prev && now - prev.created_at < 30_000) {
+      throw new AppError(429, 'code_recently_sent', 'We just sent a code. Wait a few seconds to request another.');
+    }
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const expiresAt = now + 10 * MINUTE;
+    this.db.prepare('DELETE FROM email_codes WHERE expires_at < ?').run(now - MINUTE);
+    this.db
+      .prepare('INSERT OR REPLACE INTO email_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, 0, ?)')
+      .run(email, sha256(`${email}:${code}`), expiresAt, now);
+    return { email, code, expiresAt };
+  }
+
+  /** Checks an emailed code (single use, 5 tries) and signs in, creating the account on first use. */
+  verifyEmailCode(emailInput: string, codeInput: string): { user: UserRow; created: boolean } {
+    const email = String(emailInput ?? '').trim().toLowerCase();
+    const code = String(codeInput ?? '').replace(/\s/g, '');
+    const bad = () => new AppError(401, 'bad_code', 'That code is wrong or has expired. Check it and try again, or request a new one.');
+    // A wrong guess must be counted even though it fails, so the failure is thrown
+    // after the transaction commits instead of rolling the counter back.
+    const outcome = tx(this.db, () => {
+      const row = as<{ code_hash: string; expires_at: number; attempts: number } | undefined>(
+        this.db.prepare('SELECT * FROM email_codes WHERE email = ?').get(email),
+      );
+      if (!row || row.expires_at < this.clock.now() || row.attempts >= 5) return null;
+      const given = Buffer.from(sha256(`${email}:${code}`));
+      const want = Buffer.from(row.code_hash);
+      if (!/^\d{6}$/.test(code) || !timingSafeEqual(given, want)) {
+        this.db.prepare('UPDATE email_codes SET attempts = attempts + 1 WHERE email = ?').run(email);
+        return null;
+      }
+      this.db.prepare('DELETE FROM email_codes WHERE email = ?').run(email);
+      return this.findOrCreateByEmail(email, null);
+    });
+    if (!outcome) throw bad();
+    return outcome;
+  }
+
+  /**
+   * Signs in a person whose email has been verified (by an emailed code or by
+   * Google). The same email always reaches the same account, so someone can log
+   * in with Google one day and an email code the next. Existing password
+   * accounts are matched by email too.
+   */
+  signInWithVerifiedEmail(email: string, name: string | null): { user: UserRow; created: boolean } {
+    return tx(this.db, () => this.findOrCreateByEmail(email, name));
+  }
+
+  private findOrCreateByEmail(email: string, name: string | null): { user: UserRow; created: boolean } {
+    const found = as<UserRow | undefined>(this.db.prepare('SELECT * FROM users WHERE email = ?').get(email));
+    if (found) return { user: found, created: false };
+    const base = (name ?? email.split('@')[0]).replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 16) || 'player';
+    let username = base.length >= 3 ? base : `${base}_user`.slice(0, 16);
+    for (let i = 2; this.db.prepare('SELECT 1 FROM users WHERE username = ? COLLATE NOCASE').get(username); i++) {
+      username = `${base.slice(0, 16)}${i}`;
+    }
+    const id = randomUUID();
+    this.db
+      .prepare('INSERT INTO users (id, email, username, needs_username, password_hash, points, created_at) VALUES (?, ?, ?, 1, NULL, 0, ?)')
+      .run(id, email, username, this.clock.now());
+    this.credit(id, START_POINTS, 'signup', null);
+    this.log(`email sign-up ${email}`);
+    return { user: this.getUser(id), created: true };
   }
 
   // --- Solana wallets ----------------------------------------------------------

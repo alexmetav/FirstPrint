@@ -139,3 +139,12 @@ CREATE TABLE IF NOT EXISTS settings (
   key    TEXT PRIMARY KEY,
   value  TEXT NOT NULL
 );
+
+-- One-time sign-in codes sent by email. Only a hash of the code is stored.
+CREATE TABLE IF NOT EXISTS email_codes (
+  email       TEXT PRIMARY KEY,
+  code_hash   TEXT NOT NULL,
+  expires_at  INTEGER NOT NULL,
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL
+);

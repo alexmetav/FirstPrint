@@ -5,6 +5,8 @@ import { extname, join, normalize, resolve } from 'node:path';
 import { AppError, DAILY_POINTS, LIVE_PRESETS, MIN_STAKE, SESSION_MS, SUGGESTED_LIVE_TOKENS, type FirstprintService, type UserRow } from '../services/firstprint.ts';
 import type { Scheduler } from '../workers/scheduler.ts';
 import type { LiveFeed } from '../workers/liveFeed.ts';
+import { cachedGoogleJwks, verifyGoogleIdToken, type JwksFetcher } from '../auth/google.ts';
+import type { Mailer } from '../auth/mailer.ts';
 import type { Bucket } from '../engine/engine.ts';
 import { MarketData } from '../services/marketData.ts';
 
@@ -13,6 +15,14 @@ export interface ServerOptions {
   scheduler?: Scheduler;
   live?: LiveFeed;
   adminKey: string | null;
+  /** Google OAuth client ID (public). Enables "Continue with Google". */
+  googleClientId?: string | null;
+  /** Override for tests: where Google's signing keys come from. */
+  googleJwks?: JwksFetcher;
+  /** Sends sign-in codes. Without one, email sign-in is off. */
+  mailer?: Mailer | null;
+  /** Return the code in the API response (development only, when no real mailer is configured). */
+  devEmailCodes?: boolean;
   /** True when exchange auto-detection and live prices are off and admins run every market. */
   manualOnly?: boolean;
   /** Public site URL used in wallet sign-in messages, e.g. https://firstprint.xyz */
@@ -47,6 +57,7 @@ const MIME: Record<string, string> = {
 };
 
 export function createApiServer(opts: ServerOptions): Server {
+  let googleJwks: JwksFetcher | undefined;
   const { service } = opts;
   const marketData = new MarketData();
   const routes: { method: string; pattern: RegExp; keys: string[]; handler: Handler }[] = [];
@@ -122,7 +133,48 @@ export function createApiServer(opts: ServerOptions): Server {
     minStake: MIN_STAKE,
     dailyPoints: DAILY_POINTS,
     solanaChain: opts.solanaChain ?? 'mainnet',
+    // What the sign-in popup offers. Email codes need a mailer (or dev mode); Google needs a client ID.
+    signIn: { google: opts.googleClientId ?? null, email: Boolean(opts.mailer) },
   }));
+
+  // --- Email code and Google sign-in -----------------------------------------------
+
+  route('POST', '/api/auth/email/start', async ({ req, body }) => {
+    if (!opts.mailer) throw new AppError(503, 'email_off', 'Email sign-in isn’t set up yet. Use Google or a wallet.');
+    const b = await body();
+    rateLimit(`emailcode:${req.socket.remoteAddress}`, 10, 10 * 60_000);
+    const email = String(b.email ?? '').trim().toLowerCase();
+    rateLimit(`emailcode:${email}`, 5, 60 * 60_000);
+    const { code, expiresAt } = service.startEmailLogin(email);
+    try {
+      await opts.mailer.send(email, `${code} is your Firstprint code`, `Your Firstprint sign-in code is ${code}.\n\nIt expires in 10 minutes. If you didn't ask for it, you can ignore this email.`);
+    } catch (err) {
+      service.log(`email send failed: ${(err as Error).message}`);
+      throw new AppError(502, 'email_failed', 'We couldn’t send the email. Try again in a moment.');
+    }
+    return { ok: true, expiresAt, ...(opts.devEmailCodes ? { devCode: code } : {}) };
+  });
+
+  route('POST', '/api/auth/email/verify', async ({ req, res, body }) => {
+    const b = await body();
+    rateLimit(`emailverify:${req.socket.remoteAddress}`, 20, 10 * 60_000);
+    const { user, created } = service.verifyEmailCode(String(b.email ?? ''), String(b.code ?? ''));
+    const session = service.createSession(user.id);
+    setSessionCookie(res, session.token, SESSION_MS);
+    return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created, token: session.token };
+  });
+
+  route('POST', '/api/auth/google', async ({ req, res, body }) => {
+    if (!opts.googleClientId) throw new AppError(503, 'google_off', 'Google sign-in isn’t set up yet.');
+    rateLimit(`google:${req.socket.remoteAddress}`, 20, 10 * 60_000);
+    const b = await body();
+    const who = await verifyGoogleIdToken(String(b.credential ?? ''), opts.googleClientId, opts.googleJwks ?? (googleJwks ??= cachedGoogleJwks()));
+    if (!who) throw new AppError(401, 'bad_google_token', 'Google sign-in failed. Try again.');
+    const { user, created } = service.signInWithVerifiedEmail(who.email, who.name);
+    const session = service.createSession(user.id);
+    setSessionCookie(res, session.token, SESSION_MS);
+    return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created, token: session.token };
+  });
 
   // --- Solana wallet sign-in -----------------------------------------------------
 

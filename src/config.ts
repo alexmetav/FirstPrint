@@ -13,6 +13,9 @@ export interface AppConfig {
   sim: boolean;
   /** Admin-run markets only: no exchange scanning or live price feeds. */
   manualOnly: boolean;
+  googleClientId: string | null;
+  resendApiKey: string | null;
+  mailFrom: string | null;
 }
 
 const ALL_VENUES = ['binance', 'mexc', 'bybit', 'okx', 'gate', 'bitget', 'kucoin'];
@@ -34,6 +37,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     autoCreateMarkets: env.AUTO_CREATE_MARKETS === '1',
     sim: env.SIM === '1',
     manualOnly: env.MANUAL_ONLY !== '0',
+    googleClientId: env.GOOGLE_CLIENT_ID || null,
+    resendApiKey: env.RESEND_API_KEY || null,
+    mailFrom: env.MAIL_FROM || null,
   };
   if (production && (!cfg.adminKey || cfg.adminKey.length < 24)) {
     throw new Error('Set ADMIN_KEY to a random string of at least 24 characters in production.');

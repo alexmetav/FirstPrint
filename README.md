@@ -18,6 +18,16 @@ In trading, the *first print* is a token's very first trade. Firstprint watches 
 | **Prediction app** | Markets, market page with live chart and outcome ladder, Listing radar, leaderboard, and portfolio with linked wallets. Works on desktop and mobile. |
 | **Solana program** | `solana/`: an Anchor program for on-chain USDC prediction pools with oracle settlement, plus tests and an oracle script. Unaudited, devnet only. |
 
+## Signing in
+
+One "Log in or sign up" popup, like Polymarket: **Continue with Google**, **Continue with email** (a 6-digit one-time code, no password), or a **Solana wallet**. All three lead to the same account when they share an email, and points stay on that account. Existing password accounts keep working: the same email signs in with a code or Google.
+
+| Option | What you set up |
+|---|---|
+| Google | Create an OAuth "Web application" client ID in Google Cloud Console, add your site URL as an authorized JavaScript origin, and set `GOOGLE_CLIENT_ID`. Only the public client ID is needed; the server verifies Google's signed token itself. The button is hidden until it is set. |
+| Email code | Set `RESEND_API_KEY` and `MAIL_FROM` (a sender on a domain verified at resend.com). Codes expire after 10 minutes, work once, lock after 5 wrong tries, and can be re-sent every 30 seconds. Outside production with no provider set, the code is printed in the server log and shown in the popup so you can try it locally. In production without a provider, the email option is hidden. |
+| Wallet | Already works (Sign-In With Solana). Set `SOLANA_CHAIN=devnet` or `testnet` for test networks. |
+
 ## Running markets from the admin panel
 
 By default (`MANUAL_ONLY=1`) nothing is fetched from exchanges. Admins run every market at `/#/admin`:
