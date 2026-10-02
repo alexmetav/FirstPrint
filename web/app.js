@@ -281,7 +281,7 @@ function homeView() {
     ${featured ? featuredView(featured) : ''}
     <div class="toolbar">
       <div class="tabs" role="tablist" aria-label="Market status">
-        ${tab('open', 'Upcoming')}${tab('live', 'Live')}${tab('settled', 'Settled')}
+        ${S.cfg?.manualOnly ? `${tab('open', 'Open')}${tab('live', 'Awaiting result')}${tab('settled', 'Settled')}` : `${tab('open', 'Upcoming')}${tab('live', 'Live')}${tab('settled', 'Settled')}`}
       </div>
       <label class="select">Exchange
         <select id="exchange-filter">
@@ -309,9 +309,8 @@ function featuredView(m) {
     return `
     <section class="featured" aria-labelledby="featured-title">
       <div>
-        <h1 id="featured-title">${esc(m.symbol)} market is open
-          <span class="countdown">predictions close in ${until(m.closeAt)}</span>
-        </h1>
+        <h1 id="featured-title">${esc(m.symbol)} is open</h1>
+        <p class="closing-pill"><span class="dot" aria-hidden="true"></span>Predictions close in ${until(m.closeAt)}</p>
         <p class="lede">Predict where ${esc(m.name || m.symbol)} is priced at the result, compared with the start price of ${fmtPrice(m.basePrice)}.
           ${m.pool ? `${fmtPts(m.pool)} in the pool from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'}.` : 'Nobody has predicted yet.'}</p>
         <div class="actions">
@@ -484,8 +483,8 @@ function marketMain(m) {
     <a class="back" href="#/">All markets</a>
     <header class="m-head">
       <div class="m-title"><h1 class="sym">${esc(m.symbol)}</h1><span class="exch">${esc(m.exchange)}</span>${
-        (m.phase === 'baseline' || m.phase === 'running') && S.live ? '<span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Live price</span>' : ''
-      }</div>
+        (m.phase === 'baseline' || m.phase === 'running') && S.live && !isManual(m) ? '<span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Live price</span>' : ''
+      }<button class="btn share-btn" data-action="share" aria-label="Share this market">Share</button></div>
       <p class="m-question">${
         isManual(m)
           ? `Where will ${esc(m.name || m.symbol)} be priced at the result, compared with the start price of ${fmtPrice(m.basePrice)}?`
@@ -510,7 +509,7 @@ function marketMain(m) {
     ${isManual(m) ? manualPanel(m) : chartView(m)}
 
     <div class="ladder${settled ? ' settled' : ''}" role="group" aria-label="Outcomes">
-      <div class="ladder-head"><span>Price after ${span}</span><span>Crowd</span><span>Pays</span><span class="pool-col">Pool</span></div>
+      <div class="ladder-head"><span>${isManual(m) ? 'Final price vs start' : `Price after ${span}`}</span><span>Crowd</span><span>Pays</span><span class="pool-col">Pool</span></div>
       ${rungs}
       ${canPick ? '<p class="fine" style="margin:2px 0 0">Pays shows the current payout per point before early bonuses. Your estimate in the prediction panel includes your bonus.</p>' : ''}
     </div>
@@ -576,9 +575,14 @@ function fmtAgo(ts) {
 function manualPanel(m) {
   const r = m.result;
   if (!r || r.finalPrice == null) {
-    return `<div class="chart"><div class="chart-empty">${
-      m.phase === 'awaiting_result' ? 'Predictions are closed. The final price will appear here when the result is posted.' : `Start price ${fmtPrice(m.basePrice)}. The final price is posted after predictions close.`
-    }</div></div>`;
+    const closed = m.phase === 'awaiting_result';
+    const step = (state, title, when) => `<li class="${state}"><span class="step-dot" aria-hidden="true"></span><b>${title}</b><span class="muted">${when}</span></li>`;
+    return `
+      <ol class="timeline" aria-label="Market timeline">
+        ${step('done', 'Market opened', fmtDate(m.openedAt))}
+        ${step(closed ? 'done' : 'now', closed ? 'Predictions closed' : 'Predictions close', closed ? fmtDate(m.closeAt) : `${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`)}
+        ${step(closed ? 'now' : '', 'Result posted', `Expected around ${fmtDate(m.settleAt)}`)}
+      </ol>`;
   }
   const b = r.winningBucket ?? 'flat';
   return `
@@ -707,7 +711,7 @@ function renderTrade() {
     ).join('');
     updateSummary();
   } else if (mode === 'closed') {
-    $('#trade-closed').innerHTML = `<h2>Predictions closed</h2><p class="muted">Result in ${until(m.settleAt)}.${
+    $('#trade-closed').innerHTML = `<h2>Predictions closed</h2><p class="muted">${isManual(m) ? 'Result expected in' : 'Result in'} ${until(m.settleAt)}.${
       m.live?.projectedBucket ? ` Right now the price is ${fmtPct(m.live.returnPct)}, which would settle in ${outcome(m.live.projectedBucket)}.` : ''
     }</p>`;
   } else {
@@ -892,7 +896,7 @@ function portfolioView(preds, history = []) {
     list.length
       ? `<table class="table"><thead><tr><th>Market</th><th>Outcome</th><th class="right">Stake</th><th class="right">Status</th></tr></thead><tbody>${list
           .map((p) => {
-            let status = p.marketStatus === 'open' ? 'Open' : 'In play';
+            let status = p.marketStatus === 'open' ? 'Open' : p.mode === 'manual' ? 'Awaiting result' : 'In play';
             if (p.marketStatus === 'resolved') status = p.payout > 0 ? `<span class="profit-pos">Won ${fmtNum(p.payout)}</span>` : 'Didn’t win';
             if (p.marketStatus === 'void') status = 'Refunded';
             return `<tr><td><a href="#/market/${encodeURIComponent(p.marketId)}">${esc(p.symbol)}</a> <span class="muted hide-sm">${esc(p.exchange)}</span></td><td>${outcome(p.bucket)}</td><td class="right">${fmtNum(p.stake)}</td><td class="right">${status}</td></tr>`;
@@ -1892,6 +1896,24 @@ document.addEventListener('click', async (e) => {
     case 'signup':
     case 'connect':
       return openAuth('connect');
+    case 'share': {
+      const m = S.market;
+      const url = location.href;
+      const title = `${m.symbol} on Firstprint`;
+      try {
+        if (navigator.share) await navigator.share({ title, text: `Predict ${m.symbol} on Firstprint`, url });
+        else {
+          await navigator.clipboard.writeText(url);
+          toast('Link copied');
+        }
+      } catch (err) {
+        if (err?.name !== 'AbortError') {
+          // Clipboard or sharing is blocked in some browsers; show the link so it can still be copied.
+          prompt('Copy this link', url);
+        }
+      }
+      return;
+    }
     case 'auth-resend':
       return resendCode();
     case 'auth-change-email':

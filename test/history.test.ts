@@ -53,6 +53,9 @@ test('points history: every balance change, newest first, tied to its market', a
     assert.deepEqual(service.ledgerFor(b.id).map((e) => e.reason), ['stake', 'signup']);
     assert.equal(service.ledgerFor(a.id, 1).length, 1);
 
+    // Portfolio rows say which kind of market they belong to, so the page can say "Awaiting result".
+    assert.equal(service.myPredictions(a.id)[0].mode, 'manual');
+
     // Over HTTP it needs a login and only returns your own entries.
     assert.equal((await call('/api/me/ledger')).status, 401);
   } finally {

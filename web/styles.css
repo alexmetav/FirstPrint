@@ -1554,3 +1554,92 @@ code {
   text-align: center;
   font-size: 14px;
 }
+
+/* Hero for admin-run markets: short headline, countdown as a pill */
+.closing-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-weight: 600;
+}
+.closing-pill .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--up);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+/* Market timeline */
+.timeline {
+  list-style: none;
+  margin: 18px 0 22px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.timeline li {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  opacity: 0.7;
+}
+.timeline li.done,
+.timeline li.now {
+  opacity: 1;
+}
+.timeline li.now {
+  border-color: var(--up);
+  box-shadow: 0 0 0 1px var(--up) inset;
+}
+.timeline .step-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--line);
+  margin-bottom: 6px;
+}
+.timeline .done .step-dot {
+  background: var(--up);
+}
+.timeline .now .step-dot {
+  background: var(--up);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.timeline .muted {
+  font-size: 13px;
+}
+@media (max-width: 640px) {
+  /* Stay on one row on phones so the outcome buttons aren't pushed off the screen. */
+  .timeline {
+    gap: 6px;
+    margin: 14px 0 16px;
+  }
+  .timeline li {
+    padding: 10px 9px 8px;
+    font-size: 13px;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+  .timeline .muted {
+    font-size: 12px;
+  }
+  .timeline .step-dot {
+    margin-bottom: 4px;
+  }
+}
+.share-btn {
+  margin-left: auto;
+  padding: 6px 14px;
+  font-size: 14px;
+}

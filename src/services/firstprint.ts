@@ -1335,10 +1335,10 @@ export class FirstprintService {
   }
 
   myPredictions(userId: string) {
-    const rows = as<(PredictionRow & { symbol: string; exchange: string; status: string })[]>(
+    const rows = as<(PredictionRow & { symbol: string; exchange: string; status: string; mode: string })[]>(
       this.db
         .prepare(
-          `SELECT p.*, m.symbol, m.exchange, m.status FROM predictions p
+          `SELECT p.*, m.symbol, m.exchange, m.status, m.mode FROM predictions p
            JOIN markets m ON m.id = p.market_id
            WHERE p.user_id = ? ORDER BY p.placed_at DESC LIMIT 100`,
         )
@@ -1350,6 +1350,7 @@ export class FirstprintService {
       symbol: r.symbol,
       exchange: r.exchange,
       marketStatus: r.status,
+      mode: r.mode,
       bucket: r.bucket,
       stake: r.stake,
       accepted: r.accepted,
