@@ -148,3 +148,13 @@ CREATE TABLE IF NOT EXISTS email_codes (
   attempts    INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL
 );
+
+-- What the admin did, newest last. Paying out points can't be undone, so there is a record of who did what.
+CREATE TABLE IF NOT EXISTS admin_log (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  at      INTEGER NOT NULL,
+  action  TEXT NOT NULL,
+  target  TEXT,
+  detail  TEXT,
+  ip      TEXT
+);

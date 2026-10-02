@@ -92,6 +92,9 @@ export function createApiServer(opts: ServerOptions): Server {
 
   const COOKIE = 'fp_session';
 
+  const audit = (req: IncomingMessage, action: string, target: string | null = null, detail: string | null = null) =>
+    service.logAdmin(action, target, detail, clientIp(req));
+
   function sessionToken(req: IncomingMessage): string {
     const auth = req.headers.authorization ?? '';
     if (auth.startsWith('Bearer ')) return auth.slice(7).trim();
@@ -154,6 +157,8 @@ export function createApiServer(opts: ServerOptions): Server {
     solanaChain: opts.solanaChain ?? 'mainnet',
     // What the sign-in popup offers. Email codes need a mailer (or dev mode); Google needs a client ID.
     signIn: { google: opts.googleClientId ?? null, email: Boolean(opts.mailer) },
+    // Markets are run from the admin panel, so exchange-detection pages have nothing to show.
+    manualOnly: opts.manualOnly ?? false,
   }));
 
   // --- Email code and Google sign-in -----------------------------------------------
@@ -305,6 +310,8 @@ export function createApiServer(opts: ServerOptions): Server {
     return publicUser(updated, service.clock.now(), service.walletsFor(u.id));
   });
 
+  route('GET', '/api/me/ledger', ({ user }) => ({ entries: service.ledgerFor(user().id) }));
+
   route('GET', '/api/me/predictions', ({ user }) => ({ predictions: service.myPredictions(user().id) }));
 
   route('POST', '/api/me/claim-daily', ({ user }) => {
@@ -377,41 +384,49 @@ export function createApiServer(opts: ServerOptions): Server {
     return { exchanges: service.exchangeSettings() };
   });
 
-  route('POST', '/api/admin/exchanges/:id', async ({ params, body, requireAdmin }) => {
+  route('POST', '/api/admin/exchanges/:id', async ({ req, params, body, requireAdmin }) => {
     requireAdmin();
-    return { exchanges: service.setExchangeEnabled(params.id, Boolean((await body()).enabled)) };
+    const enabled = Boolean((await body()).enabled);
+    const exchanges = service.setExchangeEnabled(params.id, enabled);
+    audit(req, enabled ? 'exchange_on' : 'exchange_off', params.id);
+    return { exchanges };
   });
 
-  route('POST', '/api/admin/manual-markets', async ({ body, requireAdmin }) => {
+  route('POST', '/api/admin/manual-markets', async ({ req, body, requireAdmin }) => {
     requireAdmin();
     const b = await body();
     const id = service.createManualMarket({ ...manualBody(b), publish: b.publish === true });
+    audit(req, b.publish === true ? 'market_published' : 'market_drafted', id, `${String(b.symbol ?? '').toUpperCase()} start price ${b.basePrice}`);
     return service.getMarket(id, undefined, true);
   });
 
-  route('POST', '/api/admin/manual-markets/:id', async ({ params, body, requireAdmin }) => {
+  route('POST', '/api/admin/manual-markets/:id', async ({ req, params, body, requireAdmin }) => {
     requireAdmin();
     const b = await body();
     const patch = Object.fromEntries(Object.entries(manualBody(b)).filter(([, v]) => v !== undefined));
     service.updateManualMarket(params.id, patch);
+    audit(req, 'market_edited', params.id, Object.keys(patch).join(', '));
     return service.getMarket(params.id, undefined, true);
   });
 
-  route('POST', '/api/admin/manual-markets/:id/publish', ({ params, requireAdmin }) => {
+  route('POST', '/api/admin/manual-markets/:id/publish', ({ req, params, requireAdmin }) => {
     requireAdmin();
     service.publishMarket(params.id);
+    audit(req, 'market_published', params.id);
     return service.getMarket(params.id, undefined, true);
   });
 
-  route('POST', '/api/admin/manual-markets/:id/unpublish', ({ params, requireAdmin }) => {
+  route('POST', '/api/admin/manual-markets/:id/unpublish', ({ req, params, requireAdmin }) => {
     requireAdmin();
     service.unpublishMarket(params.id);
+    audit(req, 'market_unpublished', params.id);
     return service.getMarket(params.id, undefined, true);
   });
 
-  route('POST', '/api/admin/manual-markets/:id/delete', ({ params, requireAdmin }) => {
+  route('POST', '/api/admin/manual-markets/:id/delete', ({ req, params, requireAdmin }) => {
     requireAdmin();
     service.deleteDraft(params.id);
+    audit(req, 'draft_deleted', params.id);
     return { ok: true };
   });
 
@@ -427,9 +442,15 @@ export function createApiServer(opts: ServerOptions): Server {
     return service.previewResolution(params.id, resolveBody(await body()));
   });
 
-  route('POST', '/api/admin/manual-markets/:id/resolve', async ({ params, body, requireAdmin }) => {
+  route('POST', '/api/admin/manual-markets/:id/resolve', async ({ req, params, body, requireAdmin }) => {
     requireAdmin();
     const out = service.resolveManualMarket(params.id, resolveBody(await body()));
+    audit(
+      req,
+      out.summary.voidReason ? 'market_voided' : 'result_posted',
+      params.id,
+      `final ${out.summary.finalPrice}, ${out.summary.voidReason ?? `${out.summary.winningBucket} wins${out.summary.overridden ? ' (overridden)' : ''}`}, pool ${out.summary.pool}, paid ${out.summary.totalPaid} to ${out.summary.winnerCount}`,
+    );
     await opts.scheduler?.notify(out.notes);
     return out.summary;
   });
@@ -477,6 +498,11 @@ export function createApiServer(opts: ServerOptions): Server {
     };
   });
 
+  route('GET', '/api/admin/log', ({ requireAdmin }) => {
+    requireAdmin();
+    return { log: service.adminLog(40) };
+  });
+
   route('GET', '/api/admin/markets', ({ requireAdmin }) => {
     requireAdmin();
     return { markets: service.adminMarkets() };
@@ -494,9 +520,11 @@ export function createApiServer(opts: ServerOptions): Server {
     });
   });
 
-  route('POST', '/api/admin/markets/:id/cancel', ({ params, requireAdmin }) => {
+  route('POST', '/api/admin/markets/:id/cancel', ({ req, params, requireAdmin }) => {
     requireAdmin();
-    return service.cancelMarket(params.id);
+    const out = service.cancelMarket(params.id);
+    audit(req, 'market_cancelled', params.id, `${out.refunded} predictions refunded`);
+    return out;
   });
 
   route('GET', '/api/admin/exchanges/check', async ({ requireAdmin }) => {

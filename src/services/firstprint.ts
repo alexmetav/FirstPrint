@@ -930,6 +930,37 @@ export class FirstprintService {
     };
   }
 
+  // --- Points history and admin log ----------------------------------------------
+
+  /** A user's points movements, newest first, with the market each one belongs to. */
+  ledgerFor(userId: string, limit = 50) {
+    const rows = as<{ id: number; delta: number; reason: string; created_at: number; symbol: string | null; market_id: string | null }[]>(
+      this.db
+        .prepare(
+          `SELECT l.id, l.delta, l.reason, l.created_at, m.symbol, m.id AS market_id
+           FROM ledger l
+           LEFT JOIN predictions p ON p.id = l.ref
+           LEFT JOIN markets m ON m.id = p.market_id
+           WHERE l.user_id = ? ORDER BY l.created_at DESC, l.id DESC LIMIT ?`,
+        )
+        .all(userId, Math.min(200, Math.max(1, Math.floor(limit)))),
+    );
+    return rows.map((r) => ({ id: r.id, delta: r.delta, reason: r.reason, at: r.created_at, symbol: r.symbol, marketId: r.market_id }));
+  }
+
+  logAdmin(action: string, target: string | null = null, detail: string | null = null, ip: string | null = null) {
+    this.db
+      .prepare('INSERT INTO admin_log (at, action, target, detail, ip) VALUES (?, ?, ?, ?, ?)')
+      .run(this.clock.now(), action, target, detail ? detail.slice(0, 500) : null, ip);
+  }
+
+  adminLog(limit = 30) {
+    const rows = as<{ id: number; at: number; action: string; target: string | null; detail: string | null; ip: string | null }[]>(
+      this.db.prepare('SELECT * FROM admin_log ORDER BY id DESC LIMIT ?').all(Math.min(200, Math.max(1, Math.floor(limit)))),
+    );
+    return rows.map((r) => ({ id: r.id, at: r.at, action: r.action, target: r.target, detail: r.detail, ip: r.ip }));
+  }
+
   // --- Predictions -----------------------------------------------------------
 
   placePrediction(marketId: string, userId: string, bucket: Bucket, stake: number) {
