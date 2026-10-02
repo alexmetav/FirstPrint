@@ -343,7 +343,7 @@ export class FirstprintService {
   // --- Solana wallets ----------------------------------------------------------
 
   /** Issues a one-time Sign-In With Solana message for this address. */
-  walletChallenge(address: string, site: { domain: string; uri: string; chainId: 'mainnet' | 'devnet' | 'testnet' }) {
+  walletChallenge(address: string, site: { domain: string; uri: string; chainId?: 'mainnet' | 'devnet' | 'testnet' }) {
     if (!isSolanaAddress(address)) throw new AppError(400, 'bad_address', 'That is not a valid Solana address.');
     const now = this.clock.now();
     const nonce = randomBytes(16).toString('hex');

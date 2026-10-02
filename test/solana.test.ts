@@ -41,6 +41,20 @@ test('ed25519 verification against a Solana-style address', () => {
   assert.ok(!verifyEd25519(wallet().address, new TextEncoder().encode('gm'), sig));
 });
 
+test('the sign-in message only names a chain when asked to, and still verifies without one', () => {
+  const { service } = setup();
+  const w = wallet();
+  const none = service.walletChallenge(w.address, { domain: 'firstprint.test', uri: 'https://firstprint.test' });
+  assert.ok(!none.message.includes('Chain ID'));
+  assert.deepEqual(
+    none.message.split('\n').slice(-3).map((l) => l.split(':')[0]),
+    ['Nonce', 'Issued At', 'Expiration Time'],
+  );
+  const { user, created } = service.walletSignIn({ address: w.address, message: none.message, signature: w.signMessage(none.message) });
+  assert.equal(created, true);
+  assert.ok(user.id);
+});
+
 test('wallet sign-in creates an account once and rejects replays and tampering', () => {
   const { service, clock } = setup();
   const w = wallet();
@@ -106,7 +120,8 @@ test('HTTP: wallet challenge → verify → session → profile', async () => {
   try {
     const w = wallet();
     const challenge = await (await call(`/api/auth/wallet/challenge?address=${w.address}`)).json();
-    assert.ok(challenge.message.includes('Chain ID: devnet'));
+    // Even on devnet the sign-in message names no chain: Phantom rejects it when it differs from the wallet's network.
+    assert.ok(!challenge.message.includes('Chain ID'));
     const verify = await call('/api/auth/wallet/verify', {
       method: 'POST',
       body: JSON.stringify({ address: w.address, message: challenge.message, signature: w.signMessage(challenge.message), walletName: 'Backpack' }),

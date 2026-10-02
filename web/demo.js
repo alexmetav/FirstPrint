@@ -510,7 +510,6 @@ export class DemoBackend {
         '',
         `URI: ${location.origin || 'https://firstprint.demo'}`,
         'Version: 1',
-        'Chain ID: mainnet',
         `Nonce: ${nonce}`,
         `Issued At: ${new Date(this.now()).toISOString()}`,
       ].join('\n');
