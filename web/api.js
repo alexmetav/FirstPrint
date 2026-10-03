@@ -77,10 +77,17 @@ export function createApi(baseUrl = '') {
     activity: (m) => request(`/api/markets/${id(m)}/activity`),
     leaderboard: () => request('/api/leaderboard'),
     emailStart: (email) => post('/api/auth/email/start', { email }),
-    emailVerify: (email, code) => post('/api/auth/email/verify', { email, code }),
-    googleSignIn: (credential) => post('/api/auth/google', { credential }),
+    emailVerify: (email, code) => post('/api/auth/email/verify', { email, code, ref: referralCode() }),
+    googleSignIn: (credential) => post('/api/auth/google', { credential, ref: referralCode() }),
     walletChallenge: (address) => request(`/api/auth/wallet/challenge?address=${encodeURIComponent(address)}`),
-    walletVerify: (body) => post('/api/auth/wallet/verify', body),
+    walletVerify: (body) => post('/api/auth/wallet/verify', { ...body, ref: referralCode() }),
+    rewards: () => request('/api/me/rewards'),
+    connectX: (username) => post('/api/me/x', { username }),
+    startTask: (t) => post(`/api/tasks/${id(t)}/start`),
+    verifyTask: (t) => post(`/api/tasks/${id(t)}/verify`),
+    startClaim: (wallet) => post('/api/me/claims', { wallet }),
+    submitClaim: (c, transaction) => post(`/api/me/claims/${id(c)}/submit`, { transaction }),
+    claimStatus: (c) => request(`/api/me/claims/${id(c)}`),
     linkWallet: (body) => post('/api/me/wallets', body),
     setUsername: (username) => post('/api/me/profile', { username }),
     detectedListings: () => request('/api/listings/detected'),
@@ -138,7 +145,32 @@ export function createAdminApi(key, baseUrl = '') {
     deleteDraft: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/delete`),
     previewResult: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/preview`, body),
     resolve: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/resolve`, body),
+    token: () => request('/api/admin/token'),
+    tokenStep: (step) => post(`/api/admin/token/${encodeURIComponent(step)}`),
+    tasks: () => request('/api/admin/tasks'),
+    createTask: (body) => post('/api/admin/tasks', body),
+    updateTask: (id, body) => post(`/api/admin/tasks/${encodeURIComponent(id)}`, body),
   };
+}
+
+/** The referral code from an invite link (?ref=...), kept until sign-up. */
+export function referralCode() {
+  try {
+    return localStorage.getItem('fp:ref') || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remembers ?ref=CODE from the address bar, so the invite counts when this visitor signs up. */
+export function captureReferral() {
+  const code = new URLSearchParams(location.search).get('ref');
+  if (!code || !/^[A-Za-z0-9]{6,12}$/.test(code)) return;
+  try {
+    localStorage.setItem('fp:ref', code.toUpperCase());
+  } catch {
+    /* storage blocked: the invite just won't count */
+  }
 }
 
 export async function backendAvailable(baseUrl = '') {

@@ -59,6 +59,19 @@ The static site and the read-only demo above don't have accounts. The full app i
 7. If the website stays on Vercel instead:  in Vercel → Settings → Environment Variables add `APP_URL` = your app address plus `/app` (for example `https://firstprint-app.onrender.com/app`), then redeploy. The "practice" buttons on the site then open the full app. Without `APP_URL` the site keeps linking to the browser-only practice build at `/play/`.
 8. Google only: in Google Cloud Console add your `PUBLIC_URL` as an Authorized JavaScript origin on the OAuth client.
 
+### TestFPT, tasks and invites
+
+Players' starting points (1,000) and rewards from tasks and invites are claimed to their own Solana wallet as **TestFPT**, a Token-2022 token on Solana **testnet** (set `TOKEN_CLUSTER=devnet` for devnet). The player signs the claim and pays the tiny network fee in free test SOL from https://faucet.solana.com; the app walks them through it.
+
+Set it up once in the admin panel (`/app/#/admin` → **TestFPT token**):
+1. **Create authority.** The server makes the key that mints TestFPT and stores it in its database (which is backed up privately). Copy its address.
+2. **Give it test SOL.** Paste the address into https://faucet.solana.com (choose Testnet), or press **Request 1 SOL**. Press **Refresh balance**.
+3. **Create TestFPT.** The token is created on chain with its name and 0 decimals (1 point = 1 TestFPT).
+
+Until step 3, rewards go straight to players' balances as before. To use your own key instead, set `TESTFPT_AUTHORITY_KEY` (a solana-keygen JSON array) and, once created, `TESTFPT_MINT`. `SOLANA_RPC_URL` overrides the public RPC.
+
+**Tasks** (admin → **Tasks**): follow an X account, repost or like a post, post about Firstprint (the player's invite link is added), or visit a link, each with points and an optional player limit. X has no free API for checking follows or reposts, so tasks are honour-based: the player links their X username (one account per username), opens the task, and presses Verify after a few seconds. Linking an X username gives 100 points. **Invites:** a player earns 200 points when a friend signs up with their link and makes a first prediction, up to 25 friends.
+
 **What's free and what isn't.** Wallet and Google sign-in are free. Email codes work without payment only to your own address in Resend's test mode; sending to everyone needs a domain verified in Resend, which uses a domain you own (you already own firstprint.fun, so it costs nothing extra). To try the app before that, sign in with a Solana wallet (devnet by default).
 
 Upgrading later: for a persistent disk instead of backups, see the comment in `render.yaml`. Moving to PostgreSQL (BACKEND-SETUP.md) is only needed for more than one instance.

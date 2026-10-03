@@ -165,3 +165,59 @@ CREATE TABLE IF NOT EXISTS admin_log (
   detail  TEXT,
   ip      TEXT
 );
+
+-- Points earned outside predictions (welcome bonus, tasks, referrals). When TestFPT is on, they
+-- wait here until the player claims them to their wallet; claim_id links them to that claim.
+CREATE TABLE IF NOT EXISTS rewards (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     TEXT NOT NULL REFERENCES users(id),
+  kind        TEXT NOT NULL,        -- welcome | task | x_connect | referral
+  ref         TEXT,                 -- task id, referred user id, ...
+  amount      INTEGER NOT NULL CHECK (amount > 0),
+  created_at  INTEGER NOT NULL,
+  claim_id    TEXT                  -- NULL until claimed; 'direct' when credited without a token
+);
+CREATE INDEX IF NOT EXISTS rewards_user ON rewards(user_id, claim_id);
+CREATE UNIQUE INDEX IF NOT EXISTS rewards_once ON rewards(user_id, kind, ref) WHERE kind IN ('welcome', 'task', 'x_connect', 'referral');
+
+-- Claims of rewards to a wallet as TestFPT. The player signs and pays the fee.
+CREATE TABLE IF NOT EXISTS claims (
+  id               TEXT PRIMARY KEY,
+  user_id          TEXT NOT NULL REFERENCES users(id),
+  wallet           TEXT NOT NULL,
+  amount           INTEGER NOT NULL,
+  status           TEXT NOT NULL CHECK (status IN ('pending', 'submitted', 'confirmed', 'failed', 'expired')),
+  message          TEXT NOT NULL,   -- base64 of the exact message the wallet must sign
+  last_valid_height INTEGER NOT NULL,
+  signature        TEXT,
+  error            TEXT,
+  created_at       INTEGER NOT NULL,
+  updated_at       INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS claims_user ON claims(user_id, created_at);
+
+-- Tasks admins publish (follow on X, repost, share, visit a link) and who completed them.
+CREATE TABLE IF NOT EXISTS tasks (
+  id               TEXT PRIMARY KEY,
+  kind             TEXT NOT NULL CHECK (kind IN ('follow', 'repost', 'like', 'share', 'link')),
+  title            TEXT NOT NULL,
+  target           TEXT NOT NULL,   -- X handle, post id, share text or URL depending on kind
+  points           INTEGER NOT NULL CHECK (points > 0),
+  max_completions  INTEGER,         -- NULL = no limit
+  active           INTEGER NOT NULL DEFAULT 1,
+  created_at       INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS task_completions (
+  task_id     TEXT NOT NULL REFERENCES tasks(id),
+  user_id     TEXT NOT NULL REFERENCES users(id),
+  x_username  TEXT,
+  started_at  INTEGER NOT NULL,
+  completed_at INTEGER,
+  PRIMARY KEY (task_id, user_id)
+);
+
+-- Small server settings, such as the TestFPT mint and its authority key.
+CREATE TABLE IF NOT EXISTS app_settings (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);

@@ -43,6 +43,9 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
+      # TestFPT network: testnet (default) or devnet. Set it up from the admin panel.
+      - key: TOKEN_CLUSTER
+        value: testnet
       # Optional sign-in methods; each is hidden in the app until it is set.
       - key: GOOGLE_CLIENT_ID
         sync: false

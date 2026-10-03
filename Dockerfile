@@ -1,6 +1,7 @@
 FROM node:22.18-alpine
 WORKDIR /app
-COPY package.json ./
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 COPY src ./src
 COPY web ./web
 COPY site ./site

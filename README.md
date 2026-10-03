@@ -16,6 +16,7 @@ In trading, the *first print* is a token's very first trade. Firstprint watches 
 | **Accounts** | Continue with Google, a one-time email code, or Sign-In With Solana (Phantom, Solflare, Backpack, or any Wallet Standard wallet). Users, wallets, points, predictions, and settlements are stored in the database. |
 | **Public website** | `site/`: the landing page (how it works, outcomes, rules, FAQ, a practice round) and the privacy policy. The app server serves it at `/` and the app at `/app/`. |
 | **Prediction app** | Markets, market page with live chart and outcome ladder, Listing radar, leaderboard, a personal dashboard (win rate, points won, best win, history), and linked wallets. Works on desktop and mobile. |
+| **Earn** | Tasks on X (honour-based, verified by linked username), invite links, and claiming points to your wallet as **TestFPT**, a Token-2022 token on Solana testnet that the server mints and the player pays the fee for. Admins set up the token and tasks in the admin panel. |
 | **Solana program** | `solana/`: an Anchor program for on-chain USDC prediction pools with oracle settlement, plus tests and an oracle script. Unaudited, devnet only. |
 
 ## Signing in

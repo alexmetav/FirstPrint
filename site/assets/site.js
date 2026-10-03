@@ -527,5 +527,17 @@ function redirectOldAppLinks() {
   return false;
 }
 
+/** Keeps ?ref=CODE from an invite link so it counts when the visitor signs up in the app. */
+function captureReferral() {
+  const code = new URLSearchParams(location.search).get('ref');
+  if (!code || !/^[A-Za-z0-9]{6,12}$/.test(code)) return;
+  try {
+    localStorage.setItem('fp:ref', code.toUpperCase());
+  } catch {
+    /* storage blocked */
+  }
+}
+
+captureReferral();
 window.addEventListener('hashchange', redirectOldAppLinks);
 if (!redirectOldAppLinks()) initLanding();

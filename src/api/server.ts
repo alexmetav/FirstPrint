@@ -9,6 +9,7 @@ import { cachedGoogleJwks, verifyGoogleIdToken, type JwksFetcher } from '../auth
 import type { Mailer } from '../auth/mailer.ts';
 import type { Bucket } from '../engine/engine.ts';
 import { linkSiteToApp } from '../site/links.ts';
+import type { RewardsService, TaskInput } from '../services/rewards.ts';
 
 export interface ServerOptions {
   service: FirstprintService;
@@ -29,6 +30,8 @@ export interface ServerOptions {
   backupStatus?: () => { enabled: boolean; lastOkAt: number | null; lastError: string | null };
   /** True when exchange auto-detection and live prices are off and admins run every market. */
   manualOnly?: boolean;
+  /** Tasks, referrals and TestFPT claims. */
+  rewards?: RewardsService | null;
   /** Public site URL used in wallet sign-in messages, e.g. https://firstprint.xyz */
   publicUrl?: string | null;
   solanaChain?: 'mainnet' | 'devnet' | 'testnet';
@@ -188,7 +191,44 @@ export function createApiServer(opts: ServerOptions): Server {
     signIn: { google: opts.googleClientId ?? null, email: Boolean(opts.mailer) },
     // Markets are run from the admin panel, so exchange-detection pages have nothing to show.
     manualOnly: opts.manualOnly ?? false,
+    // Points as TestFPT on a Solana test network, and where to get test SOL for the fee.
+    rewards: opts.rewards ? { onChain: opts.rewards.ready(), cluster: opts.rewards.cluster(), faucetUrl: 'https://faucet.solana.com' } : null,
   }));
+
+  // --- Earn: rewards, tasks, referrals, TestFPT claims --------------------------------
+
+  const rewardsOn = () => {
+    if (!opts.rewards) throw new AppError(404, 'not_found', 'Rewards are not enabled.');
+    return opts.rewards;
+  };
+
+  route('GET', '/api/me/rewards', ({ user }) => rewardsOn().summary(user().id));
+
+  route('POST', '/api/me/x', async ({ req, user, body }) => {
+    rateLimit(`x:${visitor(req)}`, 10, 60_000);
+    const b = await body();
+    return rewardsOn().connectX(user().id, String(b.username ?? ''));
+  });
+
+  route('POST', '/api/tasks/:id/start', ({ user, params }) => rewardsOn().startTask(user().id, params.id));
+
+  route('POST', '/api/tasks/:id/verify', ({ req, user, params }) => {
+    rateLimit(`task:${visitor(req)}`, 20, 60_000);
+    return rewardsOn().verifyTask(user().id, params.id);
+  });
+
+  route('POST', '/api/me/claims', async ({ req, user, body }) => {
+    rateLimit(`claim:${visitor(req)}`, 10, 60_000);
+    const b = await body();
+    return rewardsOn().startClaim(user().id, String(b.wallet ?? ''));
+  });
+
+  route('POST', '/api/me/claims/:id/submit', async ({ user, params, body }) => {
+    const b = await body();
+    return rewardsOn().submitClaim(user().id, params.id, String(b.transaction ?? ''));
+  });
+
+  route('GET', '/api/me/claims/:id', ({ user, params }) => rewardsOn().refreshClaim(user().id, params.id));
 
   // --- Email code and Google sign-in -----------------------------------------------
 
@@ -212,7 +252,7 @@ export function createApiServer(opts: ServerOptions): Server {
     const b = await body();
     rateLimit(`emailverify:${visitor(req)}`, 20, 10 * 60_000);
     rateLimit(`emailverify:${String(b.email ?? '').trim().toLowerCase()}`, 10, 10 * 60_000);
-    const { user, created } = service.verifyEmailCode(String(b.email ?? ''), String(b.code ?? ''));
+    const { user, created } = service.verifyEmailCode(String(b.email ?? ''), String(b.code ?? ''), refOf(b));
     const session = service.createSession(user.id);
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created, token: session.token };
@@ -224,7 +264,7 @@ export function createApiServer(opts: ServerOptions): Server {
     const b = await body();
     const who = await verifyGoogleIdToken(String(b.credential ?? ''), opts.googleClientId, opts.googleJwks ?? (googleJwks ??= cachedGoogleJwks()));
     if (!who) throw new AppError(401, 'bad_google_token', 'Google sign-in failed. Try again.');
-    const { user, created } = service.signInWithVerifiedEmail(who.email, who.name);
+    const { user, created } = service.signInWithVerifiedEmail(who.email, who.name, refOf(b));
     const session = service.createSession(user.id);
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created, token: session.token };
@@ -251,6 +291,7 @@ export function createApiServer(opts: ServerOptions): Server {
       message: String(b.message ?? ''),
       signature: String(b.signature ?? ''),
       walletName: b.walletName ? String(b.walletName).slice(0, 40) : undefined,
+      ref: refOf(b),
     });
     const session = service.createSession(user.id);
     setSessionCookie(res, session.token, SESSION_MS);
@@ -517,6 +558,47 @@ export function createApiServer(opts: ServerOptions): Server {
     };
   });
 
+  // --- Admin: TestFPT token and tasks ---------------------------------------------
+
+  route('GET', '/api/admin/token', ({ requireAdmin }) => {
+    requireAdmin();
+    return opts.rewards ? opts.rewards.tokenStatus() : { enabled: false };
+  });
+
+  route('POST', '/api/admin/token/:step', async ({ req, params, requireAdmin }) => {
+    requireAdmin();
+    const r = rewardsOn();
+    if (params.step === 'authority') return r.setupAuthority();
+    if (params.step === 'airdrop') return r.airdropAuthority();
+    if (params.step === 'create') {
+      const out = await r.createMint();
+      audit(req, 'testfpt_created', out.enabled ? out.mint : null);
+      return out;
+    }
+    throw new AppError(404, 'not_found', 'Unknown step.');
+  });
+
+  route('GET', '/api/admin/tasks', ({ requireAdmin }) => {
+    requireAdmin();
+    return { tasks: rewardsOn().listTasksAdmin() };
+  });
+
+  route('POST', '/api/admin/tasks', async ({ req, body, requireAdmin }) => {
+    requireAdmin();
+    const b = await body();
+    const id = rewardsOn().createTask(taskInput(b) as TaskInput);
+    audit(req, 'task_created', id, `${b.kind} ${b.points} pts`);
+    return { id };
+  });
+
+  route('POST', '/api/admin/tasks/:id', async ({ req, params, body, requireAdmin }) => {
+    requireAdmin();
+    const b = await body();
+    rewardsOn().updateTask(params.id, taskInput(b));
+    audit(req, 'task_updated', params.id, JSON.stringify(b).slice(0, 200));
+    return { ok: true };
+  });
+
   route('GET', '/api/admin/log', ({ requireAdmin }) => {
     requireAdmin();
     return { log: service.adminLog(40) };
@@ -709,6 +791,23 @@ export function ipBucket(ip: string): string {
   return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':')}::/64`;
 }
 
+/** A referral code sent with a sign-in, used only when it creates the account. */
+function refOf(b: Record<string, unknown>): string | null {
+  return typeof b.ref === 'string' ? b.ref.slice(0, 16) : null;
+}
+
+/** The task fields an admin form may send. */
+function taskInput(b: Record<string, unknown>): Partial<TaskInput> {
+  const out: Partial<TaskInput> = {};
+  if (b.kind !== undefined) out.kind = String(b.kind) as TaskInput['kind'];
+  if (b.title !== undefined) out.title = String(b.title);
+  if (b.target !== undefined) out.target = String(b.target);
+  if (b.points !== undefined) out.points = Number(b.points);
+  if (b.maxCompletions !== undefined) out.maxCompletions = b.maxCompletions === null || b.maxCompletions === '' ? null : Number(b.maxCompletions);
+  if (b.active !== undefined) out.active = Boolean(b.active);
+  return out;
+}
+
 function send(res: ServerResponse, status: number, body: unknown) {
   if (res.headersSent) return;
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
@@ -760,5 +859,6 @@ function publicUser(u: UserRow, now: number, wallets: { address: string; walletN
     wallets: wallets.map((w) => ({ address: w.address, walletName: w.walletName })),
     points: u.points,
     canClaimDaily: u.last_claim_day !== today,
+    xUsername: u.x_username ?? null,
   };
 }

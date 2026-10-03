@@ -26,6 +26,11 @@ function migrate(db: DB) {
   ensure('markets', 'published', 'published INTEGER NOT NULL DEFAULT 1');
   ensure('markets', 'base_price', 'base_price REAL');
   ensure('markets', 'note', 'note TEXT');
+  ensure('users', 'x_username', 'x_username TEXT');
+  ensure('users', 'referral_code', 'referral_code TEXT');
+  ensure('users', 'referred_by', 'referred_by TEXT');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_x ON users(x_username COLLATE NOCASE) WHERE x_username IS NOT NULL');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_ref ON users(referral_code) WHERE referral_code IS NOT NULL');
 }
 
 /** Runs fn inside a transaction; rolls back if it throws. */

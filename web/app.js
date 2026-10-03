@@ -1,9 +1,9 @@
 // Firstprint website. Vanilla ES modules, no build step.
 
 import { bucketRangeLabel } from './engine.js';
-import { ApiError, backendAvailable, createAdminApi, createApi, wake } from './api.js';
+import { ApiError, backendAvailable, captureReferral, createAdminApi, createApi, wake } from './api.js';
 import { DemoBackend } from './demo.js';
-import { INSTALL_LINKS, connectAndSign, disconnectWallets, isMobileDevice, listWallets, mobileWalletLinks, onWalletsChanged, shortAddress } from './wallet.js';
+import { INSTALL_LINKS, connectAndSign, disconnectWallets, isMobileDevice, listWallets, mobileWalletLinks, onWalletsChanged, shortAddress, signTransactionWith } from './wallet.js';
 
 const LADDER = ['moon', 'up', 'flat', 'down', 'crash'];
 const NAMES = { crash: 'Crash', down: 'Down', flat: 'Flat', up: 'Up', moon: 'Moon' };
@@ -39,6 +39,9 @@ const S = {
   modalBusy: false,
   refreshing: false,
   live: false,
+  /** Earn-page data for the signed-in player: rewards, tasks, referral, claims. */
+  rewards: null,
+  claimBusy: false,
 };
 
 // ------------------------------------------------------------------ Utilities
@@ -124,7 +127,13 @@ async function refreshMe() {
     if (err instanceof ApiError && err.status === 401) S.me = null;
     else throw err;
   }
+  await refreshRewards();
   renderTop();
+}
+
+/** Rewards, tasks and the referral link for the signed-in player (nothing for visitors). */
+async function refreshRewards() {
+  S.rewards = S.me && S.api.rewards ? await S.api.rewards().catch(() => null) : null;
 }
 
 async function loadHome() {
@@ -171,6 +180,7 @@ function parseRoute() {
   if (h === '/leaderboard') return { name: 'leaderboard' };
   if (h === '/portfolio' || h === '/dashboard') return { name: 'portfolio' };
   if (h === '/radar') return { name: 'radar' };
+  if (h === '/earn') return { name: 'earn' };
   if (h === '/admin') return { name: 'admin' };
   return { name: 'home' };
 }
@@ -209,6 +219,9 @@ async function loadRoute() {
     } else if (S.route.name === 'radar') {
       const { listings } = await S.api.detectedListings();
       view.innerHTML = radarView(listings);
+    } else if (S.route.name === 'earn') {
+      await refreshRewards();
+      view.innerHTML = earnView();
     } else if (S.route.name === 'portfolio') {
       const preds = S.me ? (await S.api.myPredictions()).predictions : [];
       const history = S.me && S.api.ledger ? (await S.api.ledger().catch(() => ({ entries: [] }))).entries : [];
@@ -231,6 +244,7 @@ function titleFor() {
   if (S.route.name === 'radar') return 'Listing radar: Firstprint';
   if (S.route.name === 'admin') return 'Admin: Firstprint';
   if (S.route.name === 'portfolio') return 'Your dashboard: Firstprint';
+  if (S.route.name === 'earn') return 'Earn points: Firstprint';
   return 'Firstprint: predict new exchange listings';
 }
 
@@ -242,6 +256,7 @@ const TAB_ICONS = {
   radar: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 12l5-5"/>',
   leaderboard: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>',
   portfolio: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 12h18"/>',
+  earn: '<rect x="3" y="9" width="18" height="12" rx="2"/><path d="M12 9v12M3 13h18M12 9c-2-4-6-4-6-1.5S12 9 12 9zm0 0c2-4 6-4 6-1.5S12 9 12 9z"/>',
 };
 
 function renderTop() {
@@ -250,6 +265,7 @@ function renderTop() {
   const tabs = [
     ['home', '#/', 'Markets'],
     ...(S.cfg?.manualOnly ? [] : [['radar', '#/radar', 'Radar']]),
+    ['earn', '#/earn', 'Earn'],
     ['leaderboard', '#/leaderboard', 'Ranks'],
     ['portfolio', '#/portfolio', 'Me'],
   ];
@@ -262,10 +278,12 @@ function renderTop() {
       <nav class="nav" aria-label="Main">
         <a href="#/"${cur('home')}>Markets</a>
         ${S.cfg?.manualOnly ? '' : `<a href="#/radar"${cur('radar')}>Listing radar</a>`}
+        <a href="#/earn"${cur('earn')}>Earn</a>
         <a href="#/leaderboard"${cur('leaderboard')}>Leaderboard</a>
         <a href="#/portfolio"${cur('portfolio')}>Dashboard</a>
       </nav>
       <div class="account">
+        ${S.cfg?.rewards ? '<button class="faucet-btn" data-action="faucet" title="Get free test SOL for network fees"><span aria-hidden="true">🚰</span><span class="hide-sm"> Test SOL</span></button>' : ''}
         ${
           S.me
             ? `${S.me.canClaimDaily ? `<button class="gift" data-action="claim" title="Claim your free daily points"><span aria-hidden="true">🎁</span> +100</button>` : ''}
@@ -299,6 +317,7 @@ function homeView() {
     `<button role="tab" aria-selected="${S.filter === f}" data-filter="${f}">${label}<span class="count">${S.lists[f].length}</span></button>`;
 
   return `
+    ${startChecklist()}
     ${featured ? featuredView(featured) : ''}
     <div class="toolbar">
       <div class="tabs" role="tablist" aria-label="Market status">
@@ -959,6 +978,7 @@ function portfolioView(preds, history = [], stats = null) {
       </div>
       <button class="btn" data-action="logout">Log out</button>
     </div>
+    ${startChecklist()}
     ${statTiles(stats)}
     ${stats ? profitChart(stats.history) : ''}
     ${stats ? outcomeRecord(stats.byOutcome) : ''}
@@ -1125,6 +1145,247 @@ function historyView(entries) {
     </section>`;
 }
 
+// ------------------------------------------------------------------ Earn: tasks, referrals, TestFPT
+
+const FAUCET_URL = 'https://faucet.solana.com';
+const rewardsCluster = () => S.rewards?.cluster || S.cfg?.rewards?.cluster || 'testnet';
+const clusterName = () => (rewardsCluster() === 'devnet' ? 'Devnet' : 'Testnet');
+const TASK_ICONS = { follow: '👤', repost: '🔁', like: '❤️', share: '📣', link: '🔗' };
+
+/** How to get free test SOL for the network fee. */
+function faucetSteps() {
+  const wallet = S.me?.wallets?.[0]?.address;
+  const net = clusterName();
+  return `
+    <ol class="howto">
+      <li><b>Switch your wallet to ${net}.</b>
+        <span class="muted">Phantom: Settings → Developer Settings → turn on Testnet Mode → Solana ${net}. Solflare: Settings → Network → ${net}. Backpack: Settings → Solana → ${net}.</span></li>
+      <li><b>Copy your wallet address.</b>
+        ${wallet ? `<span class="copy-row"><code>${esc(shortAddress(wallet))}</code><button class="btn" data-action="copy-text" data-text="${esc(wallet)}">Copy address</button></span>` : '<span class="muted">It’s at the top of your wallet. Link it to Firstprint on the Earn page so you can claim to it.</span>'}</li>
+      <li><b>Get test SOL from the faucet.</b>
+        <span class="muted">Open the faucet, choose ${net}, paste your address and request 1 SOL. It’s free and has no value. If it says you’ve asked too often, try again later.</span>
+        <a class="btn btn-solid" href="${FAUCET_URL}" target="_blank" rel="noopener noreferrer">Open the Solana faucet ↗</a></li>
+      <li><b>Come back and claim.</b> <span class="muted">On the Earn page, claim your points. Your wallet pays a tiny fee from the test SOL.</span></li>
+    </ol>
+    <button class="btn" style="width:100%" data-action="close-modal">Done</button>`;
+}
+
+/** The getting-started steps, with what's already done ticked. */
+function startSteps() {
+  const r = S.rewards;
+  const hasWallet = Boolean(S.me?.wallets?.length);
+  const step = (done, title, body, action = '') =>
+    `<li class="${done ? 'done' : ''}"><span class="step-check" aria-hidden="true">${done ? '✓' : ''}</span><div><b>${title}</b><span class="muted">${body}</span>${done ? '' : action}</div></li>`;
+  return `
+    <ol class="steplist">
+      ${step(hasWallet, 'Link a Solana wallet', 'Phantom, Solflare or Backpack. Your TestFPT goes here.', '<button class="btn" data-action="link-wallet">Link wallet</button>')}
+      ${step(false, `Get free test SOL (${clusterName()})`, 'Pays the tiny network fee for your claim.', '<button class="btn" data-action="faucet">Show me how</button>')}
+      ${step(Boolean(r?.welcomeClaimed), 'Claim your 1,000 TestFPT', 'They land in your wallet and in your Firstprint balance.', '<a class="btn btn-solid" href="#/earn" data-action="close-modal">Go to claim</a>')}
+      ${step(false, 'Pick a market and predict', 'Choose Crash, Down, Flat, Up or Moon and stake your points.', '<a class="btn" href="#/" data-action="close-modal">See markets</a>')}
+    </ol>
+    <p class="fine">Earn more any time on the Earn page: link X, complete tasks and invite friends.</p>`;
+}
+
+/** A card at the top of the main pages until the player has claimed their starting points. */
+function startChecklist() {
+  if (!S.me || !S.rewards?.onChain || S.rewards.welcomeClaimed) return '';
+  return `
+    <section class="start-card">
+      <div><h2>Claim your 1,000 TestFPT to start</h2><p class="muted">Link a wallet, get free test SOL for the fee, then claim. Takes about two minutes.</p></div>
+      <div class="start-actions"><button class="btn btn-solid" data-action="start-guide">Show me the steps</button><a class="btn" href="#/earn">Claim</a></div>
+    </section>`;
+}
+
+function earnView() {
+  if (!S.me) {
+    return `
+      <h1 class="page-title">Earn points</h1>
+      <div class="empty"><div class="empty-art" aria-hidden="true">🎁</div>
+        <p><strong>Log in to earn points.</strong><br />Complete tasks on X, invite friends and claim your points.</p>
+        <button class="btn btn-solid" data-action="connect">Log in</button></div>`;
+  }
+  const r = S.rewards;
+  if (!r) return '<h1 class="page-title">Earn points</h1><div class="empty"><p>Rewards aren’t available right now.</p></div>';
+  return `
+    <h1 class="page-title">Earn points</h1>
+    <p class="page-lede">${r.onChain ? `Your rewards arrive as <b>TestFPT</b>, a token on the Solana ${clusterName()} network, when you claim them to your wallet. Claimed points also go into your Firstprint balance.` : 'Complete tasks and invite friends. Points go straight to your balance.'}</p>
+    ${r.onChain ? claimCard(r) : ''}
+    <div class="earn-grid">
+      ${xCard(r)}
+      ${referralCard(r)}
+    </div>
+    ${tasksCard(r)}
+    ${r.onChain ? claimsList(r) : ''}`;
+}
+
+function claimCard(r) {
+  const wallets = S.me.wallets;
+  return `
+    <section class="claim-card">
+      <div class="claim-amount"><span class="muted">Ready to claim</span><b>${fmtNum(r.claimable)} <small>TestFPT</small></b></div>
+      <div class="claim-side">
+        ${
+          !wallets.length
+            ? '<p class="muted" style="margin:0">Link a Solana wallet to claim to it.</p><button class="btn btn-solid" data-action="link-wallet">Link wallet</button>'
+            : `${wallets.length > 1 ? `<label class="select">To <select id="claim-wallet">${wallets.map((w) => `<option value="${esc(w.address)}">${esc(shortAddress(w.address))}${w.walletName ? ` · ${esc(w.walletName)}` : ''}</option>`).join('')}</select></label>` : `<span class="muted">To ${esc(shortAddress(wallets[0].address))}</span>`}
+               <button class="cta" style="--c:var(--moon)" data-action="claim-tokens"${r.claimable && !S.claimBusy ? '' : ' disabled'}>${S.claimBusy ? 'Claiming…' : r.claimable ? `Claim ${fmtNum(r.claimable)} TestFPT` : 'Nothing to claim yet'}</button>`
+        }
+        <p class="fine" id="claim-status" role="status">Your wallet pays a tiny fee in test SOL. <button class="switch" data-action="faucet">Need test SOL?</button>${r.mintUrl ? ` · <a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ↗</a>` : ''}</p>
+      </div>
+    </section>`;
+}
+
+function xCard(r) {
+  return `
+    <section class="earn-card">
+      <h2><span aria-hidden="true">𝕏</span> Your X account</h2>
+      ${
+        r.xUsername
+          ? `<p>Linked as <b>@${esc(r.xUsername)}</b> ✓</p><p class="fine">Tasks on X are checked against this account.</p>`
+          : `<p class="muted">Link your X username to unlock X tasks${r.xConnectPoints ? ` and get <b>+${r.xConnectPoints} points</b>` : ''}. No password or login needed.</p>
+             <form id="x-form" class="inline-form" novalidate><input name="x" placeholder="@yourname" maxlength="16" autocomplete="off" aria-label="X username" /><button class="btn btn-solid" type="submit">Link</button></form>
+             <p class="form-error" id="x-error" role="alert"></p>`
+      }
+    </section>`;
+}
+
+function referralCard(r) {
+  const f = r.referral;
+  const shareText = encodeURIComponent('I’m calling new crypto listings on Firstprint. Join me and get free points:');
+  return `
+    <section class="earn-card">
+      <h2><span aria-hidden="true">🤝</span> Invite friends</h2>
+      <p class="muted">You get <b>+${f.perReferral} points</b> when a friend signs up with your link and makes their first prediction (up to ${f.limit} friends).</p>
+      <div class="copy-row"><input readonly value="${esc(f.link)}" aria-label="Your invite link" /><button class="btn" data-action="copy-text" data-text="${esc(f.link)}">Copy</button></div>
+      <a class="btn" href="https://x.com/intent/tweet?text=${shareText}&url=${encodeURIComponent(f.link)}" target="_blank" rel="noopener noreferrer">Share on X</a>
+      <p class="fine">${f.invited} signed up · ${f.rewarded} rewarded · ${signed(f.points)} points</p>
+    </section>`;
+}
+
+function tasksCard(r) {
+  const rows = r.tasks;
+  return `
+    <section class="section">
+      <h2>Tasks</h2>
+      ${
+        rows.length
+          ? `<ul class="tasks">${rows
+              .map((t) => {
+                const full = t.remaining === 0 && !t.done;
+                let action;
+                if (t.done) action = '<span class="task-done">✓ Done</span>';
+                else if (full) action = '<span class="muted">Limit reached</span>';
+                else if (t.startedAt) action = `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">Open again</a><button class="btn btn-solid" data-action="task-verify" data-task="${esc(t.id)}">Verify</button>`;
+                else action = `<a class="btn btn-solid" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer" data-action="task-go" data-task="${esc(t.id)}">Go</a>`;
+                return `<li class="task${t.done ? ' is-done' : ''}">
+                  <span class="task-ico" aria-hidden="true">${TASK_ICONS[t.kind] ?? '⭐'}</span>
+                  <div class="task-body"><b>${esc(t.title)}</b><small>+${fmtNum(t.points)} points${t.remaining !== null && !t.done ? ` · ${fmtNum(t.remaining)} left` : ''}</small></div>
+                  <div class="task-actions">${action}</div>
+                </li>`;
+              })
+              .join('')}</ul>
+             <p class="fine">Open a task, do it on X, then come back and press Verify. We check your linked X username; tasks done with another account don’t count.</p>`
+          : '<p class="muted">No tasks right now. Check back soon.</p>'
+      }
+    </section>`;
+}
+
+function claimsList(r) {
+  if (!r.claims.length) return '';
+  const label = { pending: 'Waiting for wallet', submitted: 'Confirming', confirmed: 'Claimed', failed: 'Failed', expired: 'Expired' };
+  return `
+    <section class="section">
+      <h2>Your claims</h2>
+      <ul class="activity">${r.claims
+        .map(
+          (c) => `<li><span>${fmtNum(c.amount)} TestFPT to ${esc(shortAddress(c.wallet))} · <b class="${c.status === 'confirmed' ? 'profit-pos' : c.status === 'failed' || c.status === 'expired' ? 'profit-neg' : ''}">${label[c.status] ?? c.status}</b>${c.error && c.status !== 'confirmed' ? ` <span class="muted">${esc(c.error)}</span>` : ''}</span>
+            <span class="muted">${c.explorerUrl ? `<a href="${esc(c.explorerUrl)}" target="_blank" rel="noopener noreferrer">View on Explorer ↗</a> · ` : ''}${fmtAgo(c.at)}</span></li>`,
+        )
+        .join('')}</ul>
+    </section>`;
+}
+
+function setClaimStatus(text) {
+  const el = $('#claim-status');
+  if (el) el.textContent = text;
+}
+
+/** Claim every reward to the chosen wallet: the server prepares, the wallet signs and pays the fee. */
+async function claimTokens() {
+  if (S.claimBusy) return;
+  const wallet = $('#claim-wallet')?.value || S.me?.wallets?.[0]?.address;
+  if (!wallet) return openAuth('link');
+  S.claimBusy = true;
+  const btn = $('[data-action="claim-tokens"]');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Claiming…';
+  }
+  setClaimStatus('Preparing your claim…');
+  try {
+    const c = await S.api.startClaim(wallet);
+    setClaimStatus(`Approve the transaction in your wallet: it mints ${fmtNum(c.amount)} TestFPT to ${shortAddress(wallet)}.`);
+    const walletName = S.me.wallets.find((w) => w.address === wallet)?.walletName;
+    const signedTx = await signTransactionWith(wallet, c.transaction, c.cluster, walletName);
+    setClaimStatus('Sending to Solana…');
+    let res = await S.api.submitClaim(c.claimId, signedTx);
+    for (let i = 0; res.status === 'submitted' && i < 20; i++) {
+      setClaimStatus('Confirming on Solana…');
+      await new Promise((r) => setTimeout(r, 3_000));
+      res = await S.api.claimStatus(c.claimId);
+    }
+    if (res.status === 'confirmed') {
+      celebrate('moon');
+      toast(`🎉 ${fmtNum(res.amount)} TestFPT claimed. Check your wallet!`);
+    } else if (res.status === 'submitted') {
+      toast('Still confirming on Solana. It will show up shortly.');
+    } else {
+      toast(res.error || 'The claim didn’t go through. Your points are still claimable.', true);
+    }
+  } catch (err) {
+    const rejected = err?.code === 4001 || /reject|denied|cancel/i.test(err?.message ?? '');
+    toast(rejected ? 'Cancelled in your wallet. Your points are still claimable.' : err.message, true);
+  } finally {
+    S.claimBusy = false;
+    await refreshMe();
+    if (S.route.name === 'earn') $('#view').innerHTML = earnView();
+  }
+}
+
+async function onTaskVerify(taskId) {
+  try {
+    const out = await S.api.verifyTask(taskId);
+    celebrate('up');
+    toast(out.onChain ? `+${fmtNum(out.points)} points ready to claim as TestFPT` : `+${fmtNum(out.points)} points added`);
+  } catch (err) {
+    toast(err.message, true);
+    if (err.code === 'x_required') $('#x-form input')?.focus();
+  }
+  await refreshMe();
+  if (S.route.name === 'earn') $('#view').innerHTML = earnView();
+}
+
+async function submitX(form) {
+  const err = $('#x-error');
+  try {
+    const out = await S.api.connectX(String(new FormData(form).get('x') ?? ''));
+    toast(out.rewarded ? `+${out.rewarded} points for linking @${out.xUsername}` : `Linked @${out.xUsername}`);
+    await refreshMe();
+    if (S.route.name === 'earn') $('#view').innerHTML = earnView();
+  } catch (e) {
+    if (err) err.textContent = e.message;
+  }
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Copied');
+  } catch {
+    prompt('Copy this', text);
+  }
+}
+
 // ------------------------------------------------------------------ Listing radar
 
 function radarView(listings) {
@@ -1231,16 +1492,26 @@ function renderAuth() {
        <p class="fine" id="auth-status"></p>`,
     );
   } else if (kind === 'username') {
+    const xPts = S.rewards?.xConnectPoints;
     html = modalShell(
-      'Choose a username',
-      'This is how you appear on leaderboards and in market activity.',
+      'Complete your profile',
+      'Your username is how you appear on the leaderboard and in market activity.',
       `<form id="username-form" novalidate>
          <label><span class="field-label">Username</span><input name="username" value="${esc(S.me?.username ?? '')}" minlength="3" maxlength="20" autocomplete="username" required /></label>
-         <button class="cta" style="--c:var(--text)" type="submit">Save username</button>
+         ${
+           S.rewards && !S.rewards.xUsername
+             ? `<label><span class="field-label">X username <span class="muted">(optional${xPts ? `, +${xPts} points` : ''})</span></span><input name="x" placeholder="@yourname" maxlength="16" autocomplete="off" /></label>`
+             : ''
+         }
+         <button class="cta" style="--c:var(--text)" type="submit">Save and continue</button>
          <p class="form-error" id="auth-error" role="alert"></p>
        </form>
-       <p class="fine"><button class="switch" data-action="close-modal">Skip for now</button></p>`,
+       <p class="fine"><button class="switch" data-action="profile-skip">Skip for now</button></p>`,
     );
+  } else if (kind === 'faucet') {
+    html = modalShell('Get free test SOL', 'TestFPT lives on the Solana test network. Claiming it costs a tiny network fee, paid in free test SOL.', faucetSteps());
+  } else if (kind === 'start') {
+    html = modalShell('Start predicting in 4 steps', 'Your 1,000 starting points are TestFPT tokens. Claim them to your wallet, then use them to predict.', startSteps());
   } else if (S.auth.step === 'code') {
     html = modalShell(
       'Check your email',
@@ -1395,10 +1666,19 @@ function closeModal() {
 async function afterSignIn(user, created) {
   closeModal();
   await refreshMe();
-  toast(created ? 'Account created. 1,000 points added.' : `Signed in as ${S.me.username}`);
+  const claimFirst = S.rewards?.onChain && !S.rewards.welcomeClaimed;
+  toast(created ? (claimFirst ? 'Account created. Claim your 1,000 TestFPT to start.' : 'Account created. 1,000 points added.') : `Signed in as ${S.me.username}`);
   S.tradeKey = '';
   await loadRoute();
-  if (user?.needsUsername) openAuth('username');
+  // New players: complete the profile (or skip), then see how to get started.
+  if (created || user?.needsUsername) openAuth('username');
+  else if (claimFirst) openAuth('start');
+}
+
+/** After the profile step, new players see the getting-started steps if they still have to claim. */
+function afterProfile() {
+  if (S.rewards?.onChain && !S.rewards.welcomeClaimed) openAuth('start');
+  else closeModal();
 }
 
 async function walletFlow(purpose, entry) {
@@ -1440,12 +1720,19 @@ async function walletFlow(purpose, entry) {
 async function submitUsername(form) {
   const btn = form.querySelector('button[type=submit]');
   btn.disabled = true;
+  const data = new FormData(form);
   try {
-    S.me = await S.api.setUsername(new FormData(form).get('username'));
-    closeModal();
+    S.me = await S.api.setUsername(data.get('username'));
+    const x = String(data.get('x') ?? '').trim();
+    if (x) {
+      const out = await S.api.connectX(x);
+      if (out.rewarded) toast(`+${out.rewarded} points for linking @${out.xUsername}`);
+    }
+    await refreshRewards();
     renderTop();
-    toast(`You’re ${S.me.username}`);
+    if (!x) toast(`You’re ${S.me.username}`);
     await loadRoute();
+    afterProfile();
   } catch (err) {
     $('#auth-error').textContent = err.message;
     btn.disabled = false;
@@ -1546,10 +1833,12 @@ async function renderAdmin() {
   }
 
   const manualOnly = Boolean(A.info.manualOnly);
-  const [{ markets }, detected, { log }] = await Promise.all([
+  const [{ markets }, detected, { log }, token, { tasks }] = await Promise.all([
     A.api.markets(),
     manualOnly ? Promise.resolve([]) : A.api.detected().then((d) => d.detected),
     A.api.log().catch(() => ({ log: [] })),
+    A.api.token().catch(() => ({ enabled: false })),
+    A.api.tasks().catch(() => ({ tasks: [] })),
   ]);
   const venues = A.info.venues;
   const editing = markets.find((m) => m.id === A.edit && m.mode === 'manual' && m.status === 'open') ?? null;
@@ -1572,6 +1861,10 @@ async function renderAdmin() {
     </section>
 
     ${backupLine(A.info.backup)}
+
+    ${tokenAdminSection(token)}
+
+    ${tasksAdminSection(tasks)}
 
     <section class="section">
       <h2>Exchanges</h2>
@@ -1605,7 +1898,69 @@ async function renderAdmin() {
     ${adminLogView(log)}`;
 }
 
+/** TestFPT setup: make the mint authority, give it test SOL, create the token. */
+function tokenAdminSection(t) {
+  if (!t?.enabled) return '';
+  const net = t.cluster === 'devnet' ? 'Devnet' : 'Testnet';
+  if (t.ready) {
+    return `<section class="section"><h2>TestFPT token <span class="tag tag-now">Live</span></h2>
+      <p class="muted">Players claim their points to their wallets as TestFPT on Solana ${net}. They pay the network fee in test SOL.</p>
+      <p>Mint: <a href="${esc(t.mintUrl)}" target="_blank" rel="noopener noreferrer"><code>${esc(t.mint)}</code> ↗</a></p></section>`;
+  }
+  const sol = t.authoritySol;
+  return `<section class="section"><h2>TestFPT token <span class="tag">Not set up</span></h2>
+    <p class="muted">Until TestFPT exists, rewards go straight to players’ balances. Set it up once (Solana ${net}, free):</p>
+    <ol class="steplist">
+      <li class="${t.authority ? 'done' : ''}"><span class="step-check" aria-hidden="true">${t.authority ? '✓' : ''}</span><div><b>Create the mint authority</b>
+        <span class="muted">A key on this server that mints TestFPT when players claim. Keep this server’s database private.</span>
+        ${t.authority ? `<span class="copy-row"><code>${esc(t.authority)}</code><button class="btn" data-action="copy-text" data-text="${esc(t.authority)}">Copy</button></span>` : `<button class="btn btn-solid" data-action="admin-token-authority"${A.busy ? ' disabled' : ''}>Create authority</button>`}</div></li>
+      <li class="${sol ? 'done' : ''}"><span class="step-check" aria-hidden="true">${sol ? '✓' : ''}</span><div><b>Give it test SOL</b>
+        <span class="muted">Balance: ${sol === null || sol === undefined ? 'unknown' : `${sol} SOL`}. Paste the address above into the faucet (choose ${net}), or ask the network directly.</span>
+        <span class="row-actions"><a class="btn" href="https://faucet.solana.com" target="_blank" rel="noopener noreferrer">Open faucet ↗</a><button class="btn" data-action="admin-token-airdrop"${t.authority && !A.busy ? '' : ' disabled'}>Request 1 SOL</button><button class="btn" data-action="admin-token-refresh">Refresh balance</button></span></div></li>
+      <li><span class="step-check" aria-hidden="true"></span><div><b>Create TestFPT</b>
+        <span class="muted">Creates the token on chain, named TestFPT, with 0 decimals (1 point = 1 TestFPT).</span>
+        <button class="btn btn-solid" data-action="admin-token-create"${t.authority && sol && !A.busy ? '' : ' disabled'}>${A.busy === 'token' ? 'Creating…' : 'Create TestFPT'}</button></div></li>
+    </ol></section>`;
+}
+
+const TASK_TARGET_HINT = { follow: 'X handle, e.g. @firstprint', repost: 'Link to the post on X', like: 'Link to the post on X', share: 'Text of the post (the player’s invite link is added)', link: 'https:// link' };
+
+/** Tasks players complete for points: create, set a limit, switch off. */
+function tasksAdminSection(tasks) {
+  return `<section class="section">
+    <h2>Tasks</h2>
+    <p class="muted">Players open the task, do it on X, then press Verify. X has no free API to check, so it's honour-based: each X username can only be linked to one account, and each task pays once per player.</p>
+    <form id="admin-task" class="admin-form task-form" novalidate>
+      <label><span class="field-label">Type</span><select name="kind">
+        <option value="follow">Follow on X</option><option value="repost">Repost on X</option><option value="like">Like on X</option><option value="share">Post on X (with invite link)</option><option value="link">Visit a link</option>
+      </select></label>
+      <label><span class="field-label">Target</span><input name="target" placeholder="${esc(TASK_TARGET_HINT.follow)}" required /></label>
+      <label><span class="field-label">Title <span class="muted">(optional)</span></span><input name="title" maxlength="80" /></label>
+      <label><span class="field-label">Points</span><input name="points" type="number" min="1" max="10000" value="50" required /></label>
+      <label><span class="field-label">Limit <span class="muted">(players, optional)</span></span><input name="maxCompletions" type="number" min="1" placeholder="No limit" /></label>
+      <button class="btn btn-solid" type="submit">Add task</button>
+    </form>
+    ${
+      tasks.length
+        ? `<div class="table-scroll"><table class="table"><thead><tr><th>Task</th><th class="right">Points</th><th class="right">Done</th><th class="right"></th></tr></thead><tbody>${tasks
+            .map(
+              (t) => `<tr${t.active ? '' : ' class="muted"'}>
+                <td>${TASK_ICONS[t.kind] ?? ''} <a href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${esc(t.title)}</a>${t.active ? '' : ' <span class="tag">Off</span>'}</td>
+                <td class="right">${fmtNum(t.points)}</td>
+                <td class="right">${fmtNum(t.completions)}${t.maxCompletions ? ` / ${fmtNum(t.maxCompletions)}` : ''}</td>
+                <td class="right"><button class="btn" data-action="admin-task-toggle" data-id="${esc(t.id)}" data-active="${t.active ? '1' : '0'}">${t.active ? 'Switch off' : 'Switch on'}</button></td>
+              </tr>`,
+            )
+            .join('')}</tbody></table></div>`
+        : '<p class="muted">No tasks yet. Add one above.</p>'
+    }
+  </section>`;
+}
+
 const ADMIN_ACTIONS = {
+  testfpt_created: 'Created the TestFPT token',
+  task_created: 'Added a task',
+  task_updated: 'Changed a task',
   market_drafted: 'Saved a draft',
   market_published: 'Published a market',
   market_unpublished: 'Moved a market back to drafts',
@@ -1824,7 +2179,30 @@ async function adminCreate(body, statusEl) {
 
 async function onAdminAction(action, el) {
   if (!A.api) return;
+  const tokenStep = { 'admin-token-authority': 'authority', 'admin-token-airdrop': 'airdrop', 'admin-token-create': 'create' }[action];
+  if (tokenStep) {
+    A.busy = 'token';
+    await renderAdmin();
+    try {
+      await A.api.tokenStep(tokenStep);
+      if (tokenStep === 'create') toast('TestFPT created. Claims are on.');
+      if (tokenStep === 'airdrop') toast('Requested 1 test SOL. It can take a few seconds to show.');
+    } catch (err) {
+      toast(err.message, true);
+    }
+    A.busy = '';
+    return renderAdmin();
+  }
   switch (action) {
+    case 'admin-token-refresh':
+      return renderAdmin();
+    case 'admin-task-toggle':
+      try {
+        await A.api.updateTask(el.dataset.id, { active: el.dataset.active !== '1' });
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
     case 'admin-logout':
       A.api = null;
       A.info = null;
@@ -1922,6 +2300,16 @@ async function onAdminSubmit(form, submitter) {
     return renderAdmin();
   }
   if (form.id === 'admin-market') return submitAdminMarket(form, submitter?.value || 'save');
+  if (form.id === 'admin-task') {
+    const data = Object.fromEntries(new FormData(form));
+    try {
+      await A.api.createTask({ ...data, points: Number(data.points), maxCompletions: data.maxCompletions ? Number(data.maxCompletions) : null });
+      toast('Task added');
+      return renderAdmin();
+    } catch (err) {
+      return toast(err.message, true);
+    }
+  }
   if (form.dataset.resolve) return submitAdminResult(form, submitter?.value || 'preview');
   if (form.id === 'admin-live') {
     const data = new FormData(form);
@@ -2112,6 +2500,28 @@ document.addEventListener('click', async (e) => {
       } catch (err) {
         return toast(err.message, true);
       }
+    case 'faucet':
+      return openAuth('faucet');
+    case 'start-guide':
+      return openAuth('start');
+    case 'profile-skip':
+      return afterProfile();
+    case 'claim-tokens':
+      return claimTokens();
+    case 'task-go': {
+      // Let the link open the task on X, and remember it was opened.
+      const id = t.closest('[data-task]').dataset.task;
+      S.api
+        .startTask(id)
+        .then(refreshRewards)
+        .then(() => S.route.name === 'earn' && ($('#view').innerHTML = earnView()))
+        .catch((err) => toast(err.message, true));
+      return;
+    }
+    case 'task-verify':
+      return onTaskVerify(t.closest('[data-task]').dataset.task);
+    case 'copy-text':
+      return copyText(t.closest('[data-text]').dataset.text);
     case 'predict':
       return submitPrediction();
     case 'open-sheet':
@@ -2150,6 +2560,9 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (e.target.name === 'kind' && e.target.closest('#admin-task')) {
+    e.target.closest('form').querySelector('[name=target]').placeholder = TASK_TARGET_HINT[e.target.value] ?? '';
+  }
   if (e.target.id === 'exchange-filter') {
     S.exchange = e.target.value;
     $('#view').innerHTML = homeView();
@@ -2166,6 +2579,9 @@ document.addEventListener('submit', (e) => {
   } else if (e.target.id === 'username-form') {
     e.preventDefault();
     submitUsername(e.target);
+  } else if (e.target.id === 'x-form') {
+    e.preventDefault();
+    submitX(e.target);
   } else if (S.route.name === 'admin') {
     e.preventDefault();
     onAdminSubmit(e.target, e.submitter);
@@ -2196,6 +2612,7 @@ setInterval(() => {
 // ------------------------------------------------------------------ Boot
 
 (async function boot() {
+  captureReferral();
   const forceDemo = window.FP_FORCE_DEMO || new URLSearchParams(location.search).has('demo');
   // A server outage must never silently replace real balances with simulated ones.
   S.api = forceDemo ? new DemoBackend() : createApi();
