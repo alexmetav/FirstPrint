@@ -23,7 +23,7 @@ const inline = (src: string) =>
 
 const html = read('web/index.html');
 const css = read('web/styles.css');
-const js = [engineJs, read('web/api.js'), read('web/wallet.js'), read('web/demo.js'), read('web/app.js')].map(inline).join('\n;\n');
+const js = [engineJs, read('web/api.js'), read('web/wallet.js'), read('web/demo.js'), read('web/icons.js'), read('web/app.js')].map(inline).join('\n;\n');
 
 const preview = html
   .replace(/<link rel="stylesheet" href="\.\/styles\.css"\s*\/?>/, () => `<style>\n${css}\n</style>`)
