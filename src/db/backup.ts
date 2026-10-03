@@ -75,7 +75,7 @@ export class DbBackup {
   private timer: NodeJS.Timeout | null = null;
   private lastChanges = -1;
   private lastDaily = '';
-  private busy = false;
+  private inFlight: Promise<boolean> | null = null;
   lastOkAt: number | null = null;
   lastError: string | null = null;
 
@@ -97,9 +97,15 @@ export class DbBackup {
   }
 
   /** Uploads a consistent snapshot if anything changed since the last one (or always with force). */
-  async runOnce(force = false): Promise<boolean> {
-    if (this.busy) return false;
-    this.busy = true;
+  runOnce(force = false): Promise<boolean> {
+    if (this.inFlight) return Promise.resolve(false);
+    this.inFlight = this.snapshot(force).finally(() => {
+      this.inFlight = null;
+    });
+    return this.inFlight;
+  }
+
+  private async snapshot(force: boolean): Promise<boolean> {
     const tmp = `${this.path}.snapshot`;
     try {
       const changes = (this.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n;
@@ -110,7 +116,9 @@ export class DbBackup {
       await this.upload(this.cfg.object, bytes);
       const day = new Date().toISOString().slice(0, 10);
       if (day !== this.lastDaily) {
-        await this.upload(this.cfg.object.replace(/(\.db)?$/, `-${day}$1`), bytes); // one dated copy per day, in case of a bad write
+        // One dated copy per day, in case of a bad write. Never overwritten: after a restart the
+        // first copy of the day may already exist, and it must keep that day's earliest good state.
+        await this.upload(this.cfg.object.replace(/(\.db)?$/, `-${day}$1`), bytes, { overwrite: false });
         this.lastDaily = day;
       }
       this.lastChanges = changes;
@@ -123,23 +131,30 @@ export class DbBackup {
       return false;
     } finally {
       rmSync(tmp, { force: true });
-      this.busy = false;
     }
   }
 
+  /** Final copy before shutdown. Waits for a copy already in progress, then takes one that includes everything since. */
   async stop() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    if (this.inFlight) await this.inFlight;
     await this.runOnce();
   }
 
-  private async upload(name: string, bytes: Buffer) {
+  private async upload(name: string, bytes: Buffer, { overwrite = true } = {}) {
     const res = await this.fetchFn(objectUrl(this.cfg, name), {
       method: 'POST',
-      headers: { ...headers(this.cfg), 'content-type': 'application/octet-stream', 'x-upsert': 'true' },
+      headers: { ...headers(this.cfg), 'content-type': 'application/octet-stream', 'x-upsert': String(overwrite) },
       body: new Uint8Array(bytes),
       signal: AbortSignal.timeout(30_000),
     });
+    // Storage answers 409 (or 400 "Duplicate") when a create-only upload already exists.
+    if (!overwrite && (res.status === 409 || res.status === 400)) {
+      const text = await res.text();
+      if (res.status === 409 || /duplicate|already exists/i.test(text)) return;
+      throw new Error(`upload ${name} failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+    }
     if (!res.ok) throw new Error(`upload ${name} failed: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
   }
 }

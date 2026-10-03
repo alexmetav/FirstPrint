@@ -5,9 +5,8 @@ The public website source lives in `site/`. Vercel serves the static build and f
 **What visitors get on day 1**
 - A landing page covering how it works, the five outcomes, the fairness rules, exchanges, the roadmap, and an FAQ.
 - **Try it:** a playable practice market. Visitors pick an outcome, watch 72 hours draw in about four seconds, and build a streak that's saved in their browser.
-- **Launch app**, which opens:
-  - **Exchanges:** live 24-hour volume, trust scores, trending coins, and the most traded pairs for 13 major exchanges.
-  - **Predictions** and **Listing radar**, both marked "Coming soon".
+- **Exchanges:** live 24-hour volume, trust scores, trending coins, and the most traded pairs for 13 major exchanges.
+- **Try practice beta** (`/play/`): the prediction app in practice mode, with simulated prices and free points kept in the visitor's browser. Set `APP_URL` when building to point these links at the hosted full app instead (see `scripts/build-deploy.ts`).
 
 The site has no frontend framework. It installs as an app on phones and keeps showing recent cached data when the provider is temporarily unavailable.
 
@@ -21,7 +20,9 @@ links: { x: 'https://x.com/yourhandle', telegram: 'https://t.me/yourgroup', disc
 waitlistUrl: 'https://tally.so/r/yourform',   // optional: adds "Join the waitlist" buttons
 ```
 
-Once you know your domain, open `site/index.html` and change `og:image` to the full address, for example `https://yourdomain.com/og.png`. Social apps need the full address to show the preview image. Also replace `example.com` in `site/robots.txt` and `site/sitemap.xml` with your domain.
+The site is set up for `https://www.firstprint.fun`: the full `og:image` address in `site/index.html` (social apps need it to show the preview image) and `site/robots.txt` and `site/sitemap.xml`. If the domain changes, update those three.
+
+Security headers (Content-Security-Policy, HSTS and others) and cache rules are set in `vercel.json`; the app server sends the same policy, and a test keeps the two in step.
 
 ## 2. Deploy the read-only API
 
@@ -88,8 +89,9 @@ The static site and the read-only demo above don't have accounts. The full app i
 3. Wait for the deploy to go green, then open `https://<service>.onrender.com/api/health`. It should return `{"ok":true,...}`.
 4. Read the generated admin key in Render → `firstprint-app` → Environment → `ADMIN_KEY`. Open `<your app address>/#/admin` and paste it. The page should say "Database backup: last saved ...". Keep the key private.
 5. Custom domain: in Render → Settings → Custom Domains add `app.firstprint.fun`, then add the DNS record Render shows you. Set `PUBLIC_URL` to that address and redeploy.
-6. Point the marketing site at it: in Vercel → Settings → Environment Variables add `APP_URL` = your app address (`https://...`), then redeploy. The "practice" buttons on the site then open the full app. Without `APP_URL` the site keeps linking to the browser-only practice build at `/play/`.
-7. Google only: in Google Cloud Console add your `PUBLIC_URL` as an Authorized JavaScript origin on the OAuth client.
+6. **The app serves the website too.** `firstprint-app` shows the landing page at `/` and the app at `/app/`; the landing page's **Launch app** buttons open `/app/`. So pointing your domain straight at Render gives visitors the landing page first. Old links such as `/#/market/...` and `/#/admin` forward to the same page under `/app/`. Set `SITE=0` to serve only the app at `/`.
+7. If the website stays on Vercel instead:  in Vercel → Settings → Environment Variables add `APP_URL` = your app address plus `/app` (for example `https://firstprint-app.onrender.com/app`), then redeploy. The "practice" buttons on the site then open the full app. Without `APP_URL` the site keeps linking to the browser-only practice build at `/play/`.
+8. Google only: in Google Cloud Console add your `PUBLIC_URL` as an Authorized JavaScript origin on the OAuth client.
 
 **What's free and what isn't.** Wallet and Google sign-in are free. Email codes work without payment only to your own address in Resend's test mode; sending to everyone needs a domain verified in Resend, which uses a domain you own (you already own firstprint.fun, so it costs nothing extra). To try the app before that, sign in with a Solana wallet (devnet by default).
 

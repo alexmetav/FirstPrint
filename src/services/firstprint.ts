@@ -46,6 +46,8 @@ export class AppError extends Error {
 // ---------------------------------------------------------------------------
 
 export const SESSION_MS = 30 * 24 * 60 * 60_000;
+/** Wrong email-code guesses allowed per address per day, across all codes sent to it. */
+export const EMAIL_CODE_DAILY_FAILURES = 20;
 
 export interface UserRow {
   id: string;
@@ -282,6 +284,7 @@ export class FirstprintService {
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const expiresAt = now + 10 * MINUTE;
     this.db.prepare('DELETE FROM email_codes WHERE expires_at < ?').run(now - MINUTE);
+    this.db.prepare('DELETE FROM email_code_failures WHERE window_start < ?').run(now - 24 * 60 * MINUTE);
     this.db
       .prepare('INSERT OR REPLACE INTO email_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, 0, ?)')
       .run(email, sha256(`${email}:${code}`), expiresAt, now);
@@ -293,20 +296,36 @@ export class FirstprintService {
     const email = String(emailInput ?? '').trim().toLowerCase();
     const code = String(codeInput ?? '').replace(/\s/g, '');
     const bad = () => new AppError(401, 'bad_code', 'That code is wrong or has expired. Check it and try again, or request a new one.');
+    const now = this.clock.now();
+    const failures = as<{ failures: number; window_start: number } | undefined>(
+      this.db.prepare('SELECT failures, window_start FROM email_code_failures WHERE email = ?').get(email),
+    );
+    if (failures && now - failures.window_start < 24 * 60 * MINUTE && failures.failures >= EMAIL_CODE_DAILY_FAILURES) {
+      throw new AppError(429, 'too_many_attempts', 'Too many wrong codes for this email. Try again tomorrow, or sign in with Google or a wallet.');
+    }
     // A wrong guess must be counted even though it fails, so the failure is thrown
     // after the transaction commits instead of rolling the counter back.
     const outcome = tx(this.db, () => {
       const row = as<{ code_hash: string; expires_at: number; attempts: number } | undefined>(
         this.db.prepare('SELECT * FROM email_codes WHERE email = ?').get(email),
       );
-      if (!row || row.expires_at < this.clock.now() || row.attempts >= 5) return null;
+      if (!row || row.expires_at < now || row.attempts >= 5) return null;
       const given = Buffer.from(sha256(`${email}:${code}`));
       const want = Buffer.from(row.code_hash);
       if (!/^\d{6}$/.test(code) || !timingSafeEqual(given, want)) {
         this.db.prepare('UPDATE email_codes SET attempts = attempts + 1 WHERE email = ?').run(email);
+        this.db
+          .prepare(
+            `INSERT INTO email_code_failures (email, failures, window_start) VALUES (?, 1, ?)
+             ON CONFLICT(email) DO UPDATE SET
+               failures = CASE WHEN ? - window_start >= ? THEN 1 ELSE failures + 1 END,
+               window_start = CASE WHEN ? - window_start >= ? THEN excluded.window_start ELSE window_start END`,
+          )
+          .run(email, now, now, 24 * 60 * MINUTE, now, 24 * 60 * MINUTE);
         return null;
       }
       this.db.prepare('DELETE FROM email_codes WHERE email = ?').run(email);
+      this.db.prepare('DELETE FROM email_code_failures WHERE email = ?').run(email);
       return this.findOrCreateByEmail(email, null);
     });
     if (!outcome) throw bad();
@@ -325,6 +344,16 @@ export class FirstprintService {
 
   private findOrCreateByEmail(email: string, name: string | null): { user: UserRow; created: boolean } {
     const found = as<UserRow | undefined>(this.db.prepare('SELECT * FROM users WHERE email = ?').get(email));
+    if (found?.password_hash) {
+      // Password accounts were created without proving the email belonged to whoever signed up.
+      // The first verified sign-in takes the account over: the password, other sessions and linked
+      // wallets are dropped, so someone who registered another person's email loses all access.
+      this.db.prepare('UPDATE users SET password_hash = NULL WHERE id = ?').run(found.id);
+      this.db.prepare('DELETE FROM sessions WHERE user_id = ?').run(found.id);
+      this.db.prepare('DELETE FROM wallets WHERE user_id = ?').run(found.id);
+      this.log(`email verified for password account ${found.id}: password, sessions and wallets cleared`);
+      return { user: this.getUser(found.id), created: false };
+    }
     if (found) return { user: found, created: false };
     const base = (name ?? email.split('@')[0]).replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 16) || 'player';
     let username = base.length >= 3 ? base : `${base}_user`.slice(0, 16);
@@ -802,7 +831,7 @@ export class FirstprintService {
           listing_at = ?, config = ?, base_price = ?, note = ? WHERE id = ?`,
       )
       .run(f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, JSON.stringify(f.cfg), f.basePrice, f.note, marketId);
-    this.onEvent('market', { marketId });
+    if (m.published === 1) this.onEvent('market', { marketId }); // drafts stay private
     return marketId;
   }
 

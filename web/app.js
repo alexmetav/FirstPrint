@@ -7,6 +7,8 @@ import { INSTALL_LINKS, connectAndSign, disconnectWallets, isMobileDevice, listW
 
 const LADDER = ['moon', 'up', 'flat', 'down', 'crash'];
 const NAMES = { crash: 'Crash', down: 'Down', flat: 'Flat', up: 'Up', moon: 'Moon' };
+const ICONS = { moon: '🚀', up: '📈', flat: '➖', down: '📉', crash: '💥' };
+const icon = (b) => `<span class="oc-ico" aria-hidden="true">${ICONS[b]}</span>`;
 const VOID_REASONS = {
   listing_delayed: 'the listing was delayed by more than 24 hours',
   retracted: 'the exchange cancelled the listing',
@@ -86,7 +88,7 @@ function fmtDate(ts) {
 }
 
 const until = (ts) => `<span data-until="${ts}">${fmtDur(ts - now())}</span>`;
-const outcome = (b) => `<b class="oc" style="--c:var(--${b})">${NAMES[b]}</b>`;
+const outcome = (b) => `<b class="oc" style="--c:var(--${b})">${icon(b)}${NAMES[b]}</b>`;
 const rangeLabel = (b, t) => bucketRangeLabel(b, t).replace(/-/g, '−');
 const share = (m, b) => (m.pool ? m.totals[b] / m.pool : 0);
 
@@ -233,9 +235,26 @@ function titleFor() {
 
 // ------------------------------------------------------------------ Top bar
 
+/** Simple line icons for the phone tab bar. */
+const TAB_ICONS = {
+  home: '<path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/>',
+  radar: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 12l5-5"/>',
+  leaderboard: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>',
+  portfolio: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 12h18"/>',
+};
+
 function renderTop() {
   const cur = (name) => (S.route.name === name || (name === 'home' && S.route.name === 'market') ? ' aria-current="page"' : '');
   const wallet = S.me?.wallets?.[0]?.address;
+  const tabs = [
+    ['home', '#/', 'Markets'],
+    ...(S.cfg?.manualOnly ? [] : [['radar', '#/radar', 'Radar']]),
+    ['leaderboard', '#/leaderboard', 'Ranks'],
+    ['portfolio', '#/portfolio', 'Me'],
+  ];
+  $('#tabbar').innerHTML = tabs
+    .map(([name, href, label]) => `<a href="${href}"${cur(name)}><svg viewBox="0 0 24 24" aria-hidden="true">${TAB_ICONS[name]}</svg><span>${label}</span></a>`)
+    .join('');
   $('#topbar').innerHTML = `
     <div class="topbar-inner">
       <a class="wordmark" href="#/" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
@@ -248,7 +267,8 @@ function renderTop() {
       <div class="account">
         ${
           S.me
-            ? `<a class="points" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${fmtPts(S.me.points)}</a>
+            ? `${S.me.canClaimDaily ? `<button class="gift" data-action="claim" title="Claim your free daily points"><span aria-hidden="true">🎁</span> +100</button>` : ''}
+               <a class="points" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${fmtPts(S.me.points)}</a>
                <a class="wallet-chip" href="#/portfolio">${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</a>`
             : `<button class="btn btn-solid" data-action="connect">Log in</button>`
         }
@@ -260,9 +280,9 @@ function renderDemoBar() {
   if (!S.api.demo) return;
   $('#demo-bar').innerHTML = `
     <div class="demo-bar"><div class="demo-bar-inner">
-      <p><strong>Practice only:</strong> simulated prices, browser-only accounts, and no real funds or persisted predictions.</p>
-      <button class="btn" data-action="skip">Skip ahead 2 minutes</button>
-      <button class="btn" data-action="reset">Reset demo</button>
+      <p><strong>Practice mode</strong><span class="long">: simulated prices, browser-only accounts, and no real funds or persisted predictions.</span><span class="short">: fake points, simulated prices.</span></p>
+      <button class="btn" data-action="skip">⏩ <span class="long">Skip ahead </span>2 min</button>
+      <button class="btn" data-action="reset">↺ Reset</button>
     </div></div>`;
 }
 
@@ -301,7 +321,9 @@ function homeView() {
 function emptyText() {
   if (S.filter === 'live') return '<p>No markets are waiting for a result. Markets move here once predictions close.</p><button class="btn" data-filter="open">See upcoming</button>';
   if (S.filter === 'settled') return '<p>No settled markets yet. Results appear here after Firstprint posts them.</p>';
-  return '<p>No open markets right now. New markets are published here by Firstprint.</p>';
+  return `<div class="empty-art" aria-hidden="true">🛰️</div>
+    <p><strong>No open markets right now.</strong><br />New markets land here as soon as Firstprint opens them.</p>
+    ${S.me?.canClaimDaily ? '<button class="btn btn-solid" data-action="claim">🎁 Claim 100 free points meanwhile</button>' : '<a class="btn" href="#/leaderboard">See the leaderboard</a>'}`;
 }
 
 function featuredView(m) {
@@ -321,7 +343,7 @@ function featuredView(m) {
       <div class="mini-ladder" aria-label="Pool split by outcome">
         ${LADDER.map((b) => {
           const pct = share(m, b) * 100;
-          return `<div class="mini-rung" style="--c:var(--${b});--share:${pct}%"><b>${NAMES[b]}</b><span class="muted">${rangeLabel(b, m.thresholds)}</span><span class="pct">${Math.round(pct)}%</span></div>`;
+          return `<div class="mini-rung" style="--c:var(--${b});--share:${pct}%"><b>${icon(b)}${NAMES[b]}</b><span class="muted">${rangeLabel(b, m.thresholds)}</span><span class="pct">${Math.round(pct)}%</span></div>`;
         }).join('')}
       </div>
     </section>`;
@@ -345,7 +367,7 @@ function featuredView(m) {
       <div class="mini-ladder" aria-label="Pool split by outcome">
         ${LADDER.map((b) => {
           const pct = share(m, b) * 100;
-          return `<div class="mini-rung" style="--c:var(--${b});--share:${pct}%"><b>${NAMES[b]}</b><span class="muted">${rangeLabel(b, m.thresholds)}</span><span class="pct">${Math.round(pct)}%</span></div>`;
+          return `<div class="mini-rung" style="--c:var(--${b});--share:${pct}%"><b>${icon(b)}${NAMES[b]}</b><span class="muted">${rangeLabel(b, m.thresholds)}</span><span class="pct">${Math.round(pct)}%</span></div>`;
         }).join('')}
       </div>
     </section>`;
@@ -368,8 +390,10 @@ function cardView(m) {
   else if (m.phase === 'awaiting_result') when = 'Awaiting result';
   else when = fmtDate(m.settleAt);
 
+  const soon = m.status === 'open' && m.closeAt - now() < 15 * 60_000 && m.closeAt > now();
   return `
-    <a class="card" href="#/market/${encodeURIComponent(m.id)}">
+    <a class="card${soon ? ' soon' : ''}" href="#/market/${encodeURIComponent(m.id)}">
+      ${soon ? '<span class="soon-tag">⏰ Closing soon</span>' : ''}
       <div class="card-top"><span class="sym">${esc(m.symbol)}</span><span class="exch">${esc(m.exchange)}</span></div>
       <div class="card-name">${esc(m.name || '')}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</div>
       <div class="strip${m.pool ? '' : ' empty'}" aria-hidden="true">
@@ -380,28 +404,35 @@ function cardView(m) {
     </a>`;
 }
 
+/** Three friendly steps up front; the full rules stay one tap away. */
 function howItWorks() {
+  const steps = `
+      <h2>How it works</h2>
+      <ol class="steps">
+        <li><span class="step-ico" aria-hidden="true">🎯</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}.</p></li>
+        <li><span class="step-ico" aria-hidden="true">🪙</span><b>Stake free points</b><p>Everyone starts with 1,000 points, plus 100 more every day. No real money.</p></li>
+        <li><span class="step-ico" aria-hidden="true">🏆</span><b>Win the pool</b><p>If you’re right, you split the pool with the other winners. Earlier picks earn more.</p></li>
+      </ol>
+      <details class="full-rules"><summary>Full rules</summary>`;
   if (S.cfg?.manualOnly) {
     return `
-    <section class="section" id="how" style="margin-top:36px">
-      <h2>How it works</h2>
+    <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
         <li>Firstprint publishes a market for a token listed on major exchanges, with a start price. Log in with Google, email, or a Solana wallet to get 1,000 free points.</li>
         <li>Pick one of five outcomes for where the price ends up compared with the start price, from Crash to Moon. Predictions close at the time shown, and earlier predictions earn a bigger share.</li>
         <li>After they close, Firstprint posts the final price and the winners on the market page.</li>
         <li>Everyone who picked the winning outcome splits the pool, minus a 4% fee. If nobody picked it, everyone gets their points back.</li>
-      </ol>
+      </ol></details>
     </section>`;
   }
   return `
-    <section class="section" id="how" style="margin-top:36px">
-      <h2>How it works</h2>
+    <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
         <li>Firstprint watches seven exchanges for new listings and opens a market when one is confirmed. Sign in with Google, email, or a Solana wallet to get 1,000 free points.</li>
         <li>Pick one of five outcomes for the price 72 hours after listing, from Crash to Moon. Predictions stay open until 1 hour after trading starts, and earlier predictions earn a bigger share.</li>
         <li>The starting price is the average over the first hour of trading. The final price is the average over the last hour, so a single spike can’t decide a market.</li>
         <li>Everyone who picked the winning outcome splits the pool, minus a 4% fee. If nobody picked it, everyone gets their points back.</li>
-      </ol>
+      </ol></details>
     </section>`;
 }
 
@@ -468,7 +499,7 @@ function marketMain(m) {
         aria-pressed="${S.trade.bucket === b}" ${canPick ? '' : 'disabled'}
         aria-label="${NAMES[b]}, ${rangeLabel(b, m.thresholds)}, ${Math.round(pct)}% of pool">
         <span class="rung-name">
-          <b>${NAMES[b]}${mineBy[b] ? `<span class="tag tag-you">You ${fmtNum(mineBy[b])}</span>` : ''}${
+          <b>${icon(b)}${NAMES[b]}${mineBy[b] ? `<span class="tag tag-you">You ${fmtNum(mineBy[b])}</span>` : ''}${
             nowBucket === b ? `<span class="tag tag-now">Now ${fmtPct(m.live.returnPct)}</span>` : ''
           }${won ? '<span class="tag tag-now">Winner</span>' : ''}</b>
           <small>${rangeLabel(b, m.thresholds)}</small>
@@ -707,7 +738,7 @@ function renderTrade() {
   if (mode === 'open') {
     $('#picker').innerHTML = LADDER.map(
       (b) =>
-        `<button type="button" role="radio" aria-checked="${S.trade.bucket === b}" data-pick="${b}" style="--c:var(--${b})"><b>${NAMES[b]}</b><small>${Math.round(share(m, b) * 100)}%</small></button>`,
+        `<button type="button" role="radio" aria-checked="${S.trade.bucket === b}" data-pick="${b}" style="--c:var(--${b})"><span class="pick-ico" aria-hidden="true">${ICONS[b]}</span><b>${NAMES[b]}</b><small>${Math.round(share(m, b) * 100)}%</small></button>`,
     ).join('');
     updateSummary();
   } else if (mode === 'closed') {
@@ -752,7 +783,7 @@ function updateSummary() {
     summary.innerHTML = '<div><dt>Pick an outcome to see your estimated payout.</dt></div>';
   } else {
     summary.innerHTML = `
-      <div class="big"><dt>If ${NAMES[b]} wins</dt><dd>${q ? `about ${fmtPts(q.payout)}` : '…'}</dd></div>
+      <div class="big"><dt>If ${ICONS[b]} ${NAMES[b]} wins</dt><dd>${q ? `about ${fmtPts(q.payout)}` : '…'}</dd></div>
       <div><dt>Return on stake</dt><dd>${q && stake ? `${q.multiple.toFixed(2)}×` : '–'}</dd></div>
       <div><dt>Early bonus</dt><dd>${q ? `${q.weight.toFixed(2)}×` : '–'}</dd></div>
       <div><dt>Price range</dt><dd>${rangeLabel(b, m.thresholds)}</dd></div>`;
@@ -814,8 +845,10 @@ async function submitPrediction() {
   S.trade.busy = true;
   updateSummary();
   try {
+    const payout = S.trade.quote?.payout;
     await S.api.predict(m.id, bucket, stake);
-    toast(`Predicted ${NAMES[bucket]} for ${fmtPts(stake)}`);
+    celebrate(bucket);
+    toast(`${ICONS[bucket]} You’re in! ${NAMES[bucket]} for ${fmtPts(stake)}${payout ? `. Win about ${fmtPts(payout)} if it lands.` : '.'}`);
     $('#trade-error').textContent = '';
     closeSheet();
     await refreshMe();
@@ -834,6 +867,22 @@ async function submitPrediction() {
     S.trade.busy = false;
     if ($('#trade-card')) updateSummary();
   }
+}
+
+/** A short burst of confetti in the outcome's colour. Skipped for people who prefer less motion. */
+function celebrate(bucket) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const root = $('#confetti');
+  if (!root) return;
+  const colors = [`var(--${bucket})`, `var(--${bucket})`, 'var(--moon)', 'var(--up)', 'var(--text)'];
+  root.innerHTML = Array.from({ length: 48 }, (_, i) => {
+    const x = (Math.random() * 2 - 1) * 46; // vw from the centre
+    const rot = Math.round(Math.random() * 720 - 360);
+    const delay = Math.round(Math.random() * 120);
+    return `<i style="--x:${x.toFixed(1)}vw;--r:${rot}deg;--d:${delay}ms;--c:${colors[i % colors.length]}"></i>`;
+  }).join('');
+  clearTimeout(celebrate.timer);
+  celebrate.timer = setTimeout(() => (root.innerHTML = ''), 1800);
 }
 
 function openSheet() {
@@ -1935,7 +1984,8 @@ document.addEventListener('click', async (e) => {
     case 'claim':
       try {
         S.me = await S.api.claimDaily();
-        toast('Added 100 points');
+        celebrate('moon');
+        toast('🎁 +100 points added. See you tomorrow!');
         renderTop();
         return loadRoute();
       } catch (err) {

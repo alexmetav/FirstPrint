@@ -9,6 +9,9 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.18.0
+      # Optional CoinGecko demo key for exchange data (server-side only, never in browser code).
+      - key: COINGECKO_API_KEY
+        sync: false
 
   # The full app: accounts, points, admin panel, manual markets. Runs on Render's free plan, which has no
   # persistent disk, so the server keeps its SQLite database in a private Supabase Storage bucket: it

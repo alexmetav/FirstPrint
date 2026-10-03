@@ -9,8 +9,8 @@ import { DbBackup, backupConfigFromEnv, restoreIfMissing, type BackupConfig } fr
 
 const cfg: BackupConfig = { url: 'https://proj.supabase.co', serviceKey: 'service-key', bucket: 'bk', object: 'firstprint.db' };
 
-/** A tiny stand-in for Supabase Storage: private bucket, upsert uploads, 404 for missing objects. */
-function fakeStorage(opts: { failGet?: number; failPost?: boolean } = {}) {
+/** A tiny stand-in for Supabase Storage: private bucket, upsert or create-only uploads, 404 for missing objects. */
+function fakeStorage(opts: { failGet?: number; failPost?: boolean; slowPost?: Promise<void> } = {}) {
   const objects = new Map<string, Buffer>();
   const calls: { method: string; name: string; auth: string | null; upsert: string | null }[] = [];
   const fetchFn = (async (input: string | URL | Request, init: RequestInit = {}) => {
@@ -20,7 +20,9 @@ function fakeStorage(opts: { failGet?: number; failPost?: boolean } = {}) {
     const method = init.method ?? 'GET';
     calls.push({ method, name, auth: h.get('authorization'), upsert: h.get('x-upsert') });
     if (method === 'POST') {
+      if (opts.slowPost) await opts.slowPost;
       if (opts.failPost) return new Response('nope', { status: 500 });
+      if (h.get('x-upsert') !== 'true' && objects.has(name)) return new Response('{"error":"Duplicate"}', { status: 409 });
       objects.set(name, Buffer.from(init.body as Uint8Array));
       return new Response('{}', { status: 200 });
     }
@@ -67,7 +69,10 @@ test('a real database survives a "restart": backed up, then restored into a fres
 
   // Every request is authenticated with the service key.
   assert.ok(storage.calls.every((c) => c.auth === 'Bearer service-key'));
-  assert.ok(storage.calls.filter((c) => c.method === 'POST').every((c) => c.upsert === 'true'));
+  // The live copy is replaced each time; the dated daily copy is create-only.
+  const posts = storage.calls.filter((c) => c.method === 'POST');
+  assert.ok(posts.filter((c) => c.name === 'firstprint.db').every((c) => c.upsert === 'true'));
+  assert.ok(posts.filter((c) => c.name !== 'firstprint.db').every((c) => c.upsert === 'false'));
 });
 
 test('restore: skipped when a database exists, "none" on a first run, refuses to start when the backup is unreachable or corrupt', async () => {
@@ -118,4 +123,39 @@ test('backup: only uploads when something changed, keeps one dated copy per day,
   const b2 = new DbBackup(db, p, cfg, quiet, broken.fetchFn);
   assert.equal(await b2.runOnce(true), false);
   assert.match(b2.status().lastError ?? '', /HTTP 500/);
+});
+
+test('backup: a restart never overwrites the day\'s dated copy', async () => {
+  const storage = fakeStorage();
+  const day = new Date().toISOString().slice(0, 10);
+  storage.objects.set(`firstprint-${day}.db`, Buffer.from('earlier good copy'));
+  const p = join(dir(), 'firstprint.db');
+  const db = openDb(p);
+  const backup = new DbBackup(db, p, cfg, quiet, storage.fetchFn);
+  assert.equal(await backup.runOnce(true), true); // the existing dated copy is not an error
+  assert.equal(storage.objects.get(`firstprint-${day}.db`)?.toString(), 'earlier good copy');
+  assert.notEqual(storage.objects.get('firstprint.db')?.toString(), undefined);
+  db.close();
+});
+
+test('backup: stop() waits for a copy in progress, then copies what was written meanwhile', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const storage = fakeStorage({ slowPost: gate });
+  const p = join(dir(), 'firstprint.db');
+  const db = openDb(p);
+  const backup = new DbBackup(db, p, cfg, quiet, storage.fetchFn);
+  const first = backup.runOnce(true); // in flight, stuck uploading
+  db.exec("INSERT INTO users (id, username, points, created_at) VALUES ('late', 'late_writer', 7, 1)");
+  const stopped = backup.stop();
+  release();
+  assert.equal(await first, true);
+  await stopped;
+  db.close();
+
+  const restoredPath = join(dir(), 'r.db');
+  assert.equal(await restoreIfMissing(restoredPath, cfg, quiet, storage.fetchFn), 'restored');
+  const restored = new DatabaseSync(restoredPath);
+  assert.ok(restored.prepare("SELECT 1 FROM users WHERE id = 'late'").get(), 'the final copy includes the late write');
+  restored.close();
 });

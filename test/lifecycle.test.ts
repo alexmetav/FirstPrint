@@ -180,7 +180,7 @@ test('accounts: signup rules, passwords, sessions', async () => {
   assert.equal(service.userForSession(s2.token), null, 'logout ends the session');
 });
 
-test('HTTP API: signup, cookie session, predict, quote, admin', async () => {
+test('HTTP API: login, cookie session, predict, quote, admin', async () => {
   const { service, marketId, scheduler } = setup();
   const server = createApiServer({
     service,
@@ -198,12 +198,16 @@ test('HTTP API: signup, cookie session, predict, quote, admin', async () => {
   try {
     assert.equal((await call('/api/me')).status, 401);
 
-    const signup = await call('/api/auth/signup', {
+    // Password sign-up is gone (it never proved the email was yours); older password accounts can still log in.
+    const signupRoute = await call('/api/auth/signup', {
       method: 'POST',
       body: JSON.stringify({ email: 'carol@example.com', username: 'carol', password: 'hunter2hunter2' }),
     });
-    assert.equal(signup.status, 200);
-    const setCookie = signup.headers.get('set-cookie') ?? '';
+    assert.equal(signupRoute.status, 404);
+    await service.createUser({ email: 'carol@example.com', username: 'carol', password: 'hunter2hunter2' });
+    const firstLogin = await call('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: 'carol@example.com', password: 'hunter2hunter2' }) });
+    assert.equal(firstLogin.status, 200);
+    const setCookie = firstLogin.headers.get('set-cookie') ?? '';
     assert.match(setCookie, /fp_session=.+; Path=\/; HttpOnly; SameSite=Lax/);
     cookie = setCookie.split(';')[0];
 

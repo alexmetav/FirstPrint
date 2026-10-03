@@ -149,6 +149,13 @@ CREATE TABLE IF NOT EXISTS email_codes (
   created_at  INTEGER NOT NULL
 );
 
+-- Wrong code guesses per email across all codes, so requesting fresh codes doesn't reset the count.
+CREATE TABLE IF NOT EXISTS email_code_failures (
+  email         TEXT PRIMARY KEY,
+  failures      INTEGER NOT NULL,
+  window_start  INTEGER NOT NULL
+);
+
 -- What the admin did, newest last. Paying out points can't be undone, so there is a record of who did what.
 CREATE TABLE IF NOT EXISTS admin_log (
   id      INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -22,7 +22,14 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build:deploy
+      - name: Committed previews and generated files are up to date
+        run: |
+          npm run build:web
+          npm run build:site
+          git diff --exit-code -- dist web/engine.js
       - name: Verify public practice-mode lock
-        run: grep -q 'window.FP_FORCE_DEMO = true' .deploy/play/index.html
+        run: |
+          grep -q '<script src="./force-demo.js"></script>' .deploy/play/index.html
+          grep -q 'window.FP_FORCE_DEMO = true' .deploy/play/force-demo.js
       - name: Reject browser-side provider secrets
         run: '! grep -R "coingeckoApiKey\|api.coingecko.com/api/v3" .deploy --include="*.js"'

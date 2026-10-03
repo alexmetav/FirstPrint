@@ -51,10 +51,10 @@ npm run setup       # creates .env and an admin key
 npm run check       # tests every exchange connection
 npm run dev         # http://localhost:8787 (admin at /#/admin)
 npm run live        # creates 15-minute markets on live tokens
-npm test            # 52 tests
+npm test            # unit and HTTP tests
 ```
 
-Offline practice: set `SIM=1`, run `npm run seed`, then `npm run dev`. To preview the website with no server at all, open `dist/firstprint-preview.html`.
+Offline practice: set `SIM=1`, run `npm run seed`, then `npm run dev`. To preview the prediction app with no server at all, open `dist/firstprint-preview.html`. (`dist/firstprint-site-preview.html` previews the public website, but its live exchange data needs the server's `/api/market-data`.)
 
 After changing `src/engine/engine.ts` or anything in `web/`, run `npm run build:web`.
 

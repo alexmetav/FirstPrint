@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { generateKeyPairSync, sign, type JsonWebKey } from 'node:crypto';
 import { openDb } from '../src/db/db.ts';
 import { ManualClock } from '../src/clock.ts';
-import { AppError, FirstprintService, START_POINTS } from '../src/services/firstprint.ts';
+import { AppError, EMAIL_CODE_DAILY_FAILURES, FirstprintService, START_POINTS } from '../src/services/firstprint.ts';
 import { createApiServer } from '../src/api/server.ts';
 import { verifyGoogleIdToken } from '../src/auth/google.ts';
 import type { Mailer } from '../src/auth/mailer.ts';
@@ -74,6 +74,49 @@ test('email code: a new code replaces the old one; usernames never collide; pass
   const back = service.verifyEmailCode('old@example.com', codeOf(service, 'old@example.com'));
   assert.equal(back.created, false);
   assert.equal(back.user.id, legacy.id);
+});
+
+test('email code: wrong guesses are capped per email per day, even across fresh codes', () => {
+  const { clock, service } = setup();
+  const email = 'target@example.com';
+  let misses = 0;
+  while (misses < EMAIL_CODE_DAILY_FAILURES) {
+    const code = codeOf(service, email);
+    const wrong = code === '000000' ? '111111' : '000000';
+    for (let i = 0; i < 5 && misses < EMAIL_CODE_DAILY_FAILURES; i++, misses++) {
+      assert.throws(() => service.verifyEmailCode(email, wrong), failsWith('bad_code'));
+    }
+    clock.advance(31_000);
+  }
+  // Even the right code is refused now, so asking for new codes doesn't buy more guesses.
+  const code = codeOf(service, email);
+  assert.throws(() => service.verifyEmailCode(email, code), failsWith('too_many_attempts'));
+
+  clock.advance(24 * 60 * 60_000);
+  assert.equal(service.verifyEmailCode(email, codeOf(service, email)).created, true); // a day later it works again
+});
+
+test('a verified sign-in takes over a password account: the password, sessions and wallets of whoever registered it are dropped', async () => {
+  const { service } = setup();
+  // Someone registers another person's email with a password (no proof they own it).
+  const squatter = await service.createUser({ email: 'victim@example.com', username: 'squatter', password: 'a-long-password' });
+  const squatterSession = service.createSession(squatter.id);
+  service.db
+    .prepare("INSERT INTO wallets (address, user_id, verified_at) VALUES ('SquatterWallet111111111111111111111111111111', ?, 1)")
+    .run(squatter.id);
+
+  // The real owner signs in with a code sent to that inbox.
+  const owner = service.verifyEmailCode('victim@example.com', codeOf(service, 'victim@example.com'));
+  assert.equal(owner.user.id, squatter.id);
+  assert.equal(owner.user.password_hash, null);
+  await assert.rejects(service.authenticate('victim@example.com', 'a-long-password'), /incorrect/);
+  assert.equal(service.userForSession(squatterSession.token), null);
+  assert.deepEqual(service.walletsFor(squatter.id), []);
+
+  // Later verified sign-ins leave the account alone.
+  const s = service.createSession(owner.user.id);
+  service.signInWithVerifiedEmail('victim@example.com', null);
+  assert.equal(service.userForSession(s.token)?.id, owner.user.id);
 });
 
 // --- Google -------------------------------------------------------------------------

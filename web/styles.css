@@ -454,7 +454,7 @@ main:focus {
 .mini-rung {
   position: relative;
   display: grid;
-  grid-template-columns: 64px 1fr auto;
+  grid-template-columns: 92px 1fr auto;
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
@@ -476,6 +476,7 @@ main:focus {
 .mini-rung b {
   font-family: var(--display);
   color: var(--c);
+  white-space: nowrap;
 }
 .mini-rung .pct {
   font-family: var(--display);
@@ -1642,4 +1643,291 @@ code {
   margin-left: auto;
   padding: 6px 14px;
   font-size: 14px;
+}
+
+/* ------------------------------------------------------- Playful layer
+   Outcome icons, the daily gift, friendlier steps, closing-soon cards,
+   confetti and the phone tab bar. */
+
+.oc-ico {
+  display: inline-block;
+  margin-right: 0.3em;
+  font-size: 0.95em;
+  line-height: 1;
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
+
+/* Daily points: a small gift button next to the balance while today's points are unclaimed. */
+.gift {
+  border: 1px solid color-mix(in srgb, var(--moon) 55%, var(--line));
+  background: color-mix(in srgb, var(--moon) 14%, var(--bg));
+  color: var(--text);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: pointer;
+  animation: wiggle 3.2s ease-in-out infinite;
+}
+.gift:hover {
+  background: color-mix(in srgb, var(--moon) 24%, var(--bg));
+}
+@keyframes wiggle {
+  0%, 86%, 100% { transform: rotate(0); }
+  89% { transform: rotate(-6deg); }
+  92% { transform: rotate(6deg); }
+  95% { transform: rotate(-3deg); }
+}
+
+/* Outcome picker: a big icon on each choice, and a little lift on the chosen one. */
+.picker button {
+  padding: 10px 2px 8px;
+  transition: transform 120ms ease, background 120ms ease;
+}
+.picker button:hover {
+  transform: translateY(-2px);
+}
+.pick-ico {
+  font-size: 22px;
+  line-height: 1.1;
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
+.picker button[aria-checked='true'] {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--c) 35%, transparent);
+}
+
+/* Three steps instead of a wall of text. */
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  counter-reset: step;
+}
+.steps li {
+  position: relative;
+  padding: 18px 18px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  counter-increment: step;
+}
+.steps li::after {
+  content: counter(step);
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--line);
+}
+.step-ico {
+  display: block;
+  font-size: 30px;
+  line-height: 1;
+  margin-bottom: 10px;
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
+.steps b {
+  font-family: var(--display);
+  font-size: 18px;
+}
+.steps p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.full-rules summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 6px 0;
+}
+.full-rules summary:hover {
+  color: var(--text);
+}
+
+/* Markets that close within 15 minutes get a glowing edge and a tag. */
+.card {
+  position: relative;
+  transition: border-color 120ms, transform 120ms;
+}
+.card:hover {
+  transform: translateY(-2px);
+}
+.card.soon {
+  border-color: color-mix(in srgb, var(--moon) 45%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--moon) 20%, transparent), 0 8px 26px color-mix(in srgb, var(--moon) 10%, transparent);
+}
+.soon-tag {
+  position: absolute;
+  top: -10px;
+  left: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--moon);
+  color: #1a1300;
+}
+
+.empty-art {
+  font-size: 44px;
+  line-height: 1;
+  margin-bottom: 8px;
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
+.empty strong {
+  color: var(--text);
+}
+
+/* Confetti after a prediction or a daily claim. */
+#confetti {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 70;
+  overflow: hidden;
+}
+#confetti i {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--c);
+  opacity: 0;
+  animation: confetti 1.5s cubic-bezier(0.2, 0.7, 0.3, 1) var(--d) forwards;
+}
+#confetti i:nth-child(3n) {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+@keyframes confetti {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0); }
+  35% { opacity: 1; transform: translate(calc(var(--x) * 0.7), -26vh) rotate(calc(var(--r) * 0.5)); }
+  100% { opacity: 0; transform: translate(var(--x), 48vh) rotate(var(--r)); }
+}
+
+/* The phone tab bar: hidden on wider screens, where the top nav has room. */
+.tabbar {
+  display: none;
+}
+.demo-bar .short {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .nav {
+    display: none;
+  }
+  .topbar-inner {
+    flex-wrap: nowrap;
+  }
+  .tabbar {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 32;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--line);
+  }
+  .tabbar a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 6px 0 4px;
+    border-radius: var(--r-sm);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .tabbar svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .tabbar a[aria-current='page'] {
+    color: var(--text);
+    background: var(--raised);
+  }
+  /* The "Make a prediction" bar sits just above the tab bar. */
+  .mobile-bar {
+    bottom: calc(62px + env(safe-area-inset-bottom));
+    padding-bottom: 10px;
+  }
+  main {
+    padding-bottom: 170px;
+  }
+  #toast {
+    bottom: calc(82px + env(safe-area-inset-bottom));
+  }
+  .demo-bar .long {
+    display: none;
+  }
+  .demo-bar .short {
+    display: inline;
+  }
+  .demo-bar-inner {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+  .demo-bar p {
+    flex: 1 1 auto;
+    font-size: 13px;
+  }
+  .demo-bar .btn {
+    white-space: nowrap;
+    padding: 4px 10px;
+  }
+  .steps {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .steps li {
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    column-gap: 12px;
+    padding: 14px 16px;
+  }
+  .step-ico {
+    grid-row: span 2;
+    margin: 2px 0 0;
+  }
+  .steps p {
+    grid-column: 2;
+  }
+  .gift {
+    padding: 5px 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gift,
+  .card:hover,
+  .picker button:hover {
+    animation: none;
+    transform: none;
+  }
 }

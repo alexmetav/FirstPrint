@@ -24,6 +24,8 @@ npm run setup
 
 This creates your `.env` settings file and prints an **admin key**. Copy the key somewhere safe.
 
+This guide uses live exchange markets, which are **off by default**: out of the box, admins create and settle every market by hand. Open `.env` and change `MANUAL_ONLY=1` to `MANUAL_ONLY=0`. Without this, steps 3, 5 and 7 have nothing to show: the exchange tracker doesn't run, and Admin hides **Create all** and **Scan exchanges now**.
+
 **3. Check the exchange connections**
 
 ```bash
