@@ -123,6 +123,41 @@ export async function connectAndSign(entry, getMessage) {
   return { address, message, signature: b58encode(signed.signature ?? signed), walletName: entry.name };
 }
 
+const fromBase64 = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+const toBase64 = (bytes) => {
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+};
+
+/**
+ * Has the wallet holding `address` sign a transaction Firstprint prepared (base64), and returns
+ * it signed (base64). Firstprint checks and sends it. Tries the wallet the player linked first.
+ */
+export async function signTransactionWith(address, transactionBase64, cluster, walletName) {
+  const transaction = fromBase64(transactionBase64);
+  const chain = `solana:${cluster}`;
+  const wallets = [...standardWallets.values()].filter((w) => w.features['solana:signTransaction']);
+  if (!wallets.length) throw new Error('Open this page in a browser with Phantom, Solflare or Backpack installed.');
+  wallets.sort((a, b) => Number(b.name === walletName) - Number(a.name === walletName));
+  for (const [i, w] of wallets.entries()) {
+    let account = (w.accounts ?? []).find((a) => a.address === address);
+    if (!account) {
+      try {
+        // Ask quietly first; only the preferred wallet may show a connect prompt.
+        const { accounts } = await w.features['standard:connect'].connect(i === 0 ? undefined : { silent: true });
+        account = (accounts ?? []).find((a) => a.address === address);
+      } catch (err) {
+        if (i === 0 && (err?.code === 4001 || /reject|denied|cancel/i.test(err?.message ?? ''))) throw err;
+      }
+    }
+    if (!account) continue;
+    const [out] = await w.features['solana:signTransaction'].signTransaction({ account, transaction, chain });
+    return toBase64(out.signedTransaction);
+  }
+  throw new Error(`Switch your wallet to the account ${shortAddress(address)} (the one linked to Firstprint), then try again.`);
+}
+
 export async function disconnectWallets() {
   for (const w of standardWallets.values()) {
     try {

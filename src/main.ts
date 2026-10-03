@@ -14,6 +14,8 @@ import { allVenues } from './exchanges/venues.ts';
 import { SimVenue, simProfileFromDb } from './exchanges/sim.ts';
 import type { Venue } from './exchanges/types.ts';
 import { ConsoleMailer, ResendMailer, type Mailer } from './auth/mailer.ts';
+import { RewardsService } from './services/rewards.ts';
+import { rpcChain, rpcUrlFor, type Cluster } from './solana/testfpt.ts';
 
 const log = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
 
@@ -44,6 +46,21 @@ const mailer: Mailer | null =
 const devEmailCodes = !production && !(cfg.resendApiKey && cfg.mailFrom);
 
 const service = new FirstprintService(db, systemClock, venues, log);
+// Tasks, referrals and TestFPT claims. TestFPT lives on a Solana test network (testnet unless
+// TOKEN_CLUSTER=devnet); an admin creates it from the admin panel, or sets TESTFPT_MINT and
+// TESTFPT_AUTHORITY_KEY. Until then rewards go straight to players' balances.
+const tokenCluster: Cluster = process.env.TOKEN_CLUSTER === 'devnet' ? 'devnet' : 'testnet';
+const rewards = new RewardsService(
+  service,
+  {
+    cluster: tokenCluster,
+    chain: rpcChain(process.env.SOLANA_RPC_URL || rpcUrlFor(tokenCluster)),
+    authoritySecret: process.env.TESTFPT_AUTHORITY_KEY || null,
+    mint: process.env.TESTFPT_MINT || null,
+  },
+  cfg.publicUrl ?? 'https://www.firstprint.fun',
+);
+await rewards.init();
 const live = new LiveFeed(service);  // still serves the browser event stream; prices are only polled when not manual-only
 const tracked = cfg.manualOnly ? [] : venues.filter((v) => cfg.trackVenues.includes(v.id));
 const tracker = tracked.length ? new ListingTracker(service, tracked, { autoCreate: cfg.autoCreateMarkets }) : null;
@@ -61,6 +78,7 @@ const server = createApiServer({
   service,
   scheduler,
   live,
+  rewards,
   adminKey: cfg.adminKey,
   manualOnly: cfg.manualOnly,
   trustProxyHops: cfg.trustProxyHops,

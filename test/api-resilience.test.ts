@@ -23,7 +23,7 @@ test('API rejects bad inputs and cross-origin writes without crashing', async (t
   assert.equal((await fetch(base + '/api/auth/logout', {
     method: 'POST', headers: { origin: 'https://other.example', 'content-type': 'application/json' }, body: '{}',
   })).status, 403);
-  assert.equal((await fetch(base + '/api/market-data?path=https://example.com')).status, 400);
+  assert.equal((await fetch(base + '/api/market-data?path=/search/trending')).status, 404, 'the exchange-data proxy is gone');
   assert.equal((await fetch(base + '/api/health')).status, 200);
   assert.equal((await fetch(base + '/api/listings/detected')).status, 200);
 });

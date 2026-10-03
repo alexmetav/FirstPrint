@@ -1931,3 +1931,478 @@ code {
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------- Dashboard */
+
+.dash-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.count-inline {
+  font-size: 0.7em;
+  font-weight: 600;
+}
+
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.stat-tile {
+  position: relative;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+.stat-tile dt {
+  font-size: 13px;
+  color: var(--muted);
+}
+.stat-tile dd {
+  margin: 4px 0 2px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.stat-tile p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.stat-tile p a {
+  color: var(--text);
+}
+.tile-btn {
+  margin-top: 10px;
+  padding: 5px 12px;
+  font-size: 13px;
+}
+.meter {
+  height: 6px;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: var(--raised);
+  overflow: hidden;
+}
+.meter i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--up);
+}
+
+/* Points over time: one series, a zero line, a crosshair dot and tooltip on hover. */
+.pchart {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.pchart-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+.pchart-plot {
+  position: relative;
+  height: 160px;
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+.pchart-plot svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.pchart-zero {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.pchart-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.pchart-line.up { stroke: var(--up); }
+.pchart-line.down { stroke: var(--crash); }
+.pchart-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--text);
+  box-shadow: 0 0 0 2px var(--surface);
+  pointer-events: none;
+}
+.pchart-tip {
+  position: absolute;
+  transform: translate(14px, -50%);
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+.pchart-tip.flip {
+  transform: translate(calc(-100% - 14px), -50%);
+}
+.pchart-tip.low {
+  transform: translate(14px, calc(-100% - 8px));
+}
+.pchart-tip.flip.low {
+  transform: translate(calc(-100% - 14px), calc(-100% - 8px));
+}
+
+/* Record per outcome: a thin bar of the share of picks that won. */
+.orec {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.orec li {
+  display: grid;
+  grid-template-columns: 96px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+.orec-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--raised);
+  overflow: hidden;
+}
+.orec-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--c);
+}
+.orec-num {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .stat-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .stat-tile dd {
+    font-size: 24px;
+  }
+  .orec li {
+    grid-template-columns: 82px 1fr auto;
+    gap: 8px;
+  }
+}
+
+/* ---------------------------------------------------------- Earn, onboarding, TestFPT */
+
+.faucet-btn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.faucet-btn:hover {
+  border-color: color-mix(in srgb, var(--up) 50%, var(--line));
+}
+
+.howto,
+.steplist {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+  counter-reset: howto;
+}
+.howto li {
+  position: relative;
+  padding-left: 36px;
+  counter-increment: howto;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+.howto li::before {
+  content: counter(howto);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+  background: var(--raised);
+}
+.howto .muted,
+.steplist .muted {
+  font-size: 14px;
+}
+.steplist li {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+.steplist li > div {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+.steplist li > div .btn {
+  margin-top: 4px;
+}
+.step-check {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+}
+.steplist li.done .step-check {
+  background: var(--up);
+  border-color: var(--up);
+  color: var(--bg);
+}
+.steplist li.done b {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.copy-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.copy-row code {
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  overflow-wrap: anywhere;
+}
+.copy-row input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.row-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.start-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 0 0 24px;
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  border: 1px solid color-mix(in srgb, var(--moon) 45%, var(--line));
+  background: color-mix(in srgb, var(--moon) 8%, var(--surface));
+}
+.start-card h2 {
+  font-size: 19px;
+  margin: 0 0 2px;
+}
+.start-card p {
+  margin: 0;
+}
+.start-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.claim-card {
+  display: flex;
+  gap: 18px 28px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 20px;
+  margin-bottom: 20px;
+  border-radius: var(--r-lg);
+  border: 1px solid color-mix(in srgb, var(--moon) 40%, var(--line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--moon) 12%, var(--surface)), var(--surface));
+}
+.claim-amount {
+  display: grid;
+}
+.claim-amount b {
+  font-family: var(--display);
+  font-size: clamp(34px, 6vw, 48px);
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+.claim-amount small {
+  font-size: 0.45em;
+  color: var(--muted);
+}
+.claim-side {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  flex: 1 1 280px;
+  max-width: 420px;
+}
+.claim-side .cta {
+  width: 100%;
+}
+.claim-side .fine {
+  margin: 0;
+}
+
+.earn-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+.earn-card {
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  justify-items: start;
+}
+.earn-card h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.earn-card p {
+  margin: 0;
+}
+.inline-form {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.inline-form input {
+  flex: 1;
+  min-width: 0;
+}
+
+.tasks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.task {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.task.is-done {
+  opacity: 0.7;
+}
+.task-ico {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--raised);
+  font-size: 20px;
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
+.task-body {
+  display: grid;
+  min-width: 0;
+}
+.task-body small {
+  color: var(--muted);
+}
+.task-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.task-done {
+  color: var(--up);
+  font-weight: 700;
+}
+
+.task-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 640px) {
+  .task {
+    grid-template-columns: 36px 1fr;
+  }
+  .task-actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+  .task-actions .btn {
+    flex: 1;
+    text-align: center;
+  }
+  .start-actions {
+    width: 100%;
+  }
+  .start-actions .btn {
+    flex: 1;
+    text-align: center;
+  }
+  .faucet-btn {
+    padding: 5px 9px;
+  }
+}
+.earn-card .copy-row {
+  width: 100%;
+}

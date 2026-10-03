@@ -349,3 +349,89 @@ export function settleMarket(input                 )                   {
     winningBucket: winning,
   };
 }
+
+// ---------------------------------------------------------------------------
+// A player's record (the dashboard)
+// ---------------------------------------------------------------------------
+
+/** One prediction, with what happened to its market. */
+
+/** One settled market a player was in. */
+
+/**
+ * Sums up a player's predictions market by market. A market counts as won when any of the
+ * player's predictions in it paid out. Cancelled (void) markets are refunded and count as
+ * neither a win nor a loss.
+ */
+export function summarizeRecord(rows                      )               {
+  const byMarket = new Map                     ();
+  for (const r of rows) byMarket.set(r.marketId, [...(byMarket.get(r.marketId) ?? []), r]);
+
+  const byOutcome = Object.fromEntries(BUCKETS.map((b) => [b, { picks: 0, wins: 0 }]))                                                   ;
+  const settled                                     = [];
+  const open = { markets: 0, staked: 0 };
+  let refundedMarkets = 0;
+
+  for (const [marketId, preds] of byMarket) {
+    const first = preds[0];
+    if (first.status === 'void') {
+      refundedMarkets++;
+      continue;
+    }
+    if (first.status !== 'resolved') {
+      open.markets++;
+      open.staked += preds.reduce((s, p) => s + (p.accepted ?? p.stake), 0);
+      continue;
+    }
+    const inPool = preds.filter((p) => (p.accepted ?? 0) > 0);
+    if (!inPool.length) continue; // every stake was refunded by a pool limit
+    const staked = inPool.reduce((s, p) => s + (p.accepted ?? 0), 0);
+    const payout = inPool.reduce((s, p) => s + (p.payout ?? 0), 0);
+    for (const p of inPool) {
+      byOutcome[p.bucket].picks++;
+      if ((p.payout ?? 0) > 0) byOutcome[p.bucket].wins++;
+    }
+    settled.push({
+      marketId,
+      symbol: first.symbol,
+      settledAt: first.settledAt ?? 0,
+      buckets: [...new Set(inPool.map((p) => p.bucket))],
+      winningBucket: first.winningBucket,
+      staked,
+      payout,
+      profit: payout - staked,
+      won: payout > 0,
+    });
+  }
+
+  settled.sort((a, b) => a.settledAt - b.settledAt || a.marketId.localeCompare(b.marketId));
+  let cumulative = 0;
+  let streak = 0;
+  let bestStreak = 0;
+  const history = settled.map((m) => {
+    cumulative += m.profit;
+    streak = m.won ? streak + 1 : 0;
+    bestStreak = Math.max(bestStreak, streak);
+    return { ...m, cumulative };
+  });
+
+  const wins = history.filter((m) => m.won).length;
+  const best = history.filter((m) => m.won).sort((a, b) => b.profit - a.profit)[0];
+  return {
+    marketsPlayed: byMarket.size,
+    settled: history.length,
+    wins,
+    losses: history.length - wins,
+    winRate: history.length ? wins / history.length : null,
+    totalStaked: history.reduce((s, m) => s + m.staked, 0),
+    totalWon: history.reduce((s, m) => s + m.payout, 0),
+    netProfit: cumulative,
+    bestWin: best ? { marketId: best.marketId, symbol: best.symbol, profit: best.profit, payout: best.payout } : null,
+    currentStreak: streak,
+    bestStreak,
+    open,
+    refundedMarkets,
+    byOutcome,
+    history: history.reverse(),
+  };
+}

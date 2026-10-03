@@ -22,7 +22,7 @@ test('with the website: landing page at /, its Launch app buttons open /app/, wh
   const s = await serve(dir('../site/'));
   try {
     const home = await (await fetch(`${s.base}/`)).text();
-    assert.match(home, /Predict the/);
+    assert.match(home, /Call where/);
     assert.match(home, /href="\/app\/">Launch app</);
     assert.doesNotMatch(home, /href="\/play\//, 'no link to the practice build');
 

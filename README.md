@@ -13,9 +13,10 @@ In trading, the *first print* is a token's very first trade. Firstprint watches 
 | **Listing tracker** | Reads new-listing announcements (Binance, Bybit, OKX, Bitget, KuCoin) and detects new USDT trading pairs on all seven exchanges (adds MEXC and Gate). Detections appear on the public Listing radar page and wait for admin approval, or open markets automatically. |
 | **Live data** | Pulls 1-minute candles for settlement and live tickers every few seconds, then streams prices to browsers over Server-Sent Events. |
 | **Market engine** | Outcome buckets, 1-hour average prices at start and end, volume-weighted median across exchanges, pool caps, early-bird weights, payouts, and cancellation rules. |
-| **Accounts** | Sign-In With Solana (Phantom, Solflare, Backpack, or any Wallet Standard wallet), with email and password as a fallback. Users, wallets, points, predictions, and settlements are stored in the database. |
-| **Public website** | `site/`: landing page and app with a live exchange explorer. Vercel proxies its allowlisted market-data reads to the isolated Render demo service. Predictions and listing radar are marked "Coming soon". |
-| **Prediction app** | Markets, market page with live chart and outcome ladder, Listing radar, leaderboard, and portfolio with linked wallets. Works on desktop and mobile. |
+| **Accounts** | Continue with Google, a one-time email code, or Sign-In With Solana (Phantom, Solflare, Backpack, or any Wallet Standard wallet). Users, wallets, points, predictions, and settlements are stored in the database. |
+| **Public website** | `site/`: the landing page (how it works, outcomes, rules, FAQ, a practice round) and the privacy policy. The app server serves it at `/` and the app at `/app/`. |
+| **Prediction app** | Markets, market page with live chart and outcome ladder, Listing radar, leaderboard, a personal dashboard (win rate, points won, best win, history), and linked wallets. Works on desktop and mobile. |
+| **Earn** | Tasks on X (honour-based, verified by linked username), invite links, and claiming points to your wallet as **TestFPT**, a Token-2022 token on Solana testnet that the server mints and the player pays the fee for. Admins set up the token and tasks in the admin panel. |
 | **Solana program** | `solana/`: an Anchor program for on-chain USDC prediction pools with oracle settlement, plus tests and an oracle script. Unaudited, devnet only. |
 
 ## Signing in
@@ -54,7 +55,7 @@ npm run live        # creates 15-minute markets on live tokens
 npm test            # unit and HTTP tests
 ```
 
-Offline practice: set `SIM=1`, run `npm run seed`, then `npm run dev`. To preview the prediction app with no server at all, open `dist/firstprint-preview.html`. (`dist/firstprint-site-preview.html` previews the public website, but its live exchange data needs the server's `/api/market-data`.)
+Offline practice: set `SIM=1`, run `npm run seed`, then `npm run dev`. To preview the prediction app with no server at all, open `dist/firstprint-preview.html`; `dist/firstprint-site-preview.html` previews the landing page.
 
 After changing `src/engine/engine.ts` or anything in `web/`, run `npm run build:web`.
 

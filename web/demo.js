@@ -10,6 +10,7 @@ import {
   quote,
   returnPct,
   settleMarket,
+  summarizeRecord,
   twap,
   venueMedian,
   windows,
@@ -56,6 +57,11 @@ const DEMO_MARKETS = [
   { symbol: 'NIMBUS', name: 'Nimbus AI', exchange: 'MEXC', at: -45, fast: true, target: 1.1, bots: 10, mine: { bucket: 'up', stake: 100, before: 15 }, scorecard: { fdvUsd: 75e6, circulatingPct: 18, airdropPct: 6, unlocks: 'Team tokens locked 12 months.' } },
   { symbol: 'GLINT', name: 'Glint Games', exchange: 'Gate', at: -60, fast: true, target: 0.03, bots: 8, scorecard: { fdvUsd: 30e6, circulatingPct: 40, airdropPct: 20, unlocks: 'Monthly unlocks from month 2.' } },
   { symbol: 'VANTA', name: 'Vanta Chain', exchange: 'Bybit', at: -50, fast: true, target: 0.4, bots: 2, oneSided: 'moon', scorecard: { fdvUsd: 220e6, circulatingPct: 12, airdropPct: 3, unlocks: 'Investor cliff 9 months.' } },
+];
+
+const DEMO_TASKS = [
+  { id: 'demo-follow', kind: 'follow', title: 'Follow @firstprint on X', points: 50, url: 'https://x.com/intent/follow?screen_name=firstprint' },
+  { id: 'demo-share', kind: 'share', title: 'Share Firstprint on X', points: 75, url: 'https://x.com/intent/tweet?text=Calling%20new%20listings%20on%20Firstprint&url=https%3A%2F%2Fwww.firstprint.fun' },
 ];
 
 export class DemoBackend {
@@ -385,6 +391,73 @@ export class DemoBackend {
     });
   }
 
+  /** Practice mode: sample tasks, honour-based like the real ones; points go straight to the balance. */
+  rewards() {
+    return this.run(() => {
+      const u = this.me_();
+      u.tasks ??= {};
+      const code = 'PRACTICE';
+      return {
+        onChain: false,
+        cluster: null,
+        mint: null,
+        mintUrl: null,
+        faucetUrl: 'https://faucet.solana.com',
+        claimable: 0,
+        welcomeClaimed: true,
+        xUsername: u.xUsername ?? null,
+        xConnectPoints: 100,
+        referral: { code, link: `${location.origin}/?ref=${code}`, invited: 0, rewarded: 0, points: 0, limit: 25, perReferral: 200 },
+        rewards: [],
+        claims: [],
+        tasks: DEMO_TASKS.map((t) => ({ ...t, done: Boolean(u.tasks[t.id]?.done), startedAt: u.tasks[t.id]?.startedAt ?? null, remaining: null })),
+      };
+    });
+  }
+
+  connectX(username) {
+    return this.run(() => {
+      const u = this.me_();
+      const name = String(username ?? '').trim().replace(/^@/, '');
+      if (!/^[A-Za-z0-9_]{1,15}$/.test(name)) throw new ApiError(400, 'bad_x_username', 'Enter your X username, like @firstprint (letters, numbers and _ only).');
+      const first = !u.xUsername;
+      u.xUsername = name;
+      if (first) u.points += 100;
+      return { xUsername: name, rewarded: first ? 100 : 0 };
+    });
+  }
+
+  startTask(taskId) {
+    return this.run(() => {
+      const u = this.me_();
+      u.tasks ??= {};
+      u.tasks[taskId] ??= { startedAt: Date.now(), done: false };
+      return { ok: true };
+    });
+  }
+
+  verifyTask(taskId) {
+    return this.run(() => {
+      const u = this.me_();
+      const t = DEMO_TASKS.find((x) => x.id === taskId);
+      const mine = u.tasks?.[taskId];
+      if (!t) throw new ApiError(404, 'task_not_found', 'This task is no longer available.');
+      if (t.kind !== 'link' && !u.xUsername) throw new ApiError(409, 'x_required', 'Link your X username first, so we know which account did it.');
+      if (!mine) throw new ApiError(409, 'task_not_started', 'Open the task first, then come back to confirm it.');
+      if (mine.done) throw new ApiError(409, 'task_done', 'You already completed this task.');
+      if (Date.now() - mine.startedAt < 8_000) throw new ApiError(429, 'task_too_fast', 'Give it a few seconds: finish the task on X, then confirm.');
+      mine.done = true;
+      u.points += t.points;
+      return { points: t.points, onChain: false };
+    });
+  }
+
+  startClaim() {
+    return this.run(() => {
+      throw new ApiError(409, 'token_off', 'In practice mode points go straight to your balance. TestFPT claims are in the full app.');
+    });
+  }
+
   claimDaily() {
     return this.run(() => {
       const u = this.me_();
@@ -475,6 +548,33 @@ export class DemoBackend {
         }
       }
       return { predictions: out.sort((a, b) => b.placedAt - a.placedAt) };
+    });
+  }
+
+  /** The practice account's record, worked out the same way as on the server. */
+  stats() {
+    return this.run(() => {
+      const u = this.me_();
+      const rows = [];
+      const profit = new Map();
+      for (const m of this.marketList) {
+        for (const p of m.predictions) {
+          if (m.status === 'resolved' && p.accepted) profit.set(p.userId, (profit.get(p.userId) ?? 0) + (p.payout ?? 0) - p.accepted);
+          if (p.userId !== u.id) continue;
+          rows.push({
+            marketId: m.id, symbol: m.symbol, status: m.status, settledAt: m.settledAt ?? null,
+            winningBucket: m.status === 'resolved' ? (m.result?.winningBucket ?? null) : null,
+            bucket: p.bucket, stake: p.stake, accepted: p.accepted ?? null, refund: p.refund ?? null, payout: p.payout ?? null,
+          });
+        }
+      }
+      const record = summarizeRecord(rows);
+      const mine = profit.get(u.id);
+      return {
+        ...record,
+        rank: mine === undefined ? null : 1 + [...profit.values()].filter((v) => v > mine).length,
+        players: profit.size,
+      };
     });
   }
 

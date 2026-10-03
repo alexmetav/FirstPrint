@@ -19,6 +19,7 @@ import {
   twap,
   venueMedian,
   windows,
+  summarizeRecord,
   type Bucket,
   type Candle,
   type MarketConfig,
@@ -58,6 +59,9 @@ export interface UserRow {
   points: number;
   last_claim_day: string | null;
   created_at: number;
+  x_username?: string | null;
+  referral_code?: string | null;
+  referred_by?: string | null;
 }
 
 interface MarketRow {
@@ -202,6 +206,13 @@ export class FirstprintService {
   livePrices = new Map<string, { price: number; ts: number }>();
   /** Event hook for live updates (SSE). */
   onEvent: (type: 'market' | 'price' | 'listing', data: Record<string, unknown>) => void = () => {};
+  /**
+   * True when points are claimed to wallets as TestFPT. New accounts then get their welcome
+   * points as a reward to claim instead of straight into their balance.
+   */
+  rewardsOnChain: () => boolean = () => false;
+  /** Called inside the transaction after a prediction is placed (referral rewards hook in here). */
+  onPredicted: (userId: string) => void = () => {};
 
   constructor(db: DB, clock: Clock, venues: Venue[], log: (msg: string) => void = () => {}) {
     this.db = db;
@@ -212,6 +223,11 @@ export class FirstprintService {
 
   // --- Users & points ------------------------------------------------------
 
+  /** Adds points to a balance with a ledger entry. Call inside a transaction. */
+  addPoints(userId: string, amount: number, reason: string, ref: string | null) {
+    this.credit(userId, amount, reason, ref);
+  }
+
   private credit(userId: string, delta: number, reason: string, ref: string | null) {
     if (delta === 0) return;
     const res = this.db
@@ -221,6 +237,25 @@ export class FirstprintService {
     this.db
       .prepare('INSERT INTO ledger (user_id, delta, reason, ref, created_at) VALUES (?, ?, ?, ?, ?)')
       .run(userId, delta, reason, ref, this.clock.now());
+  }
+
+  /**
+   * Starting points for a new account, and who referred them. With TestFPT on, the points wait
+   * as a reward the player claims to their wallet; otherwise they go straight to the balance.
+   */
+  private welcome(userId: string, refCode?: string | null, ledgerRef: string | null = null) {
+    if (this.rewardsOnChain()) {
+      this.db
+        .prepare("INSERT INTO rewards (user_id, kind, ref, amount, created_at) VALUES (?, 'welcome', 'welcome', ?, ?)")
+        .run(userId, START_POINTS, this.clock.now());
+    } else {
+      this.credit(userId, START_POINTS, 'signup', ledgerRef);
+    }
+    const code = String(refCode ?? '').trim().toUpperCase();
+    if (/^[A-Z0-9]{6,12}$/.test(code)) {
+      const referrer = as<{ id: string } | undefined>(this.db.prepare('SELECT id FROM users WHERE referral_code = ?').get(code));
+      if (referrer && referrer.id !== userId) this.db.prepare('UPDATE users SET referred_by = ? WHERE id = ?').run(referrer.id, userId);
+    }
   }
 
   /** Creates an account. Omit password for system accounts that can't log in. */
@@ -292,7 +327,7 @@ export class FirstprintService {
   }
 
   /** Checks an emailed code (single use, 5 tries) and signs in, creating the account on first use. */
-  verifyEmailCode(emailInput: string, codeInput: string): { user: UserRow; created: boolean } {
+  verifyEmailCode(emailInput: string, codeInput: string, ref?: string | null): { user: UserRow; created: boolean } {
     const email = String(emailInput ?? '').trim().toLowerCase();
     const code = String(codeInput ?? '').replace(/\s/g, '');
     const bad = () => new AppError(401, 'bad_code', 'That code is wrong or has expired. Check it and try again, or request a new one.');
@@ -326,7 +361,7 @@ export class FirstprintService {
       }
       this.db.prepare('DELETE FROM email_codes WHERE email = ?').run(email);
       this.db.prepare('DELETE FROM email_code_failures WHERE email = ?').run(email);
-      return this.findOrCreateByEmail(email, null);
+      return this.findOrCreateByEmail(email, null, ref);
     });
     if (!outcome) throw bad();
     return outcome;
@@ -338,11 +373,11 @@ export class FirstprintService {
    * in with Google one day and an email code the next. Existing password
    * accounts are matched by email too.
    */
-  signInWithVerifiedEmail(email: string, name: string | null): { user: UserRow; created: boolean } {
-    return tx(this.db, () => this.findOrCreateByEmail(email, name));
+  signInWithVerifiedEmail(email: string, name: string | null, ref?: string | null): { user: UserRow; created: boolean } {
+    return tx(this.db, () => this.findOrCreateByEmail(email, name, ref));
   }
 
-  private findOrCreateByEmail(email: string, name: string | null): { user: UserRow; created: boolean } {
+  private findOrCreateByEmail(email: string, name: string | null, ref?: string | null): { user: UserRow; created: boolean } {
     const found = as<UserRow | undefined>(this.db.prepare('SELECT * FROM users WHERE email = ?').get(email));
     if (found?.password_hash) {
       // Password accounts were created without proving the email belonged to whoever signed up.
@@ -364,7 +399,7 @@ export class FirstprintService {
     this.db
       .prepare('INSERT INTO users (id, email, username, needs_username, password_hash, points, created_at) VALUES (?, ?, ?, 1, NULL, 0, ?)')
       .run(id, email, username, this.clock.now());
-    this.credit(id, START_POINTS, 'signup', null);
+    this.welcome(id, ref);
     this.log(`email sign-up ${email}`);
     return { user: this.getUser(id), created: true };
   }
@@ -411,7 +446,7 @@ export class FirstprintService {
   }
 
   /** Signs in with a wallet, creating an account on first use. */
-  walletSignIn(input: { address: string; message: string; signature: string; walletName?: string }): { user: UserRow; created: boolean } {
+  walletSignIn(input: { address: string; message: string; signature: string; walletName?: string; ref?: string | null }): { user: UserRow; created: boolean } {
     return tx(this.db, () => {
       this.consumeChallenge(input.address, input.message, input.signature);
       const now = this.clock.now();
@@ -427,7 +462,7 @@ export class FirstprintService {
       this.db
         .prepare('INSERT INTO users (id, email, username, needs_username, password_hash, points, created_at) VALUES (?, NULL, ?, 1, NULL, 0, ?)')
         .run(id, username, now);
-      this.credit(id, START_POINTS, 'signup', input.address);
+      this.welcome(id, input.ref, input.address);
       this.db
         .prepare('INSERT INTO wallets (address, user_id, wallet_name, verified_at, last_login) VALUES (?, ?, ?, ?, ?)')
         .run(input.address, id, input.walletName ?? null, now, now);
@@ -1034,6 +1069,7 @@ export class FirstprintService {
       this.db
         .prepare('INSERT INTO predictions (id, market_id, user_id, bucket, stake, placed_at) VALUES (?, ?, ?, ?, ?, ?)')
         .run(id, marketId, userId, bucket, stake, now);
+      this.onPredicted(userId);
       queueMicrotask(() => this.onEvent('market', { marketId }));
       return { id, balance: this.getUser(userId).points };
     });
@@ -1387,6 +1423,59 @@ export class FirstprintService {
       payout: r.payout,
       placedAt: r.placed_at,
     }));
+  }
+
+  /** The signed-in player's record for the dashboard, plus their all-time rank by net points won. */
+  myStats(userId: string) {
+    const rows = as<{ market_id: string; symbol: string; status: string; settled_at: number | null; result: string | null; bucket: Bucket; stake: number; accepted: number | null; refund: number | null; payout: number | null }[]>(
+      this.db
+        .prepare(
+          `SELECT p.market_id, m.symbol, m.status, s.settled_at, s.result, p.bucket, p.stake, p.accepted, p.refund, p.payout
+           FROM predictions p
+           JOIN markets m ON m.id = p.market_id
+           LEFT JOIN settlements s ON s.market_id = m.id
+           WHERE p.user_id = ?`,
+        )
+        .all(userId),
+    );
+    const winning = (result: string | null): Bucket | null => {
+      try {
+        return result ? ((JSON.parse(result) as { winningBucket?: Bucket | null }).winningBucket ?? null) : null;
+      } catch {
+        return null;
+      }
+    };
+    const record = summarizeRecord(
+      rows.map((r) => ({
+        marketId: r.market_id,
+        symbol: r.symbol,
+        status: r.status,
+        settledAt: r.settled_at,
+        winningBucket: r.status === 'resolved' ? winning(r.result) : null,
+        bucket: r.bucket,
+        stake: r.stake,
+        accepted: r.accepted,
+        refund: r.refund,
+        payout: r.payout,
+      })),
+    );
+    const profits = as<{ user_id: string; profit: number }[]>(
+      this.db
+        .prepare(
+          `SELECT p.user_id, SUM(COALESCE(p.payout, 0) - COALESCE(p.accepted, 0)) AS profit
+           FROM predictions p JOIN markets m ON m.id = p.market_id
+           WHERE m.status = 'resolved' AND COALESCE(p.accepted, 0) > 0
+           GROUP BY p.user_id`,
+        )
+        .all(),
+    );
+    const mine = profits.find((p) => p.user_id === userId);
+    return {
+      ...record,
+      history: record.history.slice(0, 100),
+      rank: mine ? 1 + profits.filter((p) => p.profit > mine.profit).length : null,
+      players: profits.length,
+    };
   }
 
   leaderboard(userId?: string) {

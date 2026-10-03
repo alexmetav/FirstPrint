@@ -9,9 +9,6 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.18.0
-      # Optional CoinGecko demo key for exchange data (server-side only, never in browser code).
-      - key: COINGECKO_API_KEY
-        sync: false
 
   # The full app: accounts, points, admin panel, manual markets. Runs on Render's free plan, which has no
   # persistent disk, so the server keeps its SQLite database in a private Supabase Storage bucket: it
@@ -46,6 +43,9 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_KEY
         sync: false
+      # TestFPT network: testnet (default) or devnet. Set it up from the admin panel.
+      - key: TOKEN_CLUSTER
+        value: testnet
       # Optional sign-in methods; each is hidden in the app until it is set.
       - key: GOOGLE_CLIENT_ID
         sync: false
