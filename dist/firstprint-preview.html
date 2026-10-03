@@ -5,33 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Firstprint: predict new exchange listings</title>
     <meta name="description" content="Free prediction markets on newly listed crypto tokens. Pick Crash, Down, Flat, Up or Moon with free points and track your win rate." />
-    <meta name="theme-color" content="#0d1421" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#f4f6fa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b0f2a" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f4f5ff" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=DM+Sans:opsz,wght@9..40,400..700&display=swap" rel="stylesheet" />
     <style>
 /* Firstprint website styles
    Palette: ink navy surfaces; a five-step outcome scale from Crash (red) to Moon (gold).
    Type: Bricolage Grotesque for display and numbers, system UI for reading text. */
 
-/* Palette: deep ink surfaces with an indigo accent; a five-step outcome scale from Crash (red) to Moon (gold). */
+/* Brand "The Ladder": night indigo surfaces, the five outcome colours as the palette
+   (Moon gold, Up green, Flat grey, Down orange, Crash red), signal indigo for focus and
+   active states, and Moon gold for the main call to action. */
 :root {
-  --bg: #070b14;
-  --surface: #0e1524;
-  --surface-2: #121b2e;
-  --raised: #18233a;
-  --line: #1e2a41;
-  --line-strong: #2b3a57;
-  --text: #eef2fa;
-  --muted: #8b96ad;
-  --focus: #9eb0ff;
+  --bg: #0b0f2a;
+  --surface: #11173f;
+  --surface-2: #151c4c;
+  --raised: #1c2460;
+  --line: #222a62;
+  --line-strong: #313b80;
+  --text: #f5f6ff;
+  --muted: #a9afd6;
+  --focus: #a8b4ff;
   --brand: #7c8cff;
-  --brand-2: #b18cff;
-  --on-solid: #070b14;
-  --glow: rgba(124, 140, 255, 0.16);
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 32px -16px rgba(0, 0, 0, 0.7);
-  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 24px 60px -24px rgba(0, 0, 0, 0.8);
+  --brand-2: #ffc53d;
+  --gold: #ffc53d;
+  --on-gold: #0b0f2a;
+  --on-solid: #0b0f2a;
+  --glow: rgba(124, 140, 255, 0.2);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 32px -16px rgba(3, 5, 20, 0.85);
+  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 24px 60px -24px rgba(3, 5, 20, 0.9);
 
   --crash: #ff4d6a;
   --down: #ff8a5c;
@@ -40,7 +46,7 @@
   --moon: #ffc53d;
 
   --display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
-  --body: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --body: 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
   --r-sm: 10px;
   --r-md: 14px;
@@ -52,21 +58,23 @@
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #f4f6fb;
+    --bg: #f4f5ff;
     --surface: #ffffff;
-    --surface-2: #fbfcfe;
-    --raised: #eef1f8;
-    --line: #e2e7f0;
-    --line-strong: #cfd7e4;
-    --text: #0e1726;
-    --muted: #5b6679;
+    --surface-2: #fbfbff;
+    --raised: #eceeff;
+    --line: #e0e3f5;
+    --line-strong: #cbd0ec;
+    --text: #0b0f2a;
+    --muted: #545a85;
     --focus: #4f5ee8;
     --brand: #4f5ee8;
-    --brand-2: #8b5cf6;
+    --brand-2: #b7860b;
+    --gold: #ffc53d;
+    --on-gold: #0b0f2a;
     --on-solid: #ffffff;
-    --glow: rgba(79, 94, 232, 0.1);
-    --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px -14px rgba(16, 24, 40, 0.18);
-    --shadow-lg: 0 1px 2px rgba(16, 24, 40, 0.05), 0 20px 48px -20px rgba(16, 24, 40, 0.25);
+    --glow: rgba(79, 94, 232, 0.12);
+    --shadow: 0 1px 2px rgba(11, 15, 42, 0.05), 0 8px 24px -14px rgba(11, 15, 42, 0.2);
+    --shadow-lg: 0 1px 2px rgba(11, 15, 42, 0.06), 0 20px 48px -20px rgba(11, 15, 42, 0.28);
     --crash: #d92d4b;
     --down: #d9612e;
     --flat: #6e7a90;
@@ -5137,6 +5145,76 @@ main,
   }
 }
 
+/* =====================================================================
+   Brand: the ladder badge, gold call to action.
+   ===================================================================== */
+
+.wordmark {
+  gap: 10px;
+}
+/* The mark is the five-bar ladder inside a rounded badge: Moon on top, Crash at the bottom. */
+.wordmark .mark {
+  width: 32px;
+  height: 32px;
+  margin-right: 0;
+  border-radius: 9px;
+  background: #0b0f2a;
+  box-shadow: inset 0 0 0 1px #313b80;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2.5px;
+  flex: none;
+}
+.wordmark .mark i {
+  height: 3px;
+  border-radius: 2px;
+}
+.wordmark .mark i:nth-child(1) { width: 20px; background: #ffc53d; }
+.wordmark .mark i:nth-child(2) { width: 15px; background: #3fd69a; }
+.wordmark .mark i:nth-child(3) { width: 10px; background: #9faac0; }
+.wordmark .mark i:nth-child(4) { width: 15px; background: #ff8a5c; }
+.wordmark .mark i:nth-child(5) { width: 20px; background: #ff4d6a; }
+.wordmark .word {
+  font-weight: 800;
+  letter-spacing: -0.035em;
+}
+@media (max-width: 350px) {
+  .wordmark .mark {
+    width: 36px;
+    height: 36px;
+  }
+  .wordmark .mark i {
+    height: 3.5px;
+  }
+}
+
+/* Gold is kept for the one action that matters on a screen. */
+.btn-gold,
+.btn-gold:hover {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--on-gold);
+  box-shadow: 0 10px 26px -12px rgba(255, 197, 61, 0.7);
+}
+.btn-gold:hover {
+  filter: brightness(1.05);
+}
+.mobile-bar .cta {
+  background: var(--gold);
+  color: var(--on-gold);
+}
+.nav a[aria-current='page'] .i,
+.tabbar a[aria-current='page'] .i {
+  color: var(--gold);
+}
+h1,
+h2,
+.page-title {
+  letter-spacing: -0.03em;
+}
+
 </style>
   </head>
   <body>
@@ -7288,7 +7366,7 @@ function featuredView(m) {
         <p class="lede">Will ${esc(m.name || m.symbol)} be at or above ${fmtPrice(m.basePrice)} when the result is posted? Pick Yes or No.</p>
         ${heroFacts(m, 'Closes in', until(m.closeAt))}
         <div class="actions">
-          <a class="btn btn-solid btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
+          <a class="btn btn-gold btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
           <a class="btn btn-lg" href="#how">How it works</a>
         </div>
       </div>
@@ -7304,7 +7382,7 @@ function featuredView(m) {
         <p class="lede">Predict where ${esc(m.name || m.symbol)} is priced at the result, compared with the start price. ${m.pool ? '' : 'Nobody has predicted yet, so early picks get the biggest bonus.'}</p>
         ${heroFacts(m, 'Closes in', until(m.closeAt))}
         <div class="actions">
-          <a class="btn btn-solid btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
+          <a class="btn btn-gold btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
           <a class="btn btn-lg" href="#how">How it works</a>
         </div>
       </div>
@@ -7322,7 +7400,7 @@ function featuredView(m) {
         <p class="lede">Predict where ${esc(m.name || m.symbol)} trades ${fmtSpan(m.settleAt - m.listingAt)} after ${test ? `the market starts, using live prices from ${esc(venueNames(m))}` : 'listing'}.</p>
         ${heroFacts(m, pre ? (test ? 'Starts in' : 'Lists in') : 'Closes in', pre ? until(m.listingAt) : until(m.closeAt))}
         <div class="actions">
-          <a class="btn btn-solid btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
+          <a class="btn btn-gold btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
           <a class="btn btn-lg" href="#how">How it works</a>
         </div>
       </div>
@@ -7752,7 +7830,7 @@ function mobileBar(m) {
   return `
     <div class="mobile-bar">
       <p>${m.phase === 'pre_listing' ? `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}` : `Closes in ${until(m.closeAt)}`}</p>
-      <button class="cta" style="--c:var(--text)" data-action="open-sheet">Make a prediction</button>
+      <button class="cta" data-action="open-sheet">Make a prediction</button>
     </div>`;
 }
 

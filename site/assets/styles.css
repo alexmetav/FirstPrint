@@ -13,24 +13,24 @@
 }
 
 :root {
-  --bg: #07090f;
-  --bg-2: #0b0e16;
+  --bg: #0b0f2a;
+  --bg-2: #10153a;
   --surface: rgba(255, 255, 255, 0.038);
   --surface-2: rgba(255, 255, 255, 0.062);
   --line: rgba(255, 255, 255, 0.09);
   --line-2: rgba(255, 255, 255, 0.16);
-  --text: #f2f5fa;
-  --muted: #8d95a6;
-  --focus: #9ec5ff;
+  --text: #f5f6ff;
+  --muted: #a9afd6;
+  --focus: #a8b4ff;
 
   --crash: #ff4d6a;
   --down: #ff8a5c;
-  --flat: #a6b0c4;
-  --up: #35e0a1;
+  --flat: #9faac0;
+  --up: #3fd69a;
   --moon: #ffc53d;
 
   --display: 'Bricolage Grotesque', 'Display Fallback', ui-sans-serif, system-ui, sans-serif;
-  --body: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --body: 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
   --r-sm: 10px;
   --r-md: 16px;
@@ -231,25 +231,41 @@ body[data-view='landing'] .app {
 .wordmark.small {
   font-size: 19px;
 }
+/* The ladder badge: Moon on top, Crash at the bottom. */
 .mark {
-  display: inline-grid;
-  justify-items: center;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 2.5px;
-  width: 15px;
+  width: 32px;
+  height: 32px;
   margin-right: 10px;
+  border-radius: 9px;
+  background: #0b0f2a;
+  box-shadow: inset 0 0 0 1px #313b80;
+  flex: none;
+}
+.wordmark.small .mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
 }
 .mark i {
   display: block;
-  height: 2.5px;
+  height: 3px;
   border-radius: 2px;
   transform-origin: center;
   animation: markIn 0.7s var(--spring) backwards;
 }
-.mark i:nth-child(1) { background: var(--moon); width: 100%; animation-delay: 0.05s; }
-.mark i:nth-child(2) { background: var(--up); width: 78%; animation-delay: 0.11s; }
-.mark i:nth-child(3) { background: var(--flat); width: 56%; animation-delay: 0.17s; }
-.mark i:nth-child(4) { background: var(--down); width: 78%; animation-delay: 0.23s; }
-.mark i:nth-child(5) { background: var(--crash); width: 100%; animation-delay: 0.29s; }
+.mark i:nth-child(1) { background: var(--moon); width: 20px; animation-delay: 0.05s; }
+.mark i:nth-child(2) { background: var(--up); width: 15px; animation-delay: 0.11s; }
+.mark i:nth-child(3) { background: var(--flat); width: 10px; animation-delay: 0.17s; }
+.mark i:nth-child(4) { background: var(--down); width: 15px; animation-delay: 0.23s; }
+.mark i:nth-child(5) { background: var(--crash); width: 20px; animation-delay: 0.29s; }
+.wordmark.small .mark i:nth-child(odd) { width: 17px; }
+.wordmark.small .mark i:nth-child(even) { width: 13px; }
+.wordmark.small .mark i:nth-child(3) { width: 9px; }
 @keyframes markIn {
   from { transform: scaleX(0); }
 }
@@ -1924,4 +1940,15 @@ body[data-view='landing'] .app {
   #try-again {
     align-self: stretch;
   }
+}
+
+/* Brand: Moon gold for the main call to action. */
+.btn-gold {
+  background: var(--moon);
+  border-color: var(--moon);
+  color: #0b0f2a;
+}
+.btn-gold:hover {
+  background: #ffd36a;
+  box-shadow: 0 10px 34px -12px rgba(255, 197, 61, 0.6);
 }

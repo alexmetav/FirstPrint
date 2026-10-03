@@ -1,9 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Firstprint">
   <title>Firstprint</title>
-  <rect width="64" height="64" rx="14" fill="#07090f"/>
-  <rect x="12" y="7.2" width="40" height="6.4" rx="3.20" fill="#ffc53d"/>
-  <rect x="16.4" y="18.0" width="31.2" height="6.4" rx="3.20" fill="#35e0a1"/>
-  <rect x="20.8" y="28.8" width="22.4" height="6.4" rx="3.20" fill="#a6b0c4"/>
-  <rect x="16.4" y="39.6" width="31.2" height="6.4" rx="3.20" fill="#ff8a5c"/>
-  <rect x="12" y="50.4" width="40" height="6.4" rx="3.20" fill="#ff4d6a"/>
+  <rect width="64" height="64" rx="14" fill="#0b0f2a"/>
+  <rect x="0.75" y="0.75" width="62.5" height="62.5" rx="13.25" fill="none" stroke="#313b80" stroke-width="1.5"/>
+  <rect x="12" y="10" width="40" height="6.4" rx="3.2" fill="#ffc53d"/>
+  <rect x="17" y="19.6" width="30" height="6.4" rx="3.2" fill="#3fd69a"/>
+  <rect x="22" y="29.2" width="20" height="6.4" rx="3.2" fill="#9faac0"/>
+  <rect x="17" y="38.8" width="30" height="6.4" rx="3.2" fill="#ff8a5c"/>
+  <rect x="12" y="48.4" width="40" height="6.4" rx="3.2" fill="#ff4d6a"/>
 </svg>
