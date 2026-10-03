@@ -158,6 +158,10 @@ export class RewardsService {
       cluster: token.cluster,
       authority: this.authority?.address ?? null,
       authoritySol: balance,
+      // Without these in the environment, the key and mint live only in the database, which a host
+      // without a disk or backups wipes on restart. The admin copies them into the host's settings.
+      savedInEnv: { authority: Boolean(token.authoritySecret), mint: Boolean(token.mint) },
+      authorityKey: this.authority && !token.authoritySecret ? this.setting('testfpt.authority') : null,
       balanceError,
       authorityUrl: this.authority ? explorerAddress(this.authority.address, token.cluster) : null,
       mint: this.mint,
