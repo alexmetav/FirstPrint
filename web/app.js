@@ -304,15 +304,15 @@ function renderTop() {
     .join('');
   $('#topbar').innerHTML = `
     <div class="topbar-inner">
-      <a class="wordmark" href="#/" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
+      <a class="wordmark" href="#/" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="word">Firstprint</span></a>
       <nav class="nav" aria-label="Main">
         ${pages.map(([name, href, label]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}${label}</a>`).join('')}
       </nav>
       <div class="account">
-        ${S.cfg?.rewards ? `<button class="chip chip-faucet" data-action="faucet" title="Get free test SOL for network fees">${ico('droplet')}<span class="hide-sm">Test SOL</span></button>` : ''}
+        ${S.cfg?.rewards ? `<button class="chip chip-faucet" data-action="faucet" title="Get free test SOL for network fees">${ico('droplet')}<span class="faucet-label">Test SOL</span></button>` : ''}
         ${
           S.me
-            ? `${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points">${ico('gift')}+100</button>` : ''}
+            ? `${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim 100 free daily points">${ico('gift')}<span class="gift-n">+100</span></button>` : ''}
                <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${fmtNum(S.me.points)}<span class="unit">pts</span></a>
                <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
             : `<button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button>`
