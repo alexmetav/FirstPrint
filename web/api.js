@@ -68,6 +68,7 @@ export function createApi(baseUrl = '') {
     claimDaily: () => post('/api/me/claim-daily'),
     myPredictions: () => request('/api/me/predictions'),
     ledger: () => request('/api/me/ledger'),
+    stats: () => request('/api/me/stats'),
     markets: (filter) => request(`/api/markets?filter=${filter}`),
     market: (m) => request(`/api/markets/${id(m)}`),
     quote: (m, bucket, stake) => request(`/api/markets/${id(m)}/quote?bucket=${bucket}&stake=${stake}`),

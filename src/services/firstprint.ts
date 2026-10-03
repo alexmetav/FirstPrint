@@ -19,6 +19,7 @@ import {
   twap,
   venueMedian,
   windows,
+  summarizeRecord,
   type Bucket,
   type Candle,
   type MarketConfig,
@@ -1387,6 +1388,59 @@ export class FirstprintService {
       payout: r.payout,
       placedAt: r.placed_at,
     }));
+  }
+
+  /** The signed-in player's record for the dashboard, plus their all-time rank by net points won. */
+  myStats(userId: string) {
+    const rows = as<{ market_id: string; symbol: string; status: string; settled_at: number | null; result: string | null; bucket: Bucket; stake: number; accepted: number | null; refund: number | null; payout: number | null }[]>(
+      this.db
+        .prepare(
+          `SELECT p.market_id, m.symbol, m.status, s.settled_at, s.result, p.bucket, p.stake, p.accepted, p.refund, p.payout
+           FROM predictions p
+           JOIN markets m ON m.id = p.market_id
+           LEFT JOIN settlements s ON s.market_id = m.id
+           WHERE p.user_id = ?`,
+        )
+        .all(userId),
+    );
+    const winning = (result: string | null): Bucket | null => {
+      try {
+        return result ? ((JSON.parse(result) as { winningBucket?: Bucket | null }).winningBucket ?? null) : null;
+      } catch {
+        return null;
+      }
+    };
+    const record = summarizeRecord(
+      rows.map((r) => ({
+        marketId: r.market_id,
+        symbol: r.symbol,
+        status: r.status,
+        settledAt: r.settled_at,
+        winningBucket: r.status === 'resolved' ? winning(r.result) : null,
+        bucket: r.bucket,
+        stake: r.stake,
+        accepted: r.accepted,
+        refund: r.refund,
+        payout: r.payout,
+      })),
+    );
+    const profits = as<{ user_id: string; profit: number }[]>(
+      this.db
+        .prepare(
+          `SELECT p.user_id, SUM(COALESCE(p.payout, 0) - COALESCE(p.accepted, 0)) AS profit
+           FROM predictions p JOIN markets m ON m.id = p.market_id
+           WHERE m.status = 'resolved' AND COALESCE(p.accepted, 0) > 0
+           GROUP BY p.user_id`,
+        )
+        .all(),
+    );
+    const mine = profits.find((p) => p.user_id === userId);
+    return {
+      ...record,
+      history: record.history.slice(0, 100),
+      rank: mine ? 1 + profits.filter((p) => p.profit > mine.profit).length : null,
+      players: profits.length,
+    };
   }
 
   leaderboard(userId?: string) {

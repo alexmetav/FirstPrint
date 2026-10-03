@@ -169,7 +169,7 @@ function parseRoute() {
   const m = h.match(/^\/market\/([^/]+)$/);
   if (m) return { name: 'market', id: decodeURIComponent(m[1]) };
   if (h === '/leaderboard') return { name: 'leaderboard' };
-  if (h === '/portfolio') return { name: 'portfolio' };
+  if (h === '/portfolio' || h === '/dashboard') return { name: 'portfolio' };
   if (h === '/radar') return { name: 'radar' };
   if (h === '/admin') return { name: 'admin' };
   return { name: 'home' };
@@ -212,7 +212,8 @@ async function loadRoute() {
     } else if (S.route.name === 'portfolio') {
       const preds = S.me ? (await S.api.myPredictions()).predictions : [];
       const history = S.me && S.api.ledger ? (await S.api.ledger().catch(() => ({ entries: [] }))).entries : [];
-      view.innerHTML = portfolioView(preds, history);
+      const stats = S.me && S.api.stats ? await S.api.stats().catch(() => null) : null;
+      view.innerHTML = portfolioView(preds, history, stats);
     }
     document.title = titleFor();
   } catch (err) {
@@ -229,7 +230,7 @@ function titleFor() {
   if (S.route.name === 'leaderboard') return 'Leaderboard: Firstprint';
   if (S.route.name === 'radar') return 'Listing radar: Firstprint';
   if (S.route.name === 'admin') return 'Admin: Firstprint';
-  if (S.route.name === 'portfolio') return 'Portfolio: Firstprint';
+  if (S.route.name === 'portfolio') return 'Your dashboard: Firstprint';
   return 'Firstprint: predict new exchange listings';
 }
 
@@ -262,7 +263,7 @@ function renderTop() {
         <a href="#/"${cur('home')}>Markets</a>
         ${S.cfg?.manualOnly ? '' : `<a href="#/radar"${cur('radar')}>Listing radar</a>`}
         <a href="#/leaderboard"${cur('leaderboard')}>Leaderboard</a>
-        <a href="#/portfolio"${cur('portfolio')}>Portfolio</a>
+        <a href="#/portfolio"${cur('portfolio')}>Dashboard</a>
       </nav>
       <div class="account">
         ${
@@ -932,38 +933,37 @@ function leaderboardView(lb) {
     ${S.me && !lb.me ? '<p class="fine">You’ll appear here after one of your predictions settles.</p>' : ''}`;
 }
 
-function portfolioView(preds, history = []) {
+function portfolioView(preds, history = [], stats = null) {
   if (!S.me) {
     return `
-      <h1 class="page-title">Portfolio</h1>
-      <div class="empty"><p>Log in to see your points and predictions. New accounts start with 1,000 free points.</p>
+      <h1 class="page-title">Your dashboard</h1>
+      <div class="empty"><div class="empty-art" aria-hidden="true">📊</div>
+        <p><strong>Log in to see your dashboard.</strong><br />Your points, win rate and results live here. New accounts start with 1,000 free points.</p>
         <button class="btn btn-solid" data-action="connect">Log in</button></div>`;
   }
   const active = preds.filter((p) => p.marketStatus === 'open' || p.marketStatus === 'locked');
-  const settled = preds.filter((p) => p.marketStatus === 'resolved' || p.marketStatus === 'void');
-  const table = (list, empty) =>
-    list.length
-      ? `<table class="table"><thead><tr><th>Market</th><th>Outcome</th><th class="right">Stake</th><th class="right">Status</th></tr></thead><tbody>${list
-          .map((p) => {
-            let status = p.marketStatus === 'open' ? 'Open' : p.mode === 'manual' ? 'Awaiting result' : 'In play';
-            if (p.marketStatus === 'resolved') status = p.payout > 0 ? `<span class="profit-pos">Won ${fmtNum(p.payout)}</span>` : 'Didn’t win';
-            if (p.marketStatus === 'void') status = 'Refunded';
-            return `<tr><td><a href="#/market/${encodeURIComponent(p.marketId)}">${esc(p.symbol)}</a> <span class="muted hide-sm">${esc(p.exchange)}</span></td><td>${outcome(p.bucket)}</td><td class="right">${fmtNum(p.stake)}</td><td class="right">${status}</td></tr>`;
-          })
-          .join('')}</tbody></table>`
-      : `<p class="muted">${empty}</p>`;
+  const activeTable = active.length
+    ? `<table class="table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right">Status</th></tr></thead><tbody>${active
+        .map((p) => {
+          const status = p.marketStatus === 'open' ? 'Open' : p.mode === 'manual' ? 'Awaiting result' : 'In play';
+          return `<tr><td><a href="#/market/${encodeURIComponent(p.marketId)}">${esc(p.symbol)}</a> <span class="muted hide-sm">${esc(p.exchange)}</span></td><td>${outcome(p.bucket)}</td><td class="right">${fmtNum(p.stake)}</td><td class="right">${status}</td></tr>`;
+        })
+        .join('')}</tbody></table>`
+    : '<p class="muted">Nothing in play right now. <a href="#/">Pick a market</a> to get started.</p>';
 
   return `
-    <h1 class="page-title">Portfolio</h1>
-    <div class="balance">
-      <div><div class="amount">${fmtNum(S.me.points)}</div><div class="muted">points available, signed in as ${esc(S.me.username)}</div></div>
-      ${
-        S.me.canClaimDaily
-          ? '<button class="btn btn-solid" data-action="claim">Claim 100 daily points</button>'
-          : '<p class="muted" style="margin:0">Daily points claimed. Claim again after 00:00 UTC.</p>'
-      }
+    <div class="dash-head">
+      <div>
+        <h1 class="page-title">Your dashboard</h1>
+        <p class="muted" style="margin:4px 0 0">Signed in as ${esc(S.me.username)}</p>
+      </div>
       <button class="btn" data-action="logout">Log out</button>
     </div>
+    ${statTiles(stats)}
+    ${stats ? profitChart(stats.history) : ''}
+    ${stats ? outcomeRecord(stats.byOutcome) : ''}
+    <section class="section"><h2>In play${active.length ? ` <span class="muted count-inline">${active.length}</span>` : ''}</h2>${activeTable}</section>
+    ${stats ? pastMarkets(stats) : ''}
     <section class="section">
       <h2>Wallets</h2>
       ${
@@ -971,14 +971,135 @@ function portfolioView(preds, history = []) {
           ? `<ul class="wallet-list">${S.me.wallets
               .map((w) => `<li><span class="addr" title="${esc(w.address)}">${esc(shortAddress(w.address))}</span><span class="muted">${esc(w.walletName || 'Solana wallet')}</span><a class="muted" href="https://solscan.io/account/${encodeURIComponent(w.address)}" target="_blank" rel="noopener noreferrer">View on Solscan</a></li>`)
               .join('')}</ul>`
-          : '<p class="muted">No wallet linked yet. Link one to sign in with it and to be ready for on-chain pools.</p>'
+          : '<p class="muted">No wallet linked. Link one to sign in with it too.</p>'
       }
       <button class="btn" data-action="link-wallet">Link ${S.me.wallets.length ? 'another' : 'a Solana'} wallet</button>
     </section>
-    <section class="section"><h2>Active predictions</h2>${table(active, 'No active predictions. Pick an upcoming listing to get started.')}</section>
-    <section class="section"><h2>Settled</h2>${table(settled, 'Your results appear here after markets settle.')}</section>
     ${historyView(history)}`;
 }
+
+const signed = (n) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${fmtNum(Math.abs(n))}`;
+
+/** The headline numbers. Each tile is one fact with a short line of context. */
+function statTiles(st) {
+  const tile = (label, value, sub, extra = '') => `<div class="stat-tile"><dt>${label}</dt><dd>${value}</dd><p>${sub}</p>${extra}</div>`;
+  const points = tile(
+    'Points',
+    fmtNum(S.me.points),
+    st?.open.staked ? `${fmtNum(st.open.staked)} more in play` : 'Available to predict with',
+    S.me.canClaimDaily ? '<button class="btn btn-solid tile-btn" data-action="claim">🎁 Claim 100</button>' : '',
+  );
+  if (!st || !st.settled) {
+    return `<dl class="stat-tiles">${points}${tile('Win rate', '–', st?.marketsPlayed ? 'Shows up once your first market settles' : 'Make your first prediction to start your record')}</dl>`;
+  }
+  const pct = Math.round(st.winRate * 100);
+  return `<dl class="stat-tiles">
+    ${points}
+    ${tile('Win rate', `${pct}%`, `${st.wins} of ${st.settled} market${st.settled === 1 ? '' : 's'} won`, `<div class="meter" role="img" aria-label="${pct}% of markets won"><i style="width:${pct}%"></i></div>`)}
+    ${tile('Points won', `<span class="${st.netProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(st.netProfit)}</span>`, `${fmtNum(st.totalWon)} paid out from ${fmtNum(st.totalStaked)} staked`)}
+    ${tile('Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '–', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'Your first win shows up here')}
+    ${tile('Streak', `${st.currentStreak}${st.currentStreak >= 3 ? ' 🔥' : ''}`, `wins in a row · best ${st.bestStreak}`)}
+    ${tile('Rank', st.rank ? `#${st.rank}` : '–', st.rank ? `of ${fmtNum(st.players)} players, all time` : 'After your first settled market')}
+  </dl>`;
+}
+
+/** Running total of points won or lost across settled markets, oldest to newest. */
+function profitChart(history) {
+  const pts = [...history].reverse();
+  if (pts.length < 2) return '';
+  const values = [0, ...pts.map((m) => m.cumulative)];
+  const lo = Math.min(0, ...values);
+  const hi = Math.max(0, ...values);
+  const span = hi - lo || 1;
+  const x = (i) => (i / (values.length - 1)) * 100;
+  const y = (v) => 100 - ((v - lo) / span) * 100;
+  const d = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(2)},${y(v).toFixed(2)}`).join('');
+  const last = values[values.length - 1];
+  const data = pts.map((m, i) => ({ x: x(i + 1), y: y(m.cumulative), symbol: m.symbol, profit: m.profit, total: m.cumulative, at: m.settledAt }));
+  return `
+    <section class="section">
+      <h2>Points won over time</h2>
+      <div class="pchart" data-points='${esc(JSON.stringify(data))}'>
+        <div class="pchart-axis"><span>${signed(hi)}</span><span>${signed(lo)}</span></div>
+        <div class="pchart-plot">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <line class="pchart-zero" x1="0" x2="100" y1="${y(0).toFixed(2)}" y2="${y(0).toFixed(2)}" vector-effect="non-scaling-stroke" />
+            <path class="pchart-line ${last >= 0 ? 'up' : 'down'}" d="${d}" vector-effect="non-scaling-stroke" />
+          </svg>
+          <span class="pchart-dot" hidden></span>
+          <div class="pchart-tip" role="status" hidden></div>
+        </div>
+      </div>
+      <p class="fine">Net points after each settled market (${pts.length} markets). The table below lists every one.</p>
+    </section>`;
+}
+
+/** How each outcome has done when you picked it. */
+function outcomeRecord(byOutcome) {
+  const rows = LADDER.filter((b) => byOutcome[b].picks);
+  if (!rows.length) return '';
+  return `
+    <section class="section">
+      <h2>Your picks by outcome</h2>
+      <ul class="orec">${rows
+        .map((b) => {
+          const { picks, wins } = byOutcome[b];
+          const pct = Math.round((wins / picks) * 100);
+          return `<li style="--c:var(--${b})"><span class="orec-name">${outcome(b)}</span><span class="orec-bar" role="img" aria-label="${wins} of ${picks} won"><i style="width:${pct}%"></i></span><span class="orec-num">${wins} of ${picks} won</span></li>`;
+        })
+        .join('')}</ul>
+    </section>`;
+}
+
+/** Every settled market, one row each, newest first. */
+function pastMarkets(st) {
+  const rows = st.history;
+  return `
+    <section class="section">
+      <h2>Past markets${rows.length ? ` <span class="muted count-inline">${rows.length}</span>` : ''}</h2>
+      ${
+        rows.length
+          ? `<table class="table"><thead><tr><th>Market</th><th>Your pick</th><th class="hide-sm">Result</th><th class="right">Staked</th><th class="right">Points</th></tr></thead><tbody>${rows
+              .map(
+                (m) => `<tr>
+                  <td><a href="#/market/${encodeURIComponent(m.marketId)}">${esc(m.symbol)}</a> <span class="muted hide-sm">${fmtAgo(m.settledAt)}</span></td>
+                  <td>${m.buckets.map(outcome).join(' ')}</td>
+                  <td class="hide-sm">${m.winningBucket ? outcome(m.winningBucket) : '–'}</td>
+                  <td class="right">${fmtNum(m.staked)}</td>
+                  <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b></td>
+                </tr>`,
+              )
+              .join('')}</tbody></table>`
+          : '<p class="muted">Your results appear here after markets settle.</p>'
+      }
+      ${st.refundedMarkets ? `<p class="fine">${st.refundedMarkets} cancelled market${st.refundedMarkets === 1 ? ' was' : 's were'} refunded and ${st.refundedMarkets === 1 ? 'doesn’t' : 'don’t'} count toward your record.</p>` : ''}
+    </section>`;
+}
+
+/** Crosshair and tooltip for the points chart: the nearest market to the pointer. */
+function chartHover(e) {
+  const chart = e.target.closest?.('.pchart');
+  if (!chart) return;
+  const plot = chart.querySelector('.pchart-plot');
+  const dot = chart.querySelector('.pchart-dot');
+  const tip = chart.querySelector('.pchart-tip');
+  if (e.type === 'pointerleave') {
+    if (e.target === chart) dot.hidden = tip.hidden = true;
+    return;
+  }
+  const data = JSON.parse(chart.dataset.points);
+  const r = plot.getBoundingClientRect();
+  const fx = ((e.clientX - r.left) / r.width) * 100;
+  const p = data.reduce((best, d) => (Math.abs(d.x - fx) < Math.abs(best.x - fx) ? d : best), data[0]);
+  dot.style.left = tip.style.left = `${p.x}%`;
+  dot.style.top = tip.style.top = `${p.y}%`;
+  tip.classList.toggle('flip', p.x > 70);
+  tip.classList.toggle('low', p.y > 60);
+  tip.innerHTML = `<b>${esc(p.symbol)}</b> ${signed(p.profit)}<br /><span class="muted">Total ${signed(p.total)} · ${fmtAgo(p.at)}</span>`;
+  dot.hidden = tip.hidden = false;
+}
+document.addEventListener('pointermove', chartHover);
+document.addEventListener('pointerleave', chartHover, true);
 
 const HISTORY_LABELS = {
   signup: () => 'Welcome bonus',

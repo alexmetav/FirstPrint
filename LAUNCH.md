@@ -1,14 +1,14 @@
 # Launch the Firstprint website
 
-The public website source lives in `site/`. Vercel serves the static build and forwards its two read-only API routes to an isolated Render service. The demo has no database and never exposes production prediction writes.
+The public website source lives in `site/`, and the prediction app in `web/`. The full app on Render (`firstprint-app`, below) serves both: the landing page at `/` and the app at `/app/`, so pointing your domain at Render is all you need.
 
-**What visitors get on day 1**
-- A landing page covering how it works, the five outcomes, the fairness rules, exchanges, the roadmap, and an FAQ.
-- **Try it:** a playable practice market. Visitors pick an outcome, watch 72 hours draw in about four seconds, and build a streak that's saved in their browser.
-- **Exchanges:** live 24-hour volume, trust scores, trending coins, and the most traded pairs for 13 major exchanges.
-- **Try practice beta** (`/play/`): the prediction app in practice mode, with simulated prices and free points kept in the visitor's browser. Set `APP_URL` when building to point these links at the hosted full app instead (see `scripts/build-deploy.ts`).
+**What visitors see**
+- A landing page: how it works, the five outcomes, the fairness rules, free points and the dashboard, the roadmap and an FAQ.
+- **Try it:** a quick practice round with a made-up token and a random result. The streak is kept in the visitor's browser.
+- **Launch app** buttons that open the markets at `/app/`.
+- A privacy policy at `/privacy.html`.
 
-The site has no frontend framework. It installs as an app on phones and keeps showing recent cached data when the provider is temporarily unavailable.
+The site has no frontend framework and installs as an app on phones.
 
 ## 1. Edit your settings (2 minutes)
 
@@ -20,56 +20,22 @@ links: { x: 'https://x.com/yourhandle', telegram: 'https://t.me/yourgroup', disc
 waitlistUrl: 'https://tally.so/r/yourform',   // optional: adds "Join the waitlist" buttons
 ```
 
-The site is set up for `https://www.firstprint.fun`: the full `og:image` address in `site/index.html` (social apps need it to show the preview image) and `site/robots.txt` and `site/sitemap.xml`. If the domain changes, update those three.
+The site is set up for `https://www.firstprint.fun`: the canonical and `og:image` addresses in `site/index.html`, and `site/robots.txt` and `site/sitemap.xml`. If the domain changes, update those.
 
-Security headers (Content-Security-Policy, HSTS and others) and cache rules are set in `vercel.json`; the app server sends the same policy, and a test keeps the two in step.
+Security headers (Content-Security-Policy, HSTS and others) are sent by the app server; `vercel.json` sends the same policy for the Vercel copy, and a test keeps the two in step.
 
-## 2. Deploy the read-only API
+## 2. Optional: a copy on Vercel
 
-1. In Render, create a Blueprint from this repository. Render reads `render.yaml` and creates `firstprint-demo-api`.
-2. Optionally add a CoinGecko demo key as the private `COINGECKO_API_KEY` value.
-3. Confirm `https://firstprint-demo-api.onrender.com/api/health` returns `mode: "read-only-demo"`.
-4. If Render assigns a different hostname, update both destinations in the root `vercel.json`.
+Vercel can also host the website (`vercel.json` builds it with `npm run build:deploy`). Without `APP_URL` its buttons open `/play/`, a browser-only practice copy of the app with simulated prices. Set `APP_URL` to your app address plus `/app` (for example `https://firstprint-app.onrender.com/app`) to send them to the real app instead.
 
-## 3. Deploy the site
+## 3. Check before you share it
 
-1. In Vercel, import this repository from GitHub.
-2. Leave the project root at the repository root. The checked-in `vercel.json` supplies the build command, output directory, security headers, and read-only API rewrites.
-3. Deploy and confirm `/api/health` works through the Vercel URL.
-
-Netlify or Cloudflare can host the static files only if you separately reproduce the two same-origin API proxy rules. Direct browser calls to CoinGecko are intentionally unsupported.
-
-## 4. Check before you share it
-
-- [ ] The landing page loads on desktop and phone.
-- [ ] **Launch app** shows exchanges with live volume and a green "Live data" note.
-- [ ] Opening an exchange shows its most traded pairs.
+- [ ] The landing page loads on desktop and phone, and **Launch app** opens the markets.
+- [ ] You can sign in, place a prediction and see it on your dashboard.
 - [ ] Your social and waitlist links work.
 - [ ] Sharing the link shows the preview image (check with a link preview tool).
-- [ ] The practice market in the "Try it" section runs and keeps your streak after a reload.
-- [ ] `/play/` displays the practice-only banner and never creates a network request to prediction or authentication routes.
+- [ ] The "Try it" practice round runs and keeps your streak after a reload.
 - [ ] On a phone, "Add to Home Screen" installs it with the Firstprint icon.
-
-If exchange data shows "couldn't load", check the read-only Render service and its private `COINGECKO_API_KEY`. Never add a provider key to `config.js` or any browser asset.
-
-## Day-by-day plan
-
-| When | Goal | What to do |
-|---|---|---|
-| Day 1 | Read-only demo live | Deploy the Render Blueprint and Vercel build, connect your domain, then verify the proxy |
-| Day 2 | Audience | Set up X and Telegram, add a waitlist form, add privacy-friendly analytics |
-| Days 3–4 | Full backend staging | Migrate persistence to PostgreSQL, run `npm run check` from the hosting region, and keep prediction writes private |
-| Days 5–6 | Listing radar | Switch the Radar tab from "Coming soon" to live detections from the backend |
-| Days 7–10 | Predictions beta | Turn on wallet sign-in and points, and run 15-minute live test markets with early users |
-| Week 3 | Real listing markets | Approve detected listings into 72-hour markets, then add leaderboards |
-| Later | On Solana | On-chain pools only after a security audit and legal review |
-
-Each step builds on code already in this repo:
-- `src/` is the backend.
-- `web/` is the full prediction app.
-- `solana/` is the on-chain program.
-
-We'll connect each piece to the public site as you reach it.
 
 ## Launch the full app (accounts, points, admin panel, markets), free
 

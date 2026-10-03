@@ -8,7 +8,6 @@ import type { LiveFeed } from '../workers/liveFeed.ts';
 import { cachedGoogleJwks, verifyGoogleIdToken, type JwksFetcher } from '../auth/google.ts';
 import type { Mailer } from '../auth/mailer.ts';
 import type { Bucket } from '../engine/engine.ts';
-import { MarketData } from '../services/marketData.ts';
 import { linkSiteToApp } from '../site/links.ts';
 
 export interface ServerOptions {
@@ -108,7 +107,6 @@ export function createApiServer(opts: ServerOptions): Server {
   /** The rate-limit key for a visitor: their IPv4 address, or their IPv6 /64 (one home or server usually gets a whole /64). */
   const visitor = (req: IncomingMessage) => ipBucket(clientIp(req));
   const { service } = opts;
-  const marketData = new MarketData();
   const routes: { method: string; pattern: RegExp; keys: string[]; handler: Handler }[] = [];
   const route = (method: string, path: string, handler: Handler) => {
     const keys: string[] = [];
@@ -180,16 +178,6 @@ export function createApiServer(opts: ServerOptions): Server {
   route('GET', '/api/health', () => {
     service.db.prepare('SELECT 1').get();
     return { ok: true, time: service.clock.now() };
-  });
-
-  route('GET', '/api/market-data', async ({ url }) => {
-    try { return await marketData.get(url.searchParams.get('path') ?? ''); }
-    catch (err) {
-      if ((err as Error).message === 'Unsupported market data request') {
-        throw new AppError(400, 'bad_path', 'Unsupported market data request.');
-      }
-      throw new AppError(503, 'data_unavailable', 'Market data is temporarily unavailable.');
-    }
   });
 
   route('GET', '/api/config', () => ({
@@ -342,6 +330,8 @@ export function createApiServer(opts: ServerOptions): Server {
   route('GET', '/api/me/ledger', ({ user }) => ({ entries: service.ledgerFor(user().id) }));
 
   route('GET', '/api/me/predictions', ({ user }) => ({ predictions: service.myPredictions(user().id) }));
+
+  route('GET', '/api/me/stats', ({ user }) => service.myStats(user().id));
 
   route('POST', '/api/me/claim-daily', ({ user }) => {
     const u = user();

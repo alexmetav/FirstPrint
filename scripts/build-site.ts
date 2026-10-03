@@ -12,7 +12,7 @@ const inline = (src: string) =>
 const html = read('index.html')
   .replace(/<link rel="stylesheet" href="assets\/styles\.css"\s*\/?>/, () => `<style>\n${read('assets/styles.css')}\n</style>`)
   .replace(/<script src="assets\/config\.js"><\/script>/, () => `<script>\n${read('assets/config.js')}\n</script>`)
-  .replace(/<script type="module" src="assets\/site\.js"><\/script>/, () => `<script type="module">\n${inline(read('assets/exchanges.js'))}\n;\n${inline(read('assets/site.js'))}\n</script>`)
+  .replace(/<script type="module" src="assets\/site\.js"><\/script>/, () => `<script type="module">\n${inline(read('assets/site.js'))}\n</script>`)
   .replace(/href="favicon\.svg"/, `href="data:image/svg+xml,${encodeURIComponent(read('favicon.svg'))}"`);
 
 mkdirSync(new URL('../dist/', import.meta.url), { recursive: true });

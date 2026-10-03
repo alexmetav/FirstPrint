@@ -10,6 +10,7 @@ import {
   quote,
   returnPct,
   settleMarket,
+  summarizeRecord,
   twap,
   venueMedian,
   windows,
@@ -475,6 +476,33 @@ export class DemoBackend {
         }
       }
       return { predictions: out.sort((a, b) => b.placedAt - a.placedAt) };
+    });
+  }
+
+  /** The practice account's record, worked out the same way as on the server. */
+  stats() {
+    return this.run(() => {
+      const u = this.me_();
+      const rows = [];
+      const profit = new Map();
+      for (const m of this.marketList) {
+        for (const p of m.predictions) {
+          if (m.status === 'resolved' && p.accepted) profit.set(p.userId, (profit.get(p.userId) ?? 0) + (p.payout ?? 0) - p.accepted);
+          if (p.userId !== u.id) continue;
+          rows.push({
+            marketId: m.id, symbol: m.symbol, status: m.status, settledAt: m.settledAt ?? null,
+            winningBucket: m.status === 'resolved' ? (m.result?.winningBucket ?? null) : null,
+            bucket: p.bucket, stake: p.stake, accepted: p.accepted ?? null, refund: p.refund ?? null, payout: p.payout ?? null,
+          });
+        }
+      }
+      const record = summarizeRecord(rows);
+      const mine = profit.get(u.id);
+      return {
+        ...record,
+        rank: mine === undefined ? null : 1 + [...profit.values()].filter((v) => v > mine).length,
+        players: profit.size,
+      };
     });
   }
 

@@ -1931,3 +1931,190 @@ code {
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------- Dashboard */
+
+.dash-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.count-inline {
+  font-size: 0.7em;
+  font-weight: 600;
+}
+
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.stat-tile {
+  position: relative;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+.stat-tile dt {
+  font-size: 13px;
+  color: var(--muted);
+}
+.stat-tile dd {
+  margin: 4px 0 2px;
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.stat-tile p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.stat-tile p a {
+  color: var(--text);
+}
+.tile-btn {
+  margin-top: 10px;
+  padding: 5px 12px;
+  font-size: 13px;
+}
+.meter {
+  height: 6px;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: var(--raised);
+  overflow: hidden;
+}
+.meter i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--up);
+}
+
+/* Points over time: one series, a zero line, a crosshair dot and tooltip on hover. */
+.pchart {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.pchart-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+.pchart-plot {
+  position: relative;
+  height: 160px;
+  cursor: crosshair;
+  touch-action: pan-y;
+}
+.pchart-plot svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.pchart-zero {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+.pchart-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.pchart-line.up { stroke: var(--up); }
+.pchart-line.down { stroke: var(--crash); }
+.pchart-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--text);
+  box-shadow: 0 0 0 2px var(--surface);
+  pointer-events: none;
+}
+.pchart-tip {
+  position: absolute;
+  transform: translate(14px, -50%);
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+.pchart-tip.flip {
+  transform: translate(calc(-100% - 14px), -50%);
+}
+.pchart-tip.low {
+  transform: translate(14px, calc(-100% - 8px));
+}
+.pchart-tip.flip.low {
+  transform: translate(calc(-100% - 14px), calc(-100% - 8px));
+}
+
+/* Record per outcome: a thin bar of the share of picks that won. */
+.orec {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.orec li {
+  display: grid;
+  grid-template-columns: 96px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+.orec-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--raised);
+  overflow: hidden;
+}
+.orec-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--c);
+}
+.orec-num {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .stat-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .stat-tile dd {
+    font-size: 24px;
+  }
+  .orec li {
+    grid-template-columns: 82px 1fr auto;
+    gap: 8px;
+  }
+}

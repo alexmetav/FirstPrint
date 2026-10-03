@@ -1,31 +1,13 @@
-// Firstprint website: motion system, landing interactions, and the app
-// (live exchange explorer + coming-soon tabs).
-
-import { EXCHANGES } from './exchanges.js';
+// Firstprint website: the landing page, its animated example market and the practice market.
+// The prediction app itself lives at /app/ (web/).
 
 const CONFIG = window.FIRSTPRINT_CONFIG ?? { links: {} };
-const REFRESH_MS = 60_000;
 const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-const state = {
-  list: null,
-  btcUsd: null,
-  updatedAt: null,
-  live: false,
-  search: '',
-  sort: 'volume',
-  detail: new Map(),
-  timer: null,
-};
 
 // ------------------------------------------------------------------ Helpers
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
-
-function esc(v) {
-  return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-}
 
 function safeUrl(u) {
   try {
@@ -34,47 +16,6 @@ function safeUrl(u) {
   } catch {
     return null;
   }
-}
-
-function usd(n, compact = true) {
-  if (n === null || n === undefined || !Number.isFinite(n)) return '–';
-  if (!compact) return n >= 1 ? `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : `$${n.toPrecision(4)}`;
-  const abs = Math.abs(n);
-  if (abs >= 1e9) return `$${(n / 1e9).toFixed(abs >= 1e10 ? 1 : 2)}B`;
-  if (abs >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-  if (abs >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
-  return `$${n.toFixed(0)}`;
-}
-
-function ago(ts) {
-  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
-  return s < 60 ? `${s}s ago` : `${Math.floor(s / 60)}m ago`;
-}
-
-const monogram = (name) => `<span class="monogram" aria-hidden="true">${esc(name.replace(/[^A-Za-z0-9]/g, '')[0] ?? '?')}</span>`;
-
-function safeImageUrl(u) {
-  try {
-    const url = new URL(u);
-    return url.protocol === 'https:' ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
-/** A live provider logo with an accessible fallback. */
-function exchangeMark(ex, alt = '') {
-  const src = safeImageUrl(ex.logo);
-  return `<span class="ex-logo">${src ? `<img src="${esc(src)}" alt="${esc(alt)}" loading="lazy" referrerpolicy="no-referrer" />` : ''}${monogram(ex.name)}</span>`;
-}
-
-let toastTimer;
-function toast(msg) {
-  const el = $('#toast');
-  el.textContent = msg;
-  el.className = 'show';
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.className = ''), 3200);
 }
 
 // ------------------------------------------------------------------ Motion
@@ -132,11 +73,11 @@ const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 
 /** Counts a number up when it first appears. */
 function countUp(el, to, suffix = '', duration = 1100) {
-  if (REDUCED) return (el.textContent = `${to}${suffix}`);
+  if (REDUCED) return (el.textContent = `${to.toLocaleString('en-US')}${suffix}`);
   const start = performance.now();
   const step = (now) => {
     const t = Math.min(1, (now - start) / duration);
-    el.textContent = `${Math.round(easeOut(t) * to)}${suffix}`;
+    el.textContent = `${Math.round(easeOut(t) * to).toLocaleString('en-US')}${suffix}`;
     if (t < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
@@ -220,10 +161,11 @@ function autoHideNav() {
   );
 }
 
+
 // ------------------------------------------------------------------ Hero market
 
 /**
- * The example market plays its own life: predictions build, the listing starts,
+ * The example market plays its own life: predictions build, predictions close,
  * the clock runs down, and one outcome wins. Then it resets and runs again.
  */
 function heroMarket() {
@@ -270,8 +212,8 @@ function heroMarket() {
     rows.forEach((li) => li.classList.remove('won', 'dim'));
     phase.textContent = 'Predictions open';
     phase.style.color = '';
-    sub.textContent = 'Lists on a major exchange';
-    clockLabel.textContent = 'Lists in';
+    sub.textContent = 'Newly listed token';
+    clockLabel.textContent = 'Closes in';
     clock.textContent = '02:14:09';
     clock.style.color = '';
     foot.textContent = 'Share of the pool on each outcome';
@@ -280,9 +222,9 @@ function heroMarket() {
     at(300, () => setShares(r.shares));
 
     at(3400, () => {
-      phase.textContent = 'Trading live';
-      sub.textContent = 'Listed. 72-hour window running';
-      clockLabel.textContent = 'Settles in';
+      phase.textContent = 'Predictions closed';
+      sub.textContent = 'Waiting for the final price';
+      clockLabel.textContent = 'Result in';
       let left = 71 * 3600 + 59 * 60;
       const tick = () => {
         left = Math.max(0, left - 2700);
@@ -332,13 +274,6 @@ function heroMarket() {
     { threshold: 0.25 },
   );
   io.observe(ladder.closest('.hero-market'));
-}
-
-function buildTicker() {
-  const track = $('#ticker-track');
-  if (!track) return;
-  const items = EXCHANGES.map((e) => `<span class="ticker-item"><i aria-hidden="true"></i>${esc(e.name)}</span>`).join('');
-  track.innerHTML = items + items; // duplicated so the loop is seamless
 }
 
 
@@ -489,8 +424,8 @@ function practiceMarket() {
     newPool();
     const sym = TOKENS[Math.floor(Math.random() * TOKENS.length)];
     symbolEl.textContent = sym;
-    subEl.textContent = 'Lists on a major exchange in 2 hours';
-    question.textContent = `Where will ${sym} trade 72 hours after listing?`;
+    subEl.textContent = 'Made-up token, random result';
+    question.textContent = `Where will ${sym} land at the result?`;
     chip.textContent = 'Practice market';
   }
 
@@ -499,9 +434,9 @@ function practiceMarket() {
     chart.classList.remove('idle');
     buttons.forEach((b) => (b.disabled = true));
     button.setAttribute('aria-checked', 'true');
-    chip.textContent = 'Trading live';
-    subEl.textContent = 'Listed. 72-hour window running';
-    result.textContent = 'Running the 72 hours…';
+    chip.textContent = 'Predictions closed';
+    subEl.textContent = 'Waiting for the final price';
+    result.textContent = 'Playing out the market…';
 
     const outcome = pickOutcome();
     const r = rand(...RANGE[outcome]);
@@ -550,101 +485,10 @@ function practiceMarket() {
   if (best) result.textContent = `Pick an outcome. Your best streak is ${best}.`;
 }
 
-// ------------------------------------------------------------------ Data
-
-const cache = new Map();
-const STORE_PREFIX = 'fp:cg:';
-const STORE_TTL = 10 * 60_000;
-
-/** Reads a previous response so repeat visits show numbers immediately. */
-function readStore(path) {
-  try {
-    const raw = localStorage.getItem(STORE_PREFIX + path);
-    if (!raw) return null;
-    const entry = JSON.parse(raw);
-    return Date.now() - entry.t < STORE_TTL ? entry : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeStore(path, entry) {
-  try {
-    localStorage.setItem(STORE_PREFIX + path, JSON.stringify(entry));
-  } catch {
-    /* private mode or quota: caching is optional */
-  }
-}
-
-async function cg(path, ttl = REFRESH_MS) {
-  const hit = cache.get(path) ?? readStore(path);
-  if (hit) cache.set(path, hit);
-  if (hit && Date.now() - hit.t < ttl) return hit.data;
-  const res = await fetch(`/api/market-data?path=${encodeURIComponent(path)}`, { signal: AbortSignal.timeout(12_000) });
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(payload.message ?? `Data service error ${res.status}`);
-  const entry = {
-    t: Date.now(),
-    data: payload.data,
-    updatedAt: Number(payload.updatedAt) || Date.now(),
-    stale: Boolean(payload.stale),
-  };
-  cache.set(path, entry);
-  writeStore(path, entry);
-  return entry.data;
-}
-
-/** Cached copy if one exists, however old. Used when the network fails. */
-function staleData(path) {
-  return (cache.get(path) ?? readStore(path))?.data ?? null;
-}
-
-async function loadExchanges() {
-  const listPath = '/exchanges?per_page=100&page=1';
-  const pricePath = '/simple/price?ids=bitcoin&vs_currencies=usd';
-  const [list, price] = await Promise.allSettled([cg(listPath), cg(pricePath)]);
-  const rows = list.status === 'fulfilled' && Array.isArray(list.value) ? list.value : staleData(listPath);
-  const priceData = price.status === 'fulfilled' ? price.value : staleData(pricePath);
-  const live = Array.isArray(rows);
-  const btcUsd = priceData?.bitcoin?.usd ?? null;
-  const byId = new Map(live ? rows.map((x) => [x.id, x]) : []);
-  const freshness = cache.get(listPath) ?? readStore(listPath);
-
-  state.btcUsd = btcUsd;
-  state.live = live;
-  state.stale = Boolean(live && (list.status !== 'fulfilled' || freshness?.stale));
-  state.updatedAt = freshness?.updatedAt ?? freshness?.t ?? state.updatedAt ?? Date.now();
-  state.list = EXCHANGES.map((ex) => {
-    const row = byId.get(ex.cg);
-    const volBtc = row?.trade_volume_24h_btc ?? null;
-    return {
-      ...ex,
-      country: row?.country ?? null,
-      founded: row?.year_established ?? ex.founded,
-      trust: row?.trust_score ?? null,
-      volumeUsd: volBtc !== null && btcUsd ? volBtc * btcUsd : null,
-      // Prefer CoinGecko's current image, but retain a permanent branded fallback.
-      logo: safeImageUrl(row?.image) ?? ex.logo,
-    };
-  });
-}
 
 // ------------------------------------------------------------------ Landing
 
 function initLanding() {
-  const grid = $('#landing-exchanges');
-  if (grid) {
-    grid.innerHTML = EXCHANGES.slice(0, 10)
-      .map(
-        (ex, i) => `
-        <a class="ex-tile reveal" data-delay="${i * 40}" href="#/app/exchange/${ex.id}">
-          ${exchangeMark(ex)}
-          <span><b>${esc(ex.name)}</b><small>${ex.radar.length ? 'Listing radar at launch' : 'Exchange data'}</small></span>
-        </a>`,
-      )
-      .join('');
-  }
-
   $$('[data-config]').forEach((el) => {
     const key = el.dataset.config;
     const url = safeUrl(key === 'waitlist' ? CONFIG.waitlistUrl : CONFIG.links?.[key]);
@@ -656,7 +500,6 @@ function initLanding() {
     }
   });
 
-  buildTicker();
   heroMarket();
   practiceMarket();
   autoHideNav();
@@ -669,445 +512,20 @@ function initLanding() {
   requestAnimationFrame(() => document.body.classList.add('is-loaded'));
 }
 
-// ------------------------------------------------------------------ Router
-
-function parseRoute() {
-  const h = location.hash;
-  if (!h.startsWith('#/app')) return { view: 'landing', anchor: h.slice(1) };
-  const parts = h.replace(/^#\/app\/?/, '').split('/').filter(Boolean);
-  if (parts[0] === 'exchange' && parts[1]) return { view: 'app', tab: 'exchanges', exchange: decodeURIComponent(parts[1]) };
-  if (parts[0] === 'predictions') return { view: 'app', tab: 'predictions' };
-  if (parts[0] === 'radar') return { view: 'app', tab: 'radar' };
-  return { view: 'app', tab: 'exchanges' };
-}
-
-let lastView = null;
-async function onRoute() {
-  const r = parseRoute();
-  const switched = r.view !== lastView;
-  lastView = r.view;
-  document.body.dataset.view = r.view;
-  $('#app').hidden = r.view !== 'app';
-
-  if (r.view === 'landing') {
-    stopRefresh();
-    document.title = 'Firstprint: predict the first 72 hours of new token listings';
-    if (r.anchor && r.anchor !== 'top') {
-      const target = document.getElementById(r.anchor);
-      if (target) requestAnimationFrame(() => target.scrollIntoView({ behavior: switched ? 'auto' : 'smooth' }));
-    } else if (switched) {
-      window.scrollTo(0, 0);
-    }
-    return;
-  }
-
-  renderAppShell(r);
-  window.scrollTo(0, 0);
-  if (r.tab === 'exchanges' && r.exchange) return renderExchangeDetail(r.exchange);
-  if (r.tab === 'exchanges') return renderExchanges();
-  if (r.tab === 'predictions') return renderPredictionsSoon();
-  if (r.tab === 'radar') return renderRadarSoon();
-}
-
-// ------------------------------------------------------------------ App shell
-
-function renderAppShell(r) {
-  const cur = (tab) => (r.tab === tab ? ' aria-current="page"' : '');
-  $('#app').innerHTML = `
-    <header class="app-bar">
-      <div class="wrap app-bar-inner">
-        <a class="wordmark" href="#top" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
-        <nav class="app-tabs" aria-label="App">
-          <a href="#/app/exchanges"${cur('exchanges')}>Exchanges</a>
-          <a href="/play/">Predictions <span class="soon">Practice</span></a>
-          <a href="#/app/radar"${cur('radar')}>Listing radar <span class="soon">Soon</span></a>
-        </nav>
-        <button class="btn btn-disabled" type="button" data-action="wallet-soon">Connect wallet <span class="soon">Soon</span></button>
-      </div>
-    </header>
-    <main class="wrap app-main" id="app-main" tabindex="-1"></main>`;
-}
-
-// ------------------------------------------------------------------ Exchanges
-
-function sortedRows() {
-  const q = state.search.trim().toLowerCase();
-  const rows = (state.list ?? []).filter((r) => !q || r.name.toLowerCase().includes(q) || (r.country ?? '').toLowerCase().includes(q));
-  const by = {
-    volume: (a, b) => (b.volumeUsd ?? -1) - (a.volumeUsd ?? -1),
-    trust: (a, b) => (b.trust ?? -1) - (a.trust ?? -1) || (b.volumeUsd ?? -1) - (a.volumeUsd ?? -1),
-    name: (a, b) => a.name.localeCompare(b.name),
-  }[state.sort];
-  return rows.sort(by);
-}
-
-function dataNote() {
-  if (state.stale) {
-    return `<p class="data-note offline"><span class="dot-live" aria-hidden="true"></span>Cached CoinGecko data, updated <span data-ago="${state.updatedAt}">${ago(state.updatedAt)}</span>. <button class="btn" data-action="retry" style="padding:3px 12px;font-size:13px">Refresh</button></p>`;
-  }
-  if (state.live) {
-    return `<p class="data-note"><span class="dot-live" aria-hidden="true"></span>Live from CoinGecko, updated <span data-ago="${state.updatedAt}">${ago(state.updatedAt)}</span></p>`;
-  }
-  return `<p class="data-note offline"><span class="dot-live" aria-hidden="true"></span>Live data couldn’t load. Showing basic details. <button class="btn" data-action="retry" style="padding:3px 12px;font-size:13px">Try again</button></p>`;
-}
-
-function exchangesTable(animate = false) {
-  const rows = sortedRows();
-  if (!rows.length) return `<div class="empty">No exchanges match “${esc(state.search)}”.</div>`;
-  return `
-    <div class="table-scroll">
-      <table class="ex-table">
-        <thead><tr>
-          <th class="rank hide-sm">#</th>
-          <th>Exchange</th>
-          <th class="right">24h volume</th>
-          <th class="hide-sm">Trust score</th>
-          <th class="right hide-sm">Founded</th>
-          <th class="right hide-sm">Listing radar</th>
-        </tr></thead>
-        <tbody>
-          ${rows
-            .map(
-              (r, i) => `
-            <tr data-href="#/app/exchange/${r.id}"${animate && !REDUCED ? ` class="row-in" style="animation-delay:${Math.min(i * 35, 500)}ms"` : ''}>
-              <td class="rank hide-sm">${i + 1}</td>
-              <td><a class="ex-name" href="#/app/exchange/${r.id}">${exchangeMark(r)}<span><b>${esc(r.name)}</b><small>${esc(r.country ?? '')}</small></span></a></td>
-              <td class="right num">${state.live ? usd(r.volumeUsd) : '–'}</td>
-              <td class="hide-sm">${r.trust !== null ? `<span class="trust"><span class="trust-bar" style="--t:${Number(r.trust)}"><i></i></span>${Number(r.trust)}/10</span>` : '<span class="muted">–</span>'}</td>
-              <td class="right hide-sm">${esc(r.founded ?? '–')}</td>
-              <td class="right hide-sm">${r.radar.length ? '<span class="radar-pill on">At launch</span>' : '<span class="radar-pill off">Later</span>'}</td>
-            </tr>`,
-            )
-            .join('')}
-        </tbody>
-      </table>
-    </div>`;
-}
-
-function renderExchangesBody(animate = false) {
-  if (!$('#ex-body')) return;
-  const total = state.live ? state.list.reduce((s, r) => s + (r.volumeUsd ?? 0), 0) : null;
-  $('#ex-note').innerHTML = dataNote();
-  $('#ex-stats').innerHTML = `
-    <div><dt>Exchanges</dt><dd>${EXCHANGES.length}</dd></div>
-    <div><dt>Combined 24h volume</dt><dd>${total ? usd(total) : '–'}</dd></div>
-    <div><dt>Bitcoin price</dt><dd>${state.btcUsd ? usd(state.btcUsd, false).replace(/\.\d+$/, '') : '–'}</dd></div>
-    <div><dt>Listing radar at launch</dt><dd>${EXCHANGES.filter((e) => e.radar.length).length}</dd></div>`;
-  $('#ex-body').innerHTML = exchangesTable(animate);
-}
-
-/** Coins people are searching for right now, from CoinGecko's trending list. */
-async function renderTrending() {
-  const box = $('#trending');
-  if (!box) return;
-  try {
-    const d = await cg('/search/trending', 5 * 60_000);
-    const coins = (d?.coins ?? []).slice(0, 10).map((c) => c.item).filter(Boolean);
-    if (!coins.length) return box.remove();
-    box.innerHTML = `
-      <div class="trending-head">
-        <h2>Trending searches</h2>
-        <span class="muted" style="font-size:13.5px">Most searched on CoinGecko in the last 24 hours</span>
-      </div>
-      <div class="trend-row">
-        ${coins
-          .map(
-            (c, i) => `
-          <article class="trend-card"${REDUCED ? '' : ` style="animation-delay:${i * 45}ms"`}>
-            <span class="trend-rank">#${i + 1}</span>
-            <b class="trend-sym">${esc((c.symbol ?? '').toUpperCase())}</b>
-            <span class="trend-name">${esc(c.name ?? '')}</span>
-            <span class="trend-cap">${c.market_cap_rank ? `Market cap rank ${c.market_cap_rank}` : 'Unranked'}</span>
-          </article>`,
-          )
-          .join('')}
-      </div>`;
-  } catch {
-    box.remove();
-  }
-}
-
-async function renderExchanges() {
-  document.title = 'Exchanges: Firstprint';
-  $('#app-main').innerHTML = `
-    <h1 class="page-title">Exchanges</h1>
-    <p class="page-lede">Live 24-hour volume and trust scores for the largest crypto exchanges. Open one to see its most traded pairs.</p>
-    <section class="trending" id="trending" aria-label="Trending coins"></section>
-    <dl class="summary-stats" id="ex-stats"></dl>
-    <div class="toolbar">
-      <div class="toolbar-left">
-        <input class="input" id="ex-search" type="search" placeholder="Search exchanges" aria-label="Search exchanges" value="${esc(state.search)}" />
-        <select class="select" id="ex-sort" aria-label="Sort exchanges">
-          <option value="volume"${state.sort === 'volume' ? ' selected' : ''}>Highest volume</option>
-          <option value="trust"${state.sort === 'trust' ? ' selected' : ''}>Trust score</option>
-          <option value="name"${state.sort === 'name' ? ' selected' : ''}>Name</option>
-        </select>
-      </div>
-      <div id="ex-note"></div>
-    </div>
-    <div id="ex-body"><p class="muted">Loading live exchange data</p></div>`;
-
-  if (!state.list) {
-    state.list = EXCHANGES.map((ex) => ({ ...ex, country: null, trust: null, volumeUsd: null }));
-    try {
-      await loadExchanges();
-    } catch {
-      state.live = false;
-    }
-  }
-  renderExchangesBody(true);
-  startRefresh();
-  renderTrending();
-}
-
-function startRefresh() {
-  stopRefresh();
-  state.timer = setInterval(async () => {
-    if (document.hidden) return;
-    const r = parseRoute();
-    if (r.view !== 'app' || r.tab !== 'exchanges' || r.exchange) return;
-    try {
-      await loadExchanges();
-      renderExchangesBody();
-    } catch {
-      /* keep the last good data */
-    }
-  }, REFRESH_MS);
-}
-
-function stopRefresh() {
-  if (state.timer) clearInterval(state.timer);
-  state.timer = null;
-}
-
-// ------------------------------------------------------------------ Exchange detail
-
-async function renderExchangeDetail(id) {
-  const ex = EXCHANGES.find((e) => e.id === id);
-  const main = $('#app-main');
-  if (!ex) {
-    main.innerHTML = `<a class="back" href="#/app/exchanges">All exchanges</a><div class="empty">We don’t cover that exchange yet.</div>`;
-    return;
-  }
-  document.title = `${ex.name}: Firstprint`;
-  const site = safeUrl(ex.url);
-  main.innerHTML = `
-    <a class="back" href="#/app/exchanges">← All exchanges</a>
-    <div class="detail-head">
-      ${exchangeMark(ex, `${ex.name} logo`)}
-      <div><h1 class="page-title">${esc(ex.name)}</h1><p class="muted" id="ex-meta">Founded ${esc(ex.founded)}</p></div>
-      <div class="actions">${site ? `<a class="btn magnetic" href="${site}" target="_blank" rel="noopener noreferrer">Visit website</a>` : ''}</div>
-    </div>
-    <dl class="detail-stats" id="detail-stats">
-      <div><dt>24h volume</dt><dd><span class="skeleton"></span></dd></div>
-      <div><dt>Trust score</dt><dd><span class="skeleton"></span></dd></div>
-      <div><dt>Founded</dt><dd>${esc(ex.founded)}</dd></div>
-      <div><dt>Pairs in top list</dt><dd><span class="skeleton"></span></dd></div>
-    </dl>
-    <div class="detail-cols">
-      <section class="panel">
-        <h2>Most traded pairs</h2>
-        <div id="pairs"><p class="muted">Loading live pairs</p></div>
-      </section>
-      <aside>
-        <section class="panel">
-          <h2>Listing radar</h2>
-          <div class="panel-box">
-            ${
-              ex.radar.length
-                ? `<p>Firstprint will track new ${esc(ex.name)} listings from day one using:</p><ul class="check-list">${ex.radar.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>`
-                : `<p>Listing tracking for ${esc(ex.name)} is planned after launch.</p>`
-            }
-            <p class="muted">The listing radar is coming soon.</p>
-          </div>
-        </section>
-        <section class="panel">
-          <h2>Prediction markets</h2>
-          <div class="panel-box">
-            <p>Try a simulated 72-hour prediction now with free browser-only practice points.</p>
-            <p><a class="btn magnetic" href="/play/">Open practice beta</a></p>
-          </div>
-        </section>
-      </aside>
-    </div>`;
-  $$('.magnetic', main).forEach(magnetic);
-
-  try {
-    const d = state.detail.get(ex.id) ?? (await cg(`/exchanges/${encodeURIComponent(ex.cg)}`));
-    state.detail.set(ex.id, d);
-    if (parseRoute().exchange !== id) return;
-    const btc = state.btcUsd ?? (await cg('/simple/price?ids=bitcoin&vs_currencies=usd').then((p) => p?.bitcoin?.usd).catch(() => null));
-    const volUsd = d.trade_volume_24h_btc && btc ? d.trade_volume_24h_btc * btc : null;
-    const meta = [d.country, `founded ${d.year_established ?? ex.founded}`].filter(Boolean).join(', ');
-    $('#ex-meta').textContent = meta.charAt(0).toUpperCase() + meta.slice(1);
-
-    const tickers = Array.isArray(d.tickers) ? d.tickers : [];
-    const trust = Number(d.trust_score) || 0; // a number from the provider; never inserted as raw text
-    $('#detail-stats').innerHTML = `
-      <div><dt>24h volume</dt><dd>${usd(volUsd)}</dd></div>
-      <div><dt>Trust score</dt><dd>${trust ? `${trust}<span class="muted" style="font-size:16px">/10</span>` : '–'}</dd></div>
-      <div><dt>Founded</dt><dd>${esc(d.year_established ?? ex.founded)}</dd></div>
-      <div><dt>Pairs in top list</dt><dd>${tickers.length || '–'}</dd></div>`;
-
-    const top = [...tickers]
-      .filter((t) => t?.converted_volume?.usd)
-      .sort((a, b) => b.converted_volume.usd - a.converted_volume.usd)
-      .slice(0, 15);
-    $('#pairs').innerHTML = top.length
-      ? `<div class="table-scroll"><table class="ex-table pairs">
-          <thead><tr><th>Pair</th><th class="right">Price</th><th class="right">24h volume</th><th class="right hide-sm">Spread</th></tr></thead>
-          <tbody>${top
-            .map((t, i) => {
-              const link = safeUrl(t.trade_url);
-              const pair = `${esc(t.base)}/${esc(t.target)}`;
-              return `<tr${REDUCED ? '' : ` class="row-in" style="animation-delay:${Math.min(i * 30, 400)}ms"`}>
-                <td>${link ? `<a href="${link}" target="_blank" rel="noopener noreferrer"><b>${pair}</b></a>` : `<b>${pair}</b>`}</td>
-                <td class="right num">${usd(t.converted_last?.usd, false)}</td>
-                <td class="right num">${usd(t.converted_volume?.usd)}</td>
-                <td class="right hide-sm">${Number.isFinite(t.bid_ask_spread_percentage) ? `${t.bid_ask_spread_percentage.toFixed(2)}%` : '–'}</td>
-              </tr>`;
-            })
-            .join('')}</tbody></table></div>
-          <p class="muted" style="margin-top:12px;font-size:14px">Live from CoinGecko. Pair links open ${esc(ex.name)}.</p>`
-      : '<div class="empty">No pair data available right now.</div>';
-  } catch (err) {
-    $$('.skeleton', $('#detail-stats')).forEach((s) => (s.outerHTML = '–'));
-    $('#pairs').innerHTML = `<div class="empty">Live pair data couldn’t load (${esc(err.message)}). <button class="btn" data-action="retry">Try again</button></div>`;
-  }
-}
-
-// ------------------------------------------------------------------ Coming soon
-
-function followLinks() {
-  const out = [
-    ['Join the waitlist', CONFIG.waitlistUrl, true],
-    ['Follow on X', CONFIG.links?.x],
-    ['Join Telegram', CONFIG.links?.telegram],
-    ['Join Discord', CONFIG.links?.discord],
-  ]
-    .map(([label, url, solid]) => {
-      const safe = safeUrl(url);
-      return safe ? `<a class="btn magnetic${solid ? ' btn-solid' : ''}" href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>` : '';
-    })
-    .join('');
-  return out || '<a class="btn btn-solid magnetic" href="#/app/exchanges">Explore exchanges</a>';
-}
-
-function renderPredictionsSoon() {
-  document.title = 'Practice predictions: Firstprint';
-  $('#app-main').innerHTML = `
-    <section class="soon-page">
-      <div>
-        <span class="soon soon-badge">Practice beta live</span>
-        <h1>Test the first<br />72 hours now.</h1>
-        <p class="lede">Use free browser-only points to call Crash, Down, Flat, Up, or Moon in a simulated market.</p>
-        <ul class="check-list">
-          <li>Start immediately with 1,000 points</li>
-          <li>Claim 100 practice points daily</li>
-          <li>Test predictions, settlement, and leaderboards</li>
-          <li>No deposits, transactions, or real money</li>
-        </ul>
-        <div class="hero-actions"><a class="btn btn-solid magnetic" href="/play/">Open practice beta</a><a class="btn magnetic" href="#/app/exchanges">Explore exchanges</a></div>
-      </div>
-      <div class="preview-card" aria-label="Preview of a prediction market">
-        <div class="hm-head">
-          <div><span class="chip">Preview</span><p class="hm-title"><b>NOVA</b><span>Lists in 2 hours</span></p></div>
-          <div class="hm-clock"><span class="muted">Your pick</span><b style="color:var(--up)">Up</b></div>
-        </div>
-        <p class="hm-question">Where will NOVA trade 72 hours after listing?</p>
-        <ol class="hm-ladder">
-          <li style="--c: var(--moon); --share: 18%"><b>Moon</b><span>+50% or better</span><em>18%</em></li>
-          <li style="--c: var(--up); --share: 31%" class="won"><b>Up</b><span>+10% to +50%</span><em>31%</em></li>
-          <li style="--c: var(--flat); --share: 22%"><b>Flat</b><span>−10% to +10%</span><em>22%</em></li>
-          <li style="--c: var(--down); --share: 19%"><b>Down</b><span>−50% to −10%</span><em>19%</em></li>
-          <li style="--c: var(--crash); --share: 10%"><b>Crash</b><span>−50% or worse</span><em>10%</em></li>
-        </ol>
-      </div>
-    </section>`;
-  $$('.magnetic').forEach(magnetic);
-}
-
-function renderRadarSoon() {
-  document.title = 'Listing radar: coming soon on Firstprint';
-  const tracked = EXCHANGES.filter((e) => e.radar.length);
-  $('#app-main').innerHTML = `
-    <section class="soon-page">
-      <div>
-        <span class="soon soon-badge">Coming soon</span>
-        <h1>Every listing,<br />as it’s announced.</h1>
-        <p class="lede">The radar watches exchange announcements and new trading pairs, then shows each upcoming listing with its trading start time.</p>
-        <p class="muted" style="margin-bottom:10px">Tracking at launch</p>
-        <ul class="check-list">${tracked.map((e) => `<li>${esc(e.name)}: ${esc(e.radar.join(', ').toLowerCase())}</li>`).join('')}</ul>
-        <div class="hero-actions">${followLinks()}</div>
-      </div>
-      <div class="preview-card" aria-label="Preview of the listing radar">
-        <span class="chip">Preview</span>
-        <ul class="radar-preview blur-rows" aria-hidden="true">
-          <li><b>NOVA</b><span>in 5h 12m</span><small>Announcement, new spot listing</small></li>
-          <li><b>ARCO</b><span>in 1d 5h</span><small>Announcement, new spot listing</small></li>
-          <li><b>TIDE</b><span>in 1d 19h</span><small>New trading pair detected</small></li>
-          <li><b>MOSS</b><span>in 2d 3h</span><small>Announcement, new spot listing</small></li>
-        </ul>
-      </div>
-    </section>`;
-  $$('.magnetic').forEach(magnetic);
-}
-
-// ------------------------------------------------------------------ Events
-
-// Hide provider logos that fail to load (the monogram behind them shows instead). Error events
-// don't bubble, so listen in the capture phase; no inline handlers, so the CSP can forbid them.
-document.addEventListener('error', (e) => {
-  if (e.target instanceof HTMLImageElement && e.target.closest('.ex-logo')) e.target.hidden = true;
-}, true);
-
-document.addEventListener('click', (e) => {
-  const action = e.target.closest('[data-action]')?.dataset.action;
-  if (action === 'wallet-soon') return toast('Wallet sign-in arrives with predictions. Coming soon.');
-  if (action === 'retry') {
-    cache.clear();
-    state.list = null;
-    state.detail.clear();
-    return onRoute();
-  }
-  const row = e.target.closest('tr[data-href]');
-  if (row && !e.target.closest('a')) location.hash = row.dataset.href;
-});
-
-document.addEventListener('input', (e) => {
-  if (e.target.id === 'ex-search') {
-    state.search = e.target.value;
-    $('#ex-body').innerHTML = exchangesTable();
-  }
-});
-
-document.addEventListener('change', (e) => {
-  if (e.target.id === 'ex-sort') {
-    state.sort = e.target.value;
-    $('#ex-body').innerHTML = exchangesTable(true);
-  }
-});
-
-setInterval(() => {
-  if (document.hidden) return;
-  $$('[data-ago]').forEach((el) => (el.textContent = ago(Number(el.dataset.ago))));
-}, 5_000);
-
 /**
  * Links from when the app lived at the site root (shared markets, the admin page, portfolio)
- * go to the same page in the app, wherever the "Launch app" button points.
+ * go to the same page in the app, wherever the "Launch app" button points. Links to the
+ * old exchange explorer (#/app/...) just open the landing page.
  */
 function redirectOldAppLinks() {
   const home = document.querySelector('[data-app-home]')?.getAttribute('href');
-  if (home && /^#\/(market\/|leaderboard|portfolio|admin|radar)/.test(location.hash)) {
+  if (home && /^#\/(market\/|leaderboard|portfolio|dashboard|admin|radar)/.test(location.hash)) {
     location.replace(home + location.hash);
     return true;
   }
+  if (location.hash.startsWith('#/app')) history.replaceState(null, '', location.pathname + location.search);
   return false;
 }
 
-window.addEventListener('hashchange', () => redirectOldAppLinks() || onRoute());
-if (!redirectOldAppLinks()) {
-  initLanding();
-  onRoute();
-}
+window.addEventListener('hashchange', redirectOldAppLinks);
+if (!redirectOldAppLinks()) initLanding();

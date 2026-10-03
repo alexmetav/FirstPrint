@@ -5,10 +5,6 @@
     {
       "source": "/api/health",
       "destination": "https://firstprint-demo-api.onrender.com/api/health"
-    },
-    {
-      "source": "/api/market-data",
-      "destination": "https://firstprint-demo-api.onrender.com/api/market-data"
     }
   ],
   "headers": [

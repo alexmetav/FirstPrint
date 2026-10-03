@@ -37,20 +37,9 @@ npm run dev
 
 Visit http://localhost:8787 for the actual backend-connected prediction app. The public site build is `npm run build:deploy`.
 
-## New market-data endpoint
-
-`GET /api/market-data?path=<URL-encoded provider path>` accepts only the exchange explorer's fixed CoinGecko endpoints. It returns `{ data, updatedAt, stale }`. Concurrent requests share a fetch; successful data is cached for a minute. Provider outages return explicitly stale data for at most an hour, with a one-minute retry cooldown. Optional `COINGECKO_API_KEY` stays on the server. The public site uses this endpoint through a same-origin Vercel rewrite.
-
 ## Read-only demo deployment
 
-`render.yaml` defines `firstprint-demo-api`, a deliberately isolated Render service. Its `npm run start:demo` command starts `src/demo.ts`, which exposes only:
-
-- `GET /api/health`
-- `GET /api/market-data`
-
-It does not open SQLite or expose authentication, predictions, points, admin routes, settlement, listing tracking, or workers. In Render, create the Blueprint from this repository and add `COINGECKO_API_KEY` as a private environment variable if required. The Vercel rewrites assume the service URL is `https://firstprint-demo-api.onrender.com`; update `vercel.json` if Render assigns another URL.
-
-Before sharing the demo, verify from the deployed Vercel site that `/api/health` returns `mode: "read-only-demo"`, every exchange page loads, stale data is labelled, and `/play/` shows the practice-only banner.
+`render.yaml` defines `firstprint-demo-api`, a deliberately isolated Render service. Its `npm run start:demo` command starts `src/demo.ts`, which exposes only `GET /api/health` (used by the Vercel copy of the website). It does not open SQLite or expose authentication, predictions, points, admin routes, settlement, listing tracking, or workers.
 
 ## Deployment limitations
 

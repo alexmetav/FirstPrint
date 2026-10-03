@@ -1,18 +1,15 @@
 import { createServer, type Server, type ServerResponse } from 'node:http';
-import { MarketData } from './services/marketData.ts';
 
 export interface DemoServerOptions {
-  marketData?: MarketData;
   now?: () => number;
 }
 
 /**
  * Creates the public demo API. It intentionally has no database, authentication,
- * prediction, worker, or admin dependencies: only health and allowlisted market
- * data reads are reachable from the public demo deployment.
+ * prediction, worker, or admin dependencies: only the health check is reachable
+ * from the public demo deployment.
  */
 export function createDemoServer(options: DemoServerOptions = {}): Server {
-  const marketData = options.marketData ?? new MarketData();
   const now = options.now ?? Date.now;
 
   return createServer(async (req, res) => {
@@ -31,17 +28,6 @@ export function createDemoServer(options: DemoServerOptions = {}): Server {
 
     if (url.pathname === '/api/health') {
       return send(res, 200, { ok: true, mode: 'read-only-demo', time: now() });
-    }
-
-    if (url.pathname === '/api/market-data') {
-      try {
-        return send(res, 200, await marketData.get(url.searchParams.get('path') ?? ''));
-      } catch (err) {
-        if ((err as Error).message === 'Unsupported market data request') {
-          return send(res, 400, { error: 'bad_path', message: 'Unsupported market data request.' });
-        }
-        return send(res, 503, { error: 'data_unavailable', message: 'Market data is temporarily unavailable.' });
-      }
     }
 
     return send(res, 404, { error: 'not_found', message: 'Unknown endpoint.' });
