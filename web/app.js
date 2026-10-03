@@ -1905,7 +1905,8 @@ function tokenAdminSection(t) {
   if (t.ready) {
     return `<section class="section"><h2>TestFPT token <span class="tag tag-now">Live</span></h2>
       <p class="muted">Players claim their points to their wallets as TestFPT on Solana ${net}. They pay the network fee in test SOL.</p>
-      <p>Mint: <a href="${esc(t.mintUrl)}" target="_blank" rel="noopener noreferrer"><code>${esc(t.mint)}</code> ↗</a></p></section>`;
+      <p>Mint: <a href="${esc(t.mintUrl)}" target="_blank" rel="noopener noreferrer"><code>${esc(t.mint)}</code> ↗</a></p>
+      ${saveKeysNote(t)}</section>`;
   }
   const sol = t.authoritySol;
   return `<section class="section"><h2>TestFPT token <span class="tag">Not set up</span></h2>
@@ -1913,7 +1914,7 @@ function tokenAdminSection(t) {
     <ol class="steplist">
       <li class="${t.authority ? 'done' : ''}"><span class="step-check" aria-hidden="true">${t.authority ? '✓' : ''}</span><div><b>Create the mint authority</b>
         <span class="muted">A key on this server that mints TestFPT when players claim. Keep this server’s database private.</span>
-        ${t.authority ? `<span class="copy-row"><code>${esc(t.authority)}</code><button class="btn" data-action="copy-text" data-text="${esc(t.authority)}">Copy</button></span>` : `<button class="btn btn-solid" data-action="admin-token-authority"${A.busy ? ' disabled' : ''}>Create authority</button>`}</div></li>
+        ${t.authority ? `<span class="copy-row"><code>${esc(t.authority)}</code><button class="btn" data-action="copy-text" data-text="${esc(t.authority)}">Copy</button></span>${saveKeysNote(t)}` : `<button class="btn btn-solid" data-action="admin-token-authority"${A.busy ? ' disabled' : ''}>Create authority</button>`}</div></li>
       <li class="${sol ? 'done' : ''}"><span class="step-check" aria-hidden="true">${sol ? '✓' : ''}</span><div><b>Give it test SOL</b>
         <span class="muted">Balance on ${net}: <b>${sol === null || sol === undefined ? 'unknown' : `${sol} SOL`}</b>${t.authorityUrl ? ` (<a href="${esc(t.authorityUrl)}" target="_blank" rel="noopener noreferrer">check on Explorer ↗</a>)` : ''}. Paste the address above into the faucet and make sure its network menu says <b>${net}</b>, not Devnet or Mainnet. Then press Refresh balance.</span>
         ${t.balanceError ? `<span class="form-error">${esc(t.balanceError)}</span>` : ''}
@@ -1924,6 +1925,22 @@ function tokenAdminSection(t) {
         <button class="btn btn-solid" data-action="admin-token-create"${t.authority && !A.busy ? '' : ' disabled'}>${A.busy === 'token' ? 'Working…' : 'Create TestFPT'}</button>
         ${t.authority && !sol ? '<span class="muted">You can try even if the balance shows unknown: if the SOL isn’t there, it will say so.</span>' : ''}</div></li>
     </ol></section>`;
+}
+
+/**
+ * On a host without a disk (Render's free plan without backups), the database is wiped on restart and
+ * the token setup with it. Saving the key and mint in the host's settings keeps them for good.
+ */
+function saveKeysNote(t) {
+  const rows = [];
+  if (t.authorityKey && !t.savedInEnv?.authority) rows.push(['TESTFPT_AUTHORITY_KEY', t.authorityKey]);
+  if (t.mint && !t.savedInEnv?.mint) rows.push(['TESTFPT_MINT', t.mint]);
+  if (!rows.length) return '';
+  return `<div class="save-keys">
+    <b>Save these in Render so a restart can’t lose them</b>
+    <span class="muted">Render → firstprint-app → Environment → Add environment variable, one for each, then Save. Keep the key private: it can mint TestFPT.</span>
+    ${rows.map(([k, v]) => `<span class="copy-row"><code>${k}</code><code class="secret">${esc(v)}</code><button class="btn" data-action="copy-text" data-text="${esc(v)}">Copy</button></span>`).join('')}
+  </div>`;
 }
 
 const TASK_TARGET_HINT = { follow: 'X handle, e.g. @firstprint', repost: 'Link to the post on X', like: 'Link to the post on X', share: 'Text of the post (the player’s invite link is added)', link: 'https:// link' };

@@ -2406,3 +2406,16 @@ code {
 .earn-card .copy-row {
   width: 100%;
 }
+.save-keys {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid color-mix(in srgb, var(--moon) 45%, var(--line));
+  background: color-mix(in srgb, var(--moon) 8%, var(--surface));
+}
+.save-keys .secret {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}

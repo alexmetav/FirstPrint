@@ -78,6 +78,9 @@ test('TestFPT: admin sets up the token, a new player claims 1,000 to their walle
   assert.equal(rewards.ready(), false);
   let status = await rewards.setupAuthority();
   assert.ok(status.enabled && status.authority);
+  // The admin can copy the key into the host's settings, so a wiped database can't lose it.
+  assert.ok(status.enabled && /^[0-9a-f]{64}$/.test(status.authorityKey ?? ''));
+  assert.deepEqual(status.enabled && status.savedInEnv, { authority: false, mint: false });
   await assert.rejects(rewards.createMint(), failsWith('mint_failed'), 'no SOL yet, so the token cannot be created');
   status = await rewards.airdropAuthority();
   status = await rewards.createMint();
