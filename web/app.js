@@ -145,6 +145,7 @@ async function refreshMe() {
   }
   await refreshRewards();
   renderTop();
+  if (S.me?.unreadNotifications) maybeCelebrate();
 }
 
 /** Rewards, tasks and the referral link for the signed-in player (nothing for visitors). */
@@ -312,7 +313,8 @@ function renderTop() {
         ${S.cfg?.rewards ? `<button class="chip chip-faucet" data-action="faucet" title="Get free test SOL for network fees">${ico('droplet')}<span class="faucet-label">Test SOL</span></button>` : ''}
         ${
           S.me
-            ? `${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim 100 free daily points">${ico('gift')}<span class="gift-n">+100</span></button>` : ''}
+            ? `<button class="chip bell${S.me.unreadNotifications ? ' has-new' : ''}" data-action="inbox" aria-label="Your results${S.me.unreadNotifications ? `, ${S.me.unreadNotifications} new` : ''}">${ico('bell')}${S.me.unreadNotifications ? `<span class="bell-n">${S.me.unreadNotifications > 9 ? '9+' : S.me.unreadNotifications}</span>` : ''}</button>
+               ${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim 100 free daily points">${ico('gift')}<span class="gift-n">+100</span></button>` : ''}
                <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${fmtNum(S.me.points)}<span class="unit">pts</span></a>
                <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
             : `<button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button>`
@@ -528,6 +530,7 @@ function cardView(m) {
         ${['crash', 'down', 'flat', 'up', 'moon'].map((b) => `<span style="--c:var(--${b});flex:${m.pool ? m.totals[b] : 1}"></span>`).join('')}
       </div>`
       }
+      ${myPickLine(m)}
       <div class="card-venues">${ico('landmark')}${esc(venueNames(m))}</div>
       <div class="card-foot">
         <span class="when">${ico('clock')}${when}</span>
@@ -537,10 +540,24 @@ function cardView(m) {
     </a>`;
 }
 
+/** "You: Up · 250" on a card, so players can see their picks without opening the market. */
+function myPickLine(m) {
+  if (!m.mine?.length) return '';
+  const yn = isYesNo(m);
+  const by = {};
+  for (const p of m.mine) by[p.bucket] = (by[p.bucket] ?? 0) + p.stake;
+  let state = '';
+  if (m.status === 'resolved') state = m.mine.some((p) => p.payout > 0) ? ` · <b class="profit-pos">won ${fmtNum(m.mine.reduce((s, p) => s + (p.payout ?? 0), 0))}</b>` : ' · didn’t win';
+  else if (m.status === 'void') state = ' · refunded';
+  return `<div class="card-mine">${ico('user')}<span>You: ${Object.entries(by)
+    .map(([b, pts]) => `${outcome(b, yn)} ${fmtNum(pts)}`)
+    .join(', ')}${state}</span></div>`;
+}
+
 /** Three friendly steps up front; the full rules stay one tap away. */
 function howItWorks() {
   const steps = `
-      <div class="section-head"><span class="section-ico">${ico('info')}</span><div><h2>How it works</h2><p class="muted">Free to play. Points only, no real money.</p></div></div>
+      <div class="section-head"><span class="section-ico">${ico('info')}</span><div><h2>How it works</h2><p class="muted">Free to play. Points only, no real money.</p></div><button class="btn btn-sm head-action" data-action="tour">${ico('sparkles')}Take the tour</button></div>
       <ol class="steps">
         <li><span class="step-ico" style="--c:var(--up)">${ico('target')}</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}.</p></li>
         <li><span class="step-ico" style="--c:var(--moon)">${ico('coins')}</span><b>Stake free points</b><p>Everyone starts with 1,000 points, plus 100 more every day. No real money.</p></li>
@@ -662,6 +679,7 @@ function marketMain(m) {
       }</p>
       <p class="m-status">${statusLine(m)}</p>
       <p class="m-venues">${m.kind === 'live_test' ? '<span class="tag tag-test">Live test</span> ' : ''}${ico('landmark')}${isManual(m) ? `Reference exchanges: ${esc(venueNames(m))}` : `Prices from ${esc(venueNames(m))}`}</p>
+      ${priceLinks(m)}
     </header>
 
     <dl class="stats">
@@ -722,6 +740,26 @@ function marketMain(m) {
           : '<p class="muted">No predictions yet.</p>'
       }
     </section>`;
+}
+
+/** Where to see the live price of a token on each exchange (spot, against USDT). */
+const TRADE_URLS = {
+  binance: (b) => `https://www.binance.com/en/trade/${b}_USDT?type=spot`,
+  bybit: (b) => `https://www.bybit.com/en/trade/spot/${b}/USDT`,
+  okx: (b) => `https://www.okx.com/trade-spot/${b.toLowerCase()}-usdt`,
+  mexc: (b) => `https://www.mexc.com/exchange/${b}_USDT`,
+  gate: (b) => `https://www.gate.io/trade/${b}_USDT`,
+  bitget: (b) => `https://www.bitget.com/spot/${b}USDT`,
+  kucoin: (b) => `https://www.kucoin.com/trade/${b}-USDT`,
+};
+
+function priceLinks(m) {
+  const links = (m.venues ?? []).filter((v) => TRADE_URLS[v.id]);
+  if (!links.length || m.status === 'resolved' || m.status === 'void') return '';
+  const base = encodeURIComponent(m.symbol.toUpperCase());
+  return `<div class="price-links"><span class="muted">${ico('chart')}Check the live price:</span>${links
+    .map((v) => `<a class="btn btn-sm" href="${TRADE_URLS[v.id](base)}" target="_blank" rel="noopener noreferrer">${esc(v.name)} ${ico('external')}</a>`)
+    .join('')}</div>`;
 }
 
 function venueNames(m) {
@@ -1415,6 +1453,11 @@ document.addEventListener('pointerleave', chartHover, true);
 
 const HISTORY_LABELS = {
   signup: () => 'Welcome bonus',
+  welcome: () => 'Welcome TestFPT',
+  x_connect: () => 'Linked your X account',
+  task: () => 'Task completed',
+  referral: () => 'Friend joined with your link',
+  claim: () => 'TestFPT claimed to your wallet',
   daily: () => 'Daily claim',
   stake: (e) => `Prediction${e.symbol ? ` on ${e.symbol}` : ''}`,
   refund: (e) => `Refund${e.symbol ? ` from ${e.symbol}` : ''}`,
@@ -1812,6 +1855,12 @@ function renderAuth() {
        </form>
        <p class="fine"><button class="switch" data-action="profile-skip">Skip for now</button></p>`,
     );
+  } else if (kind === 'inbox') {
+    html = modalShell('Your results', 'What happened on the markets you predicted.', inboxView());
+  } else if (kind === 'win') {
+    html = winView(S.win);
+  } else if (kind === 'tour') {
+    html = tourView();
   } else if (kind === 'faucet') {
     html = modalShell('Get free test SOL', 'TestFPT lives on the Solana test network. Claiming it costs a tiny network fee, paid in free test SOL.', faucetSteps());
   } else if (kind === 'start') {
@@ -1961,7 +2010,175 @@ function tickResend() {
   if (left > 0) setTimeout(tickResend, 1000);
 }
 
+// ------------------------------------------------------------------ Results inbox, win popup, first-time tour
+
+/** What one result means for the player, in a sentence. */
+function resultLine(n) {
+  const yn = n.outcomes === 'binary';
+  if (n.status === 'void') return { icon: 'undo', tone: 'flat', title: `${esc(n.symbol)} was cancelled`, body: `${fmtPts(n.refund)} refunded to your balance.` };
+  const win = n.winningBucket ? outcome(n.winningBucket, yn) : 'the result';
+  if (n.won) return { icon: 'trophy', tone: 'moon', title: `You won ${fmtPts(n.payout)} on ${esc(n.symbol)}`, body: `It settled ${yn ? 'as' : 'in'} ${win}. You staked ${fmtPts(n.staked)}.` };
+  return { icon: 'cross', tone: 'crash', title: `${esc(n.symbol)} settled ${yn ? 'as' : 'in'} ${win}`, body: `Your pick didn’t win this time${n.refund ? `; ${fmtPts(n.refund)} came back from the pool limit` : ''}.` };
+}
+
+function inboxView() {
+  const list = S.inbox?.notifications ?? [];
+  if (!list.length) return `<div class="inbox-empty">${ico('bell')}<p>No results yet. When a market you predicted on settles, you’ll see it here.</p></div><button class="btn" style="width:100%;margin-top:14px" data-action="close-modal">Close</button>`;
+  return `
+    <ul class="inbox">${list
+      .map((n) => {
+        const r = resultLine(n);
+        return `<li class="${n.read ? '' : 'unread'}" style="--c:var(--${r.tone})">
+          <span class="inbox-ico">${ico(r.icon)}</span>
+          <a href="#/market/${encodeURIComponent(n.marketId)}" data-action="close-modal"><b>${r.title}</b><span>${r.body}</span><small>${fmtAgo(n.at)}</small></a>
+        </li>`;
+      })
+      .join('')}</ul>
+    <button class="btn" style="width:100%;margin-top:14px" data-action="close-modal">Close</button>`;
+}
+
+async function openInbox() {
+  try {
+    S.inbox = await S.api.notifications();
+  } catch (err) {
+    return toast(err.message, true);
+  }
+  S.modal = 'inbox';
+  renderAuth();
+  if (S.inbox.unread) markResultsRead();
+}
+
+async function markResultsRead() {
+  try {
+    await S.api.markNotificationsRead();
+  } catch {
+    /* the badge stays until the next try */
+  }
+  if (S.me) S.me.unreadNotifications = 0;
+  renderTop();
+}
+
+/** A big moment for a win the player hasn't seen yet. Shown once, then the results are marked read. */
+async function maybeCelebrate() {
+  if (S.modal || S.celebrating || !S.api.notifications) return;
+  S.celebrating = true;
+  try {
+    const { notifications } = await S.api.notifications();
+    const win = notifications.find((n) => !n.read && n.won);
+    if (win && !S.modal) {
+      S.win = win;
+      S.modal = 'win';
+      renderAuth();
+      celebrate('moon');
+    }
+  } catch {
+    /* no popup this time */
+  } finally {
+    S.celebrating = false;
+  }
+}
+
+function winView(n) {
+  const yn = n.outcomes === 'binary';
+  const text = encodeURIComponent(`I called ${n.symbol} on Firstprint and won ${fmtNum(n.payout)} points. Think you can call the next one?`);
+  const url = encodeURIComponent(`${location.origin}${location.pathname}#/market/${encodeURIComponent(n.marketId)}`);
+  return `
+    <div class="modal-backdrop" data-backdrop>
+      <div class="modal win-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <span class="win-ico">${ico('trophy')}</span>
+        <h2 id="modal-title">You called it!</h2>
+        <p class="win-amount">+${fmtNum(n.payout)} <small>pts</small></p>
+        <p class="muted">${esc(n.symbol)} settled ${yn ? 'as' : 'in'} ${n.winningBucket ? outcome(n.winningBucket, yn) : 'your pick'}. You staked ${fmtPts(n.staked)}.</p>
+        <div class="win-actions">
+          <a class="btn btn-gold btn-lg" href="https://x.com/intent/tweet?text=${text}&url=${url}" target="_blank" rel="noopener noreferrer">${ico('x')}Share on X</a>
+          <a class="btn btn-lg" href="#/market/${encodeURIComponent(n.marketId)}" data-action="win-close">See the market</a>
+        </div>
+        <button class="switch" data-action="win-close">Close</button>
+      </div>
+    </div>`;
+}
+
+function closeWin() {
+  closeModal();
+}
+
+/** Three short screens for new players: outcomes, points, timing. */
+const TOUR = [
+  {
+    icon: 'target',
+    title: 'Pick where the price lands',
+    body: `Every market asks one question about a token’s price. Pick an outcome, from ${outcome('crash')} to ${outcome('moon')}, or simply ${outcome('up', true)} or ${outcome('down', true)} on Yes/No markets.`,
+  },
+  {
+    icon: 'coins',
+    title: 'Play with free points',
+    body: 'You start with 1,000 points and get 100 more every day. Points have no cash value, so there’s nothing to lose. Earn more on the Earn page.',
+  },
+  {
+    icon: 'trophy',
+    title: 'Call it early, win the pool',
+    body: 'Everyone who picked the right outcome splits the pool. Earlier picks earn up to 1.5× more, so the sooner you call it, the better. You’ll get a notification when a result is posted.',
+  },
+];
+
+function tourView() {
+  const i = S.tourStep ?? 0;
+  const t = TOUR[i];
+  const last = i === TOUR.length - 1;
+  return `
+    <div class="modal-backdrop" data-backdrop>
+      <div class="modal tour-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="tour-dots" aria-hidden="true">${TOUR.map((_, j) => `<i class="${j === i ? 'on' : ''}"></i>`).join('')}</div>
+        <span class="tour-ico">${ico(t.icon)}</span>
+        <p class="eyebrow">Step ${i + 1} of ${TOUR.length}</p>
+        <h2 id="modal-title">${t.title}</h2>
+        <p class="tour-body">${t.body}</p>
+        <div class="tour-actions">
+          ${i ? '<button class="btn btn-lg" data-action="tour-back">Back</button>' : '<button class="btn btn-lg" data-action="tour-done">Skip</button>'}
+          <button class="btn ${last ? 'btn-gold' : 'btn-solid'} btn-lg" data-action="${last ? 'tour-done' : 'tour-next'}">${last ? 'Let’s go' : 'Next'}</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+const TOUR_SEEN = 'fp:toured';
+
+function openTour() {
+  S.tourStep = 0;
+  S.modal = 'tour';
+  renderAuth();
+}
+
+function finishTour() {
+  try {
+    localStorage.setItem(TOUR_SEEN, '1');
+  } catch {
+    /* storage unavailable */
+  }
+  if (S.me && S.rewards?.onChain && !S.rewards.welcomeClaimed) return openAuth('start');
+  closeModal();
+}
+
+/** First visit: show the tour once to people who haven't signed in yet. */
+function maybeTourVisitor() {
+  let seen = false;
+  try {
+    seen = localStorage.getItem(TOUR_SEEN) === '1';
+  } catch {
+    seen = true;
+  }
+  if (!seen && !S.me && !S.modal && S.route.name === 'home' && !S.api.demo) setTimeout(() => !S.modal && !S.me && openTour(), 1200);
+}
+
 function closeModal() {
+  if (S.modal === 'win') markResultsRead();
+  if (S.modal === 'tour') {
+    try {
+      localStorage.setItem(TOUR_SEEN, '1');
+    } catch {
+      /* storage unavailable */
+    }
+  }
   S.modal = null;
   S.modalBusy = false;
   $('#modal-root').innerHTML = '';
@@ -1974,13 +2191,18 @@ async function afterSignIn(user, created) {
   toast(created ? (claimFirst ? 'Account created. Claim your 1,000 TestFPT to start.' : 'Account created. 1,000 points added.') : `Signed in as ${S.me.username}`);
   S.tradeKey = '';
   await loadRoute();
-  // New players: complete the profile (or skip), then see how to get started.
+  // New players: complete the profile (or skip), take the short tour, then see how to get started.
+  S.newPlayer = Boolean(created);
   if (created || user?.needsUsername) openAuth('username');
   else if (claimFirst) openAuth('start');
 }
 
 /** After the profile step, new players see the getting-started steps if they still have to claim. */
 function afterProfile() {
+  if (S.newPlayer) {
+    S.newPlayer = false;
+    return openTour();
+  }
   if (S.rewards?.onChain && !S.rewards.welcomeClaimed) openAuth('start');
   else closeModal();
 }
@@ -2954,6 +3176,20 @@ document.addEventListener('click', async (e) => {
       return openAuth('faucet');
     case 'start-guide':
       return openAuth('start');
+    case 'inbox':
+      return openInbox();
+    case 'tour':
+      return openTour();
+    case 'tour-next':
+      S.tourStep = Math.min(TOUR.length - 1, S.tourStep + 1);
+      return renderAuth();
+    case 'tour-back':
+      S.tourStep = Math.max(0, S.tourStep - 1);
+      return renderAuth();
+    case 'tour-done':
+      return finishTour();
+    case 'win-close':
+      return closeWin();
     case 'profile-skip':
       return afterProfile();
     case 'claim-tokens':
@@ -3095,6 +3331,7 @@ setInterval(() => {
   }
   window.addEventListener('hashchange', onRoute);
   await onRoute();
+  maybeTourVisitor();
   S.api.subscribe(onLive, (ok) => {
     if (S.live !== ok) {
       S.live = ok;

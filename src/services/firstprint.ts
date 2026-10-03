@@ -192,6 +192,8 @@ export interface Notification {
   staked: number;
   payout: number;
   refund: number;
+  /** 'binary' for a Yes/No market. */
+  outcomes?: string;
 }
 
 const as = <T>(v: unknown) => v as T;
@@ -681,6 +683,14 @@ export class FirstprintService {
         .prepare('INSERT INTO settlements (market_id, result, data_hash, settled_at) VALUES (?, ?, ?, ?)')
         .run(marketId, JSON.stringify(result), createHash('sha256').update(`cancelled:${marketId}:${now}`).digest('hex'), now);
       this.db.prepare("UPDATE markets SET status = 'void', retracted = 1 WHERE id = ?").run(marketId);
+      const perUser = new Map<string, Notification>();
+      for (const p of rows) {
+        const n = perUser.get(p.user_id) ?? { userId: p.user_id, marketId, symbol: m.symbol, status: 'void' as const, voidReason: 'retracted', winningBucket: null, staked: 0, payout: 0, refund: 0 };
+        n.staked += p.stake;
+        n.refund += p.stake;
+        perUser.set(p.user_id, n);
+      }
+      this.storeNotifications([...perUser.values()], parseConfig(m).outcomes ?? 'ladder', now);
       this.livePrices.delete(marketId);
       queueMicrotask(() => this.onEvent('market', { marketId }));
       this.log(`market cancelled ${marketId}`);
@@ -998,6 +1008,50 @@ export class FirstprintService {
     };
   }
 
+  // --- Result notifications ---------------------------------------------------------
+
+  private storeNotifications(notes: readonly Notification[], outcomes: string, now: number) {
+    const insert = this.db.prepare(
+      `INSERT INTO notifications (user_id, market_id, symbol, status, void_reason, winning_bucket, outcomes, staked, payout, refund, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const n of notes) insert.run(n.userId, n.marketId, n.symbol, n.status, n.voidReason, n.winningBucket, outcomes, n.staked, n.payout, n.refund, now);
+  }
+
+  /** A player's latest results, newest first, and how many they haven't seen. */
+  notificationsFor(userId: string, limit = 30) {
+    const rows = as<{ id: number; market_id: string; symbol: string; status: string; void_reason: string | null; winning_bucket: Bucket | null; outcomes: string; staked: number; payout: number; refund: number; created_at: number; read_at: number | null }[]>(
+      this.db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT ?').all(userId, limit),
+    );
+    return {
+      unread: this.unreadNotifications(userId),
+      notifications: rows.map((r) => ({
+        id: r.id,
+        marketId: r.market_id,
+        symbol: r.symbol,
+        status: r.status,
+        voidReason: r.void_reason,
+        winningBucket: r.winning_bucket,
+        outcomes: r.outcomes,
+        staked: r.staked,
+        payout: r.payout,
+        refund: r.refund,
+        won: r.payout > 0,
+        at: r.created_at,
+        read: r.read_at !== null,
+      })),
+    };
+  }
+
+  unreadNotifications(userId: string): number {
+    return as<{ n: number }>(this.db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL').get(userId)).n;
+  }
+
+  markNotificationsRead(userId: string) {
+    this.db.prepare('UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL').run(this.clock.now(), userId);
+    return { unread: 0 };
+  }
+
   // --- Points history and admin log ----------------------------------------------
 
   /** A user's points movements, newest first, with the market each one belongs to. */
@@ -1230,7 +1284,9 @@ export class FirstprintService {
         .prepare('INSERT INTO settlements (market_id, result, data_hash, settled_at) VALUES (?, ?, ?, ?)')
         .run(m.id, JSON.stringify(result), dataHash, now);
       this.db.prepare('UPDATE markets SET status = ? WHERE id = ?').run(status, m.id);
-      for (const n of perUser.values()) notes.push(n);
+      const outcomes = parseConfig(m).outcomes ?? 'ladder';
+      for (const n of perUser.values()) notes.push({ ...n, outcomes });
+      this.storeNotifications(notes, outcomes, now);
     });
     this.livePrices.delete(m.id);
     this.onEvent('market', { marketId: m.id });
