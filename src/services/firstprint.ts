@@ -8,8 +8,10 @@ import type { Venue } from '../exchanges/types.ts';
 import {
   BUCKETS,
   DEFAULT_CONFIG,
+  allowedBuckets,
   applyCaps,
-  bucketForReturn,
+  bucketFor,
+  isBinary,
   computePayouts,
   emptyTotals,
   hardCapFor,
@@ -28,6 +30,7 @@ import {
 } from '../engine/engine.ts';
 
 const MINUTE = 60_000;
+const DAY = 24 * 60 * MINUTE;
 export const START_POINTS = 1_000;
 export const DAILY_POINTS = 100;
 export const MIN_STAKE = 10;
@@ -942,10 +945,10 @@ export class FirstprintService {
     if (!(base > 0) || !Number.isFinite(base)) throw new AppError(400, 'bad_price', 'Start price must be a number above 0.');
 
     const ret = returnPct(base, final);
-    const computed = bucketForReturn(ret, cfg.thresholds);
+    const computed = bucketFor(ret, cfg);
     let bucket = computed;
     if (input.winningBucket !== undefined && input.winningBucket !== null && (input.winningBucket as string) !== '') {
-      if (!BUCKETS.includes(input.winningBucket)) throw new AppError(400, 'bad_bucket', 'Choose Crash, Down, Flat, Up, or Moon.');
+      if (!allowedBuckets(cfg).includes(input.winningBucket)) throw new AppError(400, 'bad_bucket', isBinary(cfg) ? 'Choose Yes or No.' : 'Choose Crash, Down, Flat, Up, or Moon.');
       bucket = input.winningBucket;
     }
 
@@ -977,6 +980,7 @@ export class FirstprintService {
     return {
       marketId: m.id,
       symbol: m.symbol,
+      outcomes: parseConfig(m).outcomes ?? 'ladder',
       basePrice: plan.base,
       finalPrice: plan.final,
       returnPct: plan.ret,
@@ -1028,7 +1032,7 @@ export class FirstprintService {
   // --- Predictions -----------------------------------------------------------
 
   placePrediction(marketId: string, userId: string, bucket: Bucket, stake: number) {
-    if (!BUCKETS.includes(bucket)) throw new AppError(400, 'bad_bucket', 'Choose Crash, Down, Flat, Up, or Moon.');
+    if (!BUCKETS.includes(bucket)) throw new AppError(400, 'bad_bucket', 'Choose an outcome.');
     if (!Number.isInteger(stake) || stake < MIN_STAKE) {
       throw new AppError(400, 'bad_stake', `Stake must be a whole number of at least ${MIN_STAKE} points.`);
     }
@@ -1039,6 +1043,7 @@ export class FirstprintService {
       const { closeAt } = windows(cfg, m.listing_at);
       const now = this.clock.now();
       if (m.published === 0) throw new AppError(404, 'market_not_found', 'Market not found.');
+      if (!allowedBuckets(cfg).includes(bucket)) throw new AppError(400, 'bad_bucket', 'Choose Yes or No.');
       if (m.status !== 'open' || now >= closeAt) {
         throw new AppError(409, 'market_closed', 'Predictions for this market are closed.');
       }
@@ -1076,9 +1081,10 @@ export class FirstprintService {
   }
 
   quote(marketId: string, bucket: Bucket, stake: number) {
-    if (!BUCKETS.includes(bucket)) throw new AppError(400, 'bad_bucket', 'Choose Crash, Down, Flat, Up, or Moon.');
+    if (!BUCKETS.includes(bucket)) throw new AppError(400, 'bad_bucket', 'Choose an outcome.');
     const m = this.publicRow(marketId);
     const cfg = parseConfig(m);
+    if (!allowedBuckets(cfg).includes(bucket)) throw new AppError(400, 'bad_bucket', 'Choose Yes or No.');
     const { closeAt } = windows(cfg, m.listing_at);
     const preds = this.predictions(marketId).map(toEnginePrediction);
     return engineQuote(preds, bucket, Math.max(0, Math.floor(stake) || 0), this.clock.now(), cfg, m.opened_at, closeAt);
@@ -1400,10 +1406,10 @@ export class FirstprintService {
   }
 
   myPredictions(userId: string) {
-    const rows = as<(PredictionRow & { symbol: string; exchange: string; status: string; mode: string })[]>(
+    const rows = as<(PredictionRow & { symbol: string; exchange: string; status: string; mode: string; config: string })[]>(
       this.db
         .prepare(
-          `SELECT p.*, m.symbol, m.exchange, m.status, m.mode FROM predictions p
+          `SELECT p.*, m.symbol, m.exchange, m.status, m.mode, m.config FROM predictions p
            JOIN markets m ON m.id = p.market_id
            WHERE p.user_id = ? ORDER BY p.placed_at DESC LIMIT 100`,
         )
@@ -1416,6 +1422,7 @@ export class FirstprintService {
       exchange: r.exchange,
       marketStatus: r.status,
       mode: r.mode,
+      outcomes: (JSON.parse(r.config) as MarketConfig).outcomes ?? 'ladder',
       bucket: r.bucket,
       stake: r.stake,
       accepted: r.accepted,
@@ -1427,10 +1434,14 @@ export class FirstprintService {
 
   /** The signed-in player's record for the dashboard, plus their all-time rank by net points won. */
   myStats(userId: string) {
-    const rows = as<{ market_id: string; symbol: string; status: string; settled_at: number | null; result: string | null; bucket: Bucket; stake: number; accepted: number | null; refund: number | null; payout: number | null }[]>(
+    return this.statsFor(userId);
+  }
+
+  private statsFor(userId: string) {
+    const rows = as<{ market_id: string; symbol: string; status: string; config: string; settled_at: number | null; result: string | null; bucket: Bucket; stake: number; accepted: number | null; refund: number | null; payout: number | null }[]>(
       this.db
         .prepare(
-          `SELECT p.market_id, m.symbol, m.status, s.settled_at, s.result, p.bucket, p.stake, p.accepted, p.refund, p.payout
+          `SELECT p.market_id, m.symbol, m.status, m.config, s.settled_at, s.result, p.bucket, p.stake, p.accepted, p.refund, p.payout
            FROM predictions p
            JOIN markets m ON m.id = p.market_id
            LEFT JOIN settlements s ON s.market_id = m.id
@@ -1457,6 +1468,7 @@ export class FirstprintService {
         accepted: r.accepted,
         refund: r.refund,
         payout: r.payout,
+        binary: isBinary(JSON.parse(r.config) as MarketConfig),
       })),
     );
     const profits = as<{ user_id: string; profit: number }[]>(
@@ -1478,8 +1490,96 @@ export class FirstprintService {
     };
   }
 
-  leaderboard(userId?: string) {
-    const start = weekStart(this.clock.now());
+  /**
+   * A player's public page: username, record and current positions. Usernames and predictions are
+   * already public on markets and the leaderboard; email, wallets and X are never included.
+   */
+  publicProfile(username: string, viewerId?: string) {
+    const u = as<{ id: string; username: string; created_at: number } | undefined>(
+      this.db.prepare('SELECT id, username, created_at FROM users WHERE username = ? COLLATE NOCASE').get(String(username ?? '').trim()),
+    );
+    if (!u) throw new AppError(404, 'user_not_found', 'No player with that username.');
+    const stats = this.statsFor(u.id);
+    const open = as<{ market_id: string; symbol: string; name: string | null; status: string; config: string; bucket: Bucket; stake: number }[]>(
+      this.db
+        .prepare(
+          `SELECT p.market_id, m.symbol, m.name, m.status, m.config, p.bucket, SUM(p.stake) AS stake
+           FROM predictions p JOIN markets m ON m.id = p.market_id
+           WHERE p.user_id = ? AND m.published = 1 AND m.status IN ('open', 'locked')
+           GROUP BY p.market_id, p.bucket
+           ORDER BY MAX(p.placed_at) DESC LIMIT 50`,
+        )
+        .all(u.id),
+    );
+    return {
+      username: u.username,
+      joinedAt: u.created_at,
+      isMe: u.id === viewerId,
+      stats: { ...stats, history: stats.history.slice(0, 30) },
+      positions: open.map((r) => ({
+        marketId: r.market_id,
+        symbol: r.symbol,
+        name: r.name,
+        marketStatus: r.status,
+        outcomes: (JSON.parse(r.config) as MarketConfig).outcomes ?? 'ladder',
+        bucket: r.bucket,
+        stake: r.stake,
+      })),
+    };
+  }
+
+  /** Who has the most points on a market, with what they picked. Usernames only. */
+  holders(marketId: string, limit = 20) {
+    const m = this.publicRow(marketId);
+    const settled = m.status === 'resolved' || m.status === 'void';
+    const rows = as<{ username: string; bucket: Bucket; stake: number; payout: number | null }[]>(
+      this.db
+        .prepare(
+          `SELECT u.username, p.bucket, SUM(p.stake) AS stake, SUM(COALESCE(p.payout, 0)) AS payout
+           FROM predictions p JOIN users u ON u.id = p.user_id
+           WHERE p.market_id = ? GROUP BY p.user_id, p.bucket`,
+        )
+        .all(marketId),
+    );
+    const byUser = new Map<string, { username: string; total: number; payout: number; picks: { bucket: Bucket; stake: number }[] }>();
+    for (const r of rows) {
+      const h = byUser.get(r.username) ?? { username: r.username, total: 0, payout: 0, picks: [] };
+      h.total += r.stake;
+      h.payout += r.payout ?? 0;
+      h.picks.push({ bucket: r.bucket, stake: r.stake });
+      byUser.set(r.username, h);
+    }
+    const holders = [...byUser.values()]
+      .sort((a, b) => b.total - a.total || a.username.localeCompare(b.username))
+      .slice(0, limit)
+      .map((h) => ({ ...h, picks: h.picks.sort((a, b) => b.stake - a.stake), payout: settled ? h.payout : null }));
+    return { holders, total: byUser.size };
+  }
+
+  /**
+   * How the crowd's split changed over time: each outcome's share of the pool after every
+   * prediction, thinned to at most `points` steps (the latest always kept).
+   */
+  odds(marketId: string, points = 120) {
+    const m = this.publicRow(marketId);
+    const cfg = parseConfig(m);
+    const buckets = allowedBuckets(cfg);
+    const totals = emptyTotals();
+    let pool = 0;
+    const steps: { t: number; shares: Partial<Record<Bucket, number>> }[] = [];
+    for (const p of this.predictions(marketId)) {
+      totals[p.bucket] += p.stake;
+      pool += p.stake;
+      steps.push({ t: p.placed_at, shares: Object.fromEntries(buckets.map((b) => [b, Math.round((totals[b] / pool) * 1000) / 1000])) });
+    }
+    const every = Math.max(1, Math.ceil(steps.length / points));
+    const series = steps.filter((_, i) => i % every === 0 || i === steps.length - 1);
+    return { outcomes: cfg.outcomes ?? 'ladder', buckets, openedAt: m.opened_at, series };
+  }
+
+  leaderboard(userId?: string, period: LeaderboardPeriod = 'week') {
+    const now = this.clock.now();
+    const { start, end } = periodRange(period, now);
     const rows = as<{ user_id: string; name: string | null; profit: number; wins: number; total: number }[]>(
       this.db
         .prepare(
@@ -1500,8 +1600,9 @@ export class FirstprintService {
     );
     const ranked = rows.map((r, i) => ({ rank: i + 1, userId: r.user_id, name: r.name, profit: r.profit, wins: r.wins, total: r.total }));
     return {
+      period,
       seasonStart: start,
-      seasonEnd: start + 7 * 24 * 60 * MINUTE,
+      seasonEnd: end,
       entries: ranked.slice(0, 50).map(({ userId: _u, ...rest }) => ({ ...rest, isMe: _u === userId })),
       me: userId ? (ranked.find((r) => r.userId === userId) ?? null) : null,
     };
@@ -1559,9 +1660,11 @@ export class FirstprintService {
 
     const totals = emptyTotals();
     const users = new Set<string>();
+    let volume24h = 0;
     for (const p of preds) {
       totals[p.bucket] += afterClose ? (p.accepted ?? 0) : p.stake;
       users.add(p.user_id);
+      if (p.placed_at > now - DAY) volume24h += p.stake;
     }
     const pool = Object.values(totals).reduce((s, n) => s + n, 0);
 
@@ -1607,7 +1710,7 @@ export class FirstprintService {
         basePrice: base,
         lastPrice,
         returnPct: r,
-        projectedBucket: r === null ? null : bucketForReturn(r, cfg.thresholds),
+        projectedBucket: r === null ? null : bucketFor(r, cfg),
         provisional: m.status === 'open',
       };
     }
@@ -1661,6 +1764,7 @@ export class FirstprintService {
       openedAt: m.opened_at,
       closeAt: w.closeAt,
       settleAt: w.settleAt,
+      outcomes: cfg.outcomes ?? 'ladder',
       thresholds: cfg.thresholds,
       feeBps: cfg.feeBps,
       earlyBirdK: cfg.earlyBirdK,
@@ -1670,6 +1774,7 @@ export class FirstprintService {
       pool,
       totals,
       predictors: users.size,
+      volume24h,
       live,
       result,
       scorecard: m.scorecard ? (JSON.parse(m.scorecard) as Scorecard) : null,
@@ -1720,6 +1825,10 @@ export function mergeConfig(overrides: Partial<MarketConfig> = {}): MarketConfig
     cfg[key] = v;
   }
   if (overrides.volumeCapRatio !== undefined) cfg.volumeCapRatio = overrides.volumeCapRatio;
+  if (overrides.outcomes !== undefined) {
+    if (overrides.outcomes !== 'ladder' && overrides.outcomes !== 'binary') throw new AppError(400, 'bad_config', 'Market type must be "ladder" or "binary".');
+    cfg.outcomes = overrides.outcomes;
+  }
   if (overrides.thresholds) cfg.thresholds = { ...cfg.thresholds, ...overrides.thresholds };
 
   const t = cfg.thresholds;
@@ -1731,6 +1840,22 @@ export function mergeConfig(overrides: Partial<MarketConfig> = {}): MarketConfig
   }
   if (cfg.feeBps > 2_000) throw new AppError(400, 'bad_config', 'Fee cannot exceed 20%.');
   return cfg;
+}
+
+export type LeaderboardPeriod = 'day' | 'week' | 'month' | 'all';
+export const LEADERBOARD_PERIODS: readonly LeaderboardPeriod[] = ['day', 'week', 'month', 'all'];
+
+/** The window a leaderboard covers: today, this week (from Monday), this month (all UTC), or all time. */
+export function periodRange(period: LeaderboardPeriod, now: number): { start: number; end: number | null } {
+  const d = new Date(now);
+  if (period === 'day') {
+    const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    return { start, end: start + DAY };
+  }
+  if (period === 'month') return { start: Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1), end: Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) };
+  if (period === 'all') return { start: 0, end: null };
+  const start = weekStart(now);
+  return { start, end: start + 7 * DAY };
 }
 
 /** Monday 00:00 UTC of the current week. */

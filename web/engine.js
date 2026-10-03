@@ -19,6 +19,12 @@ export const BUCKETS                    = ['crash', 'down', 'flat', 'up', 'moon'
 
 export const DEFAULT_THRESHOLDS             = { crash: -0.5, down: -0.1, up: 0.1, moon: 0.5 };
 
+/**
+ * ladder: five outcomes, Crash to Moon, by how far the price moves from the start price.
+ * binary: a Yes/No question, "will the price be at or above the target?". The target is the
+ * market's start price; Yes is stored as the 'up' bucket and No as 'down'.
+ */
+
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
@@ -59,6 +65,22 @@ export function bucketForReturn(r        , t             = DEFAULT_THRESHOLDS)  
   if (x < t.up) return 'flat';
   if (x < t.moon) return 'up';
   return 'moon';
+}
+
+/** Yes and No in a binary market. */
+export const BINARY_BUCKETS                    = ['up', 'down'];
+
+export const isBinary = (cfg                                ) => cfg.outcomes === 'binary';
+
+/** The outcomes players can pick in a market. */
+export function allowedBuckets(cfg                                )                    {
+  return isBinary(cfg) ? BINARY_BUCKETS : BUCKETS;
+}
+
+/** The winning outcome for a price move: Yes at or above the target in a binary market, else the ladder. */
+export function bucketFor(r        , cfg                                               )         {
+  if (isBinary(cfg)) return clean(r) >= 0 ? 'up' : 'down';
+  return bucketForReturn(r, cfg.thresholds);
 }
 
 export function bucketRangeLabel(b        , t             = DEFAULT_THRESHOLDS)         {
@@ -338,7 +360,7 @@ export function settleMarket(input                 )                   {
   if (finalPrice === null || !windowOk(finalStats, cfg)) return voided('insufficient_settlement_data');
 
   const r = returnPct(basePrice, finalPrice);
-  const winning = bucketForReturn(r, cfg.thresholds);
+  const winning = bucketFor(r, cfg);
   const pool = computePayouts(input.accepted, winning, cfg);
 
   return {
@@ -387,13 +409,14 @@ export function summarizeRecord(rows                      )               {
     if (!inPool.length) continue; // every stake was refunded by a pool limit
     const staked = inPool.reduce((s, p) => s + (p.accepted ?? 0), 0);
     const payout = inPool.reduce((s, p) => s + (p.payout ?? 0), 0);
-    for (const p of inPool) {
+    for (const p of first.binary ? [] : inPool) {
       byOutcome[p.bucket].picks++;
       if ((p.payout ?? 0) > 0) byOutcome[p.bucket].wins++;
     }
     settled.push({
       marketId,
       symbol: first.symbol,
+      ...(first.binary ? { binary: true } : {}),
       settledAt: first.settledAt ?? 0,
       buckets: [...new Set(inPool.map((p) => p.bucket))],
       winningBucket: first.winningBucket,

@@ -31,8 +31,17 @@ export interface Thresholds {
 
 export const DEFAULT_THRESHOLDS: Thresholds = { crash: -0.5, down: -0.1, up: 0.1, moon: 0.5 };
 
+/**
+ * ladder: five outcomes, Crash to Moon, by how far the price moves from the start price.
+ * binary: a Yes/No question, "will the price be at or above the target?". The target is the
+ * market's start price; Yes is stored as the 'up' bucket and No as 'down'.
+ */
+export type OutcomeStyle = 'ladder' | 'binary';
+
 export interface MarketConfig {
   thresholds: Thresholds;
+  /** Missing on older markets, which are all ladders. */
+  outcomes?: OutcomeStyle;
   /** Early-bird strength. 0.5 → earliest prediction weighs 1.5×, last 1.0×. */
   earlyBirdK: number;
   /** Pool fee in basis points (400 = 4%). */
@@ -133,6 +142,22 @@ export function bucketForReturn(r: number, t: Thresholds = DEFAULT_THRESHOLDS): 
   if (x < t.up) return 'flat';
   if (x < t.moon) return 'up';
   return 'moon';
+}
+
+/** Yes and No in a binary market. */
+export const BINARY_BUCKETS: readonly Bucket[] = ['up', 'down'];
+
+export const isBinary = (cfg: Pick<MarketConfig, 'outcomes'>) => cfg.outcomes === 'binary';
+
+/** The outcomes players can pick in a market. */
+export function allowedBuckets(cfg: Pick<MarketConfig, 'outcomes'>): readonly Bucket[] {
+  return isBinary(cfg) ? BINARY_BUCKETS : BUCKETS;
+}
+
+/** The winning outcome for a price move: Yes at or above the target in a binary market, else the ladder. */
+export function bucketFor(r: number, cfg: Pick<MarketConfig, 'outcomes' | 'thresholds'>): Bucket {
+  if (isBinary(cfg)) return clean(r) >= 0 ? 'up' : 'down';
+  return bucketForReturn(r, cfg.thresholds);
 }
 
 export function bucketRangeLabel(b: Bucket, t: Thresholds = DEFAULT_THRESHOLDS): string {
@@ -484,7 +509,7 @@ export function settleMarket(input: SettlementInput): SettlementResult {
   if (finalPrice === null || !windowOk(finalStats, cfg)) return voided('insufficient_settlement_data');
 
   const r = returnPct(basePrice, finalPrice);
-  const winning = bucketForReturn(r, cfg.thresholds);
+  const winning = bucketFor(r, cfg);
   const pool = computePayouts(input.accepted, winning, cfg);
 
   return {
@@ -514,12 +539,15 @@ export interface RecordRow {
   accepted: number | null;
   refund: number | null;
   payout: number | null;
+  /** A Yes/No market: its picks are Yes/No, not ladder outcomes. */
+  binary?: boolean;
 }
 
 /** One settled market a player was in. */
 export interface RecordMarket {
   marketId: string;
   symbol: string;
+  binary?: boolean;
   settledAt: number;
   buckets: Bucket[];
   winningBucket: Bucket | null;
@@ -546,7 +574,7 @@ export interface PlayerRecord {
   bestStreak: number;
   open: { markets: number; staked: number };
   refundedMarkets: number;
-  /** How each outcome has done when this player picked it in a settled market. */
+  /** How each ladder outcome has done when this player picked it in a settled market (Yes/No markets aside). */
   byOutcome: Record<Bucket, { picks: number; wins: number }>;
   /** Settled markets, newest first. */
   history: RecordMarket[];
@@ -581,13 +609,14 @@ export function summarizeRecord(rows: readonly RecordRow[]): PlayerRecord {
     if (!inPool.length) continue; // every stake was refunded by a pool limit
     const staked = inPool.reduce((s, p) => s + (p.accepted ?? 0), 0);
     const payout = inPool.reduce((s, p) => s + (p.payout ?? 0), 0);
-    for (const p of inPool) {
+    for (const p of first.binary ? [] : inPool) {
       byOutcome[p.bucket].picks++;
       if ((p.payout ?? 0) > 0) byOutcome[p.bucket].wins++;
     }
     settled.push({
       marketId,
       symbol: first.symbol,
+      ...(first.binary ? { binary: true } : {}),
       settledAt: first.settledAt ?? 0,
       buckets: [...new Set(inPool.map((p) => p.bucket))],
       winningBucket: first.winningBucket,

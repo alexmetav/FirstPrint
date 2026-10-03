@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse, type Server } 
 import { timingSafeEqual } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
-import { AppError, DAILY_POINTS, LIVE_PRESETS, MIN_STAKE, SESSION_MS, SUGGESTED_LIVE_TOKENS, type FirstprintService, type UserRow } from '../services/firstprint.ts';
+import { AppError, DAILY_POINTS, LEADERBOARD_PERIODS, LIVE_PRESETS, MIN_STAKE, SESSION_MS, SUGGESTED_LIVE_TOKENS, type FirstprintService, type LeaderboardPeriod, type UserRow } from '../services/firstprint.ts';
 import type { Scheduler } from '../workers/scheduler.ts';
 import type { LiveFeed } from '../workers/liveFeed.ts';
 import { cachedGoogleJwks, verifyGoogleIdToken, type JwksFetcher } from '../auth/google.ts';
@@ -333,11 +333,21 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('GET', '/api/markets/:id/activity', ({ params }) => ({ activity: service.activity(params.id) }));
 
+  route('GET', '/api/markets/:id/odds', ({ params }) => service.odds(params.id));
+
+  route('GET', '/api/markets/:id/holders', ({ params }) => service.holders(params.id));
+
   route('GET', '/api/listings/detected', ({ url }) => ({
     listings: service.detections({ status: 'all', limit: boundedLimit(url.searchParams.get('limit')) }).filter((d) => d.status !== 'ignored'),
   }));
 
-  route('GET', '/api/leaderboard', ({ optionalUser }) => service.leaderboard(optionalUser()?.id));
+  route('GET', '/api/leaderboard', ({ url, optionalUser }) => {
+    const p = url.searchParams.get('period') ?? 'week';
+    const period = (LEADERBOARD_PERIODS as readonly string[]).includes(p) ? (p as LeaderboardPeriod) : 'week';
+    return service.leaderboard(optionalUser()?.id, period);
+  });
+
+  route('GET', '/api/users/:username', ({ params, optionalUser }) => service.publicProfile(params.username, optionalUser()?.id));
 
   // --- User routes ----------------------------------------------------------------
 
