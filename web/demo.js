@@ -330,7 +330,16 @@ export class DemoBackend {
   }
 
   me() {
-    return this.run(() => this.publicUser(this.me_()));
+    return this.run(() => ({ ...this.publicUser(this.me_()), unreadNotifications: 0 }));
+  }
+
+  /** Practice mode keeps no result notifications. */
+  notifications() {
+    return this.run(() => ({ unread: 0, notifications: [] }));
+  }
+
+  markNotificationsRead() {
+    return this.run(() => ({ unread: 0 }));
   }
 
   signup({ email, username, password }) {

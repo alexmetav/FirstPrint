@@ -353,8 +353,12 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('GET', '/api/me', ({ user }) => {
     const u = user();
-    return publicUser(u, service.clock.now(), service.walletsFor(u.id));
+    return { ...publicUser(u, service.clock.now(), service.walletsFor(u.id)), unreadNotifications: service.unreadNotifications(u.id) };
   });
+
+  route('GET', '/api/me/notifications', ({ user }) => service.notificationsFor(user().id));
+
+  route('POST', '/api/me/notifications/read', ({ user }) => service.markNotificationsRead(user().id));
 
   route('GET', '/api/me/wallets', ({ user }) => ({ wallets: service.walletsFor(user().id) }));
 

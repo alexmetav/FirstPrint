@@ -14,6 +14,7 @@ import { allVenues } from './exchanges/venues.ts';
 import { SimVenue, simProfileFromDb } from './exchanges/sim.ts';
 import type { Venue } from './exchanges/types.ts';
 import { ConsoleMailer, ResendMailer, type Mailer } from './auth/mailer.ts';
+import { resultEmail } from './services/notify.ts';
 import { RewardsService } from './services/rewards.ts';
 import { rpcChain, rpcUrlFor, type Cluster } from './solana/testfpt.ts';
 
@@ -65,11 +66,19 @@ const live = new LiveFeed(service);  // still serves the browser event stream; p
 const tracked = cfg.manualOnly ? [] : venues.filter((v) => cfg.trackVenues.includes(v.id));
 const tracker = tracked.length ? new ListingTracker(service, tracked, { autoCreate: cfg.autoCreateMarkets }) : null;
 
-// Settlement notifications are logged; plug in email or web push here.
+// Results are stored for the in-app bell by the service. Here they are logged and, where the player
+// signed in with email and a real mailer is set up, sent as a short email.
+const appUrl = `${(cfg.publicUrl ?? 'https://www.firstprint.fun').replace(/\/+$/, '')}/app/`;
 const scheduler = new Scheduler(
   service,
   async (notes) => {
-    for (const n of notes) log(`notify ${n.userId}: ${n.symbol} ${n.status} payout=${n.payout} refund=${n.refund}`);
+    for (const n of notes) {
+      log(`notify ${n.userId}: ${n.symbol} ${n.status} payout=${n.payout} refund=${n.refund}`);
+      const email = mailer instanceof ResendMailer ? service.getUser(n.userId).email : null;
+      if (!email) continue;
+      const mail = resultEmail(n, appUrl);
+      mailer!.send(email, mail.subject, mail.text).catch((err: Error) => log(`result email failed for ${n.userId}: ${err.message}`));
+    }
   },
   { tickMs: cfg.tickMs, liveMs: cfg.liveMs, trackEveryMs: cfg.trackEveryMs, tracker, live: cfg.manualOnly ? null : live },
 );

@@ -221,3 +221,21 @@ CREATE TABLE IF NOT EXISTS app_settings (
   key    TEXT PRIMARY KEY,
   value  TEXT NOT NULL
 );
+
+-- Each player's result when a market they predicted on settles or is cancelled.
+CREATE TABLE IF NOT EXISTS notifications (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id         TEXT NOT NULL REFERENCES users(id),
+  market_id       TEXT NOT NULL,
+  symbol          TEXT NOT NULL,
+  status          TEXT NOT NULL,   -- resolved | void
+  void_reason     TEXT,
+  winning_bucket  TEXT,
+  outcomes        TEXT NOT NULL DEFAULT 'ladder',
+  staked          INTEGER NOT NULL,
+  payout          INTEGER NOT NULL,
+  refund          INTEGER NOT NULL,
+  created_at      INTEGER NOT NULL,
+  read_at         INTEGER
+);
+CREATE INDEX IF NOT EXISTS notifications_user ON notifications(user_id, created_at);
