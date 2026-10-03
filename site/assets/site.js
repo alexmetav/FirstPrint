@@ -1093,6 +1093,21 @@ setInterval(() => {
   $$('[data-ago]').forEach((el) => (el.textContent = ago(Number(el.dataset.ago))));
 }, 5_000);
 
-window.addEventListener('hashchange', onRoute);
-initLanding();
-onRoute();
+/**
+ * Links from when the app lived at the site root (shared markets, the admin page, portfolio)
+ * go to the same page in the app, wherever the "Launch app" button points.
+ */
+function redirectOldAppLinks() {
+  const home = document.querySelector('[data-app-home]')?.getAttribute('href');
+  if (home && /^#\/(market\/|leaderboard|portfolio|admin|radar)/.test(location.hash)) {
+    location.replace(home + location.hash);
+    return true;
+  }
+  return false;
+}
+
+window.addEventListener('hashchange', () => redirectOldAppLinks() || onRoute());
+if (!redirectOldAppLinks()) {
+  initLanding();
+  onRoute();
+}

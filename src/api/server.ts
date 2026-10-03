@@ -9,6 +9,7 @@ import { cachedGoogleJwks, verifyGoogleIdToken, type JwksFetcher } from '../auth
 import type { Mailer } from '../auth/mailer.ts';
 import type { Bucket } from '../engine/engine.ts';
 import { MarketData } from '../services/marketData.ts';
+import { linkSiteToApp } from '../site/links.ts';
 
 export interface ServerOptions {
   service: FirstprintService;
@@ -35,6 +36,11 @@ export interface ServerOptions {
   /** Send cookies with the Secure flag (enable behind HTTPS). */
   secureCookies: boolean;
   webDir: string;
+  /**
+   * The public website. When set, it is served at / and the app moves to /app/, so visitors meet the
+   * landing page first and its "Launch app" buttons open the markets.
+   */
+  siteDir?: string | null;
 }
 
 type Handler = (ctx: Ctx) => Promise<unknown> | unknown;
@@ -71,6 +77,9 @@ export const CSP = [
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
+  '.webmanifest': 'application/manifest+json',
+  '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml',
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
@@ -561,19 +570,26 @@ export function createApiServer(opts: ServerOptions): Server {
   // --- Server ------------------------------------------------------------------------
 
   const webRoot = resolve(opts.webDir);
+  const siteRoot = opts.siteDir ? resolve(opts.siteDir) : null;
+  const APP_PREFIX = '/app';
+  /** Website files that link to the app; their /play/ links are pointed at /app/. */
+  const LINKED_SITE_FILES = new Set(['index.html', join('assets', 'site.js')]);
 
-  async function serveStatic(res: ServerResponse, pathname: string) {
+  async function serveStatic(res: ServerResponse, root: string, pathname: string, linkToApp = false) {
     const rel = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '');
-    let file = join(webRoot, rel === '/' ? 'index.html' : rel);
-    if (!file.startsWith(webRoot)) return send(res, 404, { error: 'not_found', message: 'Not found.' });
+    let file = join(root, rel === '/' ? 'index.html' : rel);
+    if (!file.startsWith(root)) return send(res, 404, { error: 'not_found', message: 'Not found.' });
     try {
       const s = await stat(file);
       if (s.isDirectory()) file = join(file, 'index.html');
     } catch {
-      file = join(webRoot, 'index.html'); // SPA fallback
+      file = join(root, 'index.html'); // SPA fallback
     }
     try {
-      const data = await readFile(file);
+      let data: Buffer | string = await readFile(file);
+      if (linkToApp && LINKED_SITE_FILES.has(file.slice(root.length + 1))) {
+        data = linkSiteToApp(data.toString('utf8'), APP_PREFIX, file);
+      }
       res.writeHead(200, {
         'content-type': MIME[extname(file)] ?? 'application/octet-stream',
         'cache-control': extname(file) === '.html' ? 'no-cache' : 'public, max-age=300',
@@ -582,6 +598,18 @@ export function createApiServer(opts: ServerOptions): Server {
     } catch {
       send(res, 404, { error: 'not_found', message: 'Not found.' });
     }
+  }
+
+  /** Website at /, app at /app/ when there is a website; otherwise the app everywhere. */
+  function servePage(res: ServerResponse, url: URL) {
+    const path = url.pathname;
+    if (!siteRoot) return serveStatic(res, webRoot, path);
+    if (path === APP_PREFIX || path === '/play' || path.startsWith('/play/')) {
+      res.writeHead(301, { location: `${APP_PREFIX}/${url.search}` });
+      return res.end();
+    }
+    if (path.startsWith(`${APP_PREFIX}/`)) return serveStatic(res, webRoot, path.slice(APP_PREFIX.length));
+    return serveStatic(res, siteRoot, path, true);
   }
 
   // --- Live updates (Server-Sent Events) -------------------------------------------
@@ -617,7 +645,7 @@ export function createApiServer(opts: ServerOptions): Server {
 
     if (!url.pathname.startsWith('/api/')) {
       if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method_not_allowed' });
-      try { return await serveStatic(res, url.pathname); }
+      try { return await servePage(res, url); }
       catch { return send(res, 400, { error: 'bad_path', message: 'Invalid path.' }); }
     }
 

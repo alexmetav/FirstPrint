@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package.json ./
 COPY src ./src
 COPY web ./web
+COPY site ./site
 ENV NODE_ENV=production PORT=8787 DB_PATH=/data/firstprint.db
 RUN mkdir -p /data && chown node:node /data
 VOLUME ["/data"]

@@ -72,6 +72,8 @@ const server = createApiServer({
   publicUrl: cfg.publicUrl,
   solanaChain: cfg.solanaChain,
   webDir: fileURLToPath(new URL('../web', import.meta.url)),
+  // The landing page at /, the app at /app/. Set SITE=0 to serve only the app.
+  siteDir: process.env.SITE === '0' ? null : fileURLToPath(new URL('../site', import.meta.url)),
 });
 
 server.listen(cfg.port, '0.0.0.0', () => {

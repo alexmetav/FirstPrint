@@ -89,8 +89,9 @@ The static site and the read-only demo above don't have accounts. The full app i
 3. Wait for the deploy to go green, then open `https://<service>.onrender.com/api/health`. It should return `{"ok":true,...}`.
 4. Read the generated admin key in Render → `firstprint-app` → Environment → `ADMIN_KEY`. Open `<your app address>/#/admin` and paste it. The page should say "Database backup: last saved ...". Keep the key private.
 5. Custom domain: in Render → Settings → Custom Domains add `app.firstprint.fun`, then add the DNS record Render shows you. Set `PUBLIC_URL` to that address and redeploy.
-6. Point the marketing site at it: in Vercel → Settings → Environment Variables add `APP_URL` = your app address (`https://...`), then redeploy. The "practice" buttons on the site then open the full app. Without `APP_URL` the site keeps linking to the browser-only practice build at `/play/`.
-7. Google only: in Google Cloud Console add your `PUBLIC_URL` as an Authorized JavaScript origin on the OAuth client.
+6. **The app serves the website too.** `firstprint-app` shows the landing page at `/` and the app at `/app/`; the landing page's **Launch app** buttons open `/app/`. So pointing your domain straight at Render gives visitors the landing page first. Old links such as `/#/market/...` and `/#/admin` forward to the same page under `/app/`. Set `SITE=0` to serve only the app at `/`.
+7. If the website stays on Vercel instead:  in Vercel → Settings → Environment Variables add `APP_URL` = your app address plus `/app` (for example `https://firstprint-app.onrender.com/app`), then redeploy. The "practice" buttons on the site then open the full app. Without `APP_URL` the site keeps linking to the browser-only practice build at `/play/`.
+8. Google only: in Google Cloud Console add your `PUBLIC_URL` as an Authorized JavaScript origin on the OAuth client.
 
 **What's free and what isn't.** Wallet and Google sign-in are free. Email codes work without payment only to your own address in Resend's test mode; sending to everyone needs a domain verified in Resend, which uses a domain you own (you already own firstprint.fun, so it costs nothing extra). To try the app before that, sign in with a Solana wallet (devnet by default).
 
