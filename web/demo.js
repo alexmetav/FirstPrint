@@ -250,9 +250,11 @@ export class DemoBackend {
     const afterClose = m.status !== 'open';
     const totals = emptyTotals();
     const users = new Set();
+    let volume24h = 0;
     for (const p of m.predictions) {
       totals[p.bucket] += afterClose ? (p.accepted ?? 0) : p.stake;
       users.add(p.userId);
+      if (p.placedAt > now - 24 * D3_HOUR) volume24h += p.stake;
     }
     const pool = Object.values(totals).reduce((s, n) => s + n, 0);
     const phase = m.status === 'open' ? (now < m.listingAt ? 'pre_listing' : 'baseline') : m.status === 'locked' ? 'running' : m.status;
@@ -296,6 +298,7 @@ export class DemoBackend {
       openedAt: m.openedAt,
       closeAt: w.closeAt,
       settleAt: w.settleAt,
+      outcomes: 'ladder',
       thresholds: m.cfg.thresholds,
       feeBps: m.cfg.feeBps,
       earlyBirdK: m.cfg.earlyBirdK,
@@ -305,6 +308,7 @@ export class DemoBackend {
       pool,
       totals,
       predictors: users.size,
+      volume24h,
       live,
       result,
       scorecard: m.scorecard,
@@ -551,38 +555,102 @@ export class DemoBackend {
     });
   }
 
-  /** The practice account's record, worked out the same way as on the server. */
-  stats() {
-    return this.run(() => {
-      const u = this.me_();
-      const rows = [];
-      const profit = new Map();
-      for (const m of this.marketList) {
-        for (const p of m.predictions) {
-          if (m.status === 'resolved' && p.accepted) profit.set(p.userId, (profit.get(p.userId) ?? 0) + (p.payout ?? 0) - p.accepted);
-          if (p.userId !== u.id) continue;
-          rows.push({
-            marketId: m.id, symbol: m.symbol, status: m.status, settledAt: m.settledAt ?? null,
-            winningBucket: m.status === 'resolved' ? (m.result?.winningBucket ?? null) : null,
-            bucket: p.bucket, stake: p.stake, accepted: p.accepted ?? null, refund: p.refund ?? null, payout: p.payout ?? null,
-          });
-        }
+  /** A player's record, worked out the same way as on the server. */
+  recordFor(userId) {
+    const rows = [];
+    const profit = new Map();
+    for (const m of this.marketList) {
+      for (const p of m.predictions) {
+        if (m.status === 'resolved' && p.accepted) profit.set(p.userId, (profit.get(p.userId) ?? 0) + (p.payout ?? 0) - p.accepted);
+        if (p.userId !== userId) continue;
+        rows.push({
+          marketId: m.id, symbol: m.symbol, status: m.status, settledAt: m.settledAt ?? null,
+          winningBucket: m.status === 'resolved' ? (m.result?.winningBucket ?? null) : null,
+          bucket: p.bucket, stake: p.stake, accepted: p.accepted ?? null, refund: p.refund ?? null, payout: p.payout ?? null,
+        });
       }
-      const record = summarizeRecord(rows);
-      const mine = profit.get(u.id);
-      return {
-        ...record,
-        rank: mine === undefined ? null : 1 + [...profit.values()].filter((v) => v > mine).length,
-        players: profit.size,
-      };
+    }
+    const record = summarizeRecord(rows);
+    const mine = profit.get(userId);
+    return {
+      ...record,
+      rank: mine === undefined ? null : 1 + [...profit.values()].filter((v) => v > mine).length,
+      players: profit.size,
+    };
+  }
+
+  stats() {
+    return this.run(() => this.recordFor(this.me_().id));
+  }
+
+  profile(name) {
+    return this.run(() => {
+      const u = [...this.users.values()].find((x) => x.username.toLowerCase() === String(name).toLowerCase());
+      if (!u) throw new ApiError(404, 'user_not_found', 'No player with that username.');
+      const positions = [];
+      for (const m of this.marketList) {
+        if (m.status !== 'open' && m.status !== 'locked') continue;
+        const by = new Map();
+        for (const p of m.predictions) if (p.userId === u.id) by.set(p.bucket, (by.get(p.bucket) ?? 0) + p.stake);
+        for (const [bucket, stake] of by) positions.push({ marketId: m.id, symbol: m.symbol, name: m.name, marketStatus: m.status, outcomes: 'ladder', bucket, stake });
+      }
+      const stats = this.recordFor(u.id);
+      return { username: u.username, joinedAt: this.now() - 30 * 24 * D3_HOUR, isMe: u.id === this.sessionUserId, stats: { ...stats, history: stats.history.slice(0, 30) }, positions };
     });
   }
 
-  leaderboard() {
+  holders(id) {
     return this.run(() => {
+      const m = this.find(id);
+      const settled = m.status === 'resolved' || m.status === 'void';
+      const by = new Map();
+      for (const p of m.predictions) {
+        const username = this.users.get(p.userId).username;
+        const h = by.get(username) ?? { username, total: 0, payout: 0, picks: new Map() };
+        h.total += p.stake;
+        h.payout += p.payout ?? 0;
+        h.picks.set(p.bucket, (h.picks.get(p.bucket) ?? 0) + p.stake);
+        by.set(username, h);
+      }
+      const holders = [...by.values()]
+        .sort((a, b) => b.total - a.total || a.username.localeCompare(b.username))
+        .slice(0, 20)
+        .map((h) => ({ username: h.username, total: h.total, payout: settled ? h.payout : null, picks: [...h.picks].map(([bucket, stake]) => ({ bucket, stake })).sort((a, b) => b.stake - a.stake) }));
+      return { holders, total: by.size };
+    });
+  }
+
+  odds(id) {
+    return this.run(() => {
+      const m = this.find(id);
+      const totals = emptyTotals();
+      let pool = 0;
+      const series = [...m.predictions]
+        .sort((a, b) => a.placedAt - b.placedAt)
+        .map((p) => {
+          totals[p.bucket] += p.stake;
+          pool += p.stake;
+          return { t: p.placedAt, shares: Object.fromEntries(BUCKETS.map((b) => [b, Math.round((totals[b] / pool) * 1000) / 1000])) };
+        });
+      return { outcomes: 'ladder', buckets: BUCKETS, openedAt: m.openedAt, series };
+    });
+  }
+
+  leaderboard(period = 'week') {
+    return this.run(() => {
+      const d = new Date(this.now());
+      const DAY = 24 * D3_HOUR;
+      const week = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+      const day = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+      const range = {
+        day: [day, day + DAY],
+        week: [week, week + 7 * DAY],
+        month: [Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1), Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)],
+        all: [0, null],
+      }[period] ?? [week, week + 7 * DAY];
       const rows = new Map();
       for (const m of this.marketList) {
-        if (m.status !== 'resolved') continue;
+        if (m.status !== 'resolved' || (m.settledAt ?? this.now()) < range[0]) continue;
         for (const p of m.predictions) {
           if (!p.accepted) continue;
           const r = rows.get(p.userId) ?? { userId: p.userId, name: this.users.get(p.userId).username, profit: 0, wins: 0, total: 0 };
@@ -593,11 +661,10 @@ export class DemoBackend {
         }
       }
       const ranked = [...rows.values()].sort((a, b) => b.profit - a.profit || b.wins - a.wins).map((r, i) => ({ ...r, rank: i + 1 }));
-      const d = new Date(this.now());
-      const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
       return {
-        seasonStart: start,
-        seasonEnd: start + 7 * 24 * D3_HOUR,
+        period,
+        seasonStart: range[0],
+        seasonEnd: range[1],
         entries: ranked.map(({ userId, ...r }) => ({ ...r, isMe: userId === this.sessionUserId })),
         me: ranked.find((r) => r.userId === this.sessionUserId) ?? null,
       };
