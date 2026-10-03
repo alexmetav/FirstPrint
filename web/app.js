@@ -440,7 +440,7 @@ function featuredView(m) {
         <p class="lede">Will ${esc(m.name || m.symbol)} be at or above ${fmtPrice(m.basePrice)} when the result is posted? Pick Yes or No.</p>
         ${heroFacts(m, 'Closes in', until(m.closeAt))}
         <div class="actions">
-          <a class="btn btn-solid btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
+          <a class="btn btn-gold btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
           <a class="btn btn-lg" href="#how">How it works</a>
         </div>
       </div>
@@ -456,7 +456,7 @@ function featuredView(m) {
         <p class="lede">Predict where ${esc(m.name || m.symbol)} is priced at the result, compared with the start price. ${m.pool ? '' : 'Nobody has predicted yet, so early picks get the biggest bonus.'}</p>
         ${heroFacts(m, 'Closes in', until(m.closeAt))}
         <div class="actions">
-          <a class="btn btn-solid btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
+          <a class="btn btn-gold btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
           <a class="btn btn-lg" href="#how">How it works</a>
         </div>
       </div>
@@ -474,7 +474,7 @@ function featuredView(m) {
         <p class="lede">Predict where ${esc(m.name || m.symbol)} trades ${fmtSpan(m.settleAt - m.listingAt)} after ${test ? `the market starts, using live prices from ${esc(venueNames(m))}` : 'listing'}.</p>
         ${heroFacts(m, pre ? (test ? 'Starts in' : 'Lists in') : 'Closes in', pre ? until(m.listingAt) : until(m.closeAt))}
         <div class="actions">
-          <a class="btn btn-solid btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
+          <a class="btn btn-gold btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
           <a class="btn btn-lg" href="#how">How it works</a>
         </div>
       </div>
@@ -904,7 +904,7 @@ function mobileBar(m) {
   return `
     <div class="mobile-bar">
       <p>${m.phase === 'pre_listing' ? `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}` : `Closes in ${until(m.closeAt)}`}</p>
-      <button class="cta" style="--c:var(--text)" data-action="open-sheet">Make a prediction</button>
+      <button class="cta" data-action="open-sheet">Make a prediction</button>
     </div>`;
 }
 
