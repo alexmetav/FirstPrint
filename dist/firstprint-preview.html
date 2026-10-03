@@ -1859,7 +1859,8 @@ code {
   display: none;
 }
 
-@media (max-width: 640px) {
+/* Phones and tablets in portrait use the bottom tab bar; the top bar keeps the logo and account. */
+@media (max-width: 900px) {
   .nav {
     display: none;
   }
@@ -1916,6 +1917,9 @@ code {
   #toast {
     bottom: calc(82px + env(safe-area-inset-bottom));
   }
+}
+
+@media (max-width: 640px) {
   .demo-bar .long {
     display: none;
   }
@@ -4275,11 +4279,7 @@ main .input-wrap input:not([type='checkbox']) {
 
 /* ------------------------------------------------------------- Responsive */
 
-@media (max-width: 1100px) {
-  .nav a .i {
-    display: none;
-  }
-}
+
 
 @media (max-width: 900px) {
   .featured {
@@ -4859,6 +4859,281 @@ main .search input:not([type='checkbox']) {
     flex: 1;
     justify-content: center;
     padding: 7px 4px;
+  }
+}
+
+/* =====================================================================
+   Every device: compact top bar, touch targets, no zoom on focus,
+   notches, landscape phones and large screens.
+   ===================================================================== */
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  overflow-x: clip;
+}
+.topbar-inner,
+main,
+.footer,
+.demo-bar-inner {
+  padding-left: max(20px, env(safe-area-inset-left));
+  padding-right: max(20px, env(safe-area-inset-right));
+}
+
+/* Laptops and small desktops: drop secondary labels so the top bar fits on one line. */
+@media (max-width: 1180px) {
+  .topbar-inner {
+    gap: 18px;
+  }
+  .nav a .i,
+  .faucet-label,
+  .points .unit,
+  .wallet-chip > span:not(.avatar) {
+    display: none;
+  }
+  .wallet-chip {
+    padding: 0 4px;
+  }
+  .chip-faucet {
+    padding: 0 10px;
+  }
+}
+
+/* Tablets and phones: the bottom tab bar takes over navigation. */
+@media (max-width: 900px) {
+  .tabbar {
+    background: color-mix(in srgb, var(--surface) 90%, transparent);
+  }
+  .tabbar .i {
+    width: 22px;
+    height: 22px;
+    stroke-width: 1.9;
+  }
+  .tabbar a[aria-current='page'] .i {
+    color: var(--brand);
+  }
+  .account {
+    margin-left: auto;
+  }
+  /* iPhones zoom into inputs smaller than 16px; keep them at 16px. */
+  main input:not([type='checkbox']):not([type='radio']):not(#stake):not(.code-input),
+  main select,
+  main .select select,
+  main textarea,
+  .modal input:not(.code-input),
+  .modal select {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar-inner,
+  main,
+  .footer,
+  .demo-bar-inner {
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+}
+
+/* Small phones */
+@media (max-width: 400px) {
+  .topbar-inner {
+    gap: 8px;
+  }
+  .wordmark {
+    font-size: 20px;
+  }
+  .account {
+    gap: 6px;
+  }
+  .gift .gift-n {
+    display: none;
+  }
+  .gift {
+    padding: 0 9px;
+  }
+}
+@media (max-width: 350px) {
+  .wordmark .word {
+    display: none;
+  }
+  .wordmark .mark {
+    width: 20px;
+    margin-right: 0;
+  }
+  .wordmark .mark i {
+    height: 4px;
+  }
+}
+
+/* Touch screens: comfortable tap targets (about 40px). */
+@media (pointer: coarse), (max-width: 900px) {
+  .btn {
+    min-height: 40px;
+  }
+  .btn-sm {
+    min-height: 36px;
+  }
+  .chip {
+    min-height: 36px;
+  }
+  .back {
+    padding: 8px 0;
+  }
+  .wordmark {
+    min-height: 40px;
+  }
+  .tabs button,
+  .chips button {
+    min-height: 38px;
+  }
+  .tabbar a {
+    min-height: 48px;
+    justify-content: center;
+  }
+  .admin-nav button {
+    min-height: 40px;
+  }
+  .toggle,
+  .venues .check {
+    min-height: 44px;
+  }
+  .card:hover,
+  .rung:not(:disabled):hover,
+  .picker button:hover {
+    transform: none;
+  }
+}
+
+/* Phones held sideways: very little height. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .topbar {
+    position: static;
+  }
+  .trade {
+    max-height: 94vh;
+  }
+  .modal-backdrop {
+    align-items: start;
+    overflow-y: auto;
+  }
+  .modal {
+    max-height: none;
+  }
+  .tabbar {
+    padding-top: 2px;
+    padding-bottom: calc(2px + env(safe-area-inset-bottom));
+  }
+  .tabbar a {
+    flex-direction: row;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+  }
+  .mobile-bar {
+    bottom: calc(46px + env(safe-area-inset-bottom));
+  }
+  .featured {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  }
+}
+
+/* Large monitors: use the extra width. */
+@media (min-width: 1600px) {
+  :root {
+    --page: 1400px;
+  }
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  }
+}
+
+/* Market title: long symbols and the Share button share one row on small phones. */
+.m-title-text {
+  flex: 1;
+}
+.m-title .sym {
+  overflow-wrap: anywhere;
+}
+.share-btn {
+  flex: none;
+}
+@media (max-width: 400px) {
+  .m-title {
+    gap: 12px;
+  }
+  .m-title .sym {
+    font-size: clamp(28px, 9vw, 40px);
+  }
+  .m-title-row {
+    gap: 6px;
+  }
+}
+
+@media (max-width: 900px) {
+  .market-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 350px) {
+  .wordmark {
+    min-width: 40px;
+    justify-content: center;
+  }
+}
+
+/* Phones sideways: the screen is wide but short, so navigation moves back to the top bar. */
+@media (max-height: 500px) and (orientation: landscape) and (min-width: 641px) {
+  .nav {
+    display: flex;
+  }
+  .nav a {
+    padding: 6px 10px;
+  }
+  .tabbar {
+    display: none;
+  }
+  .mobile-bar {
+    bottom: 0;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    padding-top: 8px;
+  }
+  main {
+    padding-bottom: 90px;
+  }
+  #toast {
+    bottom: calc(70px + env(safe-area-inset-bottom));
+  }
+  .wordmark .word {
+    display: none;
+  }
+}
+
+/* Very small phones: tighter featured-market facts. */
+@media (max-width: 360px) {
+  .hero-facts {
+    gap: 6px;
+  }
+  .hero-facts > div {
+    padding: 8px;
+  }
+  .hero-facts .i {
+    display: none;
+  }
+  .hero-facts dt {
+    font-size: 10px;
+    letter-spacing: 0.02em;
+  }
+  .hero-facts dd {
+    font-size: 14px;
+  }
+  .featured h1 {
+    font-size: 32px;
+  }
+  .hero-token .avatar-xl {
+    --size: 44px;
   }
 }
 
@@ -6877,15 +7152,15 @@ function renderTop() {
     .join('');
   $('#topbar').innerHTML = `
     <div class="topbar-inner">
-      <a class="wordmark" href="#/" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
+      <a class="wordmark" href="#/" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="word">Firstprint</span></a>
       <nav class="nav" aria-label="Main">
         ${pages.map(([name, href, label]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}${label}</a>`).join('')}
       </nav>
       <div class="account">
-        ${S.cfg?.rewards ? `<button class="chip chip-faucet" data-action="faucet" title="Get free test SOL for network fees">${ico('droplet')}<span class="hide-sm">Test SOL</span></button>` : ''}
+        ${S.cfg?.rewards ? `<button class="chip chip-faucet" data-action="faucet" title="Get free test SOL for network fees">${ico('droplet')}<span class="faucet-label">Test SOL</span></button>` : ''}
         ${
           S.me
-            ? `${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points">${ico('gift')}+100</button>` : ''}
+            ? `${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim 100 free daily points">${ico('gift')}<span class="gift-n">+100</span></button>` : ''}
                <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${fmtNum(S.me.points)}<span class="unit">pts</span></a>
                <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
             : `<button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button>`
