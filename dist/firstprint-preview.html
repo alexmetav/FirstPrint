@@ -5861,11 +5861,14 @@ function tokenAdminSection(t) {
         <span class="muted">A key on this server that mints TestFPT when players claim. Keep this server’s database private.</span>
         ${t.authority ? `<span class="copy-row"><code>${esc(t.authority)}</code><button class="btn" data-action="copy-text" data-text="${esc(t.authority)}">Copy</button></span>` : `<button class="btn btn-solid" data-action="admin-token-authority"${A.busy ? ' disabled' : ''}>Create authority</button>`}</div></li>
       <li class="${sol ? 'done' : ''}"><span class="step-check" aria-hidden="true">${sol ? '✓' : ''}</span><div><b>Give it test SOL</b>
-        <span class="muted">Balance: ${sol === null || sol === undefined ? 'unknown' : `${sol} SOL`}. Paste the address above into the faucet (choose ${net}), or ask the network directly.</span>
+        <span class="muted">Balance on ${net}: <b>${sol === null || sol === undefined ? 'unknown' : `${sol} SOL`}</b>${t.authorityUrl ? ` (<a href="${esc(t.authorityUrl)}" target="_blank" rel="noopener noreferrer">check on Explorer ↗</a>)` : ''}. Paste the address above into the faucet and make sure its network menu says <b>${net}</b>, not Devnet or Mainnet. Then press Refresh balance.</span>
+        ${t.balanceError ? `<span class="form-error">${esc(t.balanceError)}</span>` : ''}
+        ${t.authority && sol === 0 ? `<span class="form-error">No SOL yet on ${net}. If the faucet said it sent SOL, it may have used another network, or it can take a minute.</span>` : ''}
         <span class="row-actions"><a class="btn" href="https://faucet.solana.com" target="_blank" rel="noopener noreferrer">Open faucet ↗</a><button class="btn" data-action="admin-token-airdrop"${t.authority && !A.busy ? '' : ' disabled'}>Request 1 SOL</button><button class="btn" data-action="admin-token-refresh">Refresh balance</button></span></div></li>
       <li><span class="step-check" aria-hidden="true"></span><div><b>Create TestFPT</b>
         <span class="muted">Creates the token on chain, named TestFPT, with 0 decimals (1 point = 1 TestFPT).</span>
-        <button class="btn btn-solid" data-action="admin-token-create"${t.authority && sol && !A.busy ? '' : ' disabled'}>${A.busy === 'token' ? 'Creating…' : 'Create TestFPT'}</button></div></li>
+        <button class="btn btn-solid" data-action="admin-token-create"${t.authority && !A.busy ? '' : ' disabled'}>${A.busy === 'token' ? 'Working…' : 'Create TestFPT'}</button>
+        ${t.authority && !sol ? '<span class="muted">You can try even if the balance shows unknown: if the SOL isn’t there, it will say so.</span>' : ''}</div></li>
     </ol></section>`;
 }
 

@@ -144,11 +144,12 @@ export class RewardsService {
     const token = this.token;
     if (!token) return { enabled: false as const };
     let balance: number | null = null;
+    let balanceError: string | null = null;
     if (this.authority) {
       try {
         balance = Number(await token.chain.balance(this.authority.address)) / 1e9;
-      } catch {
-        balance = null;
+      } catch (err) {
+        balanceError = `Couldn't read the balance from Solana ${token.cluster}: ${(err as Error).message.slice(0, 160)}`;
       }
     }
     return {
@@ -157,6 +158,8 @@ export class RewardsService {
       cluster: token.cluster,
       authority: this.authority?.address ?? null,
       authoritySol: balance,
+      balanceError,
+      authorityUrl: this.authority ? explorerAddress(this.authority.address, token.cluster) : null,
       mint: this.mint,
       mintUrl: this.mint ? explorerAddress(this.mint, token.cluster) : null,
       faucetUrl: FAUCET_URL,
@@ -195,7 +198,11 @@ export class RewardsService {
     try {
       mint = await createTestFptMint(token.chain, this.authority);
     } catch (err) {
-      throw new AppError(502, 'mint_failed', `Creating TestFPT failed: ${(err as Error).message.slice(0, 200)}. Make sure the authority has test SOL.`);
+      throw new AppError(
+        502,
+        'mint_failed',
+        `Creating TestFPT failed: ${(err as Error).message.slice(0, 200)}. Check that the authority address has test SOL on ${token.cluster} (the faucet's network menu must say ${token.cluster === 'devnet' ? 'Devnet' : 'Testnet'}).`,
+      );
     }
     this.saveSetting('testfpt.mint', mint);
     this.mint = mint;
