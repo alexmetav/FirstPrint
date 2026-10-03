@@ -3,12 +3,12 @@
 import { bucketRangeLabel } from './engine.js';
 import { ApiError, backendAvailable, captureReferral, createAdminApi, createApi, wake } from './api.js';
 import { DemoBackend } from './demo.js';
+import { OUTCOME_ICONS, ico } from './icons.js';
 import { INSTALL_LINKS, connectAndSign, disconnectWallets, isMobileDevice, listWallets, mobileWalletLinks, onWalletsChanged, shortAddress, signTransactionWith } from './wallet.js';
 
 const LADDER = ['moon', 'up', 'flat', 'down', 'crash'];
 const NAMES = { crash: 'Crash', down: 'Down', flat: 'Flat', up: 'Up', moon: 'Moon' };
-const ICONS = { moon: '🚀', up: '📈', flat: '➖', down: '📉', crash: '💥' };
-const icon = (b) => `<span class="oc-ico" aria-hidden="true">${ICONS[b]}</span>`;
+const icon = (b) => ico(OUTCOME_ICONS[b], 'oc-ico');
 const VOID_REASONS = {
   listing_delayed: 'the listing was delayed by more than 24 hours',
   retracted: 'the exchange cancelled the listing',
@@ -250,46 +250,44 @@ function titleFor() {
 
 // ------------------------------------------------------------------ Top bar
 
-/** Simple line icons for the phone tab bar. */
-const TAB_ICONS = {
-  home: '<path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/>',
-  radar: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 12l5-5"/>',
-  leaderboard: '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>',
-  portfolio: '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 12h18"/>',
-  earn: '<rect x="3" y="9" width="18" height="12" rx="2"/><path d="M12 9v12M3 13h18M12 9c-2-4-6-4-6-1.5S12 9 12 9zm0 0c2-4 6-4 6-1.5S12 9 12 9z"/>',
-};
+/** Navigation: the same pages in the top bar (wide screens) and the tab bar (phones). */
+const NAV_ICONS = { home: 'grid', radar: 'radar', earn: 'gift', leaderboard: 'trophy', portfolio: 'dashboard' };
+
+/** A coloured circle with the first letter of a name or symbol; the colour is stable per name. */
+function avatar(name, cls = '') {
+  const text = String(name || '?');
+  let h = 0;
+  for (const ch of text) h = (h * 31 + ch.codePointAt(0)) % 360;
+  return `<span class="avatar${cls ? ` ${cls}` : ''}" style="--h:${h}" aria-hidden="true">${esc(text.replace(/^@/, '').slice(0, 1).toUpperCase())}</span>`;
+}
 
 function renderTop() {
   const cur = (name) => (S.route.name === name || (name === 'home' && S.route.name === 'market') ? ' aria-current="page"' : '');
   const wallet = S.me?.wallets?.[0]?.address;
-  const tabs = [
-    ['home', '#/', 'Markets'],
-    ...(S.cfg?.manualOnly ? [] : [['radar', '#/radar', 'Radar']]),
-    ['earn', '#/earn', 'Earn'],
-    ['leaderboard', '#/leaderboard', 'Ranks'],
-    ['portfolio', '#/portfolio', 'Me'],
+  const pages = [
+    ['home', '#/', 'Markets', 'Markets'],
+    ...(S.cfg?.manualOnly ? [] : [['radar', '#/radar', 'Listing radar', 'Radar']]),
+    ['earn', '#/earn', 'Earn', 'Earn'],
+    ['leaderboard', '#/leaderboard', 'Leaderboard', 'Ranks'],
+    ['portfolio', '#/portfolio', 'Dashboard', 'Me'],
   ];
-  $('#tabbar').innerHTML = tabs
-    .map(([name, href, label]) => `<a href="${href}"${cur(name)}><svg viewBox="0 0 24 24" aria-hidden="true">${TAB_ICONS[name]}</svg><span>${label}</span></a>`)
+  $('#tabbar').innerHTML = pages
+    .map(([name, href, , short]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}<span>${short}</span></a>`)
     .join('');
   $('#topbar').innerHTML = `
     <div class="topbar-inner">
       <a class="wordmark" href="#/" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
       <nav class="nav" aria-label="Main">
-        <a href="#/"${cur('home')}>Markets</a>
-        ${S.cfg?.manualOnly ? '' : `<a href="#/radar"${cur('radar')}>Listing radar</a>`}
-        <a href="#/earn"${cur('earn')}>Earn</a>
-        <a href="#/leaderboard"${cur('leaderboard')}>Leaderboard</a>
-        <a href="#/portfolio"${cur('portfolio')}>Dashboard</a>
+        ${pages.map(([name, href, label]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}${label}</a>`).join('')}
       </nav>
       <div class="account">
-        ${S.cfg?.rewards ? '<button class="faucet-btn" data-action="faucet" title="Get free test SOL for network fees"><span aria-hidden="true">🚰</span><span class="hide-sm"> Test SOL</span></button>' : ''}
+        ${S.cfg?.rewards ? `<button class="chip chip-faucet" data-action="faucet" title="Get free test SOL for network fees">${ico('droplet')}<span class="hide-sm">Test SOL</span></button>` : ''}
         ${
           S.me
-            ? `${S.me.canClaimDaily ? `<button class="gift" data-action="claim" title="Claim your free daily points"><span aria-hidden="true">🎁</span> +100</button>` : ''}
-               <a class="points" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${fmtPts(S.me.points)}</a>
-               <a class="wallet-chip" href="#/portfolio">${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</a>`
-            : `<button class="btn btn-solid" data-action="connect">Log in</button>`
+            ? `${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points">${ico('gift')}+100</button>` : ''}
+               <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${fmtNum(S.me.points)}<span class="unit">pts</span></a>
+               <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
+            : `<button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button>`
         }
       </div>
     </div>`;
@@ -300,8 +298,8 @@ function renderDemoBar() {
   $('#demo-bar').innerHTML = `
     <div class="demo-bar"><div class="demo-bar-inner">
       <p><strong>Practice mode</strong><span class="long">: simulated prices, browser-only accounts, and no real funds or persisted predictions.</span><span class="short">: fake points, simulated prices.</span></p>
-      <button class="btn" data-action="skip">⏩ <span class="long">Skip ahead </span>2 min</button>
-      <button class="btn" data-action="reset">↺ Reset</button>
+      <button class="btn btn-sm" data-action="skip">${ico('forward')}<span class="long">Skip ahead </span>2 min</button>
+      <button class="btn btn-sm" data-action="reset">${ico('undo')}Reset</button>
     </div></div>`;
 }
 
@@ -319,11 +317,12 @@ function homeView() {
   return `
     ${startChecklist()}
     ${featured ? featuredView(featured) : ''}
+    <div class="section-head section-head-tight"><span class="section-ico">${ico('grid')}</span><div><h2>All markets</h2><p class="muted">Pick a market, choose an outcome, stake points.</p></div></div>
     <div class="toolbar">
       <div class="tabs" role="tablist" aria-label="Market status">
         ${S.cfg?.manualOnly ? `${tab('open', 'Open')}${tab('live', 'Awaiting result')}${tab('settled', 'Settled')}` : `${tab('open', 'Upcoming')}${tab('live', 'Live')}${tab('settled', 'Settled')}`}
       </div>
-      <label class="select">Exchange
+      <label class="select">${ico('landmark')}<span class="hide-sm">Exchange</span>
         <select id="exchange-filter">
           <option value="all">All exchanges</option>
           ${exchanges.map((e) => `<option value="${esc(e)}"${S.exchange === e ? ' selected' : ''}>${esc(e)}</option>`).join('')}
@@ -339,33 +338,50 @@ function homeView() {
 }
 
 function emptyText() {
-  if (S.filter === 'live') return '<p>No markets are waiting for a result. Markets move here once predictions close.</p><button class="btn" data-filter="open">See upcoming</button>';
-  if (S.filter === 'settled') return '<p>No settled markets yet. Results appear here after Firstprint posts them.</p>';
-  return `<div class="empty-art" aria-hidden="true">🛰️</div>
+  if (S.filter === 'live') return `<div class="empty-art">${ico('clock')}</div><p>No markets are waiting for a result. Markets move here once predictions close.</p><button class="btn" data-filter="open">See open markets</button>`;
+  if (S.filter === 'settled') return `<div class="empty-art">${ico('checkCircle')}</div><p>No settled markets yet. Results appear here after Firstprint posts them.</p>`;
+  return `<div class="empty-art">${ico('satellite')}</div>
     <p><strong>No open markets right now.</strong><br />New markets land here as soon as Firstprint opens them.</p>
-    ${S.me?.canClaimDaily ? '<button class="btn btn-solid" data-action="claim">🎁 Claim 100 free points meanwhile</button>' : '<a class="btn" href="#/leaderboard">See the leaderboard</a>'}`;
+    ${S.me?.canClaimDaily ? `<button class="btn btn-solid" data-action="claim">${ico('gift')}Claim 100 free points meanwhile</button>` : `<a class="btn" href="#/leaderboard">${ico('trophy')}See the leaderboard</a>`}`;
+}
+
+/** The pool split as five bars, Moon on top, used by the featured market. */
+function miniLadder(m) {
+  return `
+    <div class="mini-ladder" aria-label="Pool split by outcome">
+      <div class="mini-head"><span>Where the crowd is</span><span>${fmtPts(m.pool)}</span></div>
+      ${LADDER.map((b) => {
+        const pct = share(m, b) * 100;
+        return `<div class="mini-rung" style="--c:var(--${b});--share:${pct}%"><b>${icon(b)}${NAMES[b]}</b><span class="muted">${rangeLabel(b, m.thresholds)}</span><span class="pct">${Math.round(pct)}%</span></div>`;
+      }).join('')}
+    </div>`;
+}
+
+/** Pool, predictors and timing as three small facts with icons. */
+function heroFacts(m, whenLabel, whenValue) {
+  return `
+    <dl class="hero-facts">
+      <div>${ico('coins')}<dt>Pool</dt><dd>${fmtPts(m.pool)}</dd></div>
+      <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
+      <div>${ico('clock')}<dt>${whenLabel}</dt><dd>${whenValue}</dd></div>
+    </dl>`;
 }
 
 function featuredView(m) {
   if (isManual(m)) {
     return `
     <section class="featured" aria-labelledby="featured-title">
-      <div>
-        <h1 id="featured-title">${esc(m.symbol)} is open</h1>
-        <p class="closing-pill"><span class="dot" aria-hidden="true"></span>Predictions close in ${until(m.closeAt)}</p>
-        <p class="lede">Predict where ${esc(m.name || m.symbol)} is priced at the result, compared with the start price of ${fmtPrice(m.basePrice)}.
-          ${m.pool ? `${fmtPts(m.pool)} in the pool from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'}.` : 'Nobody has predicted yet.'}</p>
+      <div class="featured-main">
+        <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Featured market · open for predictions</span>
+        <div class="hero-token">${avatar(m.symbol, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">is open</span></h1><p class="hero-name">${esc(m.name || m.symbol)} · start price ${fmtPrice(m.basePrice)}</p></div></div>
+        <p class="lede">Predict where ${esc(m.name || m.symbol)} is priced at the result, compared with the start price. ${m.pool ? '' : 'Nobody has predicted yet, so early picks get the biggest bonus.'}</p>
+        ${heroFacts(m, 'Closes in', until(m.closeAt))}
         <div class="actions">
-          <a class="btn btn-solid" href="#/market/${encodeURIComponent(m.id)}">Make a prediction</a>
-          <a class="btn" href="#how">How it works</a>
+          <a class="btn btn-solid btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
+          <a class="btn btn-lg" href="#how">How it works</a>
         </div>
       </div>
-      <div class="mini-ladder" aria-label="Pool split by outcome">
-        ${LADDER.map((b) => {
-          const pct = share(m, b) * 100;
-          return `<div class="mini-rung" style="--c:var(--${b});--share:${pct}%"><b>${icon(b)}${NAMES[b]}</b><span class="muted">${rangeLabel(b, m.thresholds)}</span><span class="pct">${Math.round(pct)}%</span></div>`;
-        }).join('')}
-      </div>
+      ${miniLadder(m)}
     </section>`;
   }
   const pre = m.phase === 'pre_listing';
@@ -373,35 +389,39 @@ function featuredView(m) {
   const verb = test ? (pre ? 'market starts' : 'market is live') : `${pre ? 'lists' : 'is trading'} on ${esc(m.exchange)}`;
   return `
     <section class="featured" aria-labelledby="featured-title">
-      <div>
-        <h1 id="featured-title">${esc(m.symbol)} ${verb}
-          <span class="countdown">${pre ? `in ${until(m.listingAt)}` : `predictions close in ${until(m.closeAt)}`}</span>
-        </h1>
-        <p class="lede">Predict where ${esc(m.name || m.symbol)} trades ${fmtSpan(m.settleAt - m.listingAt)} after ${test ? `the market starts, using live prices from ${esc(venueNames(m))}` : 'listing'}.
-          ${m.pool ? `${fmtPts(m.pool)} in the pool from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'}.` : 'Nobody has predicted yet.'}</p>
+      <div class="featured-main">
+        <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Featured market</span>
+        <div class="hero-token">${avatar(m.symbol, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">${verb}</span></h1><p class="hero-name">${esc(m.name || m.symbol)}</p></div></div>
+        <p class="lede">Predict where ${esc(m.name || m.symbol)} trades ${fmtSpan(m.settleAt - m.listingAt)} after ${test ? `the market starts, using live prices from ${esc(venueNames(m))}` : 'listing'}.</p>
+        ${heroFacts(m, pre ? (test ? 'Starts in' : 'Lists in') : 'Closes in', pre ? until(m.listingAt) : until(m.closeAt))}
         <div class="actions">
-          <a class="btn btn-solid" href="#/market/${encodeURIComponent(m.id)}">Make a prediction</a>
-          <a class="btn" href="#how">How it works</a>
+          <a class="btn btn-solid btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
+          <a class="btn btn-lg" href="#how">How it works</a>
         </div>
       </div>
-      <div class="mini-ladder" aria-label="Pool split by outcome">
-        ${LADDER.map((b) => {
-          const pct = share(m, b) * 100;
-          return `<div class="mini-rung" style="--c:var(--${b});--share:${pct}%"><b>${icon(b)}${NAMES[b]}</b><span class="muted">${rangeLabel(b, m.thresholds)}</span><span class="pct">${Math.round(pct)}%</span></div>`;
-        }).join('')}
-      </div>
+      ${miniLadder(m)}
     </section>`;
+}
+
+/** Status pill for a market card: what is happening and how it looks. */
+function cardStatus(m) {
+  if (m.status === 'resolved') return '<span class="pill pill-done">Settled</span>';
+  if (m.status === 'void') return '<span class="pill pill-off">Cancelled</span>';
+  if (m.phase === 'awaiting_result') return '<span class="pill pill-wait">Awaiting result</span>';
+  if (m.phase === 'pre_listing') return '<span class="pill pill-soon">Upcoming</span>';
+  if (m.phase === 'running') return '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Live</span>';
+  return '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>';
 }
 
 function cardView(m) {
   const lead = leader(m);
   let leadText;
   if (m.status === 'resolved') leadText = `Settled in ${outcome(m.result.winningBucket)} at ${fmtPct(m.result.returnPct)}`;
-  else if (m.phase === 'awaiting_result') leadText = `Predictions closed. ${fmtPts(m.pool)} in the pool, result coming soon`;
+  else if (m.phase === 'awaiting_result') leadText = 'Predictions closed. Result coming soon';
   else if (m.status === 'void') leadText = 'Cancelled. Points were returned.';
   else if (m.live?.projectedBucket) leadText = `Now ${fmtPct(m.live.returnPct)}, tracking ${outcome(m.live.projectedBucket)}`;
-  else if (lead) leadText = `${outcome(lead)} leads with ${Math.round(share(m, lead) * 100)}% of the pool`;
-  else leadText = '<span class="muted">No predictions yet</span>';
+  else if (lead) leadText = `${outcome(lead)} leads with ${Math.round(share(m, lead) * 100)}%`;
+  else leadText = '<span class="muted">No predictions yet. Be the first.</span>';
 
   let when;
   if (m.phase === 'pre_listing') when = `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}`;
@@ -413,25 +433,32 @@ function cardView(m) {
   const soon = m.status === 'open' && m.closeAt - now() < 15 * 60_000 && m.closeAt > now();
   return `
     <a class="card${soon ? ' soon' : ''}" href="#/market/${encodeURIComponent(m.id)}">
-      ${soon ? '<span class="soon-tag">⏰ Closing soon</span>' : ''}
-      <div class="card-top"><span class="sym">${esc(m.symbol)}</span><span class="exch">${esc(m.exchange)}</span></div>
-      <div class="card-name">${esc(m.name || '')}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</div>
+      <div class="card-top">
+        ${avatar(m.symbol, 'avatar-md')}
+        <div class="card-title"><span class="sym">${esc(m.symbol)}</span><span class="card-name">${esc(m.name || '')}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</span></div>
+        ${soon ? `<span class="pill pill-hot">${ico('flame')}Closing soon</span>` : cardStatus(m)}
+      </div>
+      <div class="card-lead">${leadText}</div>
       <div class="strip${m.pool ? '' : ' empty'}" aria-hidden="true">
         ${['crash', 'down', 'flat', 'up', 'moon'].map((b) => `<span style="--c:var(--${b});flex:${m.pool ? m.totals[b] : 1}"></span>`).join('')}
       </div>
-      <div class="card-lead">${leadText}</div>
-      <div class="card-foot"><span class="when">${when}</span><span>${fmtPts(m.pool)}</span></div>
+      <div class="card-venues">${ico('landmark')}${esc(venueNames(m))}</div>
+      <div class="card-foot">
+        <span class="when">${ico('clock')}${when}</span>
+        <span>${ico('users')}${fmtNum(m.predictors)}</span>
+        <span class="pool">${ico('coins')}${fmtNum(m.pool)}</span>
+      </div>
     </a>`;
 }
 
 /** Three friendly steps up front; the full rules stay one tap away. */
 function howItWorks() {
   const steps = `
-      <h2>How it works</h2>
+      <div class="section-head"><span class="section-ico">${ico('info')}</span><div><h2>How it works</h2><p class="muted">Free to play. Points only, no real money.</p></div></div>
       <ol class="steps">
-        <li><span class="step-ico" aria-hidden="true">🎯</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}.</p></li>
-        <li><span class="step-ico" aria-hidden="true">🪙</span><b>Stake free points</b><p>Everyone starts with 1,000 points, plus 100 more every day. No real money.</p></li>
-        <li><span class="step-ico" aria-hidden="true">🏆</span><b>Win the pool</b><p>If you’re right, you split the pool with the other winners. Earlier picks earn more.</p></li>
+        <li><span class="step-ico" style="--c:var(--up)">${ico('target')}</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}.</p></li>
+        <li><span class="step-ico" style="--c:var(--moon)">${ico('coins')}</span><b>Stake free points</b><p>Everyone starts with 1,000 points, plus 100 more every day. No real money.</p></li>
+        <li><span class="step-ico" style="--c:var(--brand)">${ico('trophy')}</span><b>Win the pool</b><p>If you’re right, you split the pool with the other winners. Earlier picks earn more.</p></li>
       </ol>
       <details class="full-rules"><summary>Full rules</summary>`;
   if (S.cfg?.manualOnly) {
@@ -531,11 +558,11 @@ function marketMain(m) {
   }).join('');
 
   return `
-    <a class="back" href="#/">All markets</a>
+    <a class="back" href="#/">${ico('arrowLeft')}All markets</a>
     <header class="m-head">
-      <div class="m-title"><h1 class="sym">${esc(m.symbol)}</h1><span class="exch">${esc(m.exchange)}</span>${
+      <div class="m-title">${avatar(m.symbol, 'avatar-lg')}<div class="m-title-text"><div class="m-title-row"><h1 class="sym">${esc(m.symbol)}</h1>${cardStatus(m)}${
         (m.phase === 'baseline' || m.phase === 'running') && S.live && !isManual(m) ? '<span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Live price</span>' : ''
-      }<button class="btn share-btn" data-action="share" aria-label="Share this market">Share</button></div>
+      }</div>${m.name ? `<span class="m-name">${esc(m.name)}</span>` : ''}</div><button class="btn share-btn" data-action="share" aria-label="Share this market">${ico('share')}<span class="hide-sm">Share</span></button></div>
       <p class="m-question">${
         isManual(m)
           ? `Where will ${esc(m.name || m.symbol)} be priced at the result, compared with the start price of ${fmtPrice(m.basePrice)}?`
@@ -544,16 +571,16 @@ function marketMain(m) {
           : `Where will ${esc(m.name || m.symbol)} trade ${span} after listing on ${esc(m.exchange)}?`
       }</p>
       <p class="m-status">${statusLine(m)}</p>
-      <p class="m-venues">${m.kind === 'live_test' ? '<span class="tag tag-test">Live test</span> ' : ''}${isManual(m) ? `Reference exchanges: ${esc(venueNames(m))}` : `Prices from ${esc(venueNames(m))}`}</p>
+      <p class="m-venues">${m.kind === 'live_test' ? '<span class="tag tag-test">Live test</span> ' : ''}${ico('landmark')}${isManual(m) ? `Reference exchanges: ${esc(venueNames(m))}` : `Prices from ${esc(venueNames(m))}`}</p>
     </header>
 
     <dl class="stats">
-      <div><dt>Pool</dt><dd>${fmtPts(m.pool)}</dd></div>
-      <div><dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
+      <div>${ico('coins')}<dt>Pool</dt><dd>${fmtPts(m.pool)}</dd></div>
+      <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
       ${
         isManual(m)
-          ? `<div><dt>Start price</dt><dd>${fmtPrice(m.basePrice)}</dd></div><div><dt>Closes</dt><dd>${fmtDate(m.closeAt)}</dd></div>`
-          : `<div><dt>${m.kind === 'live_test' ? 'Starts' : 'Listing'}</dt><dd>${fmtDate(m.listingAt)}</dd></div><div><dt>Result</dt><dd>${fmtDate(m.settleAt)}</dd></div>`
+          ? `<div>${ico('dollar')}<dt>Start price</dt><dd>${fmtPrice(m.basePrice)}</dd></div><div>${ico('calendar')}<dt>Closes</dt><dd>${fmtDate(m.closeAt)}</dd></div>`
+          : `<div>${ico('calendar')}<dt>${m.kind === 'live_test' ? 'Starts' : 'Listing'}</dt><dd>${fmtDate(m.listingAt)}</dd></div><div>${ico('clock')}<dt>Result</dt><dd>${fmtDate(m.settleAt)}</dd></div>`
       }
     </dl>
 
@@ -565,8 +592,8 @@ function marketMain(m) {
       ${canPick ? '<p class="fine" style="margin:2px 0 0">Pays shows the current payout per point before early bonuses. Your estimate in the prediction panel includes your bonus.</p>' : ''}
     </div>
 
-    <section class="section">
-      <h2>How this market settles</h2>
+    <section class="section panel">
+      <div class="section-head"><span class="section-ico">${ico('shield')}</span><h2>How this market settles</h2></div>
       ${isManual(m) ? manualRules(m) : ''}
       <ol class="rules"${isManual(m) ? ' hidden' : ''}>
         <li>Starting price: the average price over the first ${fmtSpan(m.closeAt - m.listingAt)} ${m.kind === 'live_test' ? 'after the market starts' : 'of trading'}, from ${esc(venueNames(m))}.</li>
@@ -579,8 +606,8 @@ function marketMain(m) {
 
     ${
       m.scorecard
-        ? `<section class="section">
-            <h2>About ${esc(m.symbol)}</h2>
+        ? `<section class="section panel">
+            <div class="section-head"><span class="section-ico">${ico('info')}</span><h2>About ${esc(m.symbol)}</h2></div>
             <dl class="facts">
               ${m.scorecard.fdvUsd ? `<div><dt>Valuation at listing</dt><dd>$${fmtCompact(m.scorecard.fdvUsd)}</dd></div>` : ''}
               ${m.scorecard.circulatingPct !== undefined ? `<div><dt>Circulating supply</dt><dd>${m.scorecard.circulatingPct}%</dd></div>` : ''}
@@ -591,13 +618,13 @@ function marketMain(m) {
         : ''
     }
 
-    <section class="section">
-      <h2>Recent predictions</h2>
+    <section class="section panel">
+      <div class="section-head"><span class="section-ico">${ico('activity')}</span><h2>Recent predictions</h2></div>
       ${
         S.activity.length
-          ? `<ul class="activity">${S.activity
+          ? `<ul class="activity feed">${S.activity
               .slice(0, 12)
-              .map((a) => `<li><span>${esc(a.username)} picked ${outcome(a.bucket)}</span><span class="muted">${fmtPts(a.stake)}, ${fmtAgo(a.placedAt)}</span></li>`)
+              .map((a) => `<li>${avatar(a.username, 'avatar-sm')}<span class="feed-main"><b class="who">${esc(a.username)}</b> picked ${outcome(a.bucket)}</span><span class="muted">${fmtPts(a.stake)} · ${fmtAgo(a.placedAt)}</span></li>`)
               .join('')}</ul>`
           : '<p class="muted">No predictions yet.</p>'
       }
@@ -627,7 +654,7 @@ function manualPanel(m) {
   const r = m.result;
   if (!r || r.finalPrice == null) {
     const closed = m.phase === 'awaiting_result';
-    const step = (state, title, when) => `<li class="${state}"><span class="step-dot" aria-hidden="true"></span><b>${title}</b><span class="muted">${when}</span></li>`;
+    const step = (state, title, when) => `<li class="${state}"><span class="step-dot" aria-hidden="true">${state === 'done' ? ico('check') : ''}</span><b>${title}</b><span class="muted">${when}</span></li>`;
     return `
       <ol class="timeline" aria-label="Market timeline">
         ${step('done', 'Market opened', fmtDate(m.openedAt))}
@@ -645,8 +672,8 @@ function manualPanel(m) {
     </div>
     ${
       r.winners?.length
-        ? `<section class="section"><h2>Winners</h2><ul class="activity">${r.winners
-            .map((w) => `<li><span>${esc(w.username)} picked ${outcome(w.bucket)}</span><span class="muted">${fmtPts(w.stake)} → <b>${fmtPts(w.payout)}</b></span></li>`)
+        ? `<section class="section panel"><div class="section-head"><span class="section-ico">${ico('trophy')}</span><h2>Winners</h2></div><ul class="activity feed">${r.winners
+            .map((w) => `<li>${avatar(w.username, 'avatar-sm')}<span class="feed-main"><b class="who">${esc(w.username)}</b> picked ${outcome(w.bucket)}</span><span class="muted">${fmtPts(w.stake)} → <b class="profit-pos">${fmtPts(w.payout)}</b></span></li>`)
             .join('')}</ul></section>`
         : ''
     }`;
@@ -731,7 +758,7 @@ function renderTrade() {
       el.innerHTML = `
         <div class="trade-card" id="trade-card">
           <button class="sheet-close" data-action="close-sheet">Close</button>
-          <h2>Predict ${esc(m.symbol)}</h2>
+          <h2>${ico('target')}Predict ${esc(m.symbol)}</h2>
           <div class="picker" role="radiogroup" aria-label="Outcome" id="picker"></div>
           <label class="field-label" for="stake">Stake</label>
           <div class="stake-input"><input id="stake" inputmode="numeric" autocomplete="off" value="${S.trade.stake}" aria-describedby="trade-fine" /><span>pts</span></div>
@@ -758,7 +785,7 @@ function renderTrade() {
   if (mode === 'open') {
     $('#picker').innerHTML = LADDER.map(
       (b) =>
-        `<button type="button" role="radio" aria-checked="${S.trade.bucket === b}" data-pick="${b}" style="--c:var(--${b})"><span class="pick-ico" aria-hidden="true">${ICONS[b]}</span><b>${NAMES[b]}</b><small>${Math.round(share(m, b) * 100)}%</small></button>`,
+        `<button type="button" role="radio" aria-checked="${S.trade.bucket === b}" data-pick="${b}" style="--c:var(--${b})"><span class="pick-ico">${icon(b)}</span><b>${NAMES[b]}</b><small>${Math.round(share(m, b) * 100)}%</small></button>`,
     ).join('');
     updateSummary();
   } else if (mode === 'closed') {
@@ -803,7 +830,7 @@ function updateSummary() {
     summary.innerHTML = '<div><dt>Pick an outcome to see your estimated payout.</dt></div>';
   } else {
     summary.innerHTML = `
-      <div class="big"><dt>If ${ICONS[b]} ${NAMES[b]} wins</dt><dd>${q ? `about ${fmtPts(q.payout)}` : '…'}</dd></div>
+      <div class="big"><dt>If ${icon(b)}${NAMES[b]} wins</dt><dd>${q ? `about ${fmtPts(q.payout)}` : '…'}</dd></div>
       <div><dt>Return on stake</dt><dd>${q && stake ? `${q.multiple.toFixed(2)}×` : '–'}</dd></div>
       <div><dt>Early bonus</dt><dd>${q ? `${q.weight.toFixed(2)}×` : '–'}</dd></div>
       <div><dt>Price range</dt><dd>${rangeLabel(b, m.thresholds)}</dd></div>`;
@@ -868,7 +895,7 @@ async function submitPrediction() {
     const payout = S.trade.quote?.payout;
     await S.api.predict(m.id, bucket, stake);
     celebrate(bucket);
-    toast(`${ICONS[bucket]} You’re in! ${NAMES[bucket]} for ${fmtPts(stake)}${payout ? `. Win about ${fmtPts(payout)} if it lands.` : '.'}`);
+    toast(`You’re in! ${NAMES[bucket]} for ${fmtPts(stake)}${payout ? `. Win about ${fmtPts(payout)} if it lands.` : '.'}`);
     $('#trade-error').textContent = '';
     closeSheet();
     await refreshMe();
@@ -930,24 +957,42 @@ const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
 // ------------------------------------------------------------------ Leaderboard & portfolio
 
 function leaderboardView(lb) {
+  const medal = (rank) => (rank <= 3 ? ` medal-${rank}` : '');
   const rows = lb.entries
     .map(
       (e) => `
       <tr class="${e.isMe ? 'me' : ''}">
-        <td class="rank">${e.rank}</td>
-        <td>${esc(e.name)}${e.isMe ? ' <span class="tag tag-you">You</span>' : ''}</td>
+        <td><span class="rank${medal(e.rank)}">${e.rank}</span></td>
+        <td><span class="who-cell">${avatar(e.name, 'avatar-sm')}<span>${esc(e.name)}${e.isMe ? ' <span class="tag tag-you">You</span>' : ''}</span></span></td>
         <td class="right ${e.profit >= 0 ? 'profit-pos' : 'profit-neg'}">${e.profit >= 0 ? '+' : '−'}${fmtNum(Math.abs(e.profit))}</td>
         <td class="right hide-sm">${e.wins} of ${e.total}</td>
       </tr>`,
     )
     .join('');
+  const top = lb.entries.slice(0, 3);
+  const podium = top.length
+    ? `<ol class="podium" aria-label="Top three">${top
+        .map(
+          (e) => `<li class="podium-${e.rank}${e.isMe ? ' me' : ''}">
+            <span class="podium-medal">${ico(e.rank === 1 ? 'trophy' : 'award')}</span>
+            ${avatar(e.name, 'avatar-lg')}
+            <b>${esc(e.name)}</b>
+            <span class="podium-profit ${e.profit >= 0 ? 'profit-pos' : 'profit-neg'}">${e.profit >= 0 ? '+' : '−'}${fmtNum(Math.abs(e.profit))} pts</span>
+            <span class="muted">#${e.rank} · ${e.wins} of ${e.total} correct</span>
+          </li>`,
+        )
+        .join('')}</ol>`
+    : '';
   return `
-    <h1 class="page-title">Leaderboard</h1>
-    <p class="page-lede">Points won or lost on markets settled this week. The board resets every Monday at 00:00 UTC.</p>
+    <header class="page-head">
+      <span class="page-ico">${ico('trophy')}</span>
+      <div><h1 class="page-title">Leaderboard</h1>
+      <p class="page-lede">Points won or lost on markets settled this week. The board resets every Monday at 00:00 UTC.</p></div>
+    </header>
     ${
       lb.entries.length
-        ? `<table class="table"><thead><tr><th>Rank</th><th>Predictor</th><th class="right">Profit</th><th class="right hide-sm">Correct</th></tr></thead><tbody>${rows}</tbody></table>`
-        : '<div class="empty"><p>No markets have settled this week yet.</p></div>'
+        ? `${podium}<div class="panel panel-flush"><table class="table"><thead><tr><th>Rank</th><th>Predictor</th><th class="right">Profit</th><th class="right hide-sm">Correct</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : `<div class="empty"><div class="empty-art">${ico('trophy')}</div><p>No markets have settled this week yet.</p></div>`
     }
     ${S.me && !lb.me ? '<p class="fine">You’ll appear here after one of your predictions settles.</p>' : ''}`;
 }
@@ -955,71 +1000,84 @@ function leaderboardView(lb) {
 function portfolioView(preds, history = [], stats = null) {
   if (!S.me) {
     return `
-      <h1 class="page-title">Your dashboard</h1>
-      <div class="empty"><div class="empty-art" aria-hidden="true">📊</div>
+      <header class="page-head"><span class="page-ico">${ico('dashboard')}</span><div><h1 class="page-title">Your dashboard</h1></div></header>
+      <div class="empty"><div class="empty-art">${ico('dashboard')}</div>
         <p><strong>Log in to see your dashboard.</strong><br />Your points, win rate and results live here. New accounts start with 1,000 free points.</p>
-        <button class="btn btn-solid" data-action="connect">Log in</button></div>`;
+        <button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button></div>`;
   }
   const active = preds.filter((p) => p.marketStatus === 'open' || p.marketStatus === 'locked');
   const activeTable = active.length
     ? `<table class="table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right">Status</th></tr></thead><tbody>${active
         .map((p) => {
-          const status = p.marketStatus === 'open' ? 'Open' : p.mode === 'manual' ? 'Awaiting result' : 'In play';
-          return `<tr><td><a href="#/market/${encodeURIComponent(p.marketId)}">${esc(p.symbol)}</a> <span class="muted hide-sm">${esc(p.exchange)}</span></td><td>${outcome(p.bucket)}</td><td class="right">${fmtNum(p.stake)}</td><td class="right">${status}</td></tr>`;
+          const status = p.marketStatus === 'open' ? '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>' : `<span class="pill pill-wait">${p.mode === 'manual' ? 'Awaiting result' : 'In play'}</span>`;
+          return `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(p.marketId)}">${avatar(p.symbol, 'avatar-sm')}<span>${esc(p.symbol)}</span></a></td><td>${outcome(p.bucket)}</td><td class="right num-cell">${fmtNum(p.stake)}</td><td class="right">${status}</td></tr>`;
         })
         .join('')}</tbody></table>`
-    : '<p class="muted">Nothing in play right now. <a href="#/">Pick a market</a> to get started.</p>';
+    : `<p class="muted pad">Nothing in play right now. <a href="#/">Pick a market</a> to get started.</p>`;
+  const method = S.me.wallets.length ? `Wallet ${esc(shortAddress(S.me.wallets[0].address))}` : S.me.hasEmail ? 'Signed in with email' : 'Signed in';
 
   return `
-    <div class="dash-head">
-      <div>
-        <h1 class="page-title">Your dashboard</h1>
-        <p class="muted" style="margin:4px 0 0">Signed in as ${esc(S.me.username)}</p>
+    <section class="profile-card">
+      ${avatar(S.me.username, 'avatar-xl')}
+      <div class="profile-main">
+        <span class="eyebrow">Your dashboard</span>
+        <h1 class="page-title">${esc(S.me.username)}</h1>
+        <p class="muted">${method}${S.me.xUsername ? ` · ${ico('x')} @${esc(S.me.xUsername)}` : ''}</p>
       </div>
-      <button class="btn" data-action="logout">Log out</button>
-    </div>
+      <div class="profile-actions">
+        <a class="btn" href="#/earn">${ico('gift')}Earn points</a>
+        <button class="btn" data-action="logout">${ico('logout')}Log out</button>
+      </div>
+    </section>
     ${startChecklist()}
     ${statTiles(stats)}
-    ${stats ? profitChart(stats.history) : ''}
-    ${stats ? outcomeRecord(stats.byOutcome) : ''}
-    <section class="section"><h2>In play${active.length ? ` <span class="muted count-inline">${active.length}</span>` : ''}</h2>${activeTable}</section>
-    ${stats ? pastMarkets(stats) : ''}
-    <section class="section">
-      <h2>Wallets</h2>
-      ${
-        S.me.wallets.length
-          ? `<ul class="wallet-list">${S.me.wallets
-              .map((w) => `<li><span class="addr" title="${esc(w.address)}">${esc(shortAddress(w.address))}</span><span class="muted">${esc(w.walletName || 'Solana wallet')}</span><a class="muted" href="https://solscan.io/account/${encodeURIComponent(w.address)}" target="_blank" rel="noopener noreferrer">View on Solscan</a></li>`)
-              .join('')}</ul>`
-          : '<p class="muted">No wallet linked. Link one to sign in with it too.</p>'
-      }
-      <button class="btn" data-action="link-wallet">Link ${S.me.wallets.length ? 'another' : 'a Solana'} wallet</button>
+    ${stats ? `<div class="dash-grid">${profitChart(stats.history)}${outcomeRecord(stats.byOutcome)}</div>` : ''}
+    <section class="section panel panel-flush">
+      <div class="section-head"><span class="section-ico">${ico('target')}</span><h2>In play${active.length ? ` <span class="count-badge">${active.length}</span>` : ''}</h2></div>
+      ${activeTable}
     </section>
-    ${historyView(history)}`;
+    ${stats ? pastMarkets(stats) : ''}
+    <div class="dash-grid">
+      <section class="section panel">
+        <div class="section-head"><span class="section-ico">${ico('wallet')}</span><h2>Wallets</h2></div>
+        ${
+          S.me.wallets.length
+            ? `<ul class="wallet-list">${S.me.wallets
+                .map((w) => `<li><span class="addr" title="${esc(w.address)}">${esc(shortAddress(w.address))}</span><span class="muted">${esc(w.walletName || 'Solana wallet')}</span><a class="muted" href="https://solscan.io/account/${encodeURIComponent(w.address)}" target="_blank" rel="noopener noreferrer">Solscan ${ico('external')}</a></li>`)
+                .join('')}</ul>`
+            : '<p class="muted">No wallet linked. Link one to sign in with it too and to claim TestFPT.</p>'
+        }
+        <button class="btn" data-action="link-wallet">${ico('plus')}Link ${S.me.wallets.length ? 'another' : 'a Solana'} wallet</button>
+      </section>
+      ${historyView(history)}
+    </div>`;
 }
 
 const signed = (n) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${fmtNum(Math.abs(n))}`;
 
 /** The headline numbers. Each tile is one fact with a short line of context. */
 function statTiles(st) {
-  const tile = (label, value, sub, extra = '') => `<div class="stat-tile"><dt>${label}</dt><dd>${value}</dd><p>${sub}</p>${extra}</div>`;
+  const tile = (icon, color, label, value, sub, extra = '') =>
+    `<div class="stat-tile" style="--c:var(--${color})"><span class="tile-ico">${ico(icon)}</span><dt>${label}</dt><dd>${value}</dd><p>${sub}</p>${extra}</div>`;
   const points = tile(
+    'coins',
+    'moon',
     'Points',
     fmtNum(S.me.points),
     st?.open.staked ? `${fmtNum(st.open.staked)} more in play` : 'Available to predict with',
-    S.me.canClaimDaily ? '<button class="btn btn-solid tile-btn" data-action="claim">🎁 Claim 100</button>' : '',
+    S.me.canClaimDaily ? `<button class="btn btn-solid tile-btn" data-action="claim">${ico('gift')}Claim 100</button>` : '',
   );
   if (!st || !st.settled) {
-    return `<dl class="stat-tiles">${points}${tile('Win rate', '–', st?.marketsPlayed ? 'Shows up once your first market settles' : 'Make your first prediction to start your record')}</dl>`;
+    return `<dl class="stat-tiles">${points}${tile('percent', 'up', 'Win rate', '–', st?.marketsPlayed ? 'Shows up once your first market settles' : 'Make your first prediction to start your record')}</dl>`;
   }
   const pct = Math.round(st.winRate * 100);
   return `<dl class="stat-tiles">
     ${points}
-    ${tile('Win rate', `${pct}%`, `${st.wins} of ${st.settled} market${st.settled === 1 ? '' : 's'} won`, `<div class="meter" role="img" aria-label="${pct}% of markets won"><i style="width:${pct}%"></i></div>`)}
-    ${tile('Points won', `<span class="${st.netProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(st.netProfit)}</span>`, `${fmtNum(st.totalWon)} paid out from ${fmtNum(st.totalStaked)} staked`)}
-    ${tile('Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '–', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'Your first win shows up here')}
-    ${tile('Streak', `${st.currentStreak}${st.currentStreak >= 3 ? ' 🔥' : ''}`, `wins in a row · best ${st.bestStreak}`)}
-    ${tile('Rank', st.rank ? `#${st.rank}` : '–', st.rank ? `of ${fmtNum(st.players)} players, all time` : 'After your first settled market')}
+    ${tile('percent', 'up', 'Win rate', `${pct}%`, `${st.wins} of ${st.settled} market${st.settled === 1 ? '' : 's'} won`, `<div class="meter" role="img" aria-label="${pct}% of markets won"><i style="width:${pct}%"></i></div>`)}
+    ${tile('trendUp', st.netProfit >= 0 ? 'up' : 'crash', 'Points won', `<span class="${st.netProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(st.netProfit)}</span>`, `${fmtNum(st.totalWon)} paid out from ${fmtNum(st.totalStaked)} staked`)}
+    ${tile('star', 'moon', 'Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '–', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'Your first win shows up here')}
+    ${tile('flame', 'down', 'Streak', `${st.currentStreak}`, `wins in a row · best ${st.bestStreak}`)}
+    ${tile('award', 'brand', 'Rank', st.rank ? `#${st.rank}` : '–', st.rank ? `of ${fmtNum(st.players)} players, all time` : 'After your first settled market')}
   </dl>`;
 }
 
@@ -1037,12 +1095,14 @@ function profitChart(history) {
   const last = values[values.length - 1];
   const data = pts.map((m, i) => ({ x: x(i + 1), y: y(m.cumulative), symbol: m.symbol, profit: m.profit, total: m.cumulative, at: m.settledAt }));
   return `
-    <section class="section">
-      <h2>Points won over time</h2>
+    <section class="section panel">
+      <div class="section-head"><span class="section-ico">${ico('dashboard')}</span><h2>Points won over time</h2></div>
       <div class="pchart" data-points='${esc(JSON.stringify(data))}'>
         <div class="pchart-axis"><span>${signed(hi)}</span><span>${signed(lo)}</span></div>
         <div class="pchart-plot">
           <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <defs><linearGradient id="pchart-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--${last >= 0 ? 'up' : 'crash'})" stop-opacity="0.32" /><stop offset="1" stop-color="var(--${last >= 0 ? 'up' : 'crash'})" stop-opacity="0" /></linearGradient></defs>
+            <path d="${d}L100,${y(lo).toFixed(2)}L0,${y(lo).toFixed(2)}Z" fill="url(#pchart-fill)" />
             <line class="pchart-zero" x1="0" x2="100" y1="${y(0).toFixed(2)}" y2="${y(0).toFixed(2)}" vector-effect="non-scaling-stroke" />
             <path class="pchart-line ${last >= 0 ? 'up' : 'down'}" d="${d}" vector-effect="non-scaling-stroke" />
           </svg>
@@ -1059,8 +1119,8 @@ function outcomeRecord(byOutcome) {
   const rows = LADDER.filter((b) => byOutcome[b].picks);
   if (!rows.length) return '';
   return `
-    <section class="section">
-      <h2>Your picks by outcome</h2>
+    <section class="section panel">
+      <div class="section-head"><span class="section-ico">${ico('target')}</span><h2>Your picks by outcome</h2></div>
       <ul class="orec">${rows
         .map((b) => {
           const { picks, wins } = byOutcome[b];
@@ -1075,14 +1135,14 @@ function outcomeRecord(byOutcome) {
 function pastMarkets(st) {
   const rows = st.history;
   return `
-    <section class="section">
-      <h2>Past markets${rows.length ? ` <span class="muted count-inline">${rows.length}</span>` : ''}</h2>
+    <section class="section panel panel-flush">
+      <div class="section-head"><span class="section-ico">${ico('history')}</span><h2>Past markets${rows.length ? ` <span class="count-badge">${rows.length}</span>` : ''}</h2></div>
       ${
         rows.length
           ? `<table class="table"><thead><tr><th>Market</th><th>Your pick</th><th class="hide-sm">Result</th><th class="right">Staked</th><th class="right">Points</th></tr></thead><tbody>${rows
               .map(
                 (m) => `<tr>
-                  <td><a href="#/market/${encodeURIComponent(m.marketId)}">${esc(m.symbol)}</a> <span class="muted hide-sm">${fmtAgo(m.settledAt)}</span></td>
+                  <td><a class="mkt-cell" href="#/market/${encodeURIComponent(m.marketId)}">${avatar(m.symbol, 'avatar-sm')}<span>${esc(m.symbol)}</span></a> <span class="muted hide-sm">${fmtAgo(m.settledAt)}</span></td>
                   <td>${m.buckets.map(outcome).join(' ')}</td>
                   <td class="hide-sm">${m.winningBucket ? outcome(m.winningBucket) : '–'}</td>
                   <td class="right">${fmtNum(m.staked)}</td>
@@ -1090,7 +1150,7 @@ function pastMarkets(st) {
                 </tr>`,
               )
               .join('')}</tbody></table>`
-          : '<p class="muted">Your results appear here after markets settle.</p>'
+          : '<p class="muted pad">Your results appear here after markets settle.</p>'
       }
       ${st.refundedMarkets ? `<p class="fine">${st.refundedMarkets} cancelled market${st.refundedMarkets === 1 ? ' was' : 's were'} refunded and ${st.refundedMarkets === 1 ? 'doesn’t' : 'don’t'} count toward your record.</p>` : ''}
     </section>`;
@@ -1133,9 +1193,9 @@ const HISTORY_LABELS = {
 function historyView(entries) {
   if (!entries.length) return '';
   return `
-    <section class="section">
-      <h2>Points history</h2>
-      <ul class="activity">${entries
+    <section class="section panel">
+      <div class="section-head"><span class="section-ico">${ico('coins')}</span><h2>Points history</h2></div>
+      <ul class="activity ledger">${entries
         .map((e) => {
           const label = (HISTORY_LABELS[e.reason] ?? (() => e.reason))(e);
           const name = e.marketId ? `<a href="#/market/${encodeURIComponent(e.marketId)}">${esc(label)}</a>` : esc(label);
@@ -1150,7 +1210,7 @@ function historyView(entries) {
 const FAUCET_URL = 'https://faucet.solana.com';
 const rewardsCluster = () => S.rewards?.cluster || S.cfg?.rewards?.cluster || 'testnet';
 const clusterName = () => (rewardsCluster() === 'devnet' ? 'Devnet' : 'Testnet');
-const TASK_ICONS = { follow: '👤', repost: '🔁', like: '❤️', share: '📣', link: '🔗' };
+const TASK_ICONS = { follow: 'userPlus', repost: 'repeat', like: 'heart', share: 'megaphone', link: 'link' };
 
 /** How to get free test SOL for the network fee. */
 function faucetSteps() {
@@ -1164,7 +1224,7 @@ function faucetSteps() {
         ${wallet ? `<span class="copy-row"><code>${esc(shortAddress(wallet))}</code><button class="btn" data-action="copy-text" data-text="${esc(wallet)}">Copy address</button></span>` : '<span class="muted">It’s at the top of your wallet. Link it to Firstprint on the Earn page so you can claim to it.</span>'}</li>
       <li><b>Get test SOL from the faucet.</b>
         <span class="muted">Open the faucet, choose ${net}, paste your address and request 1 SOL. It’s free and has no value. If it says you’ve asked too often, try again later.</span>
-        <a class="btn btn-solid" href="${FAUCET_URL}" target="_blank" rel="noopener noreferrer">Open the Solana faucet ↗</a></li>
+        <a class="btn btn-solid" href="${FAUCET_URL}" target="_blank" rel="noopener noreferrer">${ico('droplet')}Open the Solana faucet ${ico('external')}</a></li>
       <li><b>Come back and claim.</b> <span class="muted">On the Earn page, claim your points. Your wallet pays a tiny fee from the test SOL.</span></li>
     </ol>
     <button class="btn" style="width:100%" data-action="close-modal">Done</button>`;
@@ -1175,7 +1235,7 @@ function startSteps() {
   const r = S.rewards;
   const hasWallet = Boolean(S.me?.wallets?.length);
   const step = (done, title, body, action = '') =>
-    `<li class="${done ? 'done' : ''}"><span class="step-check" aria-hidden="true">${done ? '✓' : ''}</span><div><b>${title}</b><span class="muted">${body}</span>${done ? '' : action}</div></li>`;
+    `<li class="${done ? 'done' : ''}"><span class="step-check" aria-hidden="true">${done ? ico('check') : ''}</span><div><b>${title}</b><span class="muted">${body}</span>${done ? '' : action}</div></li>`;
   return `
     <ol class="steplist">
       ${step(hasWallet, 'Link a Solana wallet', 'Phantom, Solflare or Backpack. Your TestFPT goes here.', '<button class="btn" data-action="link-wallet">Link wallet</button>')}
@@ -1191,24 +1251,36 @@ function startChecklist() {
   if (!S.me || !S.rewards?.onChain || S.rewards.welcomeClaimed) return '';
   return `
     <section class="start-card">
-      <div><h2>Claim your 1,000 TestFPT to start</h2><p class="muted">Link a wallet, get free test SOL for the fee, then claim. Takes about two minutes.</p></div>
-      <div class="start-actions"><button class="btn btn-solid" data-action="start-guide">Show me the steps</button><a class="btn" href="#/earn">Claim</a></div>
+      <span class="start-ico">${ico('token')}</span>
+      <div class="start-text"><h2>Claim your 1,000 TestFPT to start</h2><p class="muted">Link a wallet, get free test SOL for the fee, then claim. Takes about two minutes.</p></div>
+      <div class="start-actions"><button class="btn btn-solid" data-action="start-guide">${ico('list')}Show me the steps</button><a class="btn" href="#/earn">Claim</a></div>
     </section>`;
 }
 
 function earnView() {
   if (!S.me) {
     return `
-      <h1 class="page-title">Earn points</h1>
-      <div class="empty"><div class="empty-art" aria-hidden="true">🎁</div>
+      <header class="page-head"><span class="page-ico">${ico('gift')}</span><div><h1 class="page-title">Earn points</h1></div></header>
+      <div class="empty"><div class="empty-art">${ico('gift')}</div>
         <p><strong>Log in to earn points.</strong><br />Complete tasks on X, invite friends and claim your points.</p>
-        <button class="btn btn-solid" data-action="connect">Log in</button></div>`;
+        <button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button></div>`;
   }
   const r = S.rewards;
   if (!r) return '<h1 class="page-title">Earn points</h1><div class="empty"><p>Rewards aren’t available right now.</p></div>';
+  const open = r.tasks.filter((t) => !t.done && t.remaining !== 0);
+  const available = open.reduce((n, t) => n + t.points, 0);
   return `
-    <h1 class="page-title">Earn points</h1>
-    <p class="page-lede">${r.onChain ? `Your rewards arrive as <b>TestFPT</b>, a token on the Solana ${clusterName()} network, when you claim them to your wallet. Claimed points also go into your Firstprint balance.` : 'Complete tasks and invite friends. Points go straight to your balance.'}</p>
+    <header class="page-head">
+      <span class="page-ico">${ico('gift')}</span>
+      <div><h1 class="page-title">Earn points</h1>
+      <p class="page-lede">${r.onChain ? `Your rewards arrive as <b>TestFPT</b>, a token on the Solana ${clusterName()} network, when you claim them to your wallet. Claimed points also go into your Firstprint balance.` : 'Complete tasks and invite friends. Points go straight to your balance.'}</p></div>
+    </header>
+    <dl class="earn-stats">
+      <div>${ico('list')}<dt>Open tasks</dt><dd>${open.length}</dd></div>
+      <div>${ico('sparkles')}<dt>Points available</dt><dd>+${fmtNum(available)}</dd></div>
+      <div>${ico('users')}<dt>Friends invited</dt><dd>${fmtNum(r.referral.invited)}</dd></div>
+      <div>${ico('x')}<dt>X account</dt><dd>${r.xUsername ? `@${esc(r.xUsername)}` : 'Not linked'}</dd></div>
+    </dl>
     ${r.onChain ? claimCard(r) : ''}
     <div class="earn-grid">
       ${xCard(r)}
@@ -1222,7 +1294,7 @@ function claimCard(r) {
   const wallets = S.me.wallets;
   return `
     <section class="claim-card">
-      <div class="claim-amount"><span class="muted">Ready to claim</span><b>${fmtNum(r.claimable)} <small>TestFPT</small></b></div>
+      <div class="claim-amount"><span class="claim-ico">${ico('token')}</span><div><span class="muted">Ready to claim</span><b>${fmtNum(r.claimable)} <small>TestFPT</small></b></div></div>
       <div class="claim-side">
         ${
           !wallets.length
@@ -1230,7 +1302,7 @@ function claimCard(r) {
             : `${wallets.length > 1 ? `<label class="select">To <select id="claim-wallet">${wallets.map((w) => `<option value="${esc(w.address)}">${esc(shortAddress(w.address))}${w.walletName ? ` · ${esc(w.walletName)}` : ''}</option>`).join('')}</select></label>` : `<span class="muted">To ${esc(shortAddress(wallets[0].address))}</span>`}
                <button class="cta" style="--c:var(--moon)" data-action="claim-tokens"${r.claimable && !S.claimBusy ? '' : ' disabled'}>${S.claimBusy ? 'Claiming…' : r.claimable ? `Claim ${fmtNum(r.claimable)} TestFPT` : 'Nothing to claim yet'}</button>`
         }
-        <p class="fine" id="claim-status" role="status">Your wallet pays a tiny fee in test SOL. <button class="switch" data-action="faucet">Need test SOL?</button>${r.mintUrl ? ` · <a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ↗</a>` : ''}</p>
+        <p class="fine" id="claim-status" role="status">Your wallet pays a tiny fee in test SOL. <button class="switch" data-action="faucet">Need test SOL?</button>${r.mintUrl ? ` · <a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a>` : ''}</p>
       </div>
     </section>`;
 }
@@ -1238,12 +1310,12 @@ function claimCard(r) {
 function xCard(r) {
   return `
     <section class="earn-card">
-      <h2><span aria-hidden="true">𝕏</span> Your X account</h2>
+      <div class="card-head"><span class="card-ico">${ico('x')}</span><h2>Your X account</h2>${r.xConnectPoints && !r.xUsername ? `<span class="pill pill-pts">+${r.xConnectPoints}</span>` : ''}</div>
       ${
         r.xUsername
-          ? `<p>Linked as <b>@${esc(r.xUsername)}</b> ✓</p><p class="fine">Tasks on X are checked against this account.</p>`
+          ? `<p class="linked">${ico('checkCircle')}Linked as <b>@${esc(r.xUsername)}</b></p><p class="fine">Tasks on X are checked against this account.</p>`
           : `<p class="muted">Link your X username to unlock X tasks${r.xConnectPoints ? ` and get <b>+${r.xConnectPoints} points</b>` : ''}. No password or login needed.</p>
-             <form id="x-form" class="inline-form" novalidate><input name="x" placeholder="@yourname" maxlength="16" autocomplete="off" aria-label="X username" /><button class="btn btn-solid" type="submit">Link</button></form>
+             <form id="x-form" class="inline-form" novalidate><span class="input-wrap"><span class="input-prefix">@</span><input name="x" placeholder="yourname" maxlength="16" autocomplete="off" aria-label="X username" /></span><button class="btn btn-solid" type="submit">${ico('link')}Link</button></form>
              <p class="form-error" id="x-error" role="alert"></p>`
       }
     </section>`;
@@ -1254,37 +1326,37 @@ function referralCard(r) {
   const shareText = encodeURIComponent('I’m calling new crypto listings on Firstprint. Join me and get free points:');
   return `
     <section class="earn-card">
-      <h2><span aria-hidden="true">🤝</span> Invite friends</h2>
+      <div class="card-head"><span class="card-ico">${ico('userPlus')}</span><h2>Invite friends</h2><span class="pill pill-pts">+${f.perReferral} each</span></div>
       <p class="muted">You get <b>+${f.perReferral} points</b> when a friend signs up with your link and makes their first prediction (up to ${f.limit} friends).</p>
-      <div class="copy-row"><input readonly value="${esc(f.link)}" aria-label="Your invite link" /><button class="btn" data-action="copy-text" data-text="${esc(f.link)}">Copy</button></div>
-      <a class="btn" href="https://x.com/intent/tweet?text=${shareText}&url=${encodeURIComponent(f.link)}" target="_blank" rel="noopener noreferrer">Share on X</a>
-      <p class="fine">${f.invited} signed up · ${f.rewarded} rewarded · ${signed(f.points)} points</p>
+      <div class="copy-row"><input readonly value="${esc(f.link)}" aria-label="Your invite link" /><button class="btn" data-action="copy-text" data-text="${esc(f.link)}">${ico('copy')}Copy</button></div>
+      <a class="btn" href="https://x.com/intent/tweet?text=${shareText}&url=${encodeURIComponent(f.link)}" target="_blank" rel="noopener noreferrer">${ico('x')}Share on X</a>
+      <div class="ref-stats"><span><b>${fmtNum(f.invited)}</b> signed up</span><span><b>${fmtNum(f.rewarded)}</b> rewarded</span><span><b class="profit-pos">${signed(f.points)}</b> points</span></div>
     </section>`;
 }
 
 function tasksCard(r) {
   const rows = r.tasks;
   return `
-    <section class="section">
-      <h2>Tasks</h2>
+    <section class="section panel">
+      <div class="section-head"><span class="section-ico">${ico('list')}</span><div><h2>Tasks</h2><p class="muted">Open a task, do it on X, then come back and press Verify.</p></div></div>
       ${
         rows.length
           ? `<ul class="tasks">${rows
               .map((t) => {
                 const full = t.remaining === 0 && !t.done;
                 let action;
-                if (t.done) action = '<span class="task-done">✓ Done</span>';
+                if (t.done) action = `<span class="task-done">${ico('checkCircle')}Done</span>`;
                 else if (full) action = '<span class="muted">Limit reached</span>';
-                else if (t.startedAt) action = `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">Open again</a><button class="btn btn-solid" data-action="task-verify" data-task="${esc(t.id)}">Verify</button>`;
-                else action = `<a class="btn btn-solid" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer" data-action="task-go" data-task="${esc(t.id)}">Go</a>`;
+                else if (t.startedAt) action = `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}Open again</a><button class="btn btn-solid" data-action="task-verify" data-task="${esc(t.id)}">${ico('check')}Verify</button>`;
+                else action = `<a class="btn btn-solid" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer" data-action="task-go" data-task="${esc(t.id)}">Start ${ico('chevronRight')}</a>`;
                 return `<li class="task${t.done ? ' is-done' : ''}">
-                  <span class="task-ico" aria-hidden="true">${TASK_ICONS[t.kind] ?? '⭐'}</span>
-                  <div class="task-body"><b>${esc(t.title)}</b><small>+${fmtNum(t.points)} points${t.remaining !== null && !t.done ? ` · ${fmtNum(t.remaining)} left` : ''}</small></div>
+                  <span class="task-ico">${ico(TASK_ICONS[t.kind] ?? 'star')}</span>
+                  <div class="task-body"><b>${esc(t.title)}</b><small><span class="pts">+${fmtNum(t.points)} points</span>${t.remaining !== null && !t.done ? ` · ${fmtNum(t.remaining)} spots left` : ''}</small></div>
                   <div class="task-actions">${action}</div>
                 </li>`;
               })
               .join('')}</ul>
-             <p class="fine">Open a task, do it on X, then come back and press Verify. We check your linked X username; tasks done with another account don’t count.</p>`
+             <p class="fine">We check your linked X username; tasks done with another account don’t count.</p>`
           : '<p class="muted">No tasks right now. Check back soon.</p>'
       }
     </section>`;
@@ -1294,12 +1366,12 @@ function claimsList(r) {
   if (!r.claims.length) return '';
   const label = { pending: 'Waiting for wallet', submitted: 'Confirming', confirmed: 'Claimed', failed: 'Failed', expired: 'Expired' };
   return `
-    <section class="section">
-      <h2>Your claims</h2>
+    <section class="section panel">
+      <div class="section-head"><span class="section-ico">${ico('token')}</span><h2>Your claims</h2></div>
       <ul class="activity">${r.claims
         .map(
           (c) => `<li><span>${fmtNum(c.amount)} TestFPT to ${esc(shortAddress(c.wallet))} · <b class="${c.status === 'confirmed' ? 'profit-pos' : c.status === 'failed' || c.status === 'expired' ? 'profit-neg' : ''}">${label[c.status] ?? c.status}</b>${c.error && c.status !== 'confirmed' ? ` <span class="muted">${esc(c.error)}</span>` : ''}</span>
-            <span class="muted">${c.explorerUrl ? `<a href="${esc(c.explorerUrl)}" target="_blank" rel="noopener noreferrer">View on Explorer ↗</a> · ` : ''}${fmtAgo(c.at)}</span></li>`,
+            <span class="muted">${c.explorerUrl ? `<a href="${esc(c.explorerUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a> · ` : ''}${fmtAgo(c.at)}</span></li>`,
         )
         .join('')}</ul>
     </section>`;
@@ -1336,7 +1408,7 @@ async function claimTokens() {
     }
     if (res.status === 'confirmed') {
       celebrate('moon');
-      toast(`🎉 ${fmtNum(res.amount)} TestFPT claimed. Check your wallet!`);
+      toast(`${fmtNum(res.amount)} TestFPT claimed. Check your wallet!`);
     } else if (res.status === 'submitted') {
       toast('Still confirming on Solana. It will show up shortly.');
     } else {
@@ -1783,7 +1855,7 @@ function onLive(type, data) {
 // ------------------------------------------------------------------ Admin
 
 const ADMIN_KEY_STORE = 'fp_admin_key';
-const A = { api: null, info: null, checks: null, busy: '', edit: null, preview: null };
+const A = { api: null, info: null, checks: null, busy: '', edit: null, preview: null, tab: 'overview' };
 
 function readAdminKey() {
   try {
@@ -1801,6 +1873,16 @@ function saveAdminKey(key) {
     /* storage unavailable: key lives only in memory */
   }
 }
+
+const ADMIN_TABS = [
+  ['overview', 'grid', 'Overview', 'What needs your attention and how Firstprint is doing.'],
+  ['markets', 'list', 'Markets', 'Post results, publish drafts, edit or cancel markets.'],
+  ['create', 'plusCircle', 'Create market', 'Save a draft, check it, then publish. Users only see published markets.'],
+  ['token', 'token', 'TestFPT token', 'The on-chain token players claim their points as.'],
+  ['tasks', 'sparkles', 'Tasks', 'Tasks players complete on X for points.'],
+  ['settings', 'sliders', 'Settings', 'Reference exchanges and database backups.'],
+  ['activity', 'history', 'Activity', 'Everything done in this panel, newest first.'],
+];
 
 async function renderAdmin() {
   const view = $('#view');
@@ -1823,12 +1905,15 @@ async function renderAdmin() {
   }
   if (!A.api) {
     view.innerHTML = `
-      <h1 class="page-title">Admin</h1>
-      <p class="page-lede">Enter the ADMIN_KEY from your .env file. It’s kept only for this browser tab.</p>
-      <form id="admin-login" class="admin-form" style="max-width:420px">
-        <label><span class="field-label">Admin key</span><input name="key" type="password" autocomplete="off" required /></label>
-        <button class="btn btn-solid" type="submit">Open admin</button>
-      </form>`;
+      <div class="admin-login">
+        <span class="page-ico">${ico('lock')}</span>
+        <h1 class="page-title">Admin console</h1>
+        <p class="muted">Enter the ADMIN_KEY from your server settings. It’s kept only for this browser tab.</p>
+        <form id="admin-login" class="admin-form">
+          <label><span class="field-label">Admin key</span><input name="key" type="password" autocomplete="off" required /></label>
+          <button class="btn btn-solid btn-lg" type="submit">${ico('key')}Open admin</button>
+        </form>
+      </div>`;
     return;
   }
 
@@ -1844,58 +1929,134 @@ async function renderAdmin() {
   const editing = markets.find((m) => m.id === A.edit && m.mode === 'manual' && m.status === 'open') ?? null;
   if (A.edit && !editing) A.edit = null;
   const waiting = markets.filter((m) => m.mode === 'manual' && m.phase === 'awaiting_result');
-  view.innerHTML = `
-    <div class="admin-head">
-      <h1 class="page-title">Admin</h1>
-      <button class="btn" data-action="admin-logout">Lock admin</button>
-    </div>
+  const drafts = markets.filter((m) => m.phase === 'draft');
+  const tab = ADMIN_TABS.some(([id]) => id === A.tab) ? A.tab : 'overview';
+  const badges = { markets: waiting.length, token: token?.enabled && !token.ready ? '!' : 0 };
+  const [, , title, lede] = ADMIN_TABS.find(([id]) => id === tab);
 
-    ${waiting.length ? `<section class="section"><h2>Waiting for your result <span class="tag tag-now">${waiting.length}</span></h2>
-      <p class="muted">Predictions have closed. Enter the final price to pick the winners and pay out the pool.</p>
-      ${waiting.map(resultForm).join('')}</section>` : ''}
-
-    <section class="section" id="admin-market-section">
-      <h2>${editing ? `Edit ${esc(editing.symbol)} market` : 'Create a market'}</h2>
-      <p class="muted">Save a draft, check it, then publish. Users only see published markets. When the close time passes, the market waits here for your result.</p>
+  let body;
+  if (tab === 'overview') body = adminOverview({ markets, waiting, drafts, token, tasks, log });
+  else if (tab === 'markets') body = adminMarketsTab(markets, waiting);
+  else if (tab === 'create') body = `<section class="panel" id="admin-market-section">
+      <div class="section-head"><span class="section-ico">${ico(editing ? 'edit' : 'plusCircle')}</span><div><h2>${editing ? `Edit ${esc(editing.symbol)} market` : 'New market'}</h2><p class="muted">When the close time passes, the market waits in Markets for your result.</p></div></div>
       ${marketForm(editing)}
-    </section>
+    </section>`;
+  else if (tab === 'token') body = tokenAdminSection(token) || `<div class="empty"><p>TestFPT isn’t available on this server.</p></div>`;
+  else if (tab === 'tasks') body = tasksAdminSection(tasks);
+  else if (tab === 'settings')
+    body = `
+      <section class="panel">
+        <div class="section-head"><span class="section-ico">${ico('landmark')}</span><div><h2>Reference exchanges</h2><p class="muted">Switch off an exchange to stop it being offered for new markets. Nothing is fetched from these exchanges; they are shown to users as the reference for the price you enter.</p></div></div>
+        <div class="toggle-grid">${A.info.exchanges
+          .map((e) => `<label class="toggle"><input type="checkbox" data-action="admin-exchange" data-id="${esc(e.id)}"${e.enabled ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>${esc(e.name)}</label>`)
+          .join('')}</div>
+      </section>
+      <section class="panel">
+        <div class="section-head"><span class="section-ico">${ico('database')}</span><div><h2>Database backup</h2><p class="muted">Copies of the database in Supabase, restored automatically when the server restarts.</p></div></div>
+        ${backupLine(A.info.backup) || '<p class="muted">Backups are off. Set SUPABASE_URL and SUPABASE_SERVICE_KEY on the server to turn them on.</p>'}
+      </section>
+      ${manualOnly ? '' : legacyAdminSections(venues, detected)}`;
+  else body = adminLogView(log);
 
-    ${backupLine(A.info.backup)}
+  view.innerHTML = `
+    <div class="admin-shell">
+      <aside class="admin-side" aria-label="Admin sections">
+        <div class="admin-brand">${ico('shield')}<span>Admin console</span></div>
+        <nav class="admin-nav">
+          ${ADMIN_TABS.map(
+            ([id, icon, label]) =>
+              `<button type="button" data-action="admin-tab" data-tab="${id}"${id === tab ? ' aria-current="page"' : ''}>${ico(icon)}<span>${label}</span>${badges[id] ? `<span class="nav-badge">${badges[id]}</span>` : ''}</button>`,
+          ).join('')}
+        </nav>
+        <button class="btn admin-lock" data-action="admin-logout">${ico('lock')}Lock admin</button>
+      </aside>
+      <div class="admin-main">
+        <header class="admin-top">
+          <div><span class="eyebrow">Admin</span><h1 class="page-title">${title}</h1><p class="muted">${lede}</p></div>
+          <div class="admin-status">${statusChips(token, A.info.backup)}</div>
+        </header>
+        ${body}
+      </div>
+    </div>`;
+}
 
-    ${tokenAdminSection(token)}
+/** Small health chips for the admin header: TestFPT and backups. */
+function statusChips(token, backup) {
+  const chip = (ok, icon, text) => `<span class="status-chip ${ok === true ? 'ok' : ok === false ? 'bad' : 'idle'}">${ico(icon)}${text}</span>`;
+  const out = [];
+  if (token?.enabled) out.push(chip(token.ready ? true : false, 'token', token.ready ? 'TestFPT live' : 'TestFPT not set up'));
+  if (backup?.enabled) out.push(chip(backup.lastError ? false : backup.lastOkAt ? true : null, 'database', backup.lastError ? 'Backup failing' : backup.lastOkAt ? `Backed up ${fmtAgo(backup.lastOkAt)}` : 'Backup pending'));
+  else out.push(chip(null, 'database', 'Backups off'));
+  return out.join('');
+}
 
-    ${tasksAdminSection(tasks)}
+/** Overview: headline numbers, then anything that needs doing. */
+function adminOverview({ markets, waiting, drafts, token, tasks, log }) {
+  const open = markets.filter((m) => m.status === 'open' && m.phase !== 'draft');
+  const inPools = open.reduce((n, m) => n + m.pool, 0);
+  const predictors = open.reduce((n, m) => n + m.predictors, 0);
+  const activeTasks = tasks.filter((t) => t.active);
+  const done = tasks.reduce((n, t) => n + t.completions, 0);
+  const kpi = (icon, color, label, value, sub) =>
+    `<div class="stat-tile" style="--c:var(--${color})"><span class="tile-ico">${ico(icon)}</span><dt>${label}</dt><dd>${value}</dd><p>${sub}</p></div>`;
+  const todo = [];
+  for (const m of waiting) todo.push(['alert', 'crash', `${esc(m.symbol)} is waiting for its result`, `Predictions closed. ${fmtPts(m.pool)} from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'} to pay out.`, 'markets', 'Post result']);
+  for (const m of drafts) todo.push(['edit', 'flat', `${esc(m.symbol)} is a draft`, 'Users can’t see it until you publish it.', 'markets', 'Review']);
+  if (token?.enabled && !token.ready) todo.push(['token', 'moon', 'TestFPT isn’t set up', 'Players get points in their balance until the token exists.', 'token', 'Set up']);
+  if (token?.enabled && (token.authorityKey || (token.mint && !token.savedInEnv?.mint))) todo.push(['key', 'moon', 'Save the TestFPT keys in Render', 'So a restart can’t lose them.', 'token', 'Show keys']);
+  if (A.info.backup?.lastError) todo.push(['database', 'crash', 'Database backup is failing', esc(A.info.backup.lastError), 'settings', 'Check']);
+  if (!open.length) todo.push(['plusCircle', 'up', 'No open markets', 'Players have nothing to predict on right now.', 'create', 'Create one']);
+  if (!activeTasks.length) todo.push(['sparkles', 'up', 'No active tasks', 'Tasks give players more ways to earn points.', 'tasks', 'Add a task']);
+  return `
+    <dl class="stat-tiles">
+      ${kpi('target', 'up', 'Open markets', fmtNum(open.length), `${drafts.length} draft${drafts.length === 1 ? '' : 's'}`)}
+      ${kpi('clock', 'crash', 'Awaiting result', fmtNum(waiting.length), waiting.length ? 'Post the final price' : 'All caught up')}
+      ${kpi('coins', 'moon', 'Points in open pools', fmtNum(inPools), 'Across open markets')}
+      ${kpi('users', 'brand', 'Predictions', fmtNum(predictors), 'In open markets')}
+      ${kpi('sparkles', 'down', 'Active tasks', fmtNum(activeTasks.length), `${fmtNum(done)} completion${done === 1 ? '' : 's'} so far`)}
+    </dl>
+    <div class="dash-grid">
+      <section class="panel">
+        <div class="section-head"><span class="section-ico">${ico('checkCircle')}</span><h2>Needs attention${todo.length ? ` <span class="count-badge">${todo.length}</span>` : ''}</h2></div>
+        ${
+          todo.length
+            ? `<ul class="todo">${todo
+                .map(([icon, color, t, sub, goto, label]) => `<li style="--c:var(--${color})"><span class="todo-ico">${ico(icon)}</span><div><b>${t}</b><span class="muted">${sub}</span></div><button class="btn btn-sm" data-action="admin-tab" data-tab="${goto}">${label}</button></li>`)
+                .join('')}</ul>`
+            : `<p class="all-good">${ico('checkCircle')}Everything’s in order.</p>`
+        }
+      </section>
+      ${adminLogView(log.slice(0, 6), true)}
+    </div>`;
+}
 
-    <section class="section">
-      <h2>Exchanges</h2>
-      <p class="muted">Switch off an exchange to stop it being used in new markets. Nothing is fetched from these exchanges; they are shown to users as the reference for the price you enter.</p>
-      <div class="admin-list">${A.info.exchanges
-        .map((e) => `<label class="check"><input type="checkbox" data-action="admin-exchange" data-id="${esc(e.id)}"${e.enabled ? ' checked' : ''} /> ${esc(e.name)}</label>`)
-        .join('')}</div>
-    </section>
-
-    ${manualOnly ? '' : legacyAdminSections(venues, detected)}
-
-    <section class="section">
-      <h2>All markets</h2>
+function adminMarketsTab(markets, waiting) {
+  return `
+    ${
+      waiting.length
+        ? `<section class="panel panel-alert"><div class="section-head"><span class="section-ico">${ico('alert')}</span><div><h2>Waiting for your result <span class="count-badge">${waiting.length}</span></h2>
+          <p class="muted">Predictions have closed. Enter the final price to pick the winners and pay out the pool.</p></div></div>
+          ${waiting.map(resultForm).join('')}</section>`
+        : ''
+    }
+    <section class="panel panel-flush">
+      <div class="section-head"><span class="section-ico">${ico('list')}</span><h2>All markets <span class="count-badge">${markets.length}</span></h2><button class="btn btn-solid btn-sm head-action" data-action="admin-tab" data-tab="create">${ico('plus')}New market</button></div>
       ${
         markets.length
           ? `<div class="table-scroll"><table class="table"><thead><tr><th>Market</th><th class="hide-sm">Type</th><th>Status</th><th class="right">Pool</th><th class="right"></th></tr></thead><tbody>${markets
               .map(
                 (m) => `<tr>
-                  <td>${m.published ? `<a href="#/market/${encodeURIComponent(m.id)}">${esc(m.symbol)}</a>` : `<b>${esc(m.symbol)}</b>`} <span class="muted hide-sm">${esc(venueNames(m))}</span></td>
+                  <td><span class="mkt-cell">${avatar(m.symbol, 'avatar-sm')}<span>${m.published ? `<a href="#/market/${encodeURIComponent(m.id)}">${esc(m.symbol)}</a>` : `<b>${esc(m.symbol)}</b>`}<small class="muted hide-sm">${esc(venueNames(m))}</small></span></span></td>
                   <td class="hide-sm">${m.mode === 'manual' ? 'Manual' : m.kind === 'live_test' ? 'Live test' : 'Listing'}</td>
-                  <td>${esc(adminPhase(m))}</td>
-                  <td class="right">${fmtNum(m.pool)}</td>
-                  <td class="right admin-row-actions">${marketActions(m)}</td>
+                  <td>${adminPhasePill(m)}</td>
+                  <td class="right num-cell">${fmtNum(m.pool)}</td>
+                  <td class="right"><div class="admin-row-actions">${marketActions(m)}</div></td>
                 </tr>`,
               )
               .join('')}</tbody></table></div>`
-          : '<p class="muted">No markets yet.</p>'
+          : '<p class="muted pad">No markets yet.</p>'
       }
-    </section>
-
-    ${adminLogView(log)}`;
+    </section>`;
 }
 
 /** TestFPT setup: make the mint authority, give it test SOL, create the token. */
@@ -1903,26 +2064,29 @@ function tokenAdminSection(t) {
   if (!t?.enabled) return '';
   const net = t.cluster === 'devnet' ? 'Devnet' : 'Testnet';
   if (t.ready) {
-    return `<section class="section"><h2>TestFPT token <span class="tag tag-now">Live</span></h2>
-      <p class="muted">Players claim their points to their wallets as TestFPT on Solana ${net}. They pay the network fee in test SOL.</p>
-      <p>Mint: <a href="${esc(t.mintUrl)}" target="_blank" rel="noopener noreferrer"><code>${esc(t.mint)}</code> ↗</a></p>
+    return `<section class="panel">
+      <div class="section-head"><span class="section-ico">${ico('token')}</span><div><h2>TestFPT token <span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Live</span></h2>
+      <p class="muted">Players claim their points to their wallets as TestFPT on Solana ${net}. They pay the network fee in test SOL.</p></div></div>
+      <div class="kv"><span class="muted">Mint address</span><span class="copy-row"><code>${esc(t.mint)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(t.mint)}">${ico('copy')}Copy</button><a class="btn btn-sm" href="${esc(t.mintUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a></span></div>
       ${saveKeysNote(t)}</section>`;
   }
   const sol = t.authoritySol;
-  return `<section class="section"><h2>TestFPT token <span class="tag">Not set up</span></h2>
-    <p class="muted">Until TestFPT exists, rewards go straight to players’ balances. Set it up once (Solana ${net}, free):</p>
+  const check = (done) => `<span class="step-check" aria-hidden="true">${done ? ico('check') : ''}</span>`;
+  return `<section class="panel">
+    <div class="section-head"><span class="section-ico">${ico('token')}</span><div><h2>TestFPT token <span class="pill pill-off">Not set up</span></h2>
+    <p class="muted">Until TestFPT exists, rewards go straight to players’ balances. Set it up once (Solana ${net}, free):</p></div></div>
     <ol class="steplist">
-      <li class="${t.authority ? 'done' : ''}"><span class="step-check" aria-hidden="true">${t.authority ? '✓' : ''}</span><div><b>Create the mint authority</b>
+      <li class="${t.authority ? 'done' : ''}">${check(t.authority)}<div><b>Create the mint authority</b>
         <span class="muted">A key on this server that mints TestFPT when players claim. Keep this server’s database private.</span>
-        ${t.authority ? `<span class="copy-row"><code>${esc(t.authority)}</code><button class="btn" data-action="copy-text" data-text="${esc(t.authority)}">Copy</button></span>${saveKeysNote(t)}` : `<button class="btn btn-solid" data-action="admin-token-authority"${A.busy ? ' disabled' : ''}>Create authority</button>`}</div></li>
-      <li class="${sol ? 'done' : ''}"><span class="step-check" aria-hidden="true">${sol ? '✓' : ''}</span><div><b>Give it test SOL</b>
-        <span class="muted">Balance on ${net}: <b>${sol === null || sol === undefined ? 'unknown' : `${sol} SOL`}</b>${t.authorityUrl ? ` (<a href="${esc(t.authorityUrl)}" target="_blank" rel="noopener noreferrer">check on Explorer ↗</a>)` : ''}. Paste the address above into the faucet and make sure its network menu says <b>${net}</b>, not Devnet or Mainnet. Then press Refresh balance.</span>
+        ${t.authority ? `<span class="copy-row"><code>${esc(t.authority)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(t.authority)}">${ico('copy')}Copy</button></span>${saveKeysNote(t)}` : `<button class="btn btn-solid" data-action="admin-token-authority"${A.busy ? ' disabled' : ''}>${ico('key')}Create authority</button>`}</div></li>
+      <li class="${sol ? 'done' : ''}">${check(sol)}<div><b>Give it test SOL</b>
+        <span class="muted">Balance on ${net}: <b>${sol === null || sol === undefined ? 'unknown' : `${sol} SOL`}</b>${t.authorityUrl ? ` (<a href="${esc(t.authorityUrl)}" target="_blank" rel="noopener noreferrer">check on Explorer</a>)` : ''}. Paste the address above into the faucet and make sure its network menu says <b>${net}</b>, not Devnet or Mainnet. Then press Refresh balance.</span>
         ${t.balanceError ? `<span class="form-error">${esc(t.balanceError)}</span>` : ''}
         ${t.authority && sol === 0 ? `<span class="form-error">No SOL yet on ${net}. If the faucet said it sent SOL, it may have used another network, or it can take a minute.</span>` : ''}
-        <span class="row-actions"><a class="btn" href="https://faucet.solana.com" target="_blank" rel="noopener noreferrer">Open faucet ↗</a><button class="btn" data-action="admin-token-airdrop"${t.authority && !A.busy ? '' : ' disabled'}>Request 1 SOL</button><button class="btn" data-action="admin-token-refresh">Refresh balance</button></span></div></li>
-      <li><span class="step-check" aria-hidden="true"></span><div><b>Create TestFPT</b>
+        <span class="row-actions"><a class="btn" href="https://faucet.solana.com" target="_blank" rel="noopener noreferrer">${ico('droplet')}Open faucet ${ico('external')}</a><button class="btn" data-action="admin-token-airdrop"${t.authority && !A.busy ? '' : ' disabled'}>Request 1 SOL</button><button class="btn" data-action="admin-token-refresh">${ico('refresh')}Refresh balance</button></span></div></li>
+      <li>${check(false)}<div><b>Create TestFPT</b>
         <span class="muted">Creates the token on chain, named TestFPT, with 0 decimals (1 point = 1 TestFPT).</span>
-        <button class="btn btn-solid" data-action="admin-token-create"${t.authority && !A.busy ? '' : ' disabled'}>${A.busy === 'token' ? 'Working…' : 'Create TestFPT'}</button>
+        <button class="btn btn-solid" data-action="admin-token-create"${t.authority && !A.busy ? '' : ' disabled'}>${ico('sparkles')}${A.busy === 'token' ? 'Working…' : 'Create TestFPT'}</button>
         ${t.authority && !sol ? '<span class="muted">You can try even if the balance shows unknown: if the SOL isn’t there, it will say so.</span>' : ''}</div></li>
     </ol></section>`;
 }
@@ -1937,9 +2101,9 @@ function saveKeysNote(t) {
   if (t.mint && !t.savedInEnv?.mint) rows.push(['TESTFPT_MINT', t.mint]);
   if (!rows.length) return '';
   return `<div class="save-keys">
-    <b>Save these in Render so a restart can’t lose them</b>
+    <b>${ico('key')}Save these in Render so a restart can’t lose them</b>
     <span class="muted">Render → firstprint-app → Environment → Add environment variable, one for each, then Save. Keep the key private: it can mint TestFPT.</span>
-    ${rows.map(([k, v]) => `<span class="copy-row"><code>${k}</code><code class="secret">${esc(v)}</code><button class="btn" data-action="copy-text" data-text="${esc(v)}">Copy</button></span>`).join('')}
+    ${rows.map(([k, v]) => `<span class="copy-row"><code>${k}</code><code class="secret">${esc(v)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(v)}">${ico('copy')}Copy</button></span>`).join('')}
   </div>`;
 }
 
@@ -1947,32 +2111,36 @@ const TASK_TARGET_HINT = { follow: 'X handle, e.g. @firstprint', repost: 'Link t
 
 /** Tasks players complete for points: create, set a limit, switch off. */
 function tasksAdminSection(tasks) {
-  return `<section class="section">
-    <h2>Tasks</h2>
-    <p class="muted">Players open the task, do it on X, then press Verify. X has no free API to check, so it's honour-based: each X username can only be linked to one account, and each task pays once per player.</p>
+  return `<section class="panel">
+    <div class="section-head"><span class="section-ico">${ico('plusCircle')}</span><div><h2>Add a task</h2>
+    <p class="muted">Players open the task, do it on X, then press Verify. X has no free API to check, so it's honour-based: each X username can only be linked to one account, and each task pays once per player.</p></div></div>
     <form id="admin-task" class="admin-form task-form" novalidate>
       <label><span class="field-label">Type</span><select name="kind">
         <option value="follow">Follow on X</option><option value="repost">Repost on X</option><option value="like">Like on X</option><option value="share">Post on X (with invite link)</option><option value="link">Visit a link</option>
       </select></label>
-      <label><span class="field-label">Target</span><input name="target" placeholder="${esc(TASK_TARGET_HINT.follow)}" required /></label>
+      <label class="span-2"><span class="field-label">Target</span><input name="target" placeholder="${esc(TASK_TARGET_HINT.follow)}" required /></label>
       <label><span class="field-label">Title <span class="muted">(optional)</span></span><input name="title" maxlength="80" /></label>
       <label><span class="field-label">Points</span><input name="points" type="number" min="1" max="10000" value="50" required /></label>
-      <label><span class="field-label">Limit <span class="muted">(players, optional)</span></span><input name="maxCompletions" type="number" min="1" placeholder="No limit" /></label>
-      <button class="btn btn-solid" type="submit">Add task</button>
+      <label><span class="field-label">Limit <span class="muted">(players)</span></span><input name="maxCompletions" type="number" min="1" placeholder="No limit" /></label>
+      <button class="btn btn-solid" type="submit">${ico('plus')}Add task</button>
     </form>
+  </section>
+  <section class="panel panel-flush">
+    <div class="section-head"><span class="section-ico">${ico('sparkles')}</span><h2>Tasks <span class="count-badge">${tasks.length}</span></h2></div>
     ${
       tasks.length
-        ? `<div class="table-scroll"><table class="table"><thead><tr><th>Task</th><th class="right">Points</th><th class="right">Done</th><th class="right"></th></tr></thead><tbody>${tasks
-            .map(
-              (t) => `<tr${t.active ? '' : ' class="muted"'}>
-                <td>${TASK_ICONS[t.kind] ?? ''} <a href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${esc(t.title)}</a>${t.active ? '' : ' <span class="tag">Off</span>'}</td>
-                <td class="right">${fmtNum(t.points)}</td>
-                <td class="right">${fmtNum(t.completions)}${t.maxCompletions ? ` / ${fmtNum(t.maxCompletions)}` : ''}</td>
-                <td class="right"><button class="btn" data-action="admin-task-toggle" data-id="${esc(t.id)}" data-active="${t.active ? '1' : '0'}">${t.active ? 'Switch off' : 'Switch on'}</button></td>
-              </tr>`,
-            )
+        ? `<div class="table-scroll"><table class="table"><thead><tr><th>Task</th><th class="right">Points</th><th>Completed</th><th class="right"></th></tr></thead><tbody>${tasks
+            .map((t) => {
+              const pct = t.maxCompletions ? Math.min(100, Math.round((t.completions / t.maxCompletions) * 100)) : null;
+              return `<tr${t.active ? '' : ' class="row-off"'}>
+                <td><span class="mkt-cell"><span class="task-ico task-ico-sm">${ico(TASK_ICONS[t.kind] ?? 'star')}</span><span><a href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${esc(t.title)}</a>${t.active ? '' : ' <span class="pill pill-off">Off</span>'}</span></span></td>
+                <td class="right num-cell">+${fmtNum(t.points)}</td>
+                <td><span class="progress-cell">${fmtNum(t.completions)}${t.maxCompletions ? ` / ${fmtNum(t.maxCompletions)}` : ''}${pct === null ? '' : `<span class="meter"><i style="width:${pct}%"></i></span>`}</span></td>
+                <td class="right"><button class="btn btn-sm" data-action="admin-task-toggle" data-id="${esc(t.id)}" data-active="${t.active ? '1' : '0'}">${ico('power')}${t.active ? 'Switch off' : 'Switch on'}</button></td>
+              </tr>`;
+            })
             .join('')}</tbody></table></div>`
-        : '<p class="muted">No tasks yet. Add one above.</p>'
+        : '<p class="muted pad">No tasks yet. Add one above.</p>'
     }
   </section>`;
 }
@@ -1994,16 +2162,16 @@ const ADMIN_ACTIONS = {
 };
 
 /** The last things done in this panel, so a payout or cancellation can always be traced. */
-function adminLogView(log) {
+function adminLogView(log, compact = false) {
   return `
-    <section class="section">
-      <h2>Recent admin activity</h2>
+    <section class="panel">
+      <div class="section-head"><span class="section-ico">${ico('history')}</span><h2>${compact ? 'Recent activity' : 'Admin activity'}</h2>${compact && log.length ? '<button class="btn btn-sm head-action" data-action="admin-tab" data-tab="activity">See all</button>' : ''}</div>
       ${
         log.length
-          ? `<ul class="activity">${log
+          ? `<ul class="timeline-list">${log
               .map(
                 (e) =>
-                  `<li><span><b>${esc(ADMIN_ACTIONS[e.action] ?? e.action)}</b>${e.target ? ` <span class="muted">${esc(e.target)}</span>` : ''}${e.detail ? `<br><span class="muted">${esc(e.detail)}</span>` : ''}</span><span class="muted">${fmtAgo(e.at)}</span></li>`,
+                  `<li><span class="tl-dot" aria-hidden="true"></span><div><b>${esc(ADMIN_ACTIONS[e.action] ?? e.action)}</b>${e.target ? ` <span class="muted">${esc(e.target)}</span>` : ''}${e.detail && !compact ? `<br><span class="muted">${esc(e.detail)}</span>` : ''}</div><span class="muted">${fmtAgo(e.at)}</span></li>`,
               )
               .join('')}</ul>`
           : '<p class="muted">Nothing yet. Every market change and result posted from this panel is recorded here.</p>'
@@ -2014,7 +2182,7 @@ function adminLogView(log) {
 function backupLine(b) {
   if (!b?.enabled) return '';
   const ok = b.lastOkAt && !b.lastError;
-  return `<p class="${ok ? 'muted' : 'form-error'}" role="status">Database backup: ${
+  return `<p class="backup-line ${ok ? 'ok' : b.lastError ? 'bad' : ''}" role="status">${ico(ok ? 'checkCircle' : b.lastError ? 'alert' : 'clock')}Database backup: ${
     b.lastError ? `failing (${esc(b.lastError)})` : b.lastOkAt ? `last saved ${fmtAgo(b.lastOkAt)}` : 'waiting for the first copy'
   }.</p>`;
 }
@@ -2111,8 +2279,8 @@ function marketForm(m) {
             ? `<button class="btn btn-solid" type="submit" name="intent" value="save">Save changes</button>
                ${m.published ? '' : '<button class="btn btn-solid" type="submit" name="intent" value="publish">Save and publish</button>'}
                <button class="btn" type="button" data-action="admin-edit-cancel">Stop editing</button>`
-            : `<button class="btn btn-solid" type="submit" name="intent" value="publish">Publish market</button>
-               <button class="btn" type="submit" name="intent" value="draft">Save as draft</button>`
+            : `<button class="btn btn-solid" type="submit" name="intent" value="publish">${ico('send')}Publish market</button>
+               <button class="btn" type="submit" name="intent" value="draft">${ico('edit')}Save as draft</button>`
         }
       </div>
     </form>`;
@@ -2151,14 +2319,23 @@ function resultForm(m) {
 }
 
 function marketActions(m) {
-  const btn = (action, label) => `<button class="btn" data-action="${action}" data-id="${esc(m.id)}">${label}</button>`;
+  const btn = (action, icon, label, cls = '') => `<button class="btn btn-sm${cls}" data-action="${action}" data-id="${esc(m.id)}">${ico(icon)}${label}</button>`;
   const manualOpen = m.mode === 'manual' && m.status === 'open';
   const out = [];
-  if (manualOpen) out.push(btn('admin-edit', 'Edit'));
-  if (manualOpen && !m.published) out.push(btn('admin-publish', 'Publish'), btn('admin-delete', 'Delete'));
-  if (manualOpen && m.published && m.predictors === 0) out.push(btn('admin-unpublish', 'Unpublish'));
-  if ((m.status === 'open' || m.status === 'locked') && (m.published || m.mode !== 'manual')) out.push(btn('admin-cancel', 'Cancel and refund'));
+  if (manualOpen) out.push(btn('admin-edit', 'edit', 'Edit'));
+  if (manualOpen && !m.published) out.push(btn('admin-publish', 'send', 'Publish', ' btn-solid'), btn('admin-delete', 'trash', 'Delete', ' btn-danger'));
+  if (manualOpen && m.published && m.predictors === 0) out.push(btn('admin-unpublish', 'eye', 'Unpublish'));
+  if ((m.status === 'open' || m.status === 'locked') && (m.published || m.mode !== 'manual')) out.push(btn('admin-cancel', 'undo', 'Cancel and refund', ' btn-danger'));
   return out.join(' ');
+}
+
+function adminPhasePill(m) {
+  const text = esc(adminPhase(m));
+  if (m.phase === 'draft') return `<span class="pill pill-off">${text}</span>`;
+  if (m.phase === 'awaiting_result') return `<span class="pill pill-hot">${text}</span>`;
+  if (m.status === 'resolved') return `<span class="pill pill-done">${text}</span>`;
+  if (m.status === 'void') return `<span class="pill pill-off">${text}</span>`;
+  return `<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>${text}</span>`;
 }
 
 function adminPhase(m) {
@@ -2214,6 +2391,11 @@ async function onAdminAction(action, el) {
     return renderAdmin();
   }
   switch (action) {
+    case 'admin-tab':
+      A.tab = el.dataset.tab;
+      if (A.tab !== 'create') A.edit = null;
+      await renderAdmin();
+      return window.scrollTo({ top: 0 });
     case 'admin-token-refresh':
       return renderAdmin();
     case 'admin-task-toggle':
@@ -2274,10 +2456,12 @@ async function onAdminAction(action, el) {
       return renderAdmin();
     case 'admin-edit':
       A.edit = el.dataset.id;
+      A.tab = 'create';
       await renderAdmin();
-      return $('#admin-market-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return window.scrollTo({ top: 0 });
     case 'admin-edit-cancel':
       A.edit = null;
+      A.tab = 'markets';
       return renderAdmin();
     case 'admin-publish':
     case 'admin-unpublish':
@@ -2395,6 +2579,7 @@ async function submitAdminMarket(form, intent) {
     else m = await A.api.createManual({ ...body, publish: intent === 'publish' });
     if (id && intent === 'publish') m = await A.api.publish(id);
     A.edit = null;
+    A.tab = 'markets';
     toast(m.published ? `${m.symbol} market is live` : `${m.symbol} saved as a draft`);
   } catch (err) {
     toast(err.message, true);
@@ -2514,7 +2699,7 @@ document.addEventListener('click', async (e) => {
       try {
         S.me = await S.api.claimDaily();
         celebrate('moon');
-        toast('🎁 +100 points added. See you tomorrow!');
+        toast('+100 points added. See you tomorrow!');
         renderTop();
         return loadRoute();
       } catch (err) {
