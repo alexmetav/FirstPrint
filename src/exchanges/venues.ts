@@ -18,6 +18,8 @@ export interface Pair {
   quote: string;
   /** Trading start time, if the exchange publishes it. */
   listingAt: number | null;
+  /** The token's full name, if the exchange publishes it. */
+  name?: string;
 }
 
 export interface Ticker {
@@ -185,10 +187,24 @@ function binanceCompatible(opts: { id: string; name: string; base: string; limit
     },
 
     async listPairs() {
-      const d = (await http(`${opts.base}/api/v3/exchangeInfo`)) as { symbols?: { symbol: string; baseAsset: string; quoteAsset: string }[] };
+      const d = (await http(`${opts.base}/api/v3/exchangeInfo`)) as {
+        symbols?: { symbol: string; baseAsset: string; quoteAsset: string; isSpotTradingAllowed?: boolean; firstOpenTime?: number; fullName?: string }[];
+      };
+      const now = Date.now();
       return (d.symbols ?? [])
         .filter((s) => s.quoteAsset === 'USDT')
-        .map((s) => ({ pair: s.symbol, base: s.baseAsset, quote: s.quoteAsset, listingAt: null }));
+        .map((s) => ({
+          pair: s.symbol,
+          base: s.baseAsset,
+          quote: s.quoteAsset,
+          // MEXC publishes each pair's trading start time; Binance doesn't.
+          listingAt: Number(s.firstOpenTime) > 0 ? Number(s.firstOpenTime) : null,
+          name: typeof s.fullName === 'string' && s.fullName.trim() ? s.fullName.trim().slice(0, 40) : undefined,
+          off: s.isSpotTradingAllowed === false,
+        }))
+        // Paused pairs are left out, unless they simply haven't opened yet.
+        .filter((p) => !p.off || (p.listingAt !== null && p.listingAt > now))
+        .map(({ off: _off, ...p }) => p);
     },
   };
 }

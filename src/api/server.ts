@@ -31,6 +31,8 @@ export interface ServerOptions {
   backupStatus?: () => { enabled: boolean; lastOkAt: number | null; lastError: string | null };
   /** True when exchange auto-detection and live prices are off and admins run every market. */
   manualOnly?: boolean;
+  /** Automatic markets for new MEXC listings, when the server runs them. */
+  autoListings?: { perDay: number; hours: number } | null;
   /** Tasks, referrals and TestFPT claims. */
   rewards?: RewardsService | null;
   /** Public site URL used in wallet sign-in messages, e.g. https://firstprint.xyz */
@@ -469,6 +471,14 @@ export function createApiServer(opts: ServerOptions): Server {
     return { exchanges };
   });
 
+  route('POST', '/api/admin/auto-listings', async ({ req, body, requireAdmin }) => {
+    requireAdmin();
+    if (!opts.autoListings) throw new AppError(409, 'auto_listings_off', 'Automatic markets are turned off on this server (AUTO_LISTINGS=0).');
+    const enabled = service.setAutoListings(Boolean((await body()).enabled));
+    audit(req, enabled ? 'auto_listings_on' : 'auto_listings_off', null);
+    return { enabled };
+  });
+
   route('POST', '/api/admin/manual-markets', async ({ req, body, requireAdmin }) => {
     requireAdmin();
     const b = await body();
@@ -577,6 +587,7 @@ export function createApiServer(opts: ServerOptions): Server {
       venues: service.venueList(),
       exchanges: service.exchangeSettings(),
       manualOnly: opts.manualOnly ?? false,
+      autoListings: opts.autoListings ? { ...opts.autoListings, enabled: service.autoListingsEnabled() } : null,
       backup: opts.backupStatus?.() ?? { enabled: false, lastOkAt: null, lastError: null },
       presets: Object.entries(LIVE_PRESETS).map(([id, p]) => ({ id, label: p.label })),
       suggestedTokens: SUGGESTED_LIVE_TOKENS,

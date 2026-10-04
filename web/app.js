@@ -844,9 +844,9 @@ function howItWorks() {
     return `
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
-        <li>Firstprint publishes a market for a token listed on major exchanges, with a start price. Log in with Google, email, or a Solana wallet to get 1,000 free points.</li>
+        <li>Firstprint opens a market when a new token lists on MEXC, and adds others by hand for tokens on major exchanges. Log in with Google, email, or a Solana wallet to get 1,000 free points.</li>
         <li>Pick one of five outcomes for where the price ends up compared with the start price, from Crash to Moon. Predictions close at the time shown, and earlier predictions earn a bigger share.</li>
-        <li>After they close, Firstprint posts the final price and the winners on the market page.</li>
+        <li>When the result is due, the final price and the winners appear on the market page.</li>
         <li>Everyone who picked the winning outcome splits the pool, minus a 4% fee. If nobody picked it, everyone gets their points back.</li>
       </ol></details>
     </section>`;
@@ -2860,7 +2860,7 @@ const ADMIN_TABS = [
   ['create', 'plusCircle', 'Create market', 'Save a draft, check it, then publish. Users only see published markets.'],
   ['token', 'token', 'TestFPT token', 'The on-chain token players claim their points as.'],
   ['tasks', 'sparkles', 'Tasks', 'Tasks players complete on X for points.'],
-  ['settings', 'sliders', 'Settings', 'Reference exchanges and database backups.'],
+  ['settings', 'sliders', 'Settings', 'Automatic markets, reference exchanges and backups.'],
   ['activity', 'history', 'Activity', 'Everything done in this panel, newest first.'],
 ];
 
@@ -2925,8 +2925,9 @@ async function renderAdmin() {
   else if (tab === 'tasks') body = tasksAdminSection(tasks);
   else if (tab === 'settings')
     body = `
+      ${autoListingsPanel(A.info.autoListings)}
       <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('landmark')}</span><div><h2>Reference exchanges</h2><p class="muted">Switch off an exchange to stop it being offered for new markets. They are shown to users as the reference for the price you enter. Prices are only fetched when you check them here in Admin.</p></div></div>
+        <div class="section-head"><span class="section-ico">${ico('landmark')}</span><div><h2>Reference exchanges</h2><p class="muted">Switch off an exchange to stop it being offered for new markets you create. They are shown to users as the reference for the price you enter.</p></div></div>
         <div class="toggle-grid">${A.info.exchanges
           .map((e) => `<label class="toggle"><input type="checkbox" data-action="admin-exchange" data-id="${esc(e.id)}"${e.enabled ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>${esc(e.name)}</label>`)
           .join('')}</div>
@@ -3136,7 +3137,7 @@ function adminMarketsTab(markets, waiting) {
               .map(
                 (m) => `<tr>
                   <td><span class="mkt-cell">${tokenAvatar(m, 'avatar-sm')}<span>${m.published ? `<a href="#/market/${encodeURIComponent(m.id)}">${esc(m.symbol)}</a>` : `<b>${esc(m.symbol)}</b>`}<small class="muted hide-sm">${esc(venueNames(m))}</small></span></span></td>
-                  <td class="hide-sm">${isYesNo(m) ? 'Yes / No' : m.mode === 'manual' ? 'Five outcomes' : m.kind === 'live_test' ? 'Live test' : 'Listing'}</td>
+                  <td class="hide-sm">${isYesNo(m) ? 'Yes / No' : m.mode === 'manual' ? 'Five outcomes' : m.kind === 'live_test' ? 'Live test' : 'Automatic'}</td>
                   <td>${adminPhasePill(m)}</td>
                   <td class="right num-cell">${fmtNum(m.pool)}</td>
                   <td class="right"><div class="admin-row-actions">${marketActions(m)}</div></td>
@@ -3248,7 +3249,19 @@ const ADMIN_ACTIONS = {
   market_cancelled: 'Cancelled and refunded a market',
   exchange_on: 'Switched an exchange on',
   exchange_off: 'Switched an exchange off',
+  auto_listings_on: 'Switched automatic markets on',
+  auto_listings_off: 'Switched automatic markets off',
 };
+
+/** Settings: automatic markets for new MEXC listings. */
+function autoListingsPanel(a) {
+  if (!a) return '';
+  return `
+      <section class="panel">
+        <div class="section-head"><span class="section-ico">${ico('zap')}</span><div><h2>Automatic markets</h2><p class="muted">Every 2 minutes Firstprint checks MEXC for new USDT listings and opens a market by itself, up to ${a.perDay} a day. Predictions stay open until 1 hour after trading starts. The start price is the average of that first hour and the result comes ${a.hours} hours after listing, both from MEXC, with no admin needed. You can cancel any of them in Markets.</p></div></div>
+        <div class="toggle-grid"><label class="toggle"><input type="checkbox" data-action="admin-auto-listings"${a.enabled ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>New MEXC listings</label></div>
+      </section>`;
+}
 
 /** The last things done in this panel, so a payout or cancellation can always be traced. */
 function adminLogView(log, compact = false) {
@@ -3570,6 +3583,15 @@ async function onAdminAction(action, el) {
     }
     case 'admin-ignore':
       await A.api.ignore(Number(el.dataset.id));
+      return renderAdmin();
+    case 'admin-auto-listings':
+      try {
+        await A.api.setAutoListings(el.checked);
+        A.info = await A.api.ping();
+        toast(el.checked ? 'Automatic markets are on.' : 'Automatic markets are off. Markets already made keep running.');
+      } catch (err) {
+        toast(err.message, true);
+      }
       return renderAdmin();
     case 'admin-exchange':
       try {

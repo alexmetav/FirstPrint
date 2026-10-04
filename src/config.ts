@@ -10,6 +10,10 @@ export interface AppConfig {
   trackVenues: string[];
   trackEveryMs: number;
   autoCreateMarkets: boolean;
+  /** Automatic markets for new MEXC listings, also when MANUAL_ONLY is on. Admins can switch them off. */
+  autoListings: boolean;
+  autoMarketsPerDay: number;
+  autoMarketHours: number;
   sim: boolean;
   /** Admin-run markets only: no exchange scanning or live price feeds. */
   manualOnly: boolean;
@@ -36,6 +40,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     trackVenues: env.TRACK_VENUES === undefined ? ALL_VENUES : env.TRACK_VENUES.split(',').map((s) => s.trim()).filter(Boolean),
     trackEveryMs: Number(env.TRACK_EVERY_MS ?? 120_000),
     autoCreateMarkets: env.AUTO_CREATE_MARKETS === '1',
+    autoListings: env.AUTO_LISTINGS !== '0',
+    autoMarketsPerDay: Math.max(0, Math.floor(Number(env.AUTO_MARKETS_PER_DAY ?? 5)) || 0),
+    autoMarketHours: Math.min(24 * 30, Math.max(2, Number(env.AUTO_MARKET_HOURS ?? 72) || 72)),
     sim: env.SIM === '1',
     manualOnly: env.MANUAL_ONLY !== '0',
     // Render's load balancer is one proxy. Add one for each more in front (for example Vercel rewrites).
