@@ -9393,3 +9393,72 @@ a,
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ===== Upcoming tokens: not trading yet ===== */
+.st-soon {
+  color: var(--gold);
+}
+.card-upcoming {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: color-mix(in srgb, var(--gold) 55%, var(--text));
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+}
+.card-upcoming .i,
+.pill-soon .i {
+  width: 12px;
+  height: 12px;
+}
+.pill-soon {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: color-mix(in srgb, var(--gold) 55%, var(--text));
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+}
+.card-soon {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.5;
+}
+.card-soon .i {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  color: var(--gold);
+}
+.m-upcoming {
+  display: flex;
+  gap: 12px;
+  margin: 4px 0 2px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--gold) 35%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--gold) 7%, transparent);
+}
+.m-upcoming > .i {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  color: var(--gold);
+}
+.m-upcoming b {
+  font-weight: 500;
+}
+.m-upcoming p {
+  margin: 4px 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--muted);
+}
+.st-soon {
+  color: color-mix(in srgb, var(--gold) 55%, var(--text));
+}
+.st-soon i {
+  background: var(--gold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 22%, transparent);
+}

@@ -9424,6 +9424,75 @@ a,
   }
 }
 
+/* ===== Upcoming tokens: not trading yet ===== */
+.st-soon {
+  color: var(--gold);
+}
+.card-upcoming {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: color-mix(in srgb, var(--gold) 55%, var(--text));
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+}
+.card-upcoming .i,
+.pill-soon .i {
+  width: 12px;
+  height: 12px;
+}
+.pill-soon {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: color-mix(in srgb, var(--gold) 55%, var(--text));
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+}
+.card-soon {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.5;
+}
+.card-soon .i {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  color: var(--gold);
+}
+.m-upcoming {
+  display: flex;
+  gap: 12px;
+  margin: 4px 0 2px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--gold) 35%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--gold) 7%, transparent);
+}
+.m-upcoming > .i {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  color: var(--gold);
+}
+.m-upcoming b {
+  font-weight: 500;
+}
+.m-upcoming p {
+  margin: 4px 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--muted);
+}
+.st-soon {
+  color: color-mix(in srgb, var(--gold) 55%, var(--text));
+}
+.st-soon i {
+  background: var(--gold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 22%, transparent);
+}
+
 </style>
   </head>
   <body>
@@ -11269,6 +11338,8 @@ const rangeLabel = (b, t) => bucketRangeLabel(b, t).replace(/-/g, '−');
 /** The price range an outcome covers, for either kind of market. */
 /** A market created before its token traded has no start price yet: it's the opening price. */
 const hasStart = (m) => m.basePrice != null;
+/** A token that isn't trading yet: predictions close when it lists, and its opening price is the start. */
+const isUpcoming = (m) => m.mode === 'manual' && !hasStart(m) && m.status === 'open' && m.phase !== 'awaiting_result' && m.closeAt > now();
 const startText = (m, short = false) => (hasStart(m) ? fmtPrice(m.basePrice) : short ? 'opening price' : 'its opening price');
 const rangeOf = (m, b) => (isYesNo(m) ? (b === 'up' ? `At or above ${hasStart(m) ? fmtPrice(m.basePrice) : 'open'}` : `Below ${hasStart(m) ? fmtPrice(m.basePrice) : 'open'}`) : rangeLabel(b, m.thresholds));
 const userLink = (name, cls = '') => `<a class="user-link${cls ? ` ${cls}` : ''}" href="#/u/${encodeURIComponent(name)}">${esc(name)}</a>`;
@@ -11821,7 +11892,7 @@ function featuredSide(m) {
 function featuredView(m) {
   const yn = isYesNo(m);
   const manual = isManual(m);
-  const pre = m.phase === 'pre_listing';
+  const pre = m.phase === 'pre_listing' || isUpcoming(m);
   const open = m.status === 'open' && m.phase !== 'awaiting_result';
   const name = esc(m.name || m.symbol);
   const href = `#/market/${encodeURIComponent(m.id)}`;
@@ -11834,7 +11905,7 @@ function featuredView(m) {
   const fact = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
   const facts = [
     manual ? fact(yn ? 'Target price' : 'Start price', hasStart(m) ? fmtPrice(m.basePrice) : 'At listing <span class="feat-sub">opening price</span>') : '',
-    pre ? fact(m.kind === 'live_test' ? 'Starts in' : 'Lists in', until(m.listingAt)) : fact('Closes in', until(m.closeAt)),
+    pre ? fact(m.kind === 'live_test' ? 'Starts in' : 'Lists in', until(isUpcoming(m) ? m.closeAt : m.listingAt)) : fact('Closes in', until(m.closeAt)),
     m.pool ? fact('Pool', `${tick(`pool:hero:${m.id}`, m.pool)} pts <span class="feat-sub">${fmtNum(m.predictors)} player${m.predictors === 1 ? '' : 's'}</span>`) : '',
   ].join('');
 
@@ -11853,7 +11924,7 @@ function featuredView(m) {
   return `
     <section class="feat" aria-labelledby="featured-title">
       <div class="feat-main">
-        <div class="feat-kicker"><span class="st st-live"><i aria-hidden="true"></i>${pre ? 'Upcoming' : 'Open'}</span><span aria-hidden="true">·</span><span>Featured market</span></div>
+        <div class="feat-kicker"><span class="st ${pre ? 'st-soon' : 'st-live'}"><i aria-hidden="true"></i>${pre ? 'Upcoming' : 'Open'}</span><span aria-hidden="true">·</span><span>Featured market</span></div>
         <div class="feat-id">
           ${tokenAvatar(m, 'avatar-lg')}
           <div><h2 id="featured-title">${esc(m.symbol)}</h2>${m.name ? `<p>${esc(m.name)}</p>` : ''}</div>
@@ -11877,7 +11948,7 @@ function cardStatus(m) {
   if (m.status === 'resolved') return '<span class="pill pill-done">Settled</span>';
   if (m.status === 'void') return '<span class="pill pill-off">Cancelled</span>';
   if (m.phase === 'awaiting_result') return '<span class="pill pill-wait">Awaiting result</span>';
-  if (m.phase === 'pre_listing') return '<span class="pill pill-soon">Upcoming</span>';
+  if (m.phase === 'pre_listing' || isUpcoming(m)) return `<span class="pill pill-soon">${ico('clock')}Upcoming</span>`;
   if (m.phase === 'running') return '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Live</span>';
   return '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>';
 }
@@ -11890,6 +11961,11 @@ function gauge(pct, color, label) {
     <b>${pct === null ? '–' : `${pct}%`}</b><small>${esc(label)}</small></span>`;
 }
 
+/** Short note on cards for a token that isn't trading yet. */
+function upcomingLine(m) {
+  return `<p class="card-quiet card-soon">${ico('clock')}<span>Not trading yet. Lists on ${esc(venueNames(m))}; predict before it goes live.</span></p>`;
+}
+
 function cardView(m) {
   const yn = isYesNo(m);
   const lead = leader(m);
@@ -11898,7 +11974,10 @@ function cardView(m) {
   const soon = m.status === 'open' && m.closeAt - now() < 15 * 60_000 && m.closeAt > now();
 
   // Gauge: Yes chance on Yes/No markets, the leading outcome on five-outcome markets.
-  const g = !m.pool
+  const upcoming = isUpcoming(m);
+  const g = upcoming && !m.pool
+    ? `<span class="card-new card-upcoming">${ico('clock')}Upcoming</span>`
+    : !m.pool
     ? '<span class="card-new">New</span>'
     : yn
     ? gauge(m.pool ? Math.round(share(m, 'up') * 100) : null, 'var(--up)', 'Yes')
@@ -11910,9 +11989,9 @@ function cardView(m) {
   } else if (m.status === 'void') {
     body = '<p class="card-result muted">Cancelled. Points were returned.</p>';
   } else if (yn) {
-    body = quickPicks(m, 'qp-card');
+    body = `${upcoming ? upcomingLine(m) : ''}${quickPicks(m, 'qp-card')}`;
   } else if (!m.pool) {
-    body = `<p class="card-quiet">No predictions yet. Early picks get the biggest bonus.</p>${quickPicks(m, 'qp-mini')}`;
+    body = `${upcoming ? upcomingLine(m) : '<p class="card-quiet">No predictions yet. Early picks get the biggest bonus.</p>'}${quickPicks(m, 'qp-mini')}`;
   } else {
     // The two outcomes the crowd backs most (Up and Down before anyone predicts).
     const top = m.pool ? [...bucketsOf(m)].sort((a, b) => m.totals[b] - m.totals[a]).slice(0, 2) : ['up', 'down'];
@@ -11930,6 +12009,7 @@ function cardView(m) {
 
   let when;
   if (m.phase === 'pre_listing') when = `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}`;
+  else if (upcoming) when = `Lists in ${until(m.closeAt)}`;
   else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Closes in ${until(m.closeAt)}`;
   else if (m.phase === 'running') when = `Result in ${until(m.settleAt)}`;
   else if (m.phase === 'awaiting_result') when = 'Awaiting result';
@@ -11939,7 +12019,8 @@ function cardView(m) {
     m.status === 'resolved' ? '<span class="st st-done">Settled</span>'
     : m.status === 'void' ? '<span class="st st-off">Cancelled</span>'
     : m.phase === 'awaiting_result' ? '<span class="st st-wait">Awaiting</span>'
-    : soon ? `<span class="st st-hot">${ico('flame')}Closing soon</span>`
+    : soon ? `<span class="st st-hot">${ico('flame')}${upcoming ? 'Listing soon' : 'Closing soon'}</span>`
+    : upcoming ? '<span class="st st-soon"><i aria-hidden="true"></i>Upcoming</span>'
     : '<span class="st st-live"><i aria-hidden="true"></i>Open</span>';
 
   return `
@@ -12100,7 +12181,7 @@ function marketMain(m) {
   const facts = [
     isManual(m) ? fact(yn ? 'Target price' : 'Start price', hasStart(m) ? fmtPrice(m.basePrice) : 'Opening price') : fact(m.kind === 'live_test' ? 'Starts' : 'Listing', fmtDate(m.listingAt)),
     m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running'
-      ? fact('Closes', `${fmtDate(m.closeAt)} <span class="muted">· in ${until(m.closeAt)}</span>`)
+      ? fact(isUpcoming(m) ? 'Lists & closes' : 'Closes', `${fmtDate(m.closeAt)} <span class="muted">· in ${until(m.closeAt)}</span>`)
       : fact('Result', fmtDate(m.settleAt)),
     settled || m.phase === 'awaiting_result' ? '' : fact('Result expected', fmtDate(m.settleAt)),
     m.pool ? fact('Pool', `${tick(`pool:page:${m.id}`, m.pool)} pts <span class="muted">· ${fmtNum(m.predictors)} predictor${m.predictors === 1 ? '' : 's'}</span>`) : '',
@@ -12113,6 +12194,13 @@ function marketMain(m) {
         (m.phase === 'baseline' || m.phase === 'running') && S.live && !isManual(m) ? '<span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Live price</span>' : ''
       }${m.kind === 'live_test' ? '<span class="tag tag-test">Live test</span>' : ''}</div>${m.name ? `<span class="m-name">${esc(m.name)}</span>` : ''}</div><button class="btn btn-sm share-btn" data-action="share" aria-label="Share this market">${ico('share')}<span class="hide-sm">Share</span></button></div>
       <p class="m-question">${question}</p>
+      ${
+        isUpcoming(m)
+          ? `<div class="m-upcoming">${ico('clock')}<div><b>Upcoming: ${esc(m.symbol)} isn’t trading yet</b><p>It lists on ${esc(venueNames(m))} around ${fmtDate(m.closeAt)}. Predictions close at listing, and its first trading price becomes the start price. The result is expected ${fmtDate(m.settleAt)}.</p></div></div>`
+          : !hasStart(m) && isManual(m) && m.status === 'locked'
+          ? `<div class="m-upcoming">${ico('clock')}<div><b>Listed. Opening price coming soon</b><p>Predictions are closed. Firstprint posts ${esc(m.symbol)}’s opening price here, then the result after ${fmtDate(m.settleAt)}.</p></div></div>`
+          : ''
+      }
       ${m.status === 'resolved' || m.status === 'void' || m.phase === 'awaiting_result' ? `<p class="m-status">${statusLine(m)}</p>` : ''}
       <dl class="m-facts">${facts}</dl>
       <div class="m-refs">${ico('landmark')}<span>${isManual(m) ? 'Reference' : 'Prices from'} ${esc(venueNames(m))}</span>${priceLinks(m)}</div>
@@ -12378,7 +12466,7 @@ function mobileBar(m) {
   if (m.status !== 'open') return '';
   return `
     <div class="mobile-bar">
-      <p>${m.phase === 'pre_listing' ? `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}` : `Closes in ${until(m.closeAt)}`}</p>
+      <p>${m.phase === 'pre_listing' ? `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}` : `${isUpcoming(m) ? 'Lists' : 'Closes'} in ${until(m.closeAt)}`}</p>
       <button class="cta" data-action="open-sheet">Make a prediction</button>
     </div>`;
 }
