@@ -32,7 +32,28 @@ import {
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 export const START_POINTS = 1_000;
-export const DAILY_POINTS = 100;
+/** Daily claim: 50 points on day 1 of a streak, 25 more each day after, up to 200 from day 7. */
+export const DAILY_MIN = 50;
+export const DAILY_STEP = 25;
+export const DAILY_MAX = 200;
+export const DAILY_POINTS = DAILY_MIN;
+export const dailyReward = (streakDay: number) => Math.min(DAILY_MAX, DAILY_MIN + DAILY_STEP * (Math.max(1, streakDay) - 1));
+const utcDay = (t: number) => new Date(t).toISOString().slice(0, 10);
+
+/**
+ * Where a player's daily streak stands. The streak is alive if they claimed today or yesterday (UTC);
+ * claiming today continues it, and missing a day starts again at day 1.
+ */
+export function dailyStatus(u: { last_claim_day: string | null; streak?: number | null }, now: number) {
+  const today = utcDay(now);
+  const yesterday = utcDay(now - 86_400_000);
+  const claimedToday = u.last_claim_day === today;
+  const alive = claimedToday || u.last_claim_day === yesterday;
+  const streak = alive ? Math.max(1, u.streak ?? 1) : 0;
+  // Claimed today: what tomorrow brings. Otherwise: what claiming now gives (day 1 after a missed day).
+  const nextDay = streak + 1;
+  return { streak, claimedToday, nextDay, next: dailyReward(nextDay), max: DAILY_MAX };
+}
 export const MIN_STAKE = 10;
 
 export class AppError extends Error {
@@ -61,6 +82,7 @@ export interface UserRow {
   password_hash: string | null;
   points: number;
   last_claim_day: string | null;
+  streak?: number;
   created_at: number;
   x_username?: string | null;
   referral_code?: string | null;
@@ -551,6 +573,17 @@ export class FirstprintService {
     this.db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(sha256(token));
   }
 
+  /** The daily streak and which days were claimed, for the streak calendar (the last 42 days). */
+  dailyCalendar(userId: string) {
+    const u = this.getUser(userId);
+    const now = this.clock.now();
+    const since = utcDay(now - 41 * 86_400_000);
+    const days = as<{ ref: string; delta: number }[]>(
+      this.db.prepare("SELECT ref, delta FROM ledger WHERE user_id = ? AND reason = 'daily' AND ref >= ? ORDER BY ref").all(userId, since),
+    ).map((r) => ({ day: r.ref, points: r.delta }));
+    return { ...dailyStatus(u, now), today: utcDay(now), days, schedule: [1, 2, 3, 4, 5, 6, 7].map(dailyReward) };
+  }
+
   getUser(id: string): UserRow {
     const u = as<UserRow | undefined>(this.db.prepare('SELECT * FROM users WHERE id = ?').get(id));
     if (!u) throw new AppError(404, 'user_not_found', 'User not found.');
@@ -559,13 +592,16 @@ export class FirstprintService {
 
   claimDaily(userId: string) {
     return tx(this.db, () => {
-      const day = new Date(this.clock.now()).toISOString().slice(0, 10);
+      const now = this.clock.now();
+      const day = utcDay(now);
       const u = this.getUser(userId);
       if (u.last_claim_day === day) {
         throw new AppError(409, 'already_claimed', 'Daily points already claimed. Come back tomorrow (UTC).');
       }
-      this.db.prepare('UPDATE users SET last_claim_day = ? WHERE id = ?').run(day, userId);
-      this.credit(userId, DAILY_POINTS, 'daily', day);
+      const { nextDay } = dailyStatus(u, now);
+      const reward = dailyReward(nextDay);
+      this.db.prepare('UPDATE users SET last_claim_day = ?, streak = ? WHERE id = ?').run(day, nextDay, userId);
+      this.credit(userId, reward, 'daily', day);
       return this.getUser(userId);
     });
   }

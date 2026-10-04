@@ -9762,6 +9762,527 @@ a.wallet-option {
   max-width: 320px;
 }
 
+/* Daily streak: day tiles and the month calendar */
+.streak-card {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.st-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+.st-flame {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--flat) 14%, transparent);
+  color: var(--flat);
+}
+.st-flame.lit {
+  background: color-mix(in srgb, var(--down) 18%, transparent);
+  color: var(--down);
+}
+.st-flame svg {
+  width: 24px;
+  height: 24px;
+}
+.st-head > div {
+  display: grid;
+}
+.st-count {
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+.st-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--up);
+  font-weight: 600;
+}
+.st-note svg {
+  width: 15px;
+  height: 15px;
+}
+.st-days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.st-day {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 12px 4px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  text-align: center;
+}
+.st-day .st-n {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.st-day b {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+.st-day .st-ico {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+.st-day .st-ico svg {
+  width: 13px;
+  height: 13px;
+}
+.st-day.next b {
+  color: var(--muted);
+}
+.st-day.done {
+  border-color: color-mix(in srgb, var(--up) 40%, var(--line));
+  background: color-mix(in srgb, var(--up) 9%, var(--surface));
+}
+.st-day.done .st-ico {
+  background: var(--up);
+  color: #fff;
+}
+.st-day.today {
+  border-color: var(--moon);
+  background: color-mix(in srgb, var(--moon) 12%, var(--surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--moon) 18%, transparent);
+}
+.st-day.today b {
+  color: var(--moon);
+}
+.st-day.today .st-ico {
+  color: var(--moon);
+}
+.st-day:last-child b::after {
+  content: '';
+}
+.st-rule {
+  margin: 0;
+  font-size: 13px;
+}
+.st-cal {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.st-cal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  max-width: 420px;
+}
+.cal-wd {
+  text-align: center;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+.cal-cell {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  border: 1px solid transparent;
+}
+.cal-cell.hit {
+  background: color-mix(in srgb, var(--up) 18%, transparent);
+  color: var(--up);
+  font-weight: 650;
+}
+.cal-cell.is-today {
+  border-color: var(--moon);
+  color: var(--text);
+}
+.cal-cell.future {
+  opacity: 0.45;
+}
+.cal-cell.blank {
+  visibility: hidden;
+}
+.streak-card.compact .st-day {
+  padding: 9px 2px 8px;
+}
+.streak-card.compact .st-day b {
+  font-size: 14px;
+}
+.streak-card.compact .st-day .st-n {
+  font-size: 10px;
+}
+@media (max-width: 560px) {
+  .st-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .st-head > .btn,
+  .st-head > .st-note {
+    grid-column: 1 / -1;
+  }
+  .st-days {
+    gap: 5px;
+  }
+  .st-day {
+    padding: 9px 2px 8px;
+    border-radius: 11px;
+  }
+  .st-day b {
+    font-size: 14px;
+  }
+  .st-day .st-n {
+    font-size: 9.5px;
+    letter-spacing: 0;
+  }
+}
+
+/* Analytics: tiles, charts and the partner page. Chart colours are validated for both themes. */
+.viz-page {
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  display: grid;
+  gap: 16px;
+}
+:root[data-theme='light'] .viz-page {
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) .viz-page {
+    --viz-1: #2a78d6;
+    --viz-2: #eb6834;
+    --viz-3: #1baf7a;
+  }
+}
+.viz-page.shared {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.viz-head .page-lede {
+  max-width: 640px;
+}
+.viz-filters {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.viz-filters .muted {
+  font-size: 13px;
+}
+.viz-filters .tabs {
+  margin: 0;
+}
+.viz-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 560px) {
+  .viz-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.viz-tile {
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.viz-tile-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.viz-tile-value {
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+.viz-tile-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.viz-delta {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.viz-delta.up {
+  color: var(--up);
+}
+.viz-delta.down {
+  color: var(--crash);
+}
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.viz-card {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  margin: 0;
+}
+.viz-card.wide {
+  grid-column: 1 / -1;
+}
+.viz-card-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.viz-card-head p {
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+svg.viz {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+.viz-grid line.viz-grid,
+.viz .viz-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.viz .viz-axis {
+  fill: var(--muted);
+  font-size: 11px;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+}
+.viz .viz-bar {
+  fill: var(--viz-1);
+}
+.viz .viz-line {
+  fill: none;
+  stroke: var(--viz-1);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.viz .viz-area {
+  fill: var(--viz-1);
+  opacity: 0.1;
+}
+.viz .viz-end,
+.viz .viz-pt {
+  fill: var(--viz-1);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+.viz .viz-end-label {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+.viz .viz-hit {
+  fill: transparent;
+}
+.viz .viz-guide {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  opacity: 0;
+}
+.viz .viz-pt {
+  opacity: 0;
+}
+.viz-slot:hover .viz-guide,
+.viz-slot:hover .viz-pt {
+  opacity: 1;
+}
+.viz-slot:hover .viz-bar {
+  opacity: 0.75;
+}
+.viz-stack {
+  display: flex;
+  gap: 2px;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.viz-stack i {
+  display: block;
+  min-width: 4px;
+}
+.viz-stack i:hover {
+  opacity: 0.8;
+}
+.viz-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.viz-legend li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto 44px;
+  align-items: center;
+  gap: 10px;
+}
+.viz-legend li .muted {
+  text-align: right;
+  font-size: 13px;
+}
+.viz-key {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+.hbars {
+  display: grid;
+  gap: 10px;
+}
+.hbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+.hbar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hbar-label .muted {
+  font-size: 12.5px;
+}
+.hbar-track {
+  height: 12px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--viz-1) 10%, transparent);
+  overflow: hidden;
+}
+.hbar-track i {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: var(--viz-1);
+}
+.hbar b {
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+  text-align: right;
+}
+.viz-extra {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+.viz-extra div {
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.viz-extra b {
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+.viz-extra span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.viz-table summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+.viz-table .table-wrap {
+  margin-top: 10px;
+  max-height: 360px;
+  overflow: auto;
+}
+.viz-share {
+  margin-bottom: 16px;
+}
+.viz-share input {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 13px;
+  max-width: none !important;
+}
+#viz-tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 200;
+  pointer-events: none;
+  display: grid;
+  gap: 1px;
+  padding: 8px 11px;
+  border-radius: 10px;
+  background: var(--raised, var(--surface));
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+#viz-tip b {
+  color: var(--text);
+  font-size: 14px;
+}
+#viz-tip[hidden] {
+  display: none;
+}
+svg.viz.viz-narrow {
+  display: none;
+}
+@media (max-width: 760px) {
+  svg.viz.viz-wide {
+    display: none;
+  }
+  svg.viz.viz-narrow {
+    display: block;
+  }
+  .viz-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .viz-tile-value {
+    font-size: 24px;
+  }
+  .hbar {
+    grid-template-columns: minmax(0, 1fr) 90px auto;
+  }
+}
+
 </style>
   </head>
   <body>
@@ -10310,6 +10831,8 @@ function createApi(baseUrl = '') {
     login: (body) => post('/api/auth/login', body),
     logout: () => post('/api/auth/logout'),
     claimDaily: () => post('/api/me/claim-daily'),
+    daily: () => request('/api/me/daily'),
+    publicAnalytics: (key, days = 30) => request(`/api/public/analytics?key=${encodeURIComponent(key)}&days=${days}`),
     myPredictions: () => request('/api/me/predictions'),
     ledger: () => request('/api/me/ledger'),
     stats: () => request('/api/me/stats'),
@@ -10401,6 +10924,8 @@ function createAdminApi(key, baseUrl = '') {
     deleteDraft: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/delete`),
     previewResult: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/preview`, body),
     resolve: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/resolve`, body),
+    analytics: (days = 30) => request(`/api/admin/analytics?days=${days}`),
+    analyticsShare: (enabled) => post('/api/admin/analytics/share', { enabled }),
     priceCheck: (body) => post('/api/admin/price-check', body),
     marketChecks: () => request('/api/admin/market-checks'),
     fetchImage: (url) => request(`/api/admin/fetch-image?url=${encodeURIComponent(url)}`),
@@ -10823,7 +11348,25 @@ class DemoBackend {
       wallets: u.wallets,
       points: u.points,
       canClaimDaily: u.lastClaimDay !== today,
+      daily: this.dailyStatus(u),
     };
+  }
+
+  /** Same streak rules as the server: 50 on day 1, +25 a day, 200 from day 7; a missed day resets. */
+  dailyStatus(u) {
+    const day = (t) => new Date(t).toISOString().slice(0, 10);
+    const today = day(this.now());
+    const claimedToday = u.lastClaimDay === today;
+    const alive = claimedToday || u.lastClaimDay === day(this.now() - 86_400_000);
+    const streak = alive ? Math.max(1, u.streak ?? 1) : 0;
+    return { streak, claimedToday, nextDay: streak + 1, next: Math.min(200, 50 + 25 * streak), max: 200 };
+  }
+
+  daily() {
+    return this.run(() => {
+      const u = this.me_();
+      return { ...this.dailyStatus(u), today: new Date(this.now()).toISOString().slice(0, 10), days: u.claims ?? [], schedule: [50, 75, 100, 125, 150, 175, 200] };
+    });
   }
 
   demoDetections(now) {
@@ -10943,7 +11486,7 @@ class DemoBackend {
   // --- Public API (matches createApi) ----------------------------------------------
 
   config() {
-    return this.run(() => ({ minStake: 10, dailyPoints: 100, demo: true, manualOnly: false, signIn: { google: null, email: true } }));
+    return this.run(() => ({ minStake: 10, dailyPoints: 50, dailyMax: 200, demo: true, manualOnly: false, signIn: { google: null, email: true } }));
   }
 
   me() {
@@ -11093,8 +11636,12 @@ class DemoBackend {
       const u = this.me_();
       const today = new Date(this.now()).toISOString().slice(0, 10);
       if (u.lastClaimDay === today) throw new ApiError(409, 'already_claimed', 'Daily points already claimed. Come back tomorrow (UTC).');
+      const { nextDay } = this.dailyStatus(u);
+      const reward = Math.min(200, 50 + 25 * (nextDay - 1));
       u.lastClaimDay = today;
-      u.points += 100;
+      u.streak = nextDay;
+      u.points += reward;
+      (u.claims ??= []).push({ day: today, points: reward });
       return this.publicUser(u);
     });
   }
@@ -11734,6 +12281,8 @@ function parseRoute() {
   if (h === '/radar') return { name: 'radar' };
   if (h === '/earn') return { name: 'earn' };
   if (h === '/admin') return { name: 'admin' };
+  const st = h.match(/^\/stats\/([A-Za-z0-9_-]{10,64})$/);
+  if (st) return { name: 'stats', key: st[1] };
   return { name: 'home' };
 }
 
@@ -11800,6 +12349,16 @@ async function loadRoute() {
       view.innerHTML = profileView(S.profile);
     } else if (S.route.name === 'admin') {
       await renderAdmin();
+    } else if (S.route.name === 'stats') {
+      if (!S.api.publicAnalytics) {
+        view.innerHTML = '<div class="empty"><p>Stats aren’t available in practice mode.</p></div>';
+      } else {
+        try {
+          view.innerHTML = analyticsView(await S.api.publicAnalytics(S.route.key, S.vizDays ?? 30), { shared: true });
+        } catch (err) {
+          view.innerHTML = `<div class="empty"><div class="empty-art">${ico('chart')}</div><p><strong>This stats link isn’t active.</strong><br />${esc(err.message)}</p></div>`;
+        }
+      }
     } else if (S.route.name === 'radar' && S.cfg?.manualOnly) {
       location.replace('#/');
       return;
@@ -11807,12 +12366,13 @@ async function loadRoute() {
       const { listings } = await S.api.detectedListings();
       view.innerHTML = radarView(listings);
     } else if (S.route.name === 'earn') {
-      await refreshRewards();
+      await Promise.all([refreshRewards(), loadDaily()]);
       view.innerHTML = earnView();
     } else if (S.route.name === 'portfolio') {
       const preds = S.me ? (await S.api.myPredictions()).predictions : [];
       const history = S.me && S.api.ledger ? (await S.api.ledger().catch(() => ({ entries: [] }))).entries : [];
       const stats = S.me && S.api.stats ? await S.api.stats().catch(() => null) : null;
+      await loadDaily();
       view.innerHTML = portfolioView(preds, history, stats);
     }
     document.title = titleFor();
@@ -11835,6 +12395,7 @@ function titleFor() {
   if (S.route.name === 'admin') return 'Admin: Firstprint';
   if (S.route.name === 'portfolio') return 'Your dashboard: Firstprint';
   if (S.route.name === 'earn') return 'Earn points: Firstprint';
+  if (S.route.name === 'stats') return 'Live stats: Firstprint';
   return 'Firstprint: predict new exchange listings';
 }
 
@@ -11933,7 +12494,7 @@ function drawTop() {
         ${
           S.me
             ? `<button class="chip bell${S.me.unreadNotifications ? ' has-new' : ''}" data-action="inbox" aria-label="Your results${S.me.unreadNotifications ? `, ${S.me.unreadNotifications} new` : ''}">${ico('bell')}${S.me.unreadNotifications ? `<span class="bell-n">${S.me.unreadNotifications > 9 ? '9+' : S.me.unreadNotifications}</span>` : ''}</button>
-               ${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim 100 free daily points">${ico('gift')}<span class="gift-n">+100</span></button>` : ''}
+               ${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim ${dailyNext()} free daily points">${ico('gift')}<span class="gift-n">+${dailyNext()}</span></button>` : ''}
                <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${tick('me:points:top', S.me.points)}<span class="unit">pts</span></a>
                <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
             : `<a class="top-link hide-sm" href="#/" data-action="how">${ico('info')}How it works</a><button class="btn btn-gold" data-action="connect">Log in</button>`
@@ -11948,6 +12509,275 @@ function drawTop() {
 }
 
 /** Everything secondary: pages, test SOL, the theme switch, help and the account. */
+// --- Daily streak --------------------------------------------------------------------
+const DAILY_SCHEDULE = [50, 75, 100, 125, 150, 175, 200];
+const dailyReward = (day) => DAILY_SCHEDULE[Math.min(DAILY_SCHEDULE.length, Math.max(1, day)) - 1];
+/** Points the next claim gives (today's if not claimed yet, otherwise tomorrow's). */
+const dailyNext = () => S.me?.daily?.next ?? 50;
+function dailyLine() {
+  const d = S.me?.daily;
+  if (!d || !d.streak) return 'Claim every day: 50 points today, growing to 200 a day by day 7.';
+  return `Day ${d.nextDay} of your streak. Keep going to reach 200 a day.`;
+}
+
+async function loadDaily() {
+  if (!S.me || !S.api.daily) return (S.daily = null);
+  S.daily = await S.api.daily().catch(() => null);
+}
+
+/** Streak tiles (days 1–7 and their points) and a calendar of this month's claims. */
+function streakCard(compact = false) {
+  const d = S.daily;
+  if (!S.me || !d) return '';
+  const today = d.today;
+  const cur = d.claimedToday ? d.streak : d.streak + 1; // the streak day today counts as
+  const pos = Math.min(cur, 7);
+  const tiles = DAILY_SCHEDULE.map((pts, i) => {
+    const n = i + 1;
+    const state = n < pos ? 'done' : n === pos ? (d.claimedToday ? 'done today' : 'today') : 'next';
+    const label = n === 7 ? (cur > 7 ? `Day ${cur}` : 'Day 7+') : `Day ${n}`;
+    return `<li class="st-day ${state}"><span class="st-n">${label}</span><b>+${pts}</b><span class="st-ico">${state.includes('done') ? ico('check') : n === pos ? ico('gift') : ''}</span></li>`;
+  }).join('');
+  // This month's calendar, Monday first, in UTC like the claims.
+  const [y, m] = today.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1, 1));
+  const daysIn = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const lead = (first.getUTCDay() + 6) % 7;
+  const claimed = new Map(d.days.map((x) => [x.day, x.points]));
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push('<span class="cal-cell blank"></span>');
+  for (let day = 1; day <= daysIn; day++) {
+    const key = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const pts = claimed.get(key);
+    const cls = ['cal-cell', pts ? 'hit' : '', key === today ? 'is-today' : '', key > today ? 'future' : ''].filter(Boolean).join(' ');
+    cells.push(`<span class="${cls}"${pts ? ` title="+${pts} points"` : ''}>${day}</span>`);
+  }
+  const month = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const claimedThisMonth = d.days.filter((x) => x.day.startsWith(today.slice(0, 7))).length;
+  return `
+    <section class="panel streak-card${compact ? ' compact' : ''}">
+      <div class="st-head">
+        <span class="st-flame${d.streak ? ' lit' : ''}">${ico('flame')}</span>
+        <div><span class="eyebrow">Daily streak</span><b class="st-count">${d.streak ? `${d.streak} day${d.streak === 1 ? '' : 's'}` : 'No streak yet'}</b></div>
+        ${d.claimedToday ? `<span class="st-note">${ico('check')}Claimed today · +${d.next} tomorrow</span>` : `<button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim +${d.next}</button>`}
+      </div>
+      <ol class="st-days">${tiles}</ol>
+      <p class="st-rule muted">Claim once a day (UTC): 50 points on day 1, 25 more each day, 200 a day from day 7. Miss a day and it starts again at 50.</p>
+      ${
+        compact
+          ? ''
+          : `<div class="st-cal">
+              <div class="st-cal-head"><b>${month}</b><span class="muted">${claimedThisMonth} day${claimedThisMonth === 1 ? '' : 's'} claimed</span></div>
+              <div class="cal-grid">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((w) => `<span class="cal-wd">${w}</span>`).join('')}${cells.join('')}</div>
+            </div>`
+      }
+    </section>`;
+}
+
+// --- Analytics (admin, and the read-only partner link) --------------------------------------
+const VIZ = { W: 640, H: 210, L: 40, R: 14, T: 14, B: 26 };
+const fmtShortDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+
+function niceMax(v) {
+  if (v <= 4) return 4;
+  const p = 10 ** Math.floor(Math.log10(v));
+  // Steps whose half is still a round number, so the middle gridline reads cleanly.
+  for (const m of [1, 2, 3, 4, 5, 6, 8, 10]) if (m * p >= v && (m * p) % 2 === 0) return m * p;
+  return 10 * p;
+}
+
+/** Axis, gridlines and date labels shared by the time charts. */
+function vizFrame(days, max, W = VIZ.W) {
+  const { H, L, R, T, B } = VIZ;
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  const ticks = [0, max / 2, max]
+    .map((v) => `<line class="viz-grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="viz-axis" x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${fmtCompact(Math.round(v))}</text>`)
+    .join('');
+  const slot = (W - L - R) / days.length;
+  const at = [0, Math.floor((days.length - 1) / 2), days.length - 1];
+  const xl = [...new Set(at)]
+    .map((i, k) => `<text class="viz-axis" x="${L + slot * (i + 0.5)}" y="${H - 6}" text-anchor="${k === 0 ? 'start' : k === at.length - 1 ? 'end' : 'middle'}">${fmtShortDay(days[i])}</text>`)
+    .join('');
+  return { y, slot, axes: ticks + xl };
+}
+
+/** Columns sit in half-width cards, so they draw on a narrower canvas to keep the text a readable size. */
+function columnChart(days, values, label, W = 380) {
+  const { H, L, B } = VIZ;
+  const max = niceMax(Math.max(...values));
+  const { y, slot, axes } = vizFrame(days, max, W);
+  const bw = Math.max(2, Math.min(24, slot * 0.7));
+  const base = H - B;
+  const cols = values
+    .map((v, i) => {
+      const x = L + slot * i + (slot - bw) / 2;
+      const top = y(v);
+      const h = base - top;
+      const r = Math.min(4, bw / 2, h);
+      const bar = v > 0 ? `<path class="viz-bar" d="M${x},${base}V${top + r}Q${x},${top} ${x + r},${top}H${x + bw - r}Q${x + bw},${top} ${x + bw},${top + r}V${base}Z"/>` : '';
+      return `<g class="viz-slot" data-tip="${esc(fmtShortDay(days[i]))}|${fmtNum(v)} ${esc(label)}"><rect class="viz-hit" x="${L + slot * i}" y="0" width="${slot}" height="${H}"/>${bar}</g>`;
+    })
+    .join('');
+  return `<svg class="viz" viewBox="0 0 ${W} ${VIZ.H}" role="img" aria-label="${esc(label)} per day">${axes}${cols}</svg>`;
+}
+
+/** Drawn twice: a wide canvas for desktop and a narrow one for phones, so the text stays readable on both. */
+function lineChart(days, values, label) {
+  return lineSvg(days, values, label, VIZ.W, 'viz-wide') + lineSvg(days, values, label, 380, 'viz-narrow');
+}
+
+function lineSvg(days, values, label, W, cls) {
+  const { H, L, B, T } = VIZ;
+  const max = niceMax(Math.max(...values));
+  const { y, slot, axes } = vizFrame(days, max, W);
+  const pts = values.map((v, i) => [L + slot * (i + 0.5), y(v)]);
+  const line = pts.map(([x, py], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${py.toFixed(1)}`).join('');
+  const area = `${line}L${pts[pts.length - 1][0].toFixed(1)},${H - B}L${pts[0][0].toFixed(1)},${H - B}Z`;
+  const [ex, ey] = pts[pts.length - 1];
+  const hits = values
+    .map((v, i) => `<g class="viz-slot" data-tip="${esc(fmtShortDay(days[i]))}|${fmtNum(v)} ${esc(label)}"><rect class="viz-hit" x="${L + slot * i}" y="0" width="${slot}" height="${H}"/><line class="viz-guide" x1="${pts[i][0]}" x2="${pts[i][0]}" y1="${T}" y2="${H - B}"/><circle class="viz-pt" cx="${pts[i][0]}" cy="${pts[i][1]}" r="4.5"/></g>`)
+    .join('');
+  return `<svg class="viz ${cls}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)} per day">${axes}<path class="viz-area" d="${area}"/><path class="viz-line" d="${line}"/><circle class="viz-end" cx="${ex}" cy="${ey}" r="4.5"/><text class="viz-end-label" x="${Math.min(ex, W - 4)}" y="${Math.max(ey - 12, 12)}" text-anchor="end">${fmtNum(values[values.length - 1])}</text>${hits}</svg>`;
+}
+
+/** Change against the previous period of the same length. */
+function vizDelta(cur, prev) {
+  if (!prev) return cur ? '<span class="viz-delta up">New</span>' : '';
+  const ch = (cur - prev) / prev;
+  if (Math.abs(ch) < 0.005) return '<span class="viz-delta">0%</span>';
+  return `<span class="viz-delta ${ch > 0 ? 'up' : 'down'}">${ch > 0 ? '▲' : '▼'} ${Math.abs(Math.round(ch * 100))}%</span>`;
+}
+
+function hbars(rows, unit = '') {
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  return `<div class="hbars">${rows
+    .map(
+      (r) => `<div class="hbar" data-tip="${esc(r.label)}|${fmtNum(r.value)}${unit ? ` ${unit}` : ''}"><span class="hbar-label">${r.html ?? esc(r.label)}</span><span class="hbar-track"><i style="width:${Math.max(r.value ? 2 : 0, (r.value / max) * 100)}%"></i></span><b>${fmtNum(r.value)}</b></div>`,
+    )
+    .join('')}</div>`;
+}
+
+function analyticsView(d, { shared = false } = {}) {
+  const P = d.period;
+  const T = d.totals;
+  const days = d.series.map((x) => x.day);
+  const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '–');
+  const tile = (label, value, sub, delta = '') => `<div class="viz-tile"><span class="viz-tile-label">${label}</span><b class="viz-tile-value">${value}</b><span class="viz-tile-sub">${delta}${sub}</span></div>`;
+  const card = (title, sub, body, wide = false) => `<section class="panel viz-card${wide ? ' wide' : ''}"><div class="viz-card-head"><h3>${title}</h3><p class="muted">${sub}</p></div>${body}</section>`;
+  const signIn = [
+    ['Google or email', d.signIn.emailOnly, 1],
+    ['Wallet', d.signIn.walletOnly, 2],
+    ['Both', d.signIn.both, 3],
+  ];
+  const signTotal = signIn.reduce((n, [, v]) => n + v, 0);
+  const seg = (action) => `<div class="tabs viz-days" role="group" aria-label="Period">${[7, 30, 90].map((n) => `<button data-action="${action}" data-days="${n}" aria-pressed="${d.days === n}" aria-selected="${d.days === n}">${n} days</button>`).join('')}</div>`;
+  const range = `${fmtShortDay(d.from)} – ${fmtShortDay(d.to)}, UTC`;
+  return `
+    <div class="viz-page${shared ? ' shared' : ''}">
+      ${
+        shared
+          ? `<header class="viz-head"><div><span class="eyebrow">Firstprint · live stats</span><h1 class="page-title">How Firstprint is growing</h1><p class="page-lede">A free prediction game on new crypto exchange listings, on Solana testnet. Updated ${fmtAgo(d.generatedAt)}.</p></div></header>`
+          : ''
+      }
+      <div class="viz-filters">${seg(shared ? 'viz-days' : 'admin-viz-days')}<span class="muted">${range}</span></div>
+      <div class="viz-tiles">
+        ${tile('Players', fmtNum(T.players), `+${fmtNum(P.newPlayers)} in ${d.days} days`, vizDelta(P.newPlayers, P.newPlayersPrev))}
+        ${tile('Active players', fmtNum(P.active), `${pct(P.returning, P.active)} came back`, vizDelta(P.active, P.activePrev))}
+        ${tile('Predictions', fmtNum(P.predictions), `on ${fmtNum(P.marketsPlayed)} market${P.marketsPlayed === 1 ? '' : 's'}`, vizDelta(P.predictions, P.predictionsPrev))}
+        ${tile('Points staked', fmtCompact(P.staked), 'free points, no cash value', vizDelta(P.staked, P.stakedPrev))}
+        ${tile('Wallets linked', fmtNum(T.walletsLinked), `${pct(T.walletsLinked, T.players)} of players`)}
+        ${tile('Markets', fmtNum(T.marketsTotal), `${fmtNum(T.marketsOpen)} open · ${fmtNum(T.marketsSettled)} settled`)}
+      </div>
+      <div class="viz-grid">
+        ${card('Daily active players', 'Players who made a prediction or claimed daily points', lineChart(days, d.series.map((x) => x.active), 'active players'), true)}
+        ${card('New players', 'Sign-ups per day', columnChart(days, d.series.map((x) => x.newPlayers), 'new players'))}
+        ${card('Predictions', 'Predictions per day', columnChart(days, d.series.map((x) => x.predictions), 'predictions'))}
+        ${card(
+          'How players sign in',
+          `${fmtNum(signTotal)} players`,
+          `<div class="viz-stack" role="img" aria-label="Sign-in methods">${signIn
+            .filter(([, v]) => v)
+            .map(([label, v, c]) => `<i style="flex:${v};background:var(--viz-${c})" data-tip="${label}|${fmtNum(v)} players (${pct(v, signTotal)})"></i>`)
+            .join('')}</div>
+           <ul class="viz-legend">${signIn.map(([label, v, c]) => `<li><span class="viz-key" style="background:var(--viz-${c})"></span>${label}<b>${fmtNum(v)}</b><span class="muted">${pct(v, signTotal)}</span></li>`).join('')}</ul>`,
+        )}
+        ${card(
+          'Daily streaks',
+          'Players with a live daily streak, by length',
+          hbars(d.streaks.map((x) => ({ label: x.label, value: x.count })), 'players'),
+        )}
+        ${card(
+          'Most played markets',
+          `By points staked, last ${d.days} days`,
+          d.topMarkets.length
+            ? hbars(
+                d.topMarkets.map((m) => ({ label: `${m.symbol} on ${m.exchange}`, html: `<b>${esc(m.symbol)}</b> <span class="muted">${esc(m.exchange)} · ${fmtNum(m.predictors)} player${m.predictors === 1 ? '' : 's'}</span>`, value: m.staked })),
+                'points',
+              )
+            : '<p class="muted">No predictions in this period yet.</p>',
+          true,
+        )}
+      </div>
+      <div class="viz-extra">
+        <div><b>${fmtNum(T.predictions)}</b><span>predictions all time</span></div>
+        <div><b>${fmtCompact(T.staked)}</b><span>points staked all time</span></div>
+        <div><b>${fmtNum(T.referred)}</b><span>players invited by friends</span></div>
+        <div><b>${fmtNum(T.tasksDone)}</b><span>tasks completed on X</span></div>
+        <div><b>${fmtNum(T.testfptClaimers)}</b><span>players claimed TestFPT (${fmtCompact(T.testfptClaimed)} total)</span></div>
+      </div>
+      <details class="viz-table"><summary>Daily numbers as a table</summary>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Day (UTC)</th><th class="right">Active</th><th class="right">New</th><th class="right">Predictions</th><th class="right">Points staked</th></tr></thead>
+        <tbody>${[...d.series].reverse().map((x) => `<tr><td>${fmtShortDay(x.day)}</td><td class="right">${fmtNum(x.active)}</td><td class="right">${fmtNum(x.newPlayers)}</td><td class="right">${fmtNum(x.predictions)}</td><td class="right">${fmtNum(x.staked)}</td></tr>`).join('')}</tbody></table></div>
+      </details>
+      <p class="fine">Totals only: no names, emails or wallets are shown. Test accounts are left out. Points have no cash value.</p>
+    </div>`;
+}
+
+/** Admin: create, copy or turn off the read-only link partners use. */
+function analyticsSharePanel(key) {
+  const url = key ? `${location.origin}${location.pathname}#/stats/${key}` : '';
+  return `
+    <section class="panel viz-share">
+      <div class="section-head"><span class="section-ico">${ico('share')}</span><div><h2>Share with partners</h2><p class="muted">A read-only link to this page with totals only. No names, emails or wallets. Anyone with the link can see it, so share it only with partners.</p></div></div>
+      ${
+        key
+          ? `<div class="tg-channel-form"><input id="viz-share-url" value="${esc(url)}" readonly /><button class="btn btn-solid btn-sm" data-action="admin-copy-share">${ico('copy')}Copy link</button><button class="btn btn-sm" data-action="admin-analytics-share">New link</button><button class="btn btn-sm" data-action="admin-analytics-off">Turn off</button></div>
+             <small class="muted">“New link” stops the old one working.</small>`
+          : `<div class="admin-actions"><button class="btn btn-solid btn-sm" data-action="admin-analytics-share">${ico('share')}Create a share link</button></div>`
+      }
+    </section>`;
+}
+
+// One tooltip for every chart: marks carry data-tip="label|value".
+document.addEventListener('pointerover', (e) => {
+  const el = e.target.closest?.('[data-tip]');
+  let tip = document.getElementById('viz-tip');
+  if (!el) {
+    if (tip) tip.hidden = true;
+    return;
+  }
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'viz-tip';
+    tip.setAttribute('role', 'status');
+    document.body.append(tip);
+  }
+  const [label, value] = el.dataset.tip.split('|');
+  const v = document.createElement('b');
+  v.textContent = value ?? '';
+  const l = document.createElement('span');
+  l.textContent = label;
+  tip.replaceChildren(v, l);
+  tip.hidden = false;
+});
+document.addEventListener('pointermove', (e) => {
+  const tip = document.getElementById('viz-tip');
+  if (!tip || tip.hidden) return;
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
+  const y = e.clientY - tip.offsetHeight - 12 < 8 ? e.clientY + 18 : e.clientY - tip.offsetHeight - 12;
+  tip.style.transform = `translate(${x}px, ${y}px)`;
+});
+
 /** The public Telegram channel where new markets and results are posted, if the admin set one. */
 function telegramUrl() {
   const c = S.cfg?.telegramChannel;
@@ -12116,7 +12946,7 @@ function homeHero(showLive = true) {
 function homeRail() {
   const leaders = S.weekLeaders ?? [];
   return `
-    ${S.me?.canClaimDaily ? `<section class="rail-card rail-claim"><div><b>Your daily 100 points</b><p>Free every day. Use them on any open market.</p></div><button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim</button></section>` : ''}
+    ${S.me?.canClaimDaily ? `<section class="rail-card rail-claim"><div><b>Your daily ${dailyNext()} points</b><p>${dailyLine()}</p></div><button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim</button></section>` : ''}
     <section class="rail-card">
       <div class="rail-head"><h3>Top this week</h3><a href="#/leaderboard">See all ${ico('chevronRight')}</a></div>
       ${
@@ -12137,7 +12967,7 @@ function emptyText() {
   if (S.filter === 'settled') return `<div class="empty-art">${ico('checkCircle')}</div><p>No settled markets yet. Results appear here after Firstprint posts them.</p>`;
   return `<div class="empty-art">${ico('satellite')}</div>
     <p><strong>No open markets right now.</strong><br />New markets land here as soon as Firstprint opens them.</p>
-    ${S.me?.canClaimDaily ? `<button class="btn btn-solid" data-action="claim">${ico('gift')}Claim 100 free points meanwhile</button>` : `<a class="btn" href="#/leaderboard">${ico('trophy')}See the leaderboard</a>`}`;
+    ${S.me?.canClaimDaily ? `<button class="btn btn-solid" data-action="claim">${ico('gift')}Claim ${dailyNext()} free points meanwhile</button>` : `<a class="btn" href="#/leaderboard">${ico('trophy')}See the leaderboard</a>`}`;
 }
 
 /** The pool split as five bars, Moon on top, used by the featured market. */
@@ -12366,7 +13196,7 @@ function howItWorks() {
       <div class="section-head"><span class="section-ico">${ico('info')}</span><div><h2>How it works</h2><p class="muted">Free to play. Points only, no real money.</p></div><button class="btn btn-sm head-action" data-action="tour">${ico('sparkles')}Take the tour</button></div>
       <ol class="steps">
         <li><span class="step-ico" style="--c:var(--up)">${ico('target')}</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}.</p></li>
-        <li><span class="step-ico" style="--c:var(--moon)">${ico('coins')}</span><b>Stake free points</b><p>Everyone starts with 1,000 points, plus 100 more every day. No real money.</p></li>
+        <li><span class="step-ico" style="--c:var(--moon)">${ico('coins')}</span><b>Stake free points</b><p>Everyone starts with 1,000 points, plus up to 200 more every day with a daily streak. No real money.</p></li>
         <li><span class="step-ico" style="--c:var(--brand)">${ico('trophy')}</span><b>Win the pool</b><p>If you’re right, you split the pool with the other winners. Earlier picks earn more.</p></li>
       </ol>
       <details class="full-rules"><summary>Full rules</summary>`;
@@ -13162,6 +13992,7 @@ function portfolioView(preds, history = [], stats = null) {
           <div role="tabpanel" id="dp-past" aria-labelledby="dt-past"${tab === 'past' ? '' : ' hidden'}>${pastTable(stats)}</div>
         </section>
         <aside class="dash-side">
+          ${streakCard(true)}
           ${telegramCard()}
           ${walletsCard()}
           ${historyView(history)}
@@ -13200,7 +14031,7 @@ function dashSummary(st) {
   const points = `
     <div class="sum-card sum-points">
       <div class="sum-top"><span class="sum-label">${ico('coins')}Points</span>
-        ${S.me.canClaimDaily ? `<button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim 100</button>` : '<span class="sum-note">Daily claim used</span>'}</div>
+        ${S.me.canClaimDaily ? `<button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim ${dailyNext()}</button>` : `<span class="sum-note">${ico('flame')}Day ${S.me.daily?.streak ?? 1} streak · +${dailyNext()} tomorrow</span>`}</div>
       <div class="sum-value">${tick('me:points:dash', S.me.points)}</div>
       <p class="sum-sub">${st?.open.staked ? `${fmtNum(st.open.staked)} more in play` : 'Available to predict with'}</p>
     </div>`;
@@ -13335,7 +14166,7 @@ function statTiles(st) {
     'Points',
     fmtNum(S.me.points),
     st?.open.staked ? `${fmtNum(st.open.staked)} more in play` : 'Available to predict with',
-    S.me.canClaimDaily ? `<button class="btn btn-solid tile-btn" data-action="claim">${ico('gift')}Claim 100</button>` : '',
+    S.me.canClaimDaily ? `<button class="btn btn-solid tile-btn" data-action="claim">${ico('gift')}Claim ${dailyNext()}</button>` : '',
   );
   if (!st || !st.settled) {
     return `<dl class="stat-tiles">${points}${tile('percent', 'up', 'Win rate', '–', st?.marketsPlayed ? 'Shows up once your first market settles' : 'Make your first prediction to start your record')}</dl>`;
@@ -13594,6 +14425,7 @@ function earnView() {
         <h1 class="page-title">Earn points</h1>
         <p class="page-lede">${r.onChain ? `Rewards arrive as <b>TestFPT</b> on Solana ${clusterName()} when you claim them, and go into your Firstprint balance too.` : 'Complete tasks and invite friends. Points go straight to your balance.'}</p>
       </header>
+      ${streakCard()}
       ${r.onChain ? claimCard(r) : ''}
       <div class="earn2-grid">
         <div class="earn2-main">
@@ -14170,7 +15002,7 @@ const TOUR = [
   {
     icon: 'coins',
     title: 'Play with free points',
-    body: 'You start with 1,000 points and get 100 more every day. Points have no cash value, so there’s nothing to lose. Earn more on the Earn page.',
+    body: 'You start with 1,000 points and get up to 200 more every day: claim daily to grow your streak. Points have no cash value, so there’s nothing to lose. Earn more on the Earn page.',
   },
   {
     icon: 'trophy',
@@ -14389,6 +15221,7 @@ function saveAdminKey(key) {
 const ADMIN_TABS = [
   ['overview', 'grid', 'Overview', 'What needs your attention and how Firstprint is doing.'],
   ['markets', 'list', 'Markets', 'Post results, publish drafts, edit or cancel markets.'],
+  ['analytics', 'chart', 'Analytics', 'Players, activity and markets. Share a read-only link with partners.'],
   ['create', 'plusCircle', 'Create market', 'Save a draft, check it, then publish. Users only see published markets.'],
   ['token', 'token', 'TestFPT token', 'The on-chain token players claim their points as.'],
   ['tasks', 'sparkles', 'Tasks', 'Tasks players complete on X for points.'],
@@ -14454,6 +15287,14 @@ async function renderAdmin() {
   let body;
   if (tab === 'overview') body = listingsPanel(pending) + adminOverview({ markets, waiting, drafts, token, tasks, log });
   else if (tab === 'markets') body = listingsPanel(pending) + adminMarketsTab(markets, waiting);
+  else if (tab === 'analytics') {
+    try {
+      const data = await A.api.analytics(S.vizDays ?? 30);
+      body = analyticsSharePanel(data.shareKey) + analyticsView(data);
+    } catch (err) {
+      body = `<div class="empty"><p>${esc(err.message)}</p></div>`;
+    }
+  }
   else if (tab === 'create') body = `<section class="panel" id="admin-market-section">
       <div class="section-head"><span class="section-ico">${ico(editing ? 'edit' : 'plusCircle')}</span><div><h2>${editing ? `Edit ${esc(editing.symbol)} market` : review ? `Review ${esc(review.symbol)} from ${esc(review.exchangeName)}` : 'New market'}</h2><p class="muted">${review ? 'Check the start price and times, add the logo and a description, then publish.' : 'When the close time passes, the market waits in Markets for your result.'}</p></div></div>
       ${marketForm(editing, review ? reviewPrefill(review) : null)}
@@ -15369,6 +16210,32 @@ async function onAdminAction(action, el) {
       }
       return;
     }
+    case 'admin-viz-days':
+      S.vizDays = Number(el.dataset.days);
+      return renderAdmin();
+    case 'admin-analytics-share':
+    case 'admin-analytics-off': {
+      const on = action === 'admin-analytics-share';
+      if (!confirm(on ? 'Create a new share link? Any old link stops working.' : 'Turn off the share link? Partners will no longer see the stats.')) return;
+      try {
+        await A.api.analyticsShare(on);
+        toast(on ? 'Share link ready. Copy it below.' : 'Share link turned off.');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
+    }
+    case 'admin-copy-share': {
+      const input = $('#viz-share-url');
+      try {
+        await navigator.clipboard.writeText(input.value);
+        toast('Link copied');
+      } catch {
+        input.select();
+        toast('Press Ctrl+C (or ⌘C) to copy');
+      }
+      return;
+    }
     case 'admin-tg-disconnect':
       if (!confirm('Stop sending alerts to this Telegram chat?')) return;
       await A.api.telegramDisconnect().catch((err) => toast(err.message, true));
@@ -15651,13 +16518,19 @@ document.addEventListener('click', async (e) => {
       renderTop();
       toast('Logged out');
       return loadRoute();
+    case 'viz-days':
+      S.vizDays = Number(t.closest('[data-action]').dataset.days);
+      return loadRoute();
     case 'claim':
       try {
         const from = t.closest('[data-action]').getBoundingClientRect();
         const me = await S.api.claimDaily();
-        await collectPoints(from, 100);
+        const day = me.daily?.streak ?? 1;
+        const got = dailyReward(day);
+        await collectPoints(from, got);
         S.me = me;
-        toast('+100 points added. See you tomorrow!');
+        S.daily = null;
+        toast(`+${got} points · Day ${day} streak${day > 1 ? ' 🔥' : ''}. Tomorrow: +${me.daily?.next ?? got}.`);
         renderTop();
         return loadRoute();
       } catch (err) {
