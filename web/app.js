@@ -66,6 +66,12 @@ function esc(v) {
 const fmtNum = (n) => Math.round(n ?? 0).toLocaleString('en-US');
 const fmtPts = (n) => `${fmtNum(n)} pts`;
 
+/** A number that counts smoothly to its new value when it changes (see the ticker observer below). */
+const tick = (key, n) => `<span class="tick" data-tick="${esc(key)}" data-val="${Number(n) || 0}">${fmtNum(n)}</span>`;
+
+/** Payout multiple for one outcome as the pool stands now, after the fee. */
+const poolMultiple = (m, b) => (m.totals[b] ? (m.pool * (1 - m.feeBps / 10_000)) / m.totals[b] : null);
+
 function fmtPct(r, digits = 1) {
   if (r === null || r === undefined) return '–';
   const v = Math.abs(r * 100).toFixed(digits);
@@ -208,13 +214,22 @@ function parseRoute() {
   return { name: 'home' };
 }
 
+/** Placeholders shaped like the page that is loading, instead of a spinner. */
+function skeletonView(name) {
+  const card = '<div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div>';
+  const grid = `<div class="sk-grid">${card.repeat(6)}</div>`;
+  if (name === 'home') return `<div class="skeleton" aria-busy="true" aria-label="Loading markets"><div class="sk-hero"><i class="sk sk-line w30"></i><i class="sk sk-title"></i><i class="sk sk-line w50"></i></div>${grid}</div>`;
+  if (name === 'portfolio') return `<div class="skeleton" aria-busy="true" aria-label="Loading your dashboard"><div class="sk-row"><i class="sk sk-circle lg"></i><span class="sk-col"><i class="sk sk-line w20"></i><i class="sk sk-title w30"></i></span></div><div class="sk-grid two"><div class="sk-card tall"></div><div class="sk-card tall"></div></div><div class="sk-card block"></div></div>`;
+  return `<div class="skeleton" aria-busy="true" aria-label="Loading"><i class="sk sk-title w40"></i><i class="sk sk-line w60"></i><div class="sk-card block"></div></div>`;
+}
+
 async function onRoute() {
   const next = parseRoute();
   const changed = next.name !== S.route.name || next.id !== S.route.id;
   S.route = next;
   if (changed) {
     closeSheet();
-    $('#view').innerHTML = '<p class="loading">Loading</p>';
+    $('#view').innerHTML = skeletonView(next.name);
     window.scrollTo(0, 0);
   }
   renderTop();
@@ -365,7 +380,7 @@ function renderTop() {
           S.me
             ? `<button class="chip bell${S.me.unreadNotifications ? ' has-new' : ''}" data-action="inbox" aria-label="Your results${S.me.unreadNotifications ? `, ${S.me.unreadNotifications} new` : ''}">${ico('bell')}${S.me.unreadNotifications ? `<span class="bell-n">${S.me.unreadNotifications > 9 ? '9+' : S.me.unreadNotifications}</span>` : ''}</button>
                ${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim 100 free daily points">${ico('gift')}<span class="gift-n">+100</span></button>` : ''}
-               <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${fmtNum(S.me.points)}<span class="unit">pts</span></a>
+               <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${tick('me:points:top', S.me.points)}<span class="unit">pts</span></a>
                <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
             : `<button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button>`
         }
@@ -475,7 +490,7 @@ function miniLadder(m) {
 function heroFacts(m, whenLabel, whenValue) {
   return `
     <dl class="hero-facts">
-      <div>${ico('coins')}<dt>Pool</dt><dd>${fmtPts(m.pool)}</dd></div>
+      <div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:hero:${m.id}`, m.pool)} pts</dd></div>
       <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
       <div>${ico('clock')}<dt>${whenLabel}</dt><dd>${whenValue}</dd></div>
     </dl>`;
@@ -553,7 +568,10 @@ function cardView(m) {
   else if (m.status === 'void') leadText = 'Cancelled. Points were returned.';
   else if (m.live?.projectedBucket) leadText = `Now ${fmtPct(m.live.returnPct)}, tracking ${outcome(m.live.projectedBucket)}`;
   else if (yn) leadText = `Will it be at or above ${fmtPrice(m.basePrice)}?`;
-  else if (lead) leadText = `${outcome(lead)} leads with ${Math.round(share(m, lead) * 100)}%`;
+  else if (lead) {
+    const x = poolMultiple(m, lead);
+    leadText = `${outcome(lead)} leads with ${Math.round(share(m, lead) * 100)}%${x ? ` <span class="lead-pays">· pays ${x.toFixed(1)}×</span>` : ''}`;
+  }
   else leadText = '<span class="muted">No predictions yet. Be the first.</span>';
 
   let when;
@@ -585,7 +603,7 @@ function cardView(m) {
       <div class="card-foot">
         <span class="when">${ico('clock')}${when}</span>
         <span>${ico('users')}${fmtNum(m.predictors)}</span>
-        <span class="pool">${ico('coins')}${fmtNum(m.pool)}</span>
+        <span class="pool">${ico('coins')}${tick(`pool:card:${m.id}`, m.pool)}</span>
       </div>
     </a>`;
 }
@@ -733,7 +751,7 @@ function marketMain(m) {
     </header>
 
     <dl class="stats">
-      <div>${ico('coins')}<dt>Pool</dt><dd>${fmtPts(m.pool)}</dd></div>
+      <div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:page:${m.id}`, m.pool)} pts</dd></div>
       <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
       ${
         isManual(m)
@@ -1353,7 +1371,7 @@ function dashSummary(st) {
     <div class="sum-card sum-points">
       <div class="sum-top"><span class="sum-label">${ico('coins')}Points</span>
         ${S.me.canClaimDaily ? `<button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim 100</button>` : '<span class="sum-note">Daily claim used</span>'}</div>
-      <div class="sum-value">${fmtNum(S.me.points)}</div>
+      <div class="sum-value">${tick('me:points:dash', S.me.points)}</div>
       <p class="sum-sub">${st?.open.staked ? `${fmtNum(st.open.staked)} more in play` : 'Available to predict with'}</p>
     </div>`;
   const settled = Boolean(st?.settled);
@@ -3585,3 +3603,71 @@ setInterval(() => {
     if ((S.modal === 'link' || (S.modal === 'connect' && S.auth?.step === 'start')) && !S.modalBusy) renderAuth();
   });
 })();
+
+
+// ---------------------------------------------------------------- Motion details
+
+const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)');
+const TICKS = new Map();
+
+/** Counts a ticker from its last shown value to the new one and flashes it green or red. */
+function runTicker(el) {
+  const key = el.dataset.tick;
+  const to = Number(el.dataset.val);
+  const from = TICKS.get(key);
+  TICKS.set(key, to);
+  if (from === undefined || from === to || REDUCED_MOTION.matches) return;
+  el.classList.remove('tick-up', 'tick-down');
+  void el.offsetWidth; // restart the flash
+  el.classList.add(to > from ? 'tick-up' : 'tick-down');
+  const start = performance.now();
+  const dur = 550;
+  const step = (t) => {
+    const k = Math.min(1, (t - start) / dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmtNum(Math.round(from + (to - from) * e));
+    if (k < 1 && el.isConnected) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/** Moves the sliding highlight of a tab group to its selected tab. */
+function syncSeg(group) {
+  const on = group.querySelector('[aria-selected="true"]');
+  if (!on) return group.classList.remove('seg-on');
+  group.style.setProperty('--seg-x', `${on.offsetLeft}px`);
+  group.style.setProperty('--seg-w', `${on.offsetWidth}px`);
+  if (!group.classList.contains('seg-on')) requestAnimationFrame(() => group.classList.add('seg-on', 'seg-ready'));
+}
+const SEG_GROUPS = '.tabs, .dash-tabs';
+const syncAllSegs = () => document.querySelectorAll(SEG_GROUPS).forEach(syncSeg);
+
+new MutationObserver((records) => {
+  let segs = false;
+  for (const r of records) {
+    if (r.type === 'attributes') {
+      if (r.target.closest?.(SEG_GROUPS)) segs = true;
+      continue;
+    }
+    for (const n of r.addedNodes) {
+      if (n.nodeType !== 1) continue;
+      if (n.matches('[data-tick]')) runTicker(n);
+      n.querySelectorAll('[data-tick]').forEach(runTicker);
+      if (n.matches(SEG_GROUPS) || n.querySelector(SEG_GROUPS)) segs = true;
+    }
+  }
+  if (segs) syncAllSegs();
+}).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-selected'] });
+window.addEventListener('resize', syncAllSegs);
+document.fonts?.ready.then(syncAllSegs);
+
+// A soft light follows the pointer across market cards (mouse and trackpad only).
+if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
+  document.addEventListener('pointermove', (e) => {
+    const card = e.target.closest?.('.card');
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    card.style.setProperty('--mx', `${e.clientX - r.left}px`);
+    card.style.setProperty('--my', `${e.clientY - r.top}px`);
+  });
+}

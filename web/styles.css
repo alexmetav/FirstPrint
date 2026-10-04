@@ -6323,3 +6323,275 @@ h3,
   background: var(--raised);
   border-color: var(--line);
 }
+
+/* =====================================================================
+   Premium details: hairlines, spotlight, tickers, segmented tabs, glass
+   top bar, skeletons, press feedback. Only transform and opacity move.
+   ===================================================================== */
+
+:root {
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --hairline-hi: rgba(255, 255, 255, 0.06);
+}
+:root[data-theme='light'] {
+  --hairline-hi: rgba(255, 255, 255, 0.8);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --hairline-hi: rgba(255, 255, 255, 0.8);
+  }
+}
+
+/* 1. Hairline borders with a faint inner top highlight. */
+.card,
+.panel,
+.dash-card,
+.sum-card,
+.featured,
+.trade,
+.trade-card,
+.stat-tile,
+.hero-facts > div {
+  box-shadow: inset 0 1px 0 var(--hairline-hi), var(--shadow);
+}
+.dash-card,
+.sum-card {
+  box-shadow: inset 0 1px 0 var(--hairline-hi);
+}
+.card:hover {
+  border-color: color-mix(in srgb, var(--text) 16%, var(--line));
+  box-shadow: inset 0 1px 0 var(--hairline-hi), var(--shadow-lg);
+}
+
+/* 2. Spotlight that follows the pointer on market cards. */
+.card {
+  position: relative;
+  isolation: isolate;
+}
+.card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--brand) 12%, transparent), transparent 65%);
+  transition: opacity 200ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .card:hover::after {
+    opacity: 1;
+  }
+}
+.card:hover {
+  transform: translateY(-2px);
+}
+
+/* 3. Numbers that count to new values, with a short green or red flash. */
+.tick {
+  font-variant-numeric: tabular-nums;
+  border-radius: 6px;
+  padding: 0 2px;
+  margin: 0 -2px;
+}
+.tick-up {
+  animation: tickUp 700ms var(--ease-out);
+}
+.tick-down {
+  animation: tickDown 700ms var(--ease-out);
+}
+@keyframes tickUp {
+  0% { background: color-mix(in srgb, var(--up) 22%, transparent); color: var(--up); }
+  100% { background: transparent; }
+}
+@keyframes tickDown {
+  0% { background: color-mix(in srgb, var(--crash) 22%, transparent); color: var(--crash); }
+  100% { background: transparent; }
+}
+
+/* 4. Payout multiple next to the leading outcome on cards. */
+.lead-pays {
+  color: var(--muted);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 5. Segmented tabs with a sliding highlight. */
+.tabs,
+.dash-tabs {
+  position: relative;
+}
+.tabs.seg-on::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: var(--seg-w, 0);
+  transform: translateX(var(--seg-x, 0));
+  border-radius: 999px;
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--line-strong), inset 0 1px 0 var(--hairline-hi);
+  pointer-events: none;
+}
+.tabs.seg-ready::before {
+  transition: transform 260ms var(--ease-out), width 260ms var(--ease-out);
+}
+.tabs.seg-on button {
+  position: relative;
+  z-index: 1;
+}
+.tabs.seg-on button[aria-selected='true'] {
+  background: transparent;
+  box-shadow: none;
+}
+.dash-tabs.seg-on::before {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  width: var(--seg-w, 0);
+  transform: translateX(var(--seg-x, 0));
+  border-radius: 2px;
+  background: var(--brand);
+  pointer-events: none;
+}
+.dash-tabs.seg-ready::before {
+  transition: transform 260ms var(--ease-out), width 260ms var(--ease-out);
+}
+.dash-tabs.seg-on button[aria-selected='true']::after {
+  display: none;
+}
+
+/* 6. Frosted glass top bar. Safari needs literal values in -webkit-backdrop-filter. */
+.topbar {
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+/* 7. Skeletons shaped like the page that is loading. */
+.skeleton {
+  display: grid;
+  gap: 16px;
+  padding-top: 8px;
+}
+.sk {
+  display: block;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  position: relative;
+  overflow: hidden;
+}
+.sk::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 6%, transparent), transparent);
+  animation: skShimmer 1.4s ease-in-out infinite;
+}
+@keyframes skShimmer {
+  to { transform: translateX(100%); }
+}
+.sk-line { height: 12px; width: 60%; }
+.sk-title { height: 28px; width: 50%; border-radius: 10px; }
+.sk-bar { height: 8px; width: 100%; border-radius: 999px; }
+.sk-circle { width: 42px; height: 42px; border-radius: 50%; flex: none; }
+.sk-circle.lg { width: 54px; height: 54px; }
+.w20 { width: 20%; } .w25 { width: 25%; } .w30 { width: 30%; } .w40 { width: 40%; }
+.w50 { width: 50%; } .w60 { width: 60%; } .w70 { width: 70%; }
+.sk-hero {
+  display: grid;
+  gap: 12px;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  background: var(--surface);
+}
+.sk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.sk-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.sk-card {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-height: 180px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.sk-card.tall { min-height: 140px; }
+.sk-card.block { min-height: 280px; }
+.sk-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sk-col {
+  display: grid;
+  gap: 8px;
+  flex: 1;
+}
+
+/* 8. Buttons press in slightly; the main action brightens on hover. */
+.btn,
+.chip,
+.tabs button,
+.dash-tabs button,
+.card {
+  transition-property: transform, background-color, border-color, color, box-shadow, opacity, filter;
+  transition-duration: 160ms;
+  transition-timing-function: var(--ease-out);
+}
+.btn:active:not(:disabled),
+.chip:active,
+.tabs button:active {
+  transform: scale(0.98);
+  transition-duration: 80ms;
+}
+.btn-gold:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--cta) 88%, #ffffff);
+  border-color: color-mix(in srgb, var(--cta) 88%, #ffffff);
+  filter: none;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .sk-grid.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sk-hero {
+    padding: 20px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk::after,
+  .tick-up,
+  .tick-down {
+    animation: none;
+  }
+  .card:hover {
+    transform: none;
+  }
+  .tabs.seg-ready::before,
+  .dash-tabs.seg-ready::before {
+    transition: none;
+  }
+}

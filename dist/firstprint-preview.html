@@ -6353,6 +6353,278 @@ h3,
   border-color: var(--line);
 }
 
+/* =====================================================================
+   Premium details: hairlines, spotlight, tickers, segmented tabs, glass
+   top bar, skeletons, press feedback. Only transform and opacity move.
+   ===================================================================== */
+
+:root {
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --hairline-hi: rgba(255, 255, 255, 0.06);
+}
+:root[data-theme='light'] {
+  --hairline-hi: rgba(255, 255, 255, 0.8);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --hairline-hi: rgba(255, 255, 255, 0.8);
+  }
+}
+
+/* 1. Hairline borders with a faint inner top highlight. */
+.card,
+.panel,
+.dash-card,
+.sum-card,
+.featured,
+.trade,
+.trade-card,
+.stat-tile,
+.hero-facts > div {
+  box-shadow: inset 0 1px 0 var(--hairline-hi), var(--shadow);
+}
+.dash-card,
+.sum-card {
+  box-shadow: inset 0 1px 0 var(--hairline-hi);
+}
+.card:hover {
+  border-color: color-mix(in srgb, var(--text) 16%, var(--line));
+  box-shadow: inset 0 1px 0 var(--hairline-hi), var(--shadow-lg);
+}
+
+/* 2. Spotlight that follows the pointer on market cards. */
+.card {
+  position: relative;
+  isolation: isolate;
+}
+.card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--brand) 12%, transparent), transparent 65%);
+  transition: opacity 200ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .card:hover::after {
+    opacity: 1;
+  }
+}
+.card:hover {
+  transform: translateY(-2px);
+}
+
+/* 3. Numbers that count to new values, with a short green or red flash. */
+.tick {
+  font-variant-numeric: tabular-nums;
+  border-radius: 6px;
+  padding: 0 2px;
+  margin: 0 -2px;
+}
+.tick-up {
+  animation: tickUp 700ms var(--ease-out);
+}
+.tick-down {
+  animation: tickDown 700ms var(--ease-out);
+}
+@keyframes tickUp {
+  0% { background: color-mix(in srgb, var(--up) 22%, transparent); color: var(--up); }
+  100% { background: transparent; }
+}
+@keyframes tickDown {
+  0% { background: color-mix(in srgb, var(--crash) 22%, transparent); color: var(--crash); }
+  100% { background: transparent; }
+}
+
+/* 4. Payout multiple next to the leading outcome on cards. */
+.lead-pays {
+  color: var(--muted);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 5. Segmented tabs with a sliding highlight. */
+.tabs,
+.dash-tabs {
+  position: relative;
+}
+.tabs.seg-on::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: var(--seg-w, 0);
+  transform: translateX(var(--seg-x, 0));
+  border-radius: 999px;
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--line-strong), inset 0 1px 0 var(--hairline-hi);
+  pointer-events: none;
+}
+.tabs.seg-ready::before {
+  transition: transform 260ms var(--ease-out), width 260ms var(--ease-out);
+}
+.tabs.seg-on button {
+  position: relative;
+  z-index: 1;
+}
+.tabs.seg-on button[aria-selected='true'] {
+  background: transparent;
+  box-shadow: none;
+}
+.dash-tabs.seg-on::before {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  width: var(--seg-w, 0);
+  transform: translateX(var(--seg-x, 0));
+  border-radius: 2px;
+  background: var(--brand);
+  pointer-events: none;
+}
+.dash-tabs.seg-ready::before {
+  transition: transform 260ms var(--ease-out), width 260ms var(--ease-out);
+}
+.dash-tabs.seg-on button[aria-selected='true']::after {
+  display: none;
+}
+
+/* 6. Frosted glass top bar. Safari needs literal values in -webkit-backdrop-filter. */
+.topbar {
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+/* 7. Skeletons shaped like the page that is loading. */
+.skeleton {
+  display: grid;
+  gap: 16px;
+  padding-top: 8px;
+}
+.sk {
+  display: block;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  position: relative;
+  overflow: hidden;
+}
+.sk::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 6%, transparent), transparent);
+  animation: skShimmer 1.4s ease-in-out infinite;
+}
+@keyframes skShimmer {
+  to { transform: translateX(100%); }
+}
+.sk-line { height: 12px; width: 60%; }
+.sk-title { height: 28px; width: 50%; border-radius: 10px; }
+.sk-bar { height: 8px; width: 100%; border-radius: 999px; }
+.sk-circle { width: 42px; height: 42px; border-radius: 50%; flex: none; }
+.sk-circle.lg { width: 54px; height: 54px; }
+.w20 { width: 20%; } .w25 { width: 25%; } .w30 { width: 30%; } .w40 { width: 40%; }
+.w50 { width: 50%; } .w60 { width: 60%; } .w70 { width: 70%; }
+.sk-hero {
+  display: grid;
+  gap: 12px;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  background: var(--surface);
+}
+.sk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.sk-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.sk-card {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-height: 180px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.sk-card.tall { min-height: 140px; }
+.sk-card.block { min-height: 280px; }
+.sk-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sk-col {
+  display: grid;
+  gap: 8px;
+  flex: 1;
+}
+
+/* 8. Buttons press in slightly; the main action brightens on hover. */
+.btn,
+.chip,
+.tabs button,
+.dash-tabs button,
+.card {
+  transition-property: transform, background-color, border-color, color, box-shadow, opacity, filter;
+  transition-duration: 160ms;
+  transition-timing-function: var(--ease-out);
+}
+.btn:active:not(:disabled),
+.chip:active,
+.tabs button:active {
+  transform: scale(0.98);
+  transition-duration: 80ms;
+}
+.btn-gold:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--cta) 88%, #ffffff);
+  border-color: color-mix(in srgb, var(--cta) 88%, #ffffff);
+  filter: none;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .sk-grid.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sk-hero {
+    padding: 20px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk::after,
+  .tick-up,
+  .tick-down {
+    animation: none;
+  }
+  .card:hover {
+    transform: none;
+  }
+  .tabs.seg-ready::before,
+  .dash-tabs.seg-ready::before {
+    transition: none;
+  }
+}
+
 </style>
   </head>
   <body>
@@ -6360,7 +6632,7 @@ h3,
     <div id="app">
       <header class="topbar" id="topbar"></header>
       <div id="demo-bar"></div>
-      <main id="view" tabindex="-1"><p class="loading">Loading markets</p></main>
+      <main id="view" tabindex="-1"><div class="skeleton" aria-busy="true" aria-label="Loading markets"><div class="sk-hero"><i class="sk sk-line w30"></i><i class="sk sk-title"></i><i class="sk sk-line w50"></i></div><div class="sk-grid"><div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div><div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div><div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div></div></div></main>
       <footer class="footer">
         <p>Points have no cash value. Firstprint is independent and not affiliated with any exchange. <a href="/privacy.html">Privacy</a></p>
       </footer>
@@ -8148,6 +8420,12 @@ function esc(v) {
 const fmtNum = (n) => Math.round(n ?? 0).toLocaleString('en-US');
 const fmtPts = (n) => `${fmtNum(n)} pts`;
 
+/** A number that counts smoothly to its new value when it changes (see the ticker observer below). */
+const tick = (key, n) => `<span class="tick" data-tick="${esc(key)}" data-val="${Number(n) || 0}">${fmtNum(n)}</span>`;
+
+/** Payout multiple for one outcome as the pool stands now, after the fee. */
+const poolMultiple = (m, b) => (m.totals[b] ? (m.pool * (1 - m.feeBps / 10_000)) / m.totals[b] : null);
+
 function fmtPct(r, digits = 1) {
   if (r === null || r === undefined) return '–';
   const v = Math.abs(r * 100).toFixed(digits);
@@ -8290,13 +8568,22 @@ function parseRoute() {
   return { name: 'home' };
 }
 
+/** Placeholders shaped like the page that is loading, instead of a spinner. */
+function skeletonView(name) {
+  const card = '<div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div>';
+  const grid = `<div class="sk-grid">${card.repeat(6)}</div>`;
+  if (name === 'home') return `<div class="skeleton" aria-busy="true" aria-label="Loading markets"><div class="sk-hero"><i class="sk sk-line w30"></i><i class="sk sk-title"></i><i class="sk sk-line w50"></i></div>${grid}</div>`;
+  if (name === 'portfolio') return `<div class="skeleton" aria-busy="true" aria-label="Loading your dashboard"><div class="sk-row"><i class="sk sk-circle lg"></i><span class="sk-col"><i class="sk sk-line w20"></i><i class="sk sk-title w30"></i></span></div><div class="sk-grid two"><div class="sk-card tall"></div><div class="sk-card tall"></div></div><div class="sk-card block"></div></div>`;
+  return `<div class="skeleton" aria-busy="true" aria-label="Loading"><i class="sk sk-title w40"></i><i class="sk sk-line w60"></i><div class="sk-card block"></div></div>`;
+}
+
 async function onRoute() {
   const next = parseRoute();
   const changed = next.name !== S.route.name || next.id !== S.route.id;
   S.route = next;
   if (changed) {
     closeSheet();
-    $('#view').innerHTML = '<p class="loading">Loading</p>';
+    $('#view').innerHTML = skeletonView(next.name);
     window.scrollTo(0, 0);
   }
   renderTop();
@@ -8447,7 +8734,7 @@ function renderTop() {
           S.me
             ? `<button class="chip bell${S.me.unreadNotifications ? ' has-new' : ''}" data-action="inbox" aria-label="Your results${S.me.unreadNotifications ? `, ${S.me.unreadNotifications} new` : ''}">${ico('bell')}${S.me.unreadNotifications ? `<span class="bell-n">${S.me.unreadNotifications > 9 ? '9+' : S.me.unreadNotifications}</span>` : ''}</button>
                ${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim 100 free daily points">${ico('gift')}<span class="gift-n">+100</span></button>` : ''}
-               <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${fmtNum(S.me.points)}<span class="unit">pts</span></a>
+               <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${tick('me:points:top', S.me.points)}<span class="unit">pts</span></a>
                <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
             : `<button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button>`
         }
@@ -8557,7 +8844,7 @@ function miniLadder(m) {
 function heroFacts(m, whenLabel, whenValue) {
   return `
     <dl class="hero-facts">
-      <div>${ico('coins')}<dt>Pool</dt><dd>${fmtPts(m.pool)}</dd></div>
+      <div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:hero:${m.id}`, m.pool)} pts</dd></div>
       <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
       <div>${ico('clock')}<dt>${whenLabel}</dt><dd>${whenValue}</dd></div>
     </dl>`;
@@ -8635,7 +8922,10 @@ function cardView(m) {
   else if (m.status === 'void') leadText = 'Cancelled. Points were returned.';
   else if (m.live?.projectedBucket) leadText = `Now ${fmtPct(m.live.returnPct)}, tracking ${outcome(m.live.projectedBucket)}`;
   else if (yn) leadText = `Will it be at or above ${fmtPrice(m.basePrice)}?`;
-  else if (lead) leadText = `${outcome(lead)} leads with ${Math.round(share(m, lead) * 100)}%`;
+  else if (lead) {
+    const x = poolMultiple(m, lead);
+    leadText = `${outcome(lead)} leads with ${Math.round(share(m, lead) * 100)}%${x ? ` <span class="lead-pays">· pays ${x.toFixed(1)}×</span>` : ''}`;
+  }
   else leadText = '<span class="muted">No predictions yet. Be the first.</span>';
 
   let when;
@@ -8667,7 +8957,7 @@ function cardView(m) {
       <div class="card-foot">
         <span class="when">${ico('clock')}${when}</span>
         <span>${ico('users')}${fmtNum(m.predictors)}</span>
-        <span class="pool">${ico('coins')}${fmtNum(m.pool)}</span>
+        <span class="pool">${ico('coins')}${tick(`pool:card:${m.id}`, m.pool)}</span>
       </div>
     </a>`;
 }
@@ -8815,7 +9105,7 @@ function marketMain(m) {
     </header>
 
     <dl class="stats">
-      <div>${ico('coins')}<dt>Pool</dt><dd>${fmtPts(m.pool)}</dd></div>
+      <div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:page:${m.id}`, m.pool)} pts</dd></div>
       <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
       ${
         isManual(m)
@@ -9435,7 +9725,7 @@ function dashSummary(st) {
     <div class="sum-card sum-points">
       <div class="sum-top"><span class="sum-label">${ico('coins')}Points</span>
         ${S.me.canClaimDaily ? `<button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim 100</button>` : '<span class="sum-note">Daily claim used</span>'}</div>
-      <div class="sum-value">${fmtNum(S.me.points)}</div>
+      <div class="sum-value">${tick('me:points:dash', S.me.points)}</div>
       <p class="sum-sub">${st?.open.staked ? `${fmtNum(st.open.staked)} more in play` : 'Available to predict with'}</p>
     </div>`;
   const settled = Boolean(st?.settled);
@@ -11667,6 +11957,74 @@ setInterval(() => {
     if ((S.modal === 'link' || (S.modal === 'connect' && S.auth?.step === 'start')) && !S.modalBusy) renderAuth();
   });
 })();
+
+
+// ---------------------------------------------------------------- Motion details
+
+const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)');
+const TICKS = new Map();
+
+/** Counts a ticker from its last shown value to the new one and flashes it green or red. */
+function runTicker(el) {
+  const key = el.dataset.tick;
+  const to = Number(el.dataset.val);
+  const from = TICKS.get(key);
+  TICKS.set(key, to);
+  if (from === undefined || from === to || REDUCED_MOTION.matches) return;
+  el.classList.remove('tick-up', 'tick-down');
+  void el.offsetWidth; // restart the flash
+  el.classList.add(to > from ? 'tick-up' : 'tick-down');
+  const start = performance.now();
+  const dur = 550;
+  const step = (t) => {
+    const k = Math.min(1, (t - start) / dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmtNum(Math.round(from + (to - from) * e));
+    if (k < 1 && el.isConnected) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/** Moves the sliding highlight of a tab group to its selected tab. */
+function syncSeg(group) {
+  const on = group.querySelector('[aria-selected="true"]');
+  if (!on) return group.classList.remove('seg-on');
+  group.style.setProperty('--seg-x', `${on.offsetLeft}px`);
+  group.style.setProperty('--seg-w', `${on.offsetWidth}px`);
+  if (!group.classList.contains('seg-on')) requestAnimationFrame(() => group.classList.add('seg-on', 'seg-ready'));
+}
+const SEG_GROUPS = '.tabs, .dash-tabs';
+const syncAllSegs = () => document.querySelectorAll(SEG_GROUPS).forEach(syncSeg);
+
+new MutationObserver((records) => {
+  let segs = false;
+  for (const r of records) {
+    if (r.type === 'attributes') {
+      if (r.target.closest?.(SEG_GROUPS)) segs = true;
+      continue;
+    }
+    for (const n of r.addedNodes) {
+      if (n.nodeType !== 1) continue;
+      if (n.matches('[data-tick]')) runTicker(n);
+      n.querySelectorAll('[data-tick]').forEach(runTicker);
+      if (n.matches(SEG_GROUPS) || n.querySelector(SEG_GROUPS)) segs = true;
+    }
+  }
+  if (segs) syncAllSegs();
+}).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-selected'] });
+window.addEventListener('resize', syncAllSegs);
+document.fonts?.ready.then(syncAllSegs);
+
+// A soft light follows the pointer across market cards (mouse and trackpad only).
+if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
+  document.addEventListener('pointermove', (e) => {
+    const card = e.target.closest?.('.card');
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    card.style.setProperty('--mx', `${e.clientX - r.left}px`);
+    card.style.setProperty('--my', `${e.clientY - r.top}px`);
+  });
+}
 
 </script>
   </body>
