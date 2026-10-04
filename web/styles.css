@@ -9462,3 +9462,39 @@ a,
   background: var(--gold);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 22%, transparent);
 }
+
+/* Wallet choices with each wallet's own logo. */
+a.wallet-option {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 500;
+}
+.wallet-option img {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px var(--line);
+}
+.wallet-option .muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.wallet-option .muted .i {
+  width: 14px;
+  height: 14px;
+}
+.no-wallet .wallet-options {
+  margin-top: 0;
+}
+.wallet-logo {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--line);
+}
+.dash-wallets .wallet-logo + .dw-main {
+  flex: 1;
+}
