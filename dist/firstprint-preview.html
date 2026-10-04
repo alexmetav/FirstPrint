@@ -9388,6 +9388,42 @@ a,
   }
 }
 
+/* Admin: start price with the "upcoming token" option underneath. */
+.price-field {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.price-field .upcoming-check {
+  font-size: var(--fs-sm);
+}
+.price-field small {
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+}
+.price-field input:disabled {
+  opacity: 0.6;
+}
+.price-field {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: end;
+  column-gap: 14px;
+}
+.upcoming-opt {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+.upcoming-opt .upcoming-check {
+  justify-self: start;
+}
+@media (max-width: 640px) {
+  .price-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 </style>
   </head>
   <body>
@@ -10020,6 +10056,7 @@ function createAdminApi(key, baseUrl = '') {
     deleteDraft: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/delete`),
     previewResult: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/preview`, body),
     resolve: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/resolve`, body),
+    setStartPrice: (id, basePrice) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/start-price`, { basePrice }),
     token: () => request('/api/admin/token'),
     tokenStep: (step) => post(`/api/admin/token/${encodeURIComponent(step)}`),
     tasks: () => request('/api/admin/tasks'),
@@ -11230,7 +11267,10 @@ const until = (ts) => `<span data-until="${ts}">${fmtDur(ts - now())}</span>`;
 const outcome = (b, yn = false) => `<b class="oc" style="--c:${oVar(b, yn)}">${icon(b, yn)}${oName(b, yn)}</b>`;
 const rangeLabel = (b, t) => bucketRangeLabel(b, t).replace(/-/g, '−');
 /** The price range an outcome covers, for either kind of market. */
-const rangeOf = (m, b) => (isYesNo(m) ? (b === 'up' ? `At or above ${fmtPrice(m.basePrice)}` : `Below ${fmtPrice(m.basePrice)}`) : rangeLabel(b, m.thresholds));
+/** A market created before its token traded has no start price yet: it's the opening price. */
+const hasStart = (m) => m.basePrice != null;
+const startText = (m, short = false) => (hasStart(m) ? fmtPrice(m.basePrice) : short ? 'opening price' : 'its opening price');
+const rangeOf = (m, b) => (isYesNo(m) ? (b === 'up' ? `At or above ${hasStart(m) ? fmtPrice(m.basePrice) : 'open'}` : `Below ${hasStart(m) ? fmtPrice(m.basePrice) : 'open'}`) : rangeLabel(b, m.thresholds));
 const userLink = (name, cls = '') => `<a class="user-link${cls ? ` ${cls}` : ''}" href="#/u/${encodeURIComponent(name)}">${esc(name)}</a>`;
 const share = (m, b) => (m.pool ? m.totals[b] / m.pool : 0);
 
@@ -11752,7 +11792,7 @@ function heroFacts(m, whenLabel, whenValue) {
           ? `<div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:hero:${m.id}`, m.pool)} pts</dd></div>
              <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>`
           : isManual(m)
-          ? `<div>${ico('dollar')}<dt>${isYesNo(m) ? 'Target' : 'Start price'}</dt><dd>${fmtPrice(m.basePrice)}</dd></div>`
+          ? `<div>${ico('dollar')}<dt>${isYesNo(m) ? 'Target' : 'Start price'}</dt><dd>${hasStart(m) ? fmtPrice(m.basePrice) : 'At listing'}</dd></div>`
           : ''
       }
       <div>${ico('clock')}<dt>${whenLabel}</dt><dd>${whenValue}</dd></div>
@@ -11786,14 +11826,14 @@ function featuredView(m) {
   const name = esc(m.name || m.symbol);
   const href = `#/market/${encodeURIComponent(m.id)}`;
   const question = yn
-    ? `Will ${name} be at or above ${fmtPrice(m.basePrice)} when the result is posted?`
+    ? `Will ${name} be at or above ${startText(m)} when the result is posted?`
     : manual
-    ? `Where will ${name} be priced at the result, compared with ${fmtPrice(m.basePrice)}?`
+    ? `Where will ${name} be priced at the result, compared with ${startText(m)}?`
     : `Where will ${name} trade ${fmtSpan(m.settleAt - m.listingAt)} after ${m.kind === 'live_test' ? 'the market starts' : 'listing'}?`;
 
   const fact = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
   const facts = [
-    manual ? fact(yn ? 'Target price' : 'Start price', fmtPrice(m.basePrice)) : '',
+    manual ? fact(yn ? 'Target price' : 'Start price', hasStart(m) ? fmtPrice(m.basePrice) : 'At listing <span class="feat-sub">opening price</span>') : '',
     pre ? fact(m.kind === 'live_test' ? 'Starts in' : 'Lists in', until(m.listingAt)) : fact('Closes in', until(m.closeAt)),
     m.pool ? fact('Pool', `${tick(`pool:hero:${m.id}`, m.pool)} pts <span class="feat-sub">${fmtNum(m.predictors)} player${m.predictors === 1 ? '' : 's'}</span>`) : '',
   ].join('');
@@ -12048,9 +12088,9 @@ function marketMain(m) {
   }).join('');
 
   const question = yn
-    ? `Will ${esc(m.name || m.symbol)} be at or above ${fmtPrice(m.basePrice)} at the result?`
+    ? `Will ${esc(m.name || m.symbol)} be at or above ${startText(m)} at the result?`
     : isManual(m)
-    ? `Where will ${esc(m.name || m.symbol)} be priced at the result, compared with the start price of ${fmtPrice(m.basePrice)}?`
+    ? `Where will ${esc(m.name || m.symbol)} be priced at the result, compared with ${hasStart(m) ? `the start price of ${fmtPrice(m.basePrice)}` : 'its opening price when trading starts'}?`
     : m.kind === 'live_test'
     ? `Where will ${esc(m.name || m.symbol)} trade ${span} after this market starts?`
     : `Where will ${esc(m.name || m.symbol)} trade ${span} after listing on ${esc(m.exchange)}?`;
@@ -12058,7 +12098,7 @@ function marketMain(m) {
   // One line of facts: price, timing, where the price comes from, and the pool once it exists.
   const fact = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
   const facts = [
-    isManual(m) ? fact(yn ? 'Target price' : 'Start price', fmtPrice(m.basePrice)) : fact(m.kind === 'live_test' ? 'Starts' : 'Listing', fmtDate(m.listingAt)),
+    isManual(m) ? fact(yn ? 'Target price' : 'Start price', hasStart(m) ? fmtPrice(m.basePrice) : 'Opening price') : fact(m.kind === 'live_test' ? 'Starts' : 'Listing', fmtDate(m.listingAt)),
     m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running'
       ? fact('Closes', `${fmtDate(m.closeAt)} <span class="muted">· in ${until(m.closeAt)}</span>`)
       : fact('Result', fmtDate(m.settleAt)),
@@ -12207,7 +12247,7 @@ function manualRules(m) {
     return `
     ${m.note ? `<p class="m-note">${esc(m.note)}</p>` : ''}
     <ol class="rules">
-      <li>Yes wins if the final price is at or above ${fmtPrice(m.basePrice)}. No wins if it is below.</li>
+      <li>Yes wins if the final price is at or above ${hasStart(m) ? fmtPrice(m.basePrice) : `the opening price when ${esc(m.symbol)} starts trading (posted here once known)`}. No wins if it is below.</li>
       <li>Predictions close ${fmtDate(m.closeAt)}. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
       <li>After that the market waits for Firstprint to post the final price. The result and winners appear on this page.</li>
       <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
@@ -12217,7 +12257,7 @@ function manualRules(m) {
   return `
     ${m.note ? `<p class="m-note">${esc(m.note)}</p>` : ''}
     <ol class="rules">
-      <li>Start price: ${fmtPrice(m.basePrice)}. The result is the final price compared with it, using the ranges shown above.</li>
+      <li>${hasStart(m) ? `Start price: ${fmtPrice(m.basePrice)}.` : `Start price: the opening price when ${esc(m.symbol)} starts trading on ${esc(venueNames(m))}. Firstprint posts it here once trading opens.`} The result is the final price compared with it, using the ranges shown above.</li>
       <li>Predictions close ${fmtDate(m.closeAt)}. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
       <li>After that the market waits for Firstprint to post the final price. The result and winners appear on this page.</li>
       <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
@@ -14315,6 +14355,7 @@ function marketForm(m) {
   const chosen = new Set(m ? m.venues.map((v) => v.id) : A.info.exchanges.filter((e) => e.enabled).map((e) => e.id));
   const soon = Math.ceil((Date.now() + 24 * 3_600_000) / 3_600_000) * 3_600_000;
   const pct = (n) => String(Math.round(n * 1000) / 10);
+  const upcoming = Boolean(m) && m.basePrice == null;
   return `
     <form id="admin-market" class="admin-form admin-grid" data-id="${m ? esc(m.id) : ''}" data-outcomes="${m?.outcomes === 'binary' ? 'binary' : 'ladder'}">
       <fieldset class="type-pick" style="grid-column:1/-1"${lock}><legend class="field-label">Market type</legend>
@@ -14335,7 +14376,13 @@ function marketForm(m) {
         </div>
         <small class="muted">Square images look best. Uploads are shrunk to 128 × 128. Tip: on CoinGecko, right-click the token's logo and choose “Copy image address”.</small>
       </div>
-      <label><span class="field-label"><span class="ladder-only">Start price (USD)</span><span class="binary-only">Target price (USD)</span></span><input name="basePrice" type="number" step="any" min="0" placeholder="0.25" value="${m?.basePrice ?? ''}" required${lock} /></label>
+      <div class="price-field">
+        <label><span class="field-label"><span class="ladder-only">Start price (USD)</span><span class="binary-only">Target price (USD)</span></span><input name="basePrice" type="number" step="any" min="0" placeholder="${upcoming ? 'Set when trading opens' : '0.25'}" value="${m?.basePrice ?? ''}"${upcoming ? ' disabled' : ' required'}${lock} /></label>
+        <div class="upcoming-opt">
+          <label class="check upcoming-check"><input type="checkbox" name="upcoming" data-upcoming${upcoming ? ' checked' : ''}${lock} /> Upcoming token: not trading yet</label>
+          <small class="muted">No price needed now: the start price becomes its opening price. Set predictions to close when trading starts, then add the opening price under Markets → Awaiting result.</small>
+        </div>
+      </div>
       <label><span class="field-label">Predictions close (your time)</span><input name="closeAt" type="datetime-local" value="${toLocalInput(m?.closeAt ?? soon)}" required /></label>
       <label><span class="field-label">Result expected by (your time)</span><input name="resultAt" type="datetime-local" value="${toLocalInput(m?.settleAt ?? soon + 24 * 3_600_000)}" required /></label>
       <fieldset class="venues"><legend class="field-label">Reference exchanges</legend>
@@ -14380,9 +14427,14 @@ function resultForm(m) {
   return `
     <form class="admin-detect admin-result" data-resolve="${esc(m.id)}">
       <div><b>${esc(m.symbol)}</b> <span class="muted">${esc(venueNames(m))}</span><br>
-        <span class="muted">Start price ${fmtPrice(m.basePrice)} · Pool ${fmtPts(m.pool)} from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'} · ${dist}</span><br>
+        <span class="muted">Start price ${hasStart(m) ? fmtPrice(m.basePrice) : '<b>not set yet</b>'} · Pool ${fmtPts(m.pool)} from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'} · ${dist}</span><br>
         <span class="muted">${bucketsOf(m).map((b) => `${oName(b, yn)} ${rangeOf(m, b)}`).join(' · ')}</span></div>
-      <label><span class="field-label">Final price (USD)</span><input name="finalPrice" type="number" step="any" min="0" value="${esc(v.finalPrice ?? '')}" required /></label>
+      ${
+        hasStart(m)
+          ? ''
+          : `<label><span class="field-label">Opening price (USD)</span><input name="basePrice" type="number" step="any" min="0" value="${esc(v.basePrice ?? '')}" placeholder="First trade price" /></label>`
+      }
+      <label><span class="field-label">Final price (USD)</span><input name="finalPrice" type="number" step="any" min="0" value="${esc(v.finalPrice ?? '')}"${hasStart(m) ? ' required' : ''} /></label>
       <label><span class="field-label">Winning outcome</span>
         <select name="winningBucket"><option value="">Pick from the price (recommended)</option>${bucketsOf(m).map((b) => `<option value="${b}"${v.winningBucket === b ? ' selected' : ''}>${oName(b, yn)}</option>`).join('')}</select></label>
       <label style="grid-column:1/-1"><span class="field-label">Note shown to users (optional)</span><input name="note" maxlength="2000" value="${esc(v.note ?? '')}" placeholder="e.g. Binance XYZ/USDT close at 12:00 UTC" /></label>
@@ -14396,6 +14448,7 @@ function resultForm(m) {
           : ''
       }
       <div class="admin-actions" style="grid-column:1/-1">
+        ${hasStart(m) ? '' : '<button class="btn" type="submit" name="intent" value="start">Save opening price</button>'}
         <button class="btn${s ? '' : ' btn-solid'}" type="submit" name="intent" value="preview">Preview result</button>
         ${s ? '<button class="btn btn-solid" type="submit" name="intent" value="resolve">Confirm and pay winners</button>' : ''}
         <button class="btn" type="button" data-action="admin-cancel" data-id="${esc(m.id)}">Cancel and refund</button>
@@ -14646,7 +14699,9 @@ async function submitAdminMarket(form, intent) {
   };
   // Disabled (locked) fields are absent from FormData and stay unchanged on the server.
   if (d.has('symbol')) body.symbol = String(d.get('symbol') || '').trim();
-  if (d.has('basePrice')) body.basePrice = Number(d.get('basePrice'));
+  // "Upcoming token": no start price yet; the opening price is added once trading starts.
+  if (d.has('upcoming')) body.basePrice = null;
+  else if (d.has('basePrice')) body.basePrice = Number(d.get('basePrice'));
   if (d.has('crash')) {
     body.config = {
       thresholds: { crash: pct('crash'), down: pct('down'), up: pct('up'), moon: pct('moon') },
@@ -14679,12 +14734,30 @@ async function submitAdminMarket(form, intent) {
 async function submitAdminResult(form, intent) {
   const id = form.dataset.resolve;
   const d = new FormData(form);
-  const inputs = { finalPrice: String(d.get('finalPrice') || ''), winningBucket: String(d.get('winningBucket') || ''), note: String(d.get('note') || '').trim() };
+  const inputs = {
+    basePrice: String(d.get('basePrice') || ''),
+    finalPrice: String(d.get('finalPrice') || ''),
+    winningBucket: String(d.get('winningBucket') || ''),
+    note: String(d.get('note') || '').trim(),
+  };
   const key = JSON.stringify(inputs);
-  const body = { finalPrice: Number(inputs.finalPrice), winningBucket: inputs.winningBucket || undefined, note: inputs.note || undefined };
+  const body = {
+    finalPrice: Number(inputs.finalPrice),
+    basePrice: inputs.basePrice ? Number(inputs.basePrice) : undefined,
+    winningBucket: inputs.winningBucket || undefined,
+    note: inputs.note || undefined,
+  };
+  if (intent === 'start' && !inputs.basePrice) return toast('Enter the opening price first.', true);
+  if (intent !== 'start' && !inputs.finalPrice) return toast('Enter the final price.', true);
   const buttons = form.querySelectorAll('button');
   buttons.forEach((b) => (b.disabled = true));
   try {
+    // A token listed after its market opened: record the opening price so players can see it.
+    if (intent === 'start') {
+      await A.api.setStartPrice(id, Number(inputs.basePrice));
+      toast('Opening price saved. Players can see it now.');
+      return renderAdmin();
+    }
     // Money moves only after the admin has seen a preview of exactly these inputs.
     if (intent === 'resolve' && A.preview?.id === id && A.preview.key === key) {
       const s = A.preview.summary;
@@ -14985,6 +15058,13 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (e.target.matches?.('[data-upcoming]')) {
+    const price = e.target.closest('form').querySelector('[name=basePrice]');
+    price.disabled = e.target.checked;
+    price.required = !e.target.checked;
+    price.placeholder = e.target.checked ? 'Set when trading opens' : '0.25';
+    if (e.target.checked) price.value = '';
+  }
   if (e.target.name === 'outcomes' && e.target.closest('#admin-market')) {
     e.target.closest('form').dataset.outcomes = e.target.value;
   }

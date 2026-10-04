@@ -9357,3 +9357,39 @@ a,
     padding-right: 32px;
   }
 }
+
+/* Admin: start price with the "upcoming token" option underneath. */
+.price-field {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.price-field .upcoming-check {
+  font-size: var(--fs-sm);
+}
+.price-field small {
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+}
+.price-field input:disabled {
+  opacity: 0.6;
+}
+.price-field {
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: end;
+  column-gap: 14px;
+}
+.upcoming-opt {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+.upcoming-opt .upcoming-check {
+  justify-self: start;
+}
+@media (max-width: 640px) {
+  .price-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

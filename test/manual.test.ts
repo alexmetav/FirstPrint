@@ -306,3 +306,42 @@ test('editing a draft is not broadcast to visitors; editing a published market i
   service.updateManualMarket(id, { name: 'Renamed live' });
   assert.deepEqual(events, [['market', { marketId: id }]]);
 });
+
+test('upcoming token: no start price at launch, opening price set later, then the result pays out', async () => {
+  const { db, clock, service, scheduler } = setup();
+  const [a, b] = await Promise.all(['alice', 'bob'].map((username) => service.createUser({ username })));
+  const id = service.createManualMarket(draft({ basePrice: null, publish: true }));
+  assert.equal(service.getMarket(id).basePrice, null);
+
+  service.placePrediction(id, a.id, 'up', 100);
+  service.placePrediction(id, b.id, 'down', 100);
+
+  // Trading opens and predictions close; without an opening price there's no result yet.
+  goto(clock, T0 + 2 * HOUR + MIN);
+  await scheduler.tick();
+  assert.throws(() => service.previewResolution(id, { finalPrice: 2.5 }), (e) => e instanceof AppError && e.code === 'bad_price');
+
+  // The admin records the opening price once; it can't be changed this way again.
+  assert.throws(() => service.setStartPrice(id, 0), (e) => e instanceof AppError && e.code === 'bad_price');
+  service.setStartPrice(id, 2);
+  assert.equal(service.getMarket(id).basePrice, 2);
+  assert.throws(() => service.setStartPrice(id, 3), (e) => e instanceof AppError && e.code === 'price_set');
+
+  const { summary } = service.resolveManualMarket(id, { finalPrice: 2.5 });
+  assert.equal(summary.winningBucket, 'up');
+  assert.equal(service.getMarket(id).result?.basePrice, 2);
+  assert.ok(ledgerMatchesBalances(db));
+});
+
+test('upcoming token: the opening price can also be given with the result', async () => {
+  const { clock, service, scheduler } = setup();
+  const [a, b] = await Promise.all(['alice', 'bob'].map((username) => service.createUser({ username })));
+  const id = service.createManualMarket(draft({ basePrice: '', publish: true }));
+  service.placePrediction(id, a.id, 'down', 100);
+  service.placePrediction(id, b.id, 'up', 100);
+  goto(clock, T0 + 3 * HOUR);
+  await scheduler.tick();
+  const { summary } = service.resolveManualMarket(id, { finalPrice: 1.5, basePrice: 2 });
+  assert.equal(summary.winningBucket, 'down');
+  assert.equal(summary.basePrice, 2);
+});

@@ -138,8 +138,11 @@ export interface ManualMarketInput {
   exchanges: string[];
   /** Optional trading pair per exchange; defaults to SYMBOLUSDT in each exchange's format. */
   pairs?: Record<string, string>;
-  /** Reference price the outcome is measured against. */
-  basePrice: number;
+  /**
+   * Reference price the outcome is measured against. Null for a token that isn't trading yet:
+   * the admin enters its opening price once trading starts (before or with the result).
+   */
+  basePrice: number | null;
   /** When predictions stop (ms). */
   closeAt: number;
   /** When the admin expects to share the result (ms). Informational. */
@@ -799,8 +802,9 @@ export class FirstprintService {
       if (!this.venues.has(id)) throw new AppError(400, 'unknown_venue', `Unknown exchange "${id}".`);
       if (off.has(id)) throw new AppError(400, 'exchange_off', `${this.venues.get(id)!.name} is switched off in Admin → Exchanges.`);
     }
-    const basePrice = Number(input.basePrice);
-    if (!(basePrice > 0) || !Number.isFinite(basePrice)) throw new AppError(400, 'bad_price', 'Start price must be a number above 0.');
+    const noPrice = input.basePrice === undefined || input.basePrice === null || (input.basePrice as unknown) === '';
+    const basePrice = noPrice ? null : Number(input.basePrice);
+    if (basePrice !== null && (!(basePrice > 0) || !Number.isFinite(basePrice))) throw new AppError(400, 'bad_price', 'Start price must be a number above 0.');
     const closeAt = Number(input.closeAt);
     if (!Number.isFinite(closeAt)) throw new AppError(400, 'bad_close_time', 'Prediction close time is required.');
     const resultAt = input.resultAt === undefined || input.resultAt === null ? closeAt + 24 * 60 * MINUTE : Number(input.resultAt);
@@ -857,7 +861,7 @@ export class FirstprintService {
       name: m.name ?? undefined,
       exchanges: (JSON.parse(m.venues) as VenueRef[]).map((v) => v.venue),
       pairs: Object.fromEntries((JSON.parse(m.venues) as VenueRef[]).map((v) => [v.venue, v.symbol])),
-      basePrice: m.base_price ?? 0,
+      basePrice: m.base_price,
       closeAt: m.listing_at,
       resultAt: m.listing_at + cfg.durationMs,
       config: cfg,
@@ -886,6 +890,22 @@ export class FirstprintService {
       )
       .run(f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, JSON.stringify(f.cfg), f.basePrice, f.note, f.logoUrl, marketId);
     if (m.published === 1) this.onEvent('market', { marketId }); // drafts stay private
+    return marketId;
+  }
+
+  /**
+   * Sets the opening price of a market created before its token traded. Allowed once, while the
+   * market is open or waiting for its result; after that the result form can still override it.
+   */
+  setStartPrice(marketId: string, price: number) {
+    const m = this.manualRow(marketId);
+    if (m.status !== 'open' && m.status !== 'locked') throw new AppError(409, 'not_editable', 'This market has already been settled.');
+    if (m.base_price !== null) throw new AppError(409, 'price_set', 'This market already has a start price.');
+    const p = Number(price);
+    if (!(p > 0) || !Number.isFinite(p)) throw new AppError(400, 'bad_price', 'Opening price must be a number above 0.');
+    this.db.prepare('UPDATE markets SET base_price = ? WHERE id = ?').run(p, marketId);
+    if (m.published === 1) this.onEvent('market', { marketId });
+    this.log(`opening price set ${marketId} ${p}`);
     return marketId;
   }
 
@@ -958,7 +978,9 @@ export class FirstprintService {
     const final = Number(input.finalPrice);
     if (!(final >= 0) || !Number.isFinite(final)) throw new AppError(400, 'bad_price', 'Final price must be a number.');
     const base = input.basePrice === undefined || input.basePrice === null || input.basePrice === ('' as never) ? (m.base_price ?? 0) : Number(input.basePrice);
-    if (!(base > 0) || !Number.isFinite(base)) throw new AppError(400, 'bad_price', 'Start price must be a number above 0.');
+    if (!(base > 0) || !Number.isFinite(base)) {
+      throw new AppError(400, 'bad_price', m.base_price === null ? 'Enter the opening price: this market had no start price when it opened.' : 'Start price must be a number above 0.');
+    }
 
     const ret = returnPct(base, final);
     const computed = bucketFor(ret, cfg);
