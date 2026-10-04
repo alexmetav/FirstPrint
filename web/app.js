@@ -327,7 +327,7 @@ function setTheme(theme) {
 
 /** Keeps the browser's address-bar colour in step with the theme. */
 function syncThemeColor() {
-  const color = currentTheme() === 'light' ? '#eef0f8' : '#070914';
+  const color = currentTheme() === 'light' ? '#f5f5f7' : '#09090b';
   document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
     m.setAttribute('content', color);
     m.removeAttribute('media');
