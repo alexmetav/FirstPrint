@@ -1,8 +1,18 @@
+import { readFileSync } from 'node:fs';
 import type { FirstprintService } from './firstprint.ts';
 import { closingSoonText, marketLiveText, marketResultText, type Telegram } from './telegram.ts';
 
 /** Telegram allows about 20 posts a minute to one channel; stay well under it. */
 const GAP_MS = 3_500;
+
+/** The one banner shown on every "new market" post. */
+function loadBanner(): Uint8Array | null {
+  try {
+    return readFileSync(new URL('../../assets/telegram/new-market.png', import.meta.url));
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Posts to the public channel players join: new markets, results, last-hour reminders,
@@ -15,6 +25,7 @@ export class ChannelPoster {
   private appUrl: string;
   private log: (msg: string) => void;
   private gapMs: number;
+  private banner: Uint8Array | null;
 
   constructor(service: FirstprintService, telegram: Telegram | null, appUrl: string, log: (msg: string) => void = () => {}, gapMs = GAP_MS) {
     this.service = service;
@@ -22,6 +33,7 @@ export class ChannelPoster {
     this.appUrl = appUrl;
     this.log = log;
     this.gapMs = gapMs;
+    this.banner = loadBanner();
   }
 
   get channel() {
@@ -38,7 +50,18 @@ export class ChannelPoster {
     if (!this.telegram || !channel) throw new Error('No player channel is set.');
     const m = this.service.getMarket(id, undefined, true);
     if (!m.published || m.status !== 'open') throw new Error('Only open, published markets can be posted.');
-    await this.telegram.sendTo(`@${channel}`, marketLiveText(m), { text: 'Predict now', url: this.link(id) });
+    const text = marketLiveText(m);
+    const button = { text: 'Predict now', url: this.link(id) };
+    if (this.banner) {
+      try {
+        await this.telegram.sendPhotoTo(`@${channel}`, this.banner, text, button);
+        this.service.markAnnounced(id);
+        return;
+      } catch (err) {
+        this.log(`banner post failed, sending text only: ${(err as Error).message}`);
+      }
+    }
+    await this.telegram.sendTo(`@${channel}`, text, button);
     this.service.markAnnounced(id);
   }
 

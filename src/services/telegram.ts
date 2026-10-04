@@ -22,12 +22,13 @@ export class Telegram {
     return Boolean(this.getChat());
   }
 
-  private async call(method: string, body: Record<string, unknown>) {
+  private async call(method: string, body: Record<string, unknown> | FormData) {
+    const form = body instanceof FormData;
     const res = await this.fetchImpl(`https://api.telegram.org/bot${this.token}/${method}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10_000),
+      ...(form ? {} : { headers: { 'content-type': 'application/json' } }),
+      body: form ? body : JSON.stringify(body),
+      signal: AbortSignal.timeout(form ? 30_000 : 10_000),
     });
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: unknown; description?: string };
     // Never echo the URL: it contains the bot token.
@@ -52,6 +53,17 @@ export class Telegram {
       disable_web_page_preview: true,
       ...(button ? { reply_markup: { inline_keyboard: [[{ text: button.text, url: button.url }]] } } : {}),
     });
+  }
+
+  /** Posts an image with the text as its caption (at most 1,024 characters). */
+  async sendPhotoTo(chat: string, png: Uint8Array, html: string, button?: { text: string; url: string }) {
+    const form = new FormData();
+    form.set('chat_id', chat);
+    form.set('photo', new Blob([new Uint8Array(png)], { type: 'image/png' }), 'banner.png');
+    form.set('caption', html);
+    form.set('parse_mode', 'HTML');
+    if (button) form.set('reply_markup', JSON.stringify({ inline_keyboard: [[{ text: button.text, url: button.url }]] }));
+    await this.call('sendPhoto', form);
   }
 
   /** Links the chat that most recently sent the bot this code. */
