@@ -207,7 +207,25 @@ export class DemoBackend {
       wallets: u.wallets,
       points: u.points,
       canClaimDaily: u.lastClaimDay !== today,
+      daily: this.dailyStatus(u),
     };
+  }
+
+  /** Same streak rules as the server: 50 on day 1, +25 a day, 200 from day 7; a missed day resets. */
+  dailyStatus(u) {
+    const day = (t) => new Date(t).toISOString().slice(0, 10);
+    const today = day(this.now());
+    const claimedToday = u.lastClaimDay === today;
+    const alive = claimedToday || u.lastClaimDay === day(this.now() - 86_400_000);
+    const streak = alive ? Math.max(1, u.streak ?? 1) : 0;
+    return { streak, claimedToday, nextDay: streak + 1, next: Math.min(200, 50 + 25 * streak), max: 200 };
+  }
+
+  daily() {
+    return this.run(() => {
+      const u = this.me_();
+      return { ...this.dailyStatus(u), today: new Date(this.now()).toISOString().slice(0, 10), days: u.claims ?? [], schedule: [50, 75, 100, 125, 150, 175, 200] };
+    });
   }
 
   demoDetections(now) {
@@ -327,7 +345,7 @@ export class DemoBackend {
   // --- Public API (matches createApi) ----------------------------------------------
 
   config() {
-    return this.run(() => ({ minStake: 10, dailyPoints: 100, demo: true, manualOnly: false, signIn: { google: null, email: true } }));
+    return this.run(() => ({ minStake: 10, dailyPoints: 50, dailyMax: 200, demo: true, manualOnly: false, signIn: { google: null, email: true } }));
   }
 
   me() {
@@ -477,8 +495,12 @@ export class DemoBackend {
       const u = this.me_();
       const today = new Date(this.now()).toISOString().slice(0, 10);
       if (u.lastClaimDay === today) throw new ApiError(409, 'already_claimed', 'Daily points already claimed. Come back tomorrow (UTC).');
+      const { nextDay } = this.dailyStatus(u);
+      const reward = Math.min(200, 50 + 25 * (nextDay - 1));
       u.lastClaimDay = today;
-      u.points += 100;
+      u.streak = nextDay;
+      u.points += reward;
+      (u.claims ??= []).push({ day: today, points: reward });
       return this.publicUser(u);
     });
   }

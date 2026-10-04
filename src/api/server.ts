@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse, type Server } 
 import { timingSafeEqual } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
-import { AppError, DAILY_POINTS, LEADERBOARD_PERIODS, LIVE_PRESETS, MIN_STAKE, SESSION_MS, SUGGESTED_LIVE_TOKENS, type FirstprintService, type LeaderboardPeriod, type UserRow } from '../services/firstprint.ts';
+import { AppError, DAILY_MAX, DAILY_POINTS, dailyStatus, LEADERBOARD_PERIODS, LIVE_PRESETS, MIN_STAKE, SESSION_MS, SUGGESTED_LIVE_TOKENS, type FirstprintService, type LeaderboardPeriod, type UserRow } from '../services/firstprint.ts';
 import type { Scheduler } from '../workers/scheduler.ts';
 import type { LiveFeed } from '../workers/liveFeed.ts';
 import { cachedGoogleJwks, verifyGoogleIdToken, type JwksFetcher } from '../auth/google.ts';
@@ -195,6 +195,7 @@ export function createApiServer(opts: ServerOptions): Server {
   route('GET', '/api/config', () => ({
     minStake: MIN_STAKE,
     dailyPoints: DAILY_POINTS,
+    dailyMax: DAILY_MAX,
     solanaChain: opts.solanaChain ?? 'mainnet',
     // What the sign-in popup offers. Email codes need a mailer (or dev mode); Google needs a client ID.
     signIn: { google: opts.googleClientId ?? null, email: Boolean(opts.mailer) },
@@ -398,6 +399,8 @@ export function createApiServer(opts: ServerOptions): Server {
   route('GET', '/api/me/predictions', ({ user }) => ({ predictions: service.myPredictions(user().id) }));
 
   route('GET', '/api/me/stats', ({ user }) => service.myStats(user().id));
+
+  route('GET', '/api/me/daily', ({ user }) => service.dailyCalendar(user().id));
 
   route('POST', '/api/me/claim-daily', ({ user }) => {
     const u = user();
@@ -1031,6 +1034,7 @@ function publicUser(u: UserRow, now: number, wallets: { address: string; walletN
     wallets: wallets.map((w) => ({ address: w.address, walletName: w.walletName })),
     points: u.points,
     canClaimDaily: u.last_claim_day !== today,
+    daily: dailyStatus(u, now),
     xUsername: u.x_username ?? null,
   };
 }

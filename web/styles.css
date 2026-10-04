@@ -9731,3 +9731,202 @@ a.wallet-option {
   flex: 1 1 220px;
   max-width: 320px;
 }
+
+/* Daily streak: day tiles and the month calendar */
+.streak-card {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.st-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+.st-flame {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--flat) 14%, transparent);
+  color: var(--flat);
+}
+.st-flame.lit {
+  background: color-mix(in srgb, var(--down) 18%, transparent);
+  color: var(--down);
+}
+.st-flame svg {
+  width: 24px;
+  height: 24px;
+}
+.st-head > div {
+  display: grid;
+}
+.st-count {
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+.st-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--up);
+  font-weight: 600;
+}
+.st-note svg {
+  width: 15px;
+  height: 15px;
+}
+.st-days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.st-day {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 12px 4px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  text-align: center;
+}
+.st-day .st-n {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.st-day b {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+.st-day .st-ico {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+.st-day .st-ico svg {
+  width: 13px;
+  height: 13px;
+}
+.st-day.next b {
+  color: var(--muted);
+}
+.st-day.done {
+  border-color: color-mix(in srgb, var(--up) 40%, var(--line));
+  background: color-mix(in srgb, var(--up) 9%, var(--surface));
+}
+.st-day.done .st-ico {
+  background: var(--up);
+  color: #fff;
+}
+.st-day.today {
+  border-color: var(--moon);
+  background: color-mix(in srgb, var(--moon) 12%, var(--surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--moon) 18%, transparent);
+}
+.st-day.today b {
+  color: var(--moon);
+}
+.st-day.today .st-ico {
+  color: var(--moon);
+}
+.st-day:last-child b::after {
+  content: '';
+}
+.st-rule {
+  margin: 0;
+  font-size: 13px;
+}
+.st-cal {
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.st-cal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  max-width: 420px;
+}
+.cal-wd {
+  text-align: center;
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--muted);
+}
+.cal-cell {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  border: 1px solid transparent;
+}
+.cal-cell.hit {
+  background: color-mix(in srgb, var(--up) 18%, transparent);
+  color: var(--up);
+  font-weight: 650;
+}
+.cal-cell.is-today {
+  border-color: var(--moon);
+  color: var(--text);
+}
+.cal-cell.future {
+  opacity: 0.45;
+}
+.cal-cell.blank {
+  visibility: hidden;
+}
+.streak-card.compact .st-day {
+  padding: 9px 2px 8px;
+}
+.streak-card.compact .st-day b {
+  font-size: 14px;
+}
+.streak-card.compact .st-day .st-n {
+  font-size: 10px;
+}
+@media (max-width: 560px) {
+  .st-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .st-head > .btn,
+  .st-head > .st-note {
+    grid-column: 1 / -1;
+  }
+  .st-days {
+    gap: 5px;
+  }
+  .st-day {
+    padding: 9px 2px 8px;
+    border-radius: 11px;
+  }
+  .st-day b {
+    font-size: 14px;
+  }
+  .st-day .st-n {
+    font-size: 9.5px;
+    letter-spacing: 0;
+  }
+}

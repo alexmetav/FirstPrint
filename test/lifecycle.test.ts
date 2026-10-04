@@ -147,13 +147,33 @@ test('caps: per-user limit and full pool are enforced', async () => {
   assert.equal(service.getMarket(id).pool, 300);
 });
 
-test('daily claim works once per UTC day', async () => {
+test('daily claim: once per UTC day, streak grows 50 → 200 and resets after a missed day', async () => {
   const { clock, service } = setup();
-  const u = (await service.createUser({ username: 'user_d' }));
-  assert.equal(service.claimDaily(u.id).points, START_POINTS + 100);
-  assert.throws(() => service.claimDaily(u.id), /already claimed/);
-  clock.advance(24 * 60 * MIN);
-  assert.equal(service.claimDaily(u.id).points, START_POINTS + 200);
+  const u = await service.createUser({ username: 'user_d' });
+  const DAY = 24 * 60 * MIN;
+  const got: number[] = [];
+  let before = START_POINTS;
+  for (let i = 0; i < 9; i++) {
+    const after = service.claimDaily(u.id).points;
+    got.push(after - before);
+    before = after;
+    if (i === 0) assert.throws(() => service.claimDaily(u.id), /already claimed/);
+    clock.advance(DAY);
+  }
+  assert.deepEqual(got, [50, 75, 100, 125, 150, 175, 200, 200, 200]);
+
+  const cal = service.dailyCalendar(u.id);
+  assert.equal(cal.streak, 9, 'claimed yesterday: still alive');
+  assert.equal(cal.claimedToday, false);
+  assert.equal(cal.next, 200);
+  assert.equal(cal.days.length, 9);
+  assert.deepEqual(cal.schedule, [50, 75, 100, 125, 150, 175, 200]);
+
+  clock.advance(DAY); // missed a whole day
+  assert.equal(service.dailyCalendar(u.id).streak, 0);
+  assert.equal(service.claimDaily(u.id).points - before, 50, 'back to day 1');
+  const after = service.dailyCalendar(u.id);
+  assert.deepEqual([after.streak, after.claimedToday, after.next], [1, true, 75]);
 });
 
 test('accounts: signup rules, passwords, sessions', async () => {

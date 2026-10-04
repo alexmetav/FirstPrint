@@ -296,12 +296,13 @@ async function loadRoute() {
       const { listings } = await S.api.detectedListings();
       view.innerHTML = radarView(listings);
     } else if (S.route.name === 'earn') {
-      await refreshRewards();
+      await Promise.all([refreshRewards(), loadDaily()]);
       view.innerHTML = earnView();
     } else if (S.route.name === 'portfolio') {
       const preds = S.me ? (await S.api.myPredictions()).predictions : [];
       const history = S.me && S.api.ledger ? (await S.api.ledger().catch(() => ({ entries: [] }))).entries : [];
       const stats = S.me && S.api.stats ? await S.api.stats().catch(() => null) : null;
+      await loadDaily();
       view.innerHTML = portfolioView(preds, history, stats);
     }
     document.title = titleFor();
@@ -422,7 +423,7 @@ function drawTop() {
         ${
           S.me
             ? `<button class="chip bell${S.me.unreadNotifications ? ' has-new' : ''}" data-action="inbox" aria-label="Your results${S.me.unreadNotifications ? `, ${S.me.unreadNotifications} new` : ''}">${ico('bell')}${S.me.unreadNotifications ? `<span class="bell-n">${S.me.unreadNotifications > 9 ? '9+' : S.me.unreadNotifications}</span>` : ''}</button>
-               ${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim 100 free daily points">${ico('gift')}<span class="gift-n">+100</span></button>` : ''}
+               ${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim ${dailyNext()} free daily points">${ico('gift')}<span class="gift-n">+${dailyNext()}</span></button>` : ''}
                <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${tick('me:points:top', S.me.points)}<span class="unit">pts</span></a>
                <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
             : `<a class="top-link hide-sm" href="#/" data-action="how">${ico('info')}How it works</a><button class="btn btn-gold" data-action="connect">Log in</button>`
@@ -437,6 +438,71 @@ function drawTop() {
 }
 
 /** Everything secondary: pages, test SOL, the theme switch, help and the account. */
+// --- Daily streak --------------------------------------------------------------------
+const DAILY_SCHEDULE = [50, 75, 100, 125, 150, 175, 200];
+const dailyReward = (day) => DAILY_SCHEDULE[Math.min(DAILY_SCHEDULE.length, Math.max(1, day)) - 1];
+/** Points the next claim gives (today's if not claimed yet, otherwise tomorrow's). */
+const dailyNext = () => S.me?.daily?.next ?? 50;
+function dailyLine() {
+  const d = S.me?.daily;
+  if (!d || !d.streak) return 'Claim every day: 50 points today, growing to 200 a day by day 7.';
+  return `Day ${d.nextDay} of your streak. Keep going to reach 200 a day.`;
+}
+
+async function loadDaily() {
+  if (!S.me || !S.api.daily) return (S.daily = null);
+  S.daily = await S.api.daily().catch(() => null);
+}
+
+/** Streak tiles (days 1–7 and their points) and a calendar of this month's claims. */
+function streakCard(compact = false) {
+  const d = S.daily;
+  if (!S.me || !d) return '';
+  const today = d.today;
+  const cur = d.claimedToday ? d.streak : d.streak + 1; // the streak day today counts as
+  const pos = Math.min(cur, 7);
+  const tiles = DAILY_SCHEDULE.map((pts, i) => {
+    const n = i + 1;
+    const state = n < pos ? 'done' : n === pos ? (d.claimedToday ? 'done today' : 'today') : 'next';
+    const label = n === 7 ? (cur > 7 ? `Day ${cur}` : 'Day 7+') : `Day ${n}`;
+    return `<li class="st-day ${state}"><span class="st-n">${label}</span><b>+${pts}</b><span class="st-ico">${state.includes('done') ? ico('check') : n === pos ? ico('gift') : ''}</span></li>`;
+  }).join('');
+  // This month's calendar, Monday first, in UTC like the claims.
+  const [y, m] = today.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1, 1));
+  const daysIn = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const lead = (first.getUTCDay() + 6) % 7;
+  const claimed = new Map(d.days.map((x) => [x.day, x.points]));
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push('<span class="cal-cell blank"></span>');
+  for (let day = 1; day <= daysIn; day++) {
+    const key = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const pts = claimed.get(key);
+    const cls = ['cal-cell', pts ? 'hit' : '', key === today ? 'is-today' : '', key > today ? 'future' : ''].filter(Boolean).join(' ');
+    cells.push(`<span class="${cls}"${pts ? ` title="+${pts} points"` : ''}>${day}</span>`);
+  }
+  const month = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const claimedThisMonth = d.days.filter((x) => x.day.startsWith(today.slice(0, 7))).length;
+  return `
+    <section class="panel streak-card${compact ? ' compact' : ''}">
+      <div class="st-head">
+        <span class="st-flame${d.streak ? ' lit' : ''}">${ico('flame')}</span>
+        <div><span class="eyebrow">Daily streak</span><b class="st-count">${d.streak ? `${d.streak} day${d.streak === 1 ? '' : 's'}` : 'No streak yet'}</b></div>
+        ${d.claimedToday ? `<span class="st-note">${ico('check')}Claimed today · +${d.next} tomorrow</span>` : `<button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim +${d.next}</button>`}
+      </div>
+      <ol class="st-days">${tiles}</ol>
+      <p class="st-rule muted">Claim once a day (UTC): 50 points on day 1, 25 more each day, 200 a day from day 7. Miss a day and it starts again at 50.</p>
+      ${
+        compact
+          ? ''
+          : `<div class="st-cal">
+              <div class="st-cal-head"><b>${month}</b><span class="muted">${claimedThisMonth} day${claimedThisMonth === 1 ? '' : 's'} claimed</span></div>
+              <div class="cal-grid">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((w) => `<span class="cal-wd">${w}</span>`).join('')}${cells.join('')}</div>
+            </div>`
+      }
+    </section>`;
+}
+
 /** The public Telegram channel where new markets and results are posted, if the admin set one. */
 function telegramUrl() {
   const c = S.cfg?.telegramChannel;
@@ -605,7 +671,7 @@ function homeHero(showLive = true) {
 function homeRail() {
   const leaders = S.weekLeaders ?? [];
   return `
-    ${S.me?.canClaimDaily ? `<section class="rail-card rail-claim"><div><b>Your daily 100 points</b><p>Free every day. Use them on any open market.</p></div><button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim</button></section>` : ''}
+    ${S.me?.canClaimDaily ? `<section class="rail-card rail-claim"><div><b>Your daily ${dailyNext()} points</b><p>${dailyLine()}</p></div><button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim</button></section>` : ''}
     <section class="rail-card">
       <div class="rail-head"><h3>Top this week</h3><a href="#/leaderboard">See all ${ico('chevronRight')}</a></div>
       ${
@@ -626,7 +692,7 @@ function emptyText() {
   if (S.filter === 'settled') return `<div class="empty-art">${ico('checkCircle')}</div><p>No settled markets yet. Results appear here after Firstprint posts them.</p>`;
   return `<div class="empty-art">${ico('satellite')}</div>
     <p><strong>No open markets right now.</strong><br />New markets land here as soon as Firstprint opens them.</p>
-    ${S.me?.canClaimDaily ? `<button class="btn btn-solid" data-action="claim">${ico('gift')}Claim 100 free points meanwhile</button>` : `<a class="btn" href="#/leaderboard">${ico('trophy')}See the leaderboard</a>`}`;
+    ${S.me?.canClaimDaily ? `<button class="btn btn-solid" data-action="claim">${ico('gift')}Claim ${dailyNext()} free points meanwhile</button>` : `<a class="btn" href="#/leaderboard">${ico('trophy')}See the leaderboard</a>`}`;
 }
 
 /** The pool split as five bars, Moon on top, used by the featured market. */
@@ -855,7 +921,7 @@ function howItWorks() {
       <div class="section-head"><span class="section-ico">${ico('info')}</span><div><h2>How it works</h2><p class="muted">Free to play. Points only, no real money.</p></div><button class="btn btn-sm head-action" data-action="tour">${ico('sparkles')}Take the tour</button></div>
       <ol class="steps">
         <li><span class="step-ico" style="--c:var(--up)">${ico('target')}</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}.</p></li>
-        <li><span class="step-ico" style="--c:var(--moon)">${ico('coins')}</span><b>Stake free points</b><p>Everyone starts with 1,000 points, plus 100 more every day. No real money.</p></li>
+        <li><span class="step-ico" style="--c:var(--moon)">${ico('coins')}</span><b>Stake free points</b><p>Everyone starts with 1,000 points, plus up to 200 more every day with a daily streak. No real money.</p></li>
         <li><span class="step-ico" style="--c:var(--brand)">${ico('trophy')}</span><b>Win the pool</b><p>If you’re right, you split the pool with the other winners. Earlier picks earn more.</p></li>
       </ol>
       <details class="full-rules"><summary>Full rules</summary>`;
@@ -1651,6 +1717,7 @@ function portfolioView(preds, history = [], stats = null) {
           <div role="tabpanel" id="dp-past" aria-labelledby="dt-past"${tab === 'past' ? '' : ' hidden'}>${pastTable(stats)}</div>
         </section>
         <aside class="dash-side">
+          ${streakCard(true)}
           ${telegramCard()}
           ${walletsCard()}
           ${historyView(history)}
@@ -1689,7 +1756,7 @@ function dashSummary(st) {
   const points = `
     <div class="sum-card sum-points">
       <div class="sum-top"><span class="sum-label">${ico('coins')}Points</span>
-        ${S.me.canClaimDaily ? `<button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim 100</button>` : '<span class="sum-note">Daily claim used</span>'}</div>
+        ${S.me.canClaimDaily ? `<button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim ${dailyNext()}</button>` : `<span class="sum-note">${ico('flame')}Day ${S.me.daily?.streak ?? 1} streak · +${dailyNext()} tomorrow</span>`}</div>
       <div class="sum-value">${tick('me:points:dash', S.me.points)}</div>
       <p class="sum-sub">${st?.open.staked ? `${fmtNum(st.open.staked)} more in play` : 'Available to predict with'}</p>
     </div>`;
@@ -1824,7 +1891,7 @@ function statTiles(st) {
     'Points',
     fmtNum(S.me.points),
     st?.open.staked ? `${fmtNum(st.open.staked)} more in play` : 'Available to predict with',
-    S.me.canClaimDaily ? `<button class="btn btn-solid tile-btn" data-action="claim">${ico('gift')}Claim 100</button>` : '',
+    S.me.canClaimDaily ? `<button class="btn btn-solid tile-btn" data-action="claim">${ico('gift')}Claim ${dailyNext()}</button>` : '',
   );
   if (!st || !st.settled) {
     return `<dl class="stat-tiles">${points}${tile('percent', 'up', 'Win rate', '–', st?.marketsPlayed ? 'Shows up once your first market settles' : 'Make your first prediction to start your record')}</dl>`;
@@ -2083,6 +2150,7 @@ function earnView() {
         <h1 class="page-title">Earn points</h1>
         <p class="page-lede">${r.onChain ? `Rewards arrive as <b>TestFPT</b> on Solana ${clusterName()} when you claim them, and go into your Firstprint balance too.` : 'Complete tasks and invite friends. Points go straight to your balance.'}</p>
       </header>
+      ${streakCard()}
       ${r.onChain ? claimCard(r) : ''}
       <div class="earn2-grid">
         <div class="earn2-main">
@@ -2659,7 +2727,7 @@ const TOUR = [
   {
     icon: 'coins',
     title: 'Play with free points',
-    body: 'You start with 1,000 points and get 100 more every day. Points have no cash value, so there’s nothing to lose. Earn more on the Earn page.',
+    body: 'You start with 1,000 points and get up to 200 more every day: claim daily to grow your streak. Points have no cash value, so there’s nothing to lose. Earn more on the Earn page.',
   },
   {
     icon: 'trophy',
@@ -4144,9 +4212,12 @@ document.addEventListener('click', async (e) => {
       try {
         const from = t.closest('[data-action]').getBoundingClientRect();
         const me = await S.api.claimDaily();
-        await collectPoints(from, 100);
+        const day = me.daily?.streak ?? 1;
+        const got = dailyReward(day);
+        await collectPoints(from, got);
         S.me = me;
-        toast('+100 points added. See you tomorrow!');
+        S.daily = null;
+        toast(`+${got} points · Day ${day} streak${day > 1 ? ' 🔥' : ''}. Tomorrow: +${me.daily?.next ?? got}.`);
         renderTop();
         return loadRoute();
       } catch (err) {

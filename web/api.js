@@ -66,6 +66,7 @@ export function createApi(baseUrl = '') {
     login: (body) => post('/api/auth/login', body),
     logout: () => post('/api/auth/logout'),
     claimDaily: () => post('/api/me/claim-daily'),
+    daily: () => request('/api/me/daily'),
     myPredictions: () => request('/api/me/predictions'),
     ledger: () => request('/api/me/ledger'),
     stats: () => request('/api/me/stats'),
