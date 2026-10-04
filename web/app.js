@@ -112,7 +112,10 @@ const until = (ts) => `<span data-until="${ts}">${fmtDur(ts - now())}</span>`;
 const outcome = (b, yn = false) => `<b class="oc" style="--c:${oVar(b, yn)}">${icon(b, yn)}${oName(b, yn)}</b>`;
 const rangeLabel = (b, t) => bucketRangeLabel(b, t).replace(/-/g, '−');
 /** The price range an outcome covers, for either kind of market. */
-const rangeOf = (m, b) => (isYesNo(m) ? (b === 'up' ? `At or above ${fmtPrice(m.basePrice)}` : `Below ${fmtPrice(m.basePrice)}`) : rangeLabel(b, m.thresholds));
+/** A market created before its token traded has no start price yet: it's the opening price. */
+const hasStart = (m) => m.basePrice != null;
+const startText = (m, short = false) => (hasStart(m) ? fmtPrice(m.basePrice) : short ? 'opening price' : 'its opening price');
+const rangeOf = (m, b) => (isYesNo(m) ? (b === 'up' ? `At or above ${hasStart(m) ? fmtPrice(m.basePrice) : 'open'}` : `Below ${hasStart(m) ? fmtPrice(m.basePrice) : 'open'}`) : rangeLabel(b, m.thresholds));
 const userLink = (name, cls = '') => `<a class="user-link${cls ? ` ${cls}` : ''}" href="#/u/${encodeURIComponent(name)}">${esc(name)}</a>`;
 const share = (m, b) => (m.pool ? m.totals[b] / m.pool : 0);
 
@@ -230,6 +233,17 @@ function skeletonView(name) {
   return `<div class="skeleton" aria-busy="true" aria-label="Loading"><i class="sk sk-title w40"></i><i class="sk sk-line w60"></i><div class="sk-card block"></div></div>`;
 }
 
+/** A short fade-and-rise when a new page appears (not on live updates of the same page). */
+function enterView() {
+  const view = $('#view');
+  if (!view) return;
+  view.classList.remove('view-enter');
+  void view.offsetWidth;
+  view.classList.add('view-enter');
+  clearTimeout(enterView.timer);
+  enterView.timer = setTimeout(() => view.classList.remove('view-enter'), 500);
+}
+
 async function onRoute() {
   const next = parseRoute();
   const changed = next.name !== S.route.name || next.id !== S.route.id;
@@ -242,6 +256,7 @@ async function onRoute() {
   }
   renderTop();
   await loadRoute(changed);
+  if (changed) enterView();
   if (changed && document.activeElement?.id !== 'market-search') $('#view').focus({ preventScroll: true });
 }
 
@@ -486,6 +501,7 @@ function marketResults() {
 }
 
 function homeView() {
+  const tnCard = startChecklist();
   if (!HOME_TABS.some(([id]) => id === S.filter)) S.filter = 'trending';
   const featured = [...S.lists.open].sort(byTrending)[0];
   const count = (id) => (id === 'live' ? S.lists.live.length : id === 'settled' ? S.lists.settled.length : S.lists.open.length);
@@ -499,8 +515,8 @@ function homeView() {
     `<button data-filter="${id}" aria-current="${S.filter === id && !S.query}">${ico(icon)}<span>${label}</span><span class="side-n">${count(id)}</span></button>`;
   const exBtn = (id, label, n) => `<button data-exchange="${esc(id)}" aria-current="${(S.exchange ?? 'all') === id}">${id === 'all' ? ico('landmark') : `<span class="ex-dot" aria-hidden="true">${esc(label.slice(0, 1))}</span>`}<span>${esc(label)}</span><span class="side-n">${n}</span></button>`;
   return `
-    ${startChecklist()}
-    ${S.query ? '' : homeHero()}
+    ${tnCard}
+    ${S.query ? '' : homeHero(!tnCard)}
     <div class="home">
       <aside class="home-side" aria-label="Filter markets">
         <div class="side-group">${HOME_TABS.map(filterBtn).join('')}</div>
@@ -520,7 +536,7 @@ function homeView() {
 }
 
 /** Top banner: what Firstprint is, in one line, with live numbers from open markets. */
-function homeHero() {
+function homeHero(showLive = true) {
   const open = S.lists.open;
   const inPlay = [...open, ...S.lists.live].reduce((sum, m) => sum + (m.pool || 0), 0);
   const best = Math.max(0, ...open.flatMap((m) => bucketsOf(m).map((b) => poolMultiple(m, b) ?? 0)));
@@ -541,7 +557,11 @@ function homeHero() {
         <circle cx="1040" cy="70" r="4" fill="currentColor" />
       </svg>
       <div class="hero-copy">
-        <p class="hero-badge">${ico('sparkles')}Listing prediction markets<span class="hero-badge-more"> · Free to play</span></p>
+        ${
+          showLive && testnetLive()
+            ? `<a class="hero-badge hero-badge-live" href="#/earn"><span class="dot-live" aria-hidden="true"></span>Testnet live<span class="hero-badge-more"> · Claim 1,000 TestFPT</span> ${ico('arrowRight')}</a>`
+            : `<p class="hero-badge">${ico('sparkles')}Listing prediction markets<span class="hero-badge-more"> · Free to play</span></p>`
+        }
         <h1 id="hero-title">Predict where new listings land.<span class="soft"> Before the price settles.</span></h1>
         <p class="hero-sub">Pick one of five outcomes (${LADDER.map(word).join(', ')}) on freshly listed tokens${venues.length ? ` across ${esc(list(venues))}` : ''}. Points only, no real money.</p>
         ${stats.length ? `<dl class="hero-stats">${stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
@@ -617,7 +637,7 @@ function heroFacts(m, whenLabel, whenValue) {
           ? `<div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:hero:${m.id}`, m.pool)} pts</dd></div>
              <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>`
           : isManual(m)
-          ? `<div>${ico('dollar')}<dt>${isYesNo(m) ? 'Target' : 'Start price'}</dt><dd>${fmtPrice(m.basePrice)}</dd></div>`
+          ? `<div>${ico('dollar')}<dt>${isYesNo(m) ? 'Target' : 'Start price'}</dt><dd>${hasStart(m) ? fmtPrice(m.basePrice) : 'At listing'}</dd></div>`
           : ''
       }
       <div>${ico('clock')}<dt>${whenLabel}</dt><dd>${whenValue}</dd></div>
@@ -651,14 +671,14 @@ function featuredView(m) {
   const name = esc(m.name || m.symbol);
   const href = `#/market/${encodeURIComponent(m.id)}`;
   const question = yn
-    ? `Will ${name} be at or above ${fmtPrice(m.basePrice)} when the result is posted?`
+    ? `Will ${name} be at or above ${startText(m)} when the result is posted?`
     : manual
-    ? `Where will ${name} be priced at the result, compared with ${fmtPrice(m.basePrice)}?`
+    ? `Where will ${name} be priced at the result, compared with ${startText(m)}?`
     : `Where will ${name} trade ${fmtSpan(m.settleAt - m.listingAt)} after ${m.kind === 'live_test' ? 'the market starts' : 'listing'}?`;
 
   const fact = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
   const facts = [
-    manual ? fact(yn ? 'Target price' : 'Start price', fmtPrice(m.basePrice)) : '',
+    manual ? fact(yn ? 'Target price' : 'Start price', hasStart(m) ? fmtPrice(m.basePrice) : 'At listing <span class="feat-sub">opening price</span>') : '',
     pre ? fact(m.kind === 'live_test' ? 'Starts in' : 'Lists in', until(m.listingAt)) : fact('Closes in', until(m.closeAt)),
     m.pool ? fact('Pool', `${tick(`pool:hero:${m.id}`, m.pool)} pts <span class="feat-sub">${fmtNum(m.predictors)} player${m.predictors === 1 ? '' : 's'}</span>`) : '',
   ].join('');
@@ -913,9 +933,9 @@ function marketMain(m) {
   }).join('');
 
   const question = yn
-    ? `Will ${esc(m.name || m.symbol)} be at or above ${fmtPrice(m.basePrice)} at the result?`
+    ? `Will ${esc(m.name || m.symbol)} be at or above ${startText(m)} at the result?`
     : isManual(m)
-    ? `Where will ${esc(m.name || m.symbol)} be priced at the result, compared with the start price of ${fmtPrice(m.basePrice)}?`
+    ? `Where will ${esc(m.name || m.symbol)} be priced at the result, compared with ${hasStart(m) ? `the start price of ${fmtPrice(m.basePrice)}` : 'its opening price when trading starts'}?`
     : m.kind === 'live_test'
     ? `Where will ${esc(m.name || m.symbol)} trade ${span} after this market starts?`
     : `Where will ${esc(m.name || m.symbol)} trade ${span} after listing on ${esc(m.exchange)}?`;
@@ -923,7 +943,7 @@ function marketMain(m) {
   // One line of facts: price, timing, where the price comes from, and the pool once it exists.
   const fact = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
   const facts = [
-    isManual(m) ? fact(yn ? 'Target price' : 'Start price', fmtPrice(m.basePrice)) : fact(m.kind === 'live_test' ? 'Starts' : 'Listing', fmtDate(m.listingAt)),
+    isManual(m) ? fact(yn ? 'Target price' : 'Start price', hasStart(m) ? fmtPrice(m.basePrice) : 'Opening price') : fact(m.kind === 'live_test' ? 'Starts' : 'Listing', fmtDate(m.listingAt)),
     m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running'
       ? fact('Closes', `${fmtDate(m.closeAt)} <span class="muted">· in ${until(m.closeAt)}</span>`)
       : fact('Result', fmtDate(m.settleAt)),
@@ -1072,7 +1092,7 @@ function manualRules(m) {
     return `
     ${m.note ? `<p class="m-note">${esc(m.note)}</p>` : ''}
     <ol class="rules">
-      <li>Yes wins if the final price is at or above ${fmtPrice(m.basePrice)}. No wins if it is below.</li>
+      <li>Yes wins if the final price is at or above ${hasStart(m) ? fmtPrice(m.basePrice) : `the opening price when ${esc(m.symbol)} starts trading (posted here once known)`}. No wins if it is below.</li>
       <li>Predictions close ${fmtDate(m.closeAt)}. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
       <li>After that the market waits for Firstprint to post the final price. The result and winners appear on this page.</li>
       <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
@@ -1082,7 +1102,7 @@ function manualRules(m) {
   return `
     ${m.note ? `<p class="m-note">${esc(m.note)}</p>` : ''}
     <ol class="rules">
-      <li>Start price: ${fmtPrice(m.basePrice)}. The result is the final price compared with it, using the ranges shown above.</li>
+      <li>${hasStart(m) ? `Start price: ${fmtPrice(m.basePrice)}.` : `Start price: the opening price when ${esc(m.symbol)} starts trading on ${esc(venueNames(m))}. Firstprint posts it here once trading opens.`} The result is the final price compared with it, using the ranges shown above.</li>
       <li>Predictions close ${fmtDate(m.closeAt)}. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
       <li>After that the market waits for Firstprint to post the final price. The result and winners appear on this page.</li>
       <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
@@ -1404,6 +1424,71 @@ function celebrate(bucket) {
   }).join('');
   clearTimeout(celebrate.timer);
   celebrate.timer = setTimeout(() => (root.innerHTML = ''), 1800);
+}
+
+/**
+ * Coins fly from where points were earned (a button, a card) into the points balance in the top
+ * bar, which then pulses and shows "+N". Resolves when the first coin lands, so the balance can
+ * update right as it arrives. People who prefer less motion just see the pulse.
+ */
+function collectPoints(from, amount = 0, to = '.chip.points') {
+  const target = typeof to === 'string' ? $(to) || $('.chip.points') : to;
+  const start = from instanceof Element ? from.getBoundingClientRect() : from;
+  const land = () => {
+    const el = typeof to === 'string' ? $(to) || $('.chip.points') : to;
+    if (!el) return;
+    el.classList.remove('pts-hit');
+    void el.offsetWidth;
+    el.classList.add('pts-hit');
+    if (amount) {
+      const r = el.getBoundingClientRect();
+      const gain = document.createElement('span');
+      gain.className = 'pts-gain';
+      gain.setAttribute('aria-hidden', 'true');
+      gain.textContent = `+${fmtNum(amount)}`;
+      gain.style.left = `${r.left + r.width / 2}px`;
+      gain.style.top = `${r.bottom + 4}px`;
+      document.body.appendChild(gain);
+      setTimeout(() => gain.remove(), 1300);
+    }
+  };
+  if (!target || !start || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    land();
+    return Promise.resolve();
+  }
+  const end = target.getBoundingClientRect();
+  const sx = start.left + start.width / 2;
+  const sy = start.top + start.height / 2;
+  const ex = end.left + Math.min(22, end.width / 2);
+  const ey = end.top + end.height / 2;
+  const count = Math.max(8, Math.min(16, Math.round(Math.log10(Math.max(10, amount)) * 5)));
+  return new Promise((resolve) => {
+    let landed = 0;
+    for (let i = 0; i < count; i++) {
+      const c = document.createElement('i');
+      c.className = 'coin-fly';
+      c.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(c);
+      // Burst out a little, then curve into the balance.
+      const mx = sx + (Math.random() - 0.5) * 150;
+      const my = sy - 30 - Math.random() * 80;
+      const anim = c.animate(
+        [
+          { transform: `translate(${sx}px, ${sy}px) scale(0.3) rotate(0deg)`, opacity: 0 },
+          { transform: `translate(${mx}px, ${my}px) scale(1) rotate(160deg)`, opacity: 1, offset: 0.35 },
+          { transform: `translate(${ex}px, ${ey}px) scale(0.5) rotate(320deg)`, opacity: 0.85 },
+        ],
+        { duration: 820, delay: i * 38, easing: 'cubic-bezier(0.55, 0, 0.2, 1)', fill: 'both' },
+      );
+      anim.onfinish = () => {
+        c.remove();
+        if (++landed === 1) {
+          land();
+          resolve();
+        }
+      };
+    }
+  });
 }
 
 function openSheet() {
@@ -1888,13 +1973,55 @@ function startSteps() {
 }
 
 /** A card at the top of the main pages until the player has claimed their starting points. */
+/** localStorage that never throws (private windows, blocked storage). */
+const readPref = (k) => {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+};
+const writePref = (k, v) => {
+  try {
+    localStorage.setItem(k, v);
+  } catch {
+    /* storage blocked */
+  }
+};
+const testnetLive = () => Boolean(S.rewards?.onChain ?? S.cfg?.rewards?.onChain);
+
+/** "Testnet is live": what TestFPT is, and the player's next step (sign in, link a wallet, claim). */
 function startChecklist() {
-  if (!S.me || !S.rewards?.onChain || S.rewards.welcomeClaimed) return '';
+  if (!testnetLive() || (S.me && (!S.rewards || S.rewards.welcomeClaimed))) return '';
+  if (!S.me && readPref('fp:testnet-hide')) return '';
+  const signedIn = Boolean(S.me);
+  const wallet = Boolean(S.me?.wallets?.length);
+  const steps = [
+    ['Sign in', 'Google, email or wallet', signedIn],
+    ['Link a wallet', 'Phantom, Solflare or Backpack', wallet],
+    ['Claim TestFPT', 'Free test SOL pays the fee', false],
+  ];
+  const done = steps.filter((x) => x[2]).length;
+  const next = steps.findIndex((x) => !x[2]);
+  const cta = !signedIn
+    ? `<button class="btn btn-gold" data-action="connect">Sign in to claim ${ico('arrowRight')}</button>`
+    : !wallet
+    ? `<button class="btn btn-gold" data-action="start-guide">Link a wallet ${ico('arrowRight')}</button>`
+    : `<a class="btn btn-gold" href="#/earn">Claim 1,000 TestFPT ${ico('arrowRight')}</a>`;
   return `
-    <section class="start-card">
-      <span class="start-ico">${ico('token')}</span>
-      <div class="start-text"><h2>Claim your 1,000 TestFPT to start</h2><p class="muted">Link a wallet, get free test SOL for the fee, then claim. Takes about two minutes.</p></div>
-      <div class="start-actions"><button class="btn btn-solid" data-action="start-guide">${ico('list')}Show me the steps</button><a class="btn" href="#/earn">Claim</a></div>
+    <section class="testnet-card" aria-labelledby="testnet-title" style="--done:${done / steps.length}">
+      <div class="tn-coins" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="tn-copy">
+        <p class="tn-kicker"><span class="dot-live" aria-hidden="true"></span>Testnet is live</p>
+        <h2 id="testnet-title">Claim 1,000 free TestFPT<span class="soft"> on Solana ${clusterName()}.</span></h2>
+        <p class="tn-sub">Your Firstprint points, as a token in your own wallet. Takes about two minutes. Test network only, no real money.</p>
+      </div>
+      <ol class="tn-steps">${steps
+        .map(([t, sub, ok], i) => `<li class="${ok ? 'done' : i === next ? 'next' : ''}"><span class="tn-n">${ok ? ico('check') : `0${i + 1}`}</span><span><b>${t}</b><small>${sub}</small></span></li>`)
+        .join('')}</ol>
+      <div class="tn-actions">${cta}${signedIn ? '<button class="btn tn-more" data-action="start-guide">See all steps</button>' : ''}</div>
+      <span class="tn-progress" aria-hidden="true"><i></i></span>
+      ${signedIn ? '' : `<button class="tn-close" data-action="testnet-hide" aria-label="Hide this">${ico('cross')}</button>`}
     </section>`;
 }
 
@@ -2030,6 +2157,7 @@ async function claimTokens() {
   if (!wallet) return openAuth('link');
   S.claimBusy = true;
   const btn = $('[data-action="claim-tokens"]');
+  const from = btn?.getBoundingClientRect();
   if (btn) {
     btn.disabled = true;
     btn.textContent = 'Claiming…';
@@ -2048,6 +2176,7 @@ async function claimTokens() {
       res = await S.api.claimStatus(c.claimId);
     }
     if (res.status === 'confirmed') {
+      await collectPoints(from, res.amount);
       celebrate('moon');
       toast(`${fmtNum(res.amount)} TestFPT claimed. Check your wallet!`);
     } else if (res.status === 'submitted') {
@@ -2065,17 +2194,21 @@ async function claimTokens() {
   }
 }
 
-async function onTaskVerify(taskId) {
+async function onTaskVerify(taskId, btn) {
+  const from = btn?.getBoundingClientRect();
   try {
     const out = await S.api.verifyTask(taskId);
-    celebrate('up');
+    await refreshMe();
+    if (S.route.name === 'earn') $('#view').innerHTML = earnView();
+    // On-chain rewards wait in the claim bar; otherwise they go straight to the balance.
+    await collectPoints(from, out.points, out.onChain ? '.claim-card .claim-ico' : '.chip.points');
     toast(out.onChain ? `+${fmtNum(out.points)} points ready to claim as TestFPT` : `+${fmtNum(out.points)} points added`);
   } catch (err) {
     toast(err.message, true);
     if (err.code === 'x_required') $('#x-form input')?.focus();
+    await refreshMe();
+    if (S.route.name === 'earn') $('#view').innerHTML = earnView();
   }
-  await refreshMe();
-  if (S.route.name === 'earn') $('#view').innerHTML = earnView();
 }
 
 async function submitX(form) {
@@ -3067,6 +3200,7 @@ function marketForm(m) {
   const chosen = new Set(m ? m.venues.map((v) => v.id) : A.info.exchanges.filter((e) => e.enabled).map((e) => e.id));
   const soon = Math.ceil((Date.now() + 24 * 3_600_000) / 3_600_000) * 3_600_000;
   const pct = (n) => String(Math.round(n * 1000) / 10);
+  const upcoming = Boolean(m) && m.basePrice == null;
   return `
     <form id="admin-market" class="admin-form admin-grid" data-id="${m ? esc(m.id) : ''}" data-outcomes="${m?.outcomes === 'binary' ? 'binary' : 'ladder'}">
       <fieldset class="type-pick" style="grid-column:1/-1"${lock}><legend class="field-label">Market type</legend>
@@ -3087,7 +3221,13 @@ function marketForm(m) {
         </div>
         <small class="muted">Square images look best. Uploads are shrunk to 128 × 128. Tip: on CoinGecko, right-click the token's logo and choose “Copy image address”.</small>
       </div>
-      <label><span class="field-label"><span class="ladder-only">Start price (USD)</span><span class="binary-only">Target price (USD)</span></span><input name="basePrice" type="number" step="any" min="0" placeholder="0.25" value="${m?.basePrice ?? ''}" required${lock} /></label>
+      <div class="price-field">
+        <label><span class="field-label"><span class="ladder-only">Start price (USD)</span><span class="binary-only">Target price (USD)</span></span><input name="basePrice" type="number" step="any" min="0" placeholder="${upcoming ? 'Set when trading opens' : '0.25'}" value="${m?.basePrice ?? ''}"${upcoming ? ' disabled' : ' required'}${lock} /></label>
+        <div class="upcoming-opt">
+          <label class="check upcoming-check"><input type="checkbox" name="upcoming" data-upcoming${upcoming ? ' checked' : ''}${lock} /> Upcoming token: not trading yet</label>
+          <small class="muted">No price needed now: the start price becomes its opening price. Set predictions to close when trading starts, then add the opening price under Markets → Awaiting result.</small>
+        </div>
+      </div>
       <label><span class="field-label">Predictions close (your time)</span><input name="closeAt" type="datetime-local" value="${toLocalInput(m?.closeAt ?? soon)}" required /></label>
       <label><span class="field-label">Result expected by (your time)</span><input name="resultAt" type="datetime-local" value="${toLocalInput(m?.settleAt ?? soon + 24 * 3_600_000)}" required /></label>
       <fieldset class="venues"><legend class="field-label">Reference exchanges</legend>
@@ -3132,9 +3272,14 @@ function resultForm(m) {
   return `
     <form class="admin-detect admin-result" data-resolve="${esc(m.id)}">
       <div><b>${esc(m.symbol)}</b> <span class="muted">${esc(venueNames(m))}</span><br>
-        <span class="muted">Start price ${fmtPrice(m.basePrice)} · Pool ${fmtPts(m.pool)} from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'} · ${dist}</span><br>
+        <span class="muted">Start price ${hasStart(m) ? fmtPrice(m.basePrice) : '<b>not set yet</b>'} · Pool ${fmtPts(m.pool)} from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'} · ${dist}</span><br>
         <span class="muted">${bucketsOf(m).map((b) => `${oName(b, yn)} ${rangeOf(m, b)}`).join(' · ')}</span></div>
-      <label><span class="field-label">Final price (USD)</span><input name="finalPrice" type="number" step="any" min="0" value="${esc(v.finalPrice ?? '')}" required /></label>
+      ${
+        hasStart(m)
+          ? ''
+          : `<label><span class="field-label">Opening price (USD)</span><input name="basePrice" type="number" step="any" min="0" value="${esc(v.basePrice ?? '')}" placeholder="First trade price" /></label>`
+      }
+      <label><span class="field-label">Final price (USD)</span><input name="finalPrice" type="number" step="any" min="0" value="${esc(v.finalPrice ?? '')}"${hasStart(m) ? ' required' : ''} /></label>
       <label><span class="field-label">Winning outcome</span>
         <select name="winningBucket"><option value="">Pick from the price (recommended)</option>${bucketsOf(m).map((b) => `<option value="${b}"${v.winningBucket === b ? ' selected' : ''}>${oName(b, yn)}</option>`).join('')}</select></label>
       <label style="grid-column:1/-1"><span class="field-label">Note shown to users (optional)</span><input name="note" maxlength="2000" value="${esc(v.note ?? '')}" placeholder="e.g. Binance XYZ/USDT close at 12:00 UTC" /></label>
@@ -3148,6 +3293,7 @@ function resultForm(m) {
           : ''
       }
       <div class="admin-actions" style="grid-column:1/-1">
+        ${hasStart(m) ? '' : '<button class="btn" type="submit" name="intent" value="start">Save opening price</button>'}
         <button class="btn${s ? '' : ' btn-solid'}" type="submit" name="intent" value="preview">Preview result</button>
         ${s ? '<button class="btn btn-solid" type="submit" name="intent" value="resolve">Confirm and pay winners</button>' : ''}
         <button class="btn" type="button" data-action="admin-cancel" data-id="${esc(m.id)}">Cancel and refund</button>
@@ -3398,7 +3544,9 @@ async function submitAdminMarket(form, intent) {
   };
   // Disabled (locked) fields are absent from FormData and stay unchanged on the server.
   if (d.has('symbol')) body.symbol = String(d.get('symbol') || '').trim();
-  if (d.has('basePrice')) body.basePrice = Number(d.get('basePrice'));
+  // "Upcoming token": no start price yet; the opening price is added once trading starts.
+  if (d.has('upcoming')) body.basePrice = null;
+  else if (d.has('basePrice')) body.basePrice = Number(d.get('basePrice'));
   if (d.has('crash')) {
     body.config = {
       thresholds: { crash: pct('crash'), down: pct('down'), up: pct('up'), moon: pct('moon') },
@@ -3431,12 +3579,30 @@ async function submitAdminMarket(form, intent) {
 async function submitAdminResult(form, intent) {
   const id = form.dataset.resolve;
   const d = new FormData(form);
-  const inputs = { finalPrice: String(d.get('finalPrice') || ''), winningBucket: String(d.get('winningBucket') || ''), note: String(d.get('note') || '').trim() };
+  const inputs = {
+    basePrice: String(d.get('basePrice') || ''),
+    finalPrice: String(d.get('finalPrice') || ''),
+    winningBucket: String(d.get('winningBucket') || ''),
+    note: String(d.get('note') || '').trim(),
+  };
   const key = JSON.stringify(inputs);
-  const body = { finalPrice: Number(inputs.finalPrice), winningBucket: inputs.winningBucket || undefined, note: inputs.note || undefined };
+  const body = {
+    finalPrice: Number(inputs.finalPrice),
+    basePrice: inputs.basePrice ? Number(inputs.basePrice) : undefined,
+    winningBucket: inputs.winningBucket || undefined,
+    note: inputs.note || undefined,
+  };
+  if (intent === 'start' && !inputs.basePrice) return toast('Enter the opening price first.', true);
+  if (intent !== 'start' && !inputs.finalPrice) return toast('Enter the final price.', true);
   const buttons = form.querySelectorAll('button');
   buttons.forEach((b) => (b.disabled = true));
   try {
+    // A token listed after its market opened: record the opening price so players can see it.
+    if (intent === 'start') {
+      await A.api.setStartPrice(id, Number(inputs.basePrice));
+      toast('Opening price saved. Players can see it now.');
+      return renderAdmin();
+    }
     // Money moves only after the admin has seen a preview of exactly these inputs.
     if (intent === 'resolve' && A.preview?.id === id && A.preview.key === key) {
       const s = A.preview.summary;
@@ -3552,14 +3718,19 @@ document.addEventListener('click', async (e) => {
       return loadRoute();
     case 'claim':
       try {
-        S.me = await S.api.claimDaily();
-        celebrate('moon');
+        const from = t.closest('[data-action]').getBoundingClientRect();
+        const me = await S.api.claimDaily();
+        await collectPoints(from, 100);
+        S.me = me;
         toast('+100 points added. See you tomorrow!');
         renderTop();
         return loadRoute();
       } catch (err) {
         return toast(err.message, true);
       }
+    case 'testnet-hide':
+      writePref('fp:testnet-hide', '1');
+      return t.closest('.testnet-card')?.remove();
     case 'faucet':
       return openAuth('faucet');
     case 'start-guide':
@@ -3593,7 +3764,7 @@ document.addEventListener('click', async (e) => {
       return;
     }
     case 'task-verify':
-      return onTaskVerify(t.closest('[data-task]').dataset.task);
+      return onTaskVerify(t.closest('[data-task]').dataset.task, t.closest('[data-action]'));
     case 'copy-text':
       return copyText(t.closest('[data-text]').dataset.text);
     case 'predict':
@@ -3732,6 +3903,13 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (e.target.matches?.('[data-upcoming]')) {
+    const price = e.target.closest('form').querySelector('[name=basePrice]');
+    price.disabled = e.target.checked;
+    price.required = !e.target.checked;
+    price.placeholder = e.target.checked ? 'Set when trading opens' : '0.25';
+    if (e.target.checked) price.value = '';
+  }
   if (e.target.name === 'outcomes' && e.target.closest('#admin-market')) {
     e.target.closest('form').dataset.outcomes = e.target.value;
   }

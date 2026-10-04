@@ -2068,6 +2068,186 @@ h3 {
   letter-spacing: -0.02em;
 }
 
+/* ===== Testnet launch: hero pill, section, and a playable claim preview ===== */
+.eyebrow-live {
+  padding: 7px 14px 7px 12px;
+  border: 1px solid color-mix(in srgb, var(--up) 40%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--up) 8%, transparent);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+.eyebrow-live:hover {
+  border-color: var(--up);
+  background: color-mix(in srgb, var(--up) 14%, transparent);
+}
+.eyebrow-arrow {
+  transition: transform 0.2s;
+}
+.eyebrow-live:hover .eyebrow-arrow {
+  transform: translateX(3px);
+}
+
+.testnet-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 56px;
+  align-items: center;
+}
+.testnet-copy h2 {
+  font-size: clamp(28px, 3.2vw, 40px);
+  margin-top: 4px;
+}
+.testnet-copy .sub {
+  margin-top: 18px;
+  max-width: 34em;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.testnet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+.claim-demo {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+}
+.claim-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.claim-steps li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  transition: border-color 0.3s, background-color 0.3s, color 0.3s;
+}
+.claim-steps b {
+  display: block;
+  font-weight: 500;
+  color: var(--text);
+}
+.claim-steps small {
+  font-size: 13px;
+}
+.cs-n {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  font-family: var(--mono);
+  font-size: 11px;
+  transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+.claim-steps li.active {
+  border-color: color-mix(in srgb, var(--brand, #0a84ff) 60%, var(--line));
+  background: color-mix(in srgb, var(--brand, #0a84ff) 8%, transparent);
+}
+.claim-steps li.done .cs-n {
+  border-color: var(--up);
+  background: var(--up);
+  color: #04130a;
+}
+.wallet-card {
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--surface-2, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+}
+.wallet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.wallet-bal {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  transition: transform 0.25s;
+}
+.wallet-bal b {
+  font-family: var(--mono);
+  font-size: clamp(34px, 4vw, 44px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.wallet-bal span {
+  color: var(--muted);
+}
+.wallet-bal.hit {
+  animation: bal-hit 0.6s var(--ease, ease);
+}
+@keyframes bal-hit {
+  40% { transform: scale(1.04); color: var(--moon); }
+}
+.claim-try {
+  justify-self: start;
+}
+.wallet-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.coin-fly {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  z-index: 1000;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff6c2, #ffd60a 45%, #c79500 100%);
+  box-shadow: inset 0 0 0 2px rgba(120, 85, 0, 0.35), 0 2px 8px rgba(255, 214, 10, 0.35);
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+@media (max-width: 900px) {
+  .testnet-inner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+}
+@media (max-width: 640px) {
+  .eyebrow-live {
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    padding: 6px 12px 6px 10px;
+  }
+  .claim-demo {
+    padding: 18px;
+  }
+}
+@media (max-width: 520px) {
+  .eyebrow-live .el-more {
+    display: none;
+  }
+}
+
 </style>
     <script>
 // Site settings. Edit these before you deploy; empty values are hidden on the site.
@@ -2121,7 +2301,7 @@ window.FIRSTPRINT_CONFIG = {
           <div class="aurora" aria-hidden="true"><span></span><span></span><span></span></div>
           <div class="wrap hero-inner">
             <div class="hero-copy">
-              <p class="eyebrow reveal"><span class="dot-live" aria-hidden="true"></span>Free to play · Points only, no real money</p>
+              <a class="eyebrow eyebrow-live reveal" href="#testnet"><span class="dot-live" aria-hidden="true"></span>Testnet is live<span class="el-more"> · Claim 1,000 free TestFPT</span><span class="eyebrow-arrow" aria-hidden="true">→</span></a>
               <h1 class="hero-title">
                 <span class="line"><span>Call where</span></span>
                 <span class="line"><span>new <em>listings</em></span></span>
@@ -2153,6 +2333,34 @@ window.FIRSTPRINT_CONFIG = {
               </ol>
               <figcaption class="hm-foot"><span id="hm-foot-text">Share of the pool on each outcome</span><span>Illustration</span></figcaption>
             </figure>
+          </div>
+        </section>
+
+        <!-- Testnet launch -->
+        <section class="section testnet" id="testnet">
+          <div class="wrap testnet-inner">
+            <div class="testnet-copy">
+              <p class="eyebrow reveal"><span class="dot-live" aria-hidden="true"></span>Testnet is live</p>
+              <h2 class="reveal" data-delay="60">Your points are now<br /><span class="soft">a token in your wallet.</span></h2>
+              <p class="sub reveal" data-delay="120">Firstprint points now live on Solana Testnet as <b>TestFPT</b>. Sign in, link a wallet and claim your 1,000 starting points in about two minutes. It’s a test network: free to use, no real money.</p>
+              <div class="testnet-actions reveal" data-delay="180">
+                <a class="btn btn-solid btn-gold magnetic" data-app-link="#/earn" href="#faq">Claim 1,000 TestFPT</a>
+                <a class="btn magnetic" href="#faq">What is TestFPT?</a>
+              </div>
+            </div>
+            <div class="claim-demo reveal" data-delay="120">
+              <ol class="claim-steps" aria-label="How claiming works">
+                <li><span class="cs-n">01</span><span><b>Sign in</b><small>Google, email or a Solana wallet</small></span></li>
+                <li><span class="cs-n">02</span><span><b>Link a wallet</b><small>Phantom, Solflare or Backpack</small></span></li>
+                <li><span class="cs-n">03</span><span><b>Claim TestFPT</b><small>Free test SOL pays the tiny fee</small></span></li>
+              </ol>
+              <div class="wallet-card">
+                <div class="wallet-head"><span>Your wallet · Solana Testnet</span><span class="dot-live" aria-hidden="true"></span></div>
+                <div class="wallet-bal"><b id="demo-bal">0</b><span>TestFPT</span></div>
+                <button class="btn claim-try" type="button" id="claim-try">Try a claim</button>
+                <p class="wallet-note">A preview. Your real claim happens in the app.</p>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -2836,6 +3044,93 @@ function practiceMarket() {
 
 // ------------------------------------------------------------------ Landing
 
+/** Links that open a page inside the app (e.g. Earn) follow wherever "Launch app" points. */
+function linkAppPages() {
+  const home = document.querySelector('[data-app-home]')?.getAttribute('href');
+  if (!home) return;
+  $$('[data-app-link]').forEach((a) => (a.href = home.replace(/#.*$/, '') + a.dataset.appLink));
+}
+
+/** Flies a few coins from one element to another, like points landing in a wallet. */
+function flyCoins(from, to, count = 12) {
+  if (REDUCED || !from || !to) return Promise.resolve();
+  const a = from.getBoundingClientRect();
+  const b = to.getBoundingClientRect();
+  // Page coordinates, so the coins stay on course if the visitor scrolls mid-flight.
+  const sx = a.left + a.width / 2 + scrollX;
+  const sy = a.top + a.height / 2 + scrollY;
+  const ex = b.left + Math.min(28, b.width / 2) + scrollX;
+  const ey = b.top + b.height / 2 + scrollY;
+  return new Promise((done) => {
+    let first = true;
+    for (let i = 0; i < count; i++) {
+      const c = document.createElement('i');
+      c.className = 'coin-fly';
+      c.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(c);
+      const mx = sx + (Math.random() - 0.5) * 160;
+      const my = sy - 50 - Math.random() * 90;
+      const anim = c.animate(
+        [
+          { transform: `translate(${sx}px, ${sy}px) scale(0.3)`, opacity: 0 },
+          { transform: `translate(${mx}px, ${my}px) scale(1)`, opacity: 1, offset: 0.35 },
+          { transform: `translate(${ex}px, ${ey}px) scale(0.55)`, opacity: 0.9 },
+        ],
+        { duration: 850, delay: i * 40, easing: 'cubic-bezier(0.55, 0, 0.2, 1)', fill: 'both' },
+      );
+      anim.onfinish = () => {
+        c.remove();
+        if (first) {
+          first = false;
+          done();
+        }
+      };
+    }
+  });
+}
+
+/** The testnet section: three steps light up, then 1,000 TestFPT land in a preview wallet. */
+function claimDemo() {
+  const btn = $('#claim-try');
+  const bal = $('#demo-bal');
+  const steps = $$('.claim-steps li');
+  if (!btn || !bal) return;
+  let running = false;
+  const play = async () => {
+    if (running) return;
+    running = true;
+    btn.disabled = true;
+    bal.textContent = '0';
+    steps.forEach((li) => li.classList.remove('done', 'active'));
+    const wait = (ms) => new Promise((r) => setTimeout(r, REDUCED ? 0 : ms));
+    for (const li of steps) {
+      li.classList.add('active');
+      await wait(520);
+      li.classList.replace('active', 'done');
+    }
+    await flyCoins(btn, bal.parentElement);
+    countUp(bal, 1000, '', 900);
+    bal.parentElement.classList.add('hit');
+    await wait(1000);
+    bal.parentElement.classList.remove('hit');
+    btn.textContent = 'Play again';
+    btn.disabled = false;
+    running = false;
+  };
+  btn.addEventListener('click', play);
+  if (REDUCED || !('IntersectionObserver' in window)) return;
+  const io = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        io.disconnect();
+        setTimeout(play, 400);
+      }
+    },
+    { threshold: 0.5 },
+  );
+  io.observe(btn.closest('.claim-demo'));
+}
+
 function initLanding() {
   $$('[data-config]').forEach((el) => {
     const key = el.dataset.config;
@@ -2848,6 +3143,8 @@ function initLanding() {
     }
   });
 
+  linkAppPages();
+  claimDemo();
   heroMarket();
   practiceMarket();
   autoHideNav();

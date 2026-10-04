@@ -57,7 +57,7 @@
           <div class="aurora" aria-hidden="true"><span></span><span></span><span></span></div>
           <div class="wrap hero-inner">
             <div class="hero-copy">
-              <p class="eyebrow reveal"><span class="dot-live" aria-hidden="true"></span>Free to play · Points only, no real money</p>
+              <a class="eyebrow eyebrow-live reveal" href="#testnet"><span class="dot-live" aria-hidden="true"></span>Testnet is live<span class="el-more"> · Claim 1,000 free TestFPT</span><span class="eyebrow-arrow" aria-hidden="true">→</span></a>
               <h1 class="hero-title">
                 <span class="line"><span>Call where</span></span>
                 <span class="line"><span>new <em>listings</em></span></span>
@@ -89,6 +89,34 @@
               </ol>
               <figcaption class="hm-foot"><span id="hm-foot-text">Share of the pool on each outcome</span><span>Illustration</span></figcaption>
             </figure>
+          </div>
+        </section>
+
+        <!-- Testnet launch -->
+        <section class="section testnet" id="testnet">
+          <div class="wrap testnet-inner">
+            <div class="testnet-copy">
+              <p class="eyebrow reveal"><span class="dot-live" aria-hidden="true"></span>Testnet is live</p>
+              <h2 class="reveal" data-delay="60">Your points are now<br /><span class="soft">a token in your wallet.</span></h2>
+              <p class="sub reveal" data-delay="120">Firstprint points now live on Solana Testnet as <b>TestFPT</b>. Sign in, link a wallet and claim your 1,000 starting points in about two minutes. It’s a test network: free to use, no real money.</p>
+              <div class="testnet-actions reveal" data-delay="180">
+                <a class="btn btn-solid btn-gold magnetic" data-app-link="#/earn" href="#faq">Claim 1,000 TestFPT</a>
+                <a class="btn magnetic" href="#faq">What is TestFPT?</a>
+              </div>
+            </div>
+            <div class="claim-demo reveal" data-delay="120">
+              <ol class="claim-steps" aria-label="How claiming works">
+                <li><span class="cs-n">01</span><span><b>Sign in</b><small>Google, email or a Solana wallet</small></span></li>
+                <li><span class="cs-n">02</span><span><b>Link a wallet</b><small>Phantom, Solflare or Backpack</small></span></li>
+                <li><span class="cs-n">03</span><span><b>Claim TestFPT</b><small>Free test SOL pays the tiny fee</small></span></li>
+              </ol>
+              <div class="wallet-card">
+                <div class="wallet-head"><span>Your wallet · Solana Testnet</span><span class="dot-live" aria-hidden="true"></span></div>
+                <div class="wallet-bal"><b id="demo-bal">0</b><span>TestFPT</span></div>
+                <button class="btn claim-try" type="button" id="claim-try">Try a claim</button>
+                <p class="wallet-note">A preview. Your real claim happens in the app.</p>
+              </div>
+            </div>
           </div>
         </section>
 

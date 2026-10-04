@@ -445,7 +445,8 @@ export function createApiServer(opts: ServerOptions): Server {
     name: b.name as string | undefined,
     exchanges: Array.isArray(b.exchanges) ? b.exchanges.map(String) : (b.exchanges as never),
     pairs: b.pairs as Record<string, string> | undefined,
-    basePrice: b.basePrice === undefined ? (undefined as never) : Number(b.basePrice),
+    // null (or empty) means "no price yet": the token isn't trading, and the opening price comes later.
+    basePrice: b.basePrice === undefined ? (undefined as never) : b.basePrice === null || b.basePrice === '' ? null : Number(b.basePrice),
     closeAt: b.closeAt === undefined ? (undefined as never) : toMs(b.closeAt),
     resultAt: b.resultAt === undefined || b.resultAt === '' ? undefined : toMs(b.resultAt),
     config: b.config as never,
@@ -482,6 +483,14 @@ export function createApiServer(opts: ServerOptions): Server {
     service.updateManualMarket(params.id, patch);
     audit(req, 'market_edited', params.id, Object.keys(patch).join(', '));
     return service.getMarket(params.id, undefined, true);
+  });
+
+  route('POST', '/api/admin/manual-markets/:id/start-price', async ({ req, params, body, requireAdmin }) => {
+    requireAdmin();
+    const price = Number((await body()).basePrice);
+    service.setStartPrice(params.id, price);
+    audit(req, 'market_start_price', params.id, String(price));
+    return service.getMarket(params.id);
   });
 
   route('POST', '/api/admin/manual-markets/:id/publish', ({ req, params, requireAdmin }) => {

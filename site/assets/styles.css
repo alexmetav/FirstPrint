@@ -2045,3 +2045,183 @@ h3 {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
+
+/* ===== Testnet launch: hero pill, section, and a playable claim preview ===== */
+.eyebrow-live {
+  padding: 7px 14px 7px 12px;
+  border: 1px solid color-mix(in srgb, var(--up) 40%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--up) 8%, transparent);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+.eyebrow-live:hover {
+  border-color: var(--up);
+  background: color-mix(in srgb, var(--up) 14%, transparent);
+}
+.eyebrow-arrow {
+  transition: transform 0.2s;
+}
+.eyebrow-live:hover .eyebrow-arrow {
+  transform: translateX(3px);
+}
+
+.testnet-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 56px;
+  align-items: center;
+}
+.testnet-copy h2 {
+  font-size: clamp(28px, 3.2vw, 40px);
+  margin-top: 4px;
+}
+.testnet-copy .sub {
+  margin-top: 18px;
+  max-width: 34em;
+  color: var(--muted);
+  line-height: 1.65;
+}
+.testnet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 28px;
+}
+.claim-demo {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+}
+.claim-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.claim-steps li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  transition: border-color 0.3s, background-color 0.3s, color 0.3s;
+}
+.claim-steps b {
+  display: block;
+  font-weight: 500;
+  color: var(--text);
+}
+.claim-steps small {
+  font-size: 13px;
+}
+.cs-n {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  font-family: var(--mono);
+  font-size: 11px;
+  transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+.claim-steps li.active {
+  border-color: color-mix(in srgb, var(--brand, #0a84ff) 60%, var(--line));
+  background: color-mix(in srgb, var(--brand, #0a84ff) 8%, transparent);
+}
+.claim-steps li.done .cs-n {
+  border-color: var(--up);
+  background: var(--up);
+  color: #04130a;
+}
+.wallet-card {
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+  border-radius: 14px;
+  background: var(--surface-2, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+}
+.wallet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.wallet-bal {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  transition: transform 0.25s;
+}
+.wallet-bal b {
+  font-family: var(--mono);
+  font-size: clamp(34px, 4vw, 44px);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.wallet-bal span {
+  color: var(--muted);
+}
+.wallet-bal.hit {
+  animation: bal-hit 0.6s var(--ease, ease);
+}
+@keyframes bal-hit {
+  40% { transform: scale(1.04); color: var(--moon); }
+}
+.claim-try {
+  justify-self: start;
+}
+.wallet-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.coin-fly {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  z-index: 1000;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff6c2, #ffd60a 45%, #c79500 100%);
+  box-shadow: inset 0 0 0 2px rgba(120, 85, 0, 0.35), 0 2px 8px rgba(255, 214, 10, 0.35);
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+@media (max-width: 900px) {
+  .testnet-inner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+}
+@media (max-width: 640px) {
+  .eyebrow-live {
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    padding: 6px 12px 6px 10px;
+  }
+  .claim-demo {
+    padding: 18px;
+  }
+}
+@media (max-width: 520px) {
+  .eyebrow-live .el-more {
+    display: none;
+  }
+}

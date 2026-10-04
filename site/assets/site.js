@@ -488,6 +488,93 @@ function practiceMarket() {
 
 // ------------------------------------------------------------------ Landing
 
+/** Links that open a page inside the app (e.g. Earn) follow wherever "Launch app" points. */
+function linkAppPages() {
+  const home = document.querySelector('[data-app-home]')?.getAttribute('href');
+  if (!home) return;
+  $$('[data-app-link]').forEach((a) => (a.href = home.replace(/#.*$/, '') + a.dataset.appLink));
+}
+
+/** Flies a few coins from one element to another, like points landing in a wallet. */
+function flyCoins(from, to, count = 12) {
+  if (REDUCED || !from || !to) return Promise.resolve();
+  const a = from.getBoundingClientRect();
+  const b = to.getBoundingClientRect();
+  // Page coordinates, so the coins stay on course if the visitor scrolls mid-flight.
+  const sx = a.left + a.width / 2 + scrollX;
+  const sy = a.top + a.height / 2 + scrollY;
+  const ex = b.left + Math.min(28, b.width / 2) + scrollX;
+  const ey = b.top + b.height / 2 + scrollY;
+  return new Promise((done) => {
+    let first = true;
+    for (let i = 0; i < count; i++) {
+      const c = document.createElement('i');
+      c.className = 'coin-fly';
+      c.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(c);
+      const mx = sx + (Math.random() - 0.5) * 160;
+      const my = sy - 50 - Math.random() * 90;
+      const anim = c.animate(
+        [
+          { transform: `translate(${sx}px, ${sy}px) scale(0.3)`, opacity: 0 },
+          { transform: `translate(${mx}px, ${my}px) scale(1)`, opacity: 1, offset: 0.35 },
+          { transform: `translate(${ex}px, ${ey}px) scale(0.55)`, opacity: 0.9 },
+        ],
+        { duration: 850, delay: i * 40, easing: 'cubic-bezier(0.55, 0, 0.2, 1)', fill: 'both' },
+      );
+      anim.onfinish = () => {
+        c.remove();
+        if (first) {
+          first = false;
+          done();
+        }
+      };
+    }
+  });
+}
+
+/** The testnet section: three steps light up, then 1,000 TestFPT land in a preview wallet. */
+function claimDemo() {
+  const btn = $('#claim-try');
+  const bal = $('#demo-bal');
+  const steps = $$('.claim-steps li');
+  if (!btn || !bal) return;
+  let running = false;
+  const play = async () => {
+    if (running) return;
+    running = true;
+    btn.disabled = true;
+    bal.textContent = '0';
+    steps.forEach((li) => li.classList.remove('done', 'active'));
+    const wait = (ms) => new Promise((r) => setTimeout(r, REDUCED ? 0 : ms));
+    for (const li of steps) {
+      li.classList.add('active');
+      await wait(520);
+      li.classList.replace('active', 'done');
+    }
+    await flyCoins(btn, bal.parentElement);
+    countUp(bal, 1000, '', 900);
+    bal.parentElement.classList.add('hit');
+    await wait(1000);
+    bal.parentElement.classList.remove('hit');
+    btn.textContent = 'Play again';
+    btn.disabled = false;
+    running = false;
+  };
+  btn.addEventListener('click', play);
+  if (REDUCED || !('IntersectionObserver' in window)) return;
+  const io = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        io.disconnect();
+        setTimeout(play, 400);
+      }
+    },
+    { threshold: 0.5 },
+  );
+  io.observe(btn.closest('.claim-demo'));
+}
+
 function initLanding() {
   $$('[data-config]').forEach((el) => {
     const key = el.dataset.config;
@@ -500,6 +587,8 @@ function initLanding() {
     }
   });
 
+  linkAppPages();
+  claimDemo();
   heroMarket();
   practiceMarket();
   autoHideNav();
