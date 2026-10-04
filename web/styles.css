@@ -8836,3 +8836,185 @@ p,
     min-width: 0;
   }
 }
+
+/* ===== Earn page: header, one claim bar, tasks beside a slim sidebar ===== */
+.earn2 {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+.earn2-head {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+.earn2-head .page-title {
+  margin: 0;
+  font-size: clamp(28px, 3vw, 36px);
+}
+.earn2-head .page-lede {
+  margin: 0;
+  max-width: 40em;
+  color: var(--muted);
+}
+.earn2 .claim-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 32px;
+  margin-bottom: 24px;
+  padding: 18px 22px;
+  border-radius: 16px;
+  box-shadow: none;
+}
+.earn2 .claim-card.is-empty {
+  border-color: var(--line);
+  background: var(--surface);
+}
+.earn2 .claim-amount {
+  gap: 14px;
+}
+.earn2 .claim-amount > div {
+  gap: 2px;
+}
+.earn2 .claim-amount b {
+  font-family: var(--body);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+.earn2 .claim-card.has-claim .claim-amount b {
+  font-family: var(--mono);
+  font-size: var(--fs-lg);
+}
+.earn2 .claim-amount .muted {
+  font-size: var(--fs-sm);
+}
+.earn2 .claim-card.is-empty .claim-ico {
+  opacity: 0.7;
+}
+.earn2 .claim-side {
+  flex: 0 1 auto;
+  max-width: 380px;
+  justify-items: end;
+  text-align: right;
+}
+.earn2 .claim-side .btn {
+  min-width: 220px;
+  justify-content: center;
+}
+.earn2 .claim-side .fine {
+  font-size: var(--fs-meta);
+}
+
+.earn2-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: start;
+}
+.earn2-main,
+.earn2-side {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.earn2-main .panel {
+  margin: 0;
+}
+.earn2-side .earn-card {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 20px;
+}
+.earn2-side .earn-card p {
+  margin: 0;
+}
+.earn2-side .card-head h2 {
+  font-size: var(--fs-md);
+}
+.earn2-side .copy-row input {
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+}
+.earn2-side .earn-card > .btn {
+  justify-self: start;
+}
+.earn2-side .ref-stats {
+  margin: 0;
+}
+.earn2-empty {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  color: var(--muted);
+}
+.earn2-empty p {
+  margin: 0;
+  line-height: 1.55;
+}
+.earn2-empty b {
+  color: var(--text);
+  font-weight: 500;
+}
+.earn2-empty .i {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+@media (max-width: 960px) {
+  .earn2-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .earn2 .claim-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .earn2 .claim-side {
+    max-width: none;
+    justify-items: stretch;
+    text-align: left;
+  }
+  .earn2 .claim-side .btn {
+    min-width: 0;
+    width: 100%;
+  }
+}
+.earn2 .claim-card.has-claim .claim-amount b {
+  font-family: var(--body);
+  font-size: var(--fs-lg);
+}
+.earn2 .claim-amount .num {
+  font-size: 1.2em;
+}
+.earn2 .claim-side .fine {
+  max-width: 340px;
+  line-height: 1.6;
+}
+.earn2 .claim-side .switch {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.earn2-side .copy-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.earn2-side .copy-row input {
+  min-width: 0;
+  width: 100%;
+}

@@ -1908,40 +1908,40 @@ function earnView() {
   }
   const r = S.rewards;
   if (!r) return '<h1 class="page-title">Earn points</h1><div class="empty"><p>Rewards aren’t available right now.</p></div>';
-  const open = r.tasks.filter((t) => !t.done && t.remaining !== 0);
-  const available = open.reduce((n, t) => n + t.points, 0);
   return `
-    <header class="page-head">
-      <span class="page-ico">${ico('gift')}</span>
-      <div><h1 class="page-title">Earn points</h1>
-      <p class="page-lede">${r.onChain ? `Your rewards arrive as <b>TestFPT</b>, a token on the Solana ${clusterName()} network, when you claim them to your wallet. Claimed points also go into your Firstprint balance.` : 'Complete tasks and invite friends. Points go straight to your balance.'}</p></div>
-    </header>
-    <dl class="earn-stats">
-      <div>${ico('list')}<dt>Open tasks</dt><dd>${open.length}</dd></div>
-      <div>${ico('sparkles')}<dt>Points available</dt><dd>+${fmtNum(available)}</dd></div>
-      <div>${ico('users')}<dt>Friends invited</dt><dd>${fmtNum(r.referral.invited)}</dd></div>
-      <div>${ico('x')}<dt>X account</dt><dd>${r.xUsername ? `@${esc(r.xUsername)}` : 'Not linked'}</dd></div>
-    </dl>
-    ${r.onChain ? claimCard(r) : ''}
-    <div class="earn-grid">
-      ${xCard(r)}
-      ${referralCard(r)}
-    </div>
-    ${tasksCard(r)}
-    ${r.onChain ? claimsList(r) : ''}`;
+    <div class="earn2">
+      <header class="earn2-head">
+        <span class="eyebrow">Rewards</span>
+        <h1 class="page-title">Earn points</h1>
+        <p class="page-lede">${r.onChain ? `Rewards arrive as <b>TestFPT</b> on Solana ${clusterName()} when you claim them, and go into your Firstprint balance too.` : 'Complete tasks and invite friends. Points go straight to your balance.'}</p>
+      </header>
+      ${r.onChain ? claimCard(r) : ''}
+      <div class="earn2-grid">
+        <div class="earn2-main">
+          ${tasksCard(r)}
+          ${r.onChain ? claimsList(r) : ''}
+        </div>
+        <aside class="earn2-side">
+          ${xCard(r)}
+          ${referralCard(r)}
+        </aside>
+      </div>
+    </div>`;
 }
 
 function claimCard(r) {
   const wallets = S.me.wallets;
   return `
-    <section class="claim-card">
-      <div class="claim-amount"><span class="claim-ico">${ico('token')}</span><div><span class="muted">Ready to claim</span><b>${fmtNum(r.claimable)} <small>TestFPT</small></b></div></div>
+    <section class="claim-card${r.claimable ? ' has-claim' : ' is-empty'}">
+      <div class="claim-amount"><span class="claim-ico">${ico('token')}</span><div><b>${r.claimable ? `<span class="num">${fmtNum(r.claimable)}</span> TestFPT ready to claim` : 'Nothing to claim yet'}</b><span class="muted">${r.claimable ? 'Send it to your wallet whenever you like.' : 'Finish a task or invite a friend, then claim it here as TestFPT.'}</span></div></div>
       <div class="claim-side">
         ${
           !wallets.length
             ? '<p class="muted" style="margin:0">Link a Solana wallet to claim to it.</p><button class="btn btn-solid" data-action="link-wallet">Link wallet</button>'
+            : !(r.claimable || S.claimBusy)
+            ? ''
             : `${wallets.length > 1 ? `<label class="select">To <select id="claim-wallet">${wallets.map((w) => `<option value="${esc(w.address)}">${esc(shortAddress(w.address))}${w.walletName ? ` · ${esc(w.walletName)}` : ''}</option>`).join('')}</select></label>` : `<span class="muted">To ${esc(shortAddress(wallets[0].address))}</span>`}
-               <button class="cta" style="--c:var(--moon)" data-action="claim-tokens"${r.claimable && !S.claimBusy ? '' : ' disabled'}>${S.claimBusy ? 'Claiming…' : r.claimable ? `Claim ${fmtNum(r.claimable)} TestFPT` : 'Nothing to claim yet'}</button>`
+               <button class="btn btn-gold" data-action="claim-tokens"${S.claimBusy ? ' disabled' : ''}>${S.claimBusy ? 'Claiming…' : `Claim ${fmtNum(r.claimable)} TestFPT`}</button>`
         }
         <p class="fine" id="claim-status" role="status">Your wallet pays a tiny fee in test SOL. <button class="switch" data-action="faucet">Need test SOL?</button>${r.mintUrl ? ` · <a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a>` : ''}</p>
       </div>
@@ -1979,7 +1979,7 @@ function tasksCard(r) {
   const rows = r.tasks;
   return `
     <section class="section panel">
-      <div class="section-head"><span class="section-ico">${ico('list')}</span><div><h2>Tasks</h2><p class="muted">Open a task, do it on X, then come back and press Verify.</p></div></div>
+      <div class="section-head"><span class="section-ico">${ico('list')}</span><div><h2>Tasks</h2><p class="muted">Open a task, do it on X, then come back and press Verify.</p></div>${(() => { const n = rows.filter((t) => !t.done && t.remaining !== 0).reduce((sum, t) => sum + t.points, 0); return n ? `<span class="pill pill-pts head-action">+${fmtNum(n)} available</span>` : ''; })()}</div>
       ${
         rows.length
           ? `<ul class="tasks">${rows
@@ -1998,7 +1998,7 @@ function tasksCard(r) {
               })
               .join('')}</ul>
              <p class="fine">We check your linked X username; tasks done with another account don’t count.</p>`
-          : '<p class="muted">No tasks right now. Check back soon.</p>'
+          : `<div class="earn2-empty">${ico('list')}<p><b>No tasks right now.</b> New tasks on X show up here. Inviting friends earns points meanwhile.</p></div>`
       }
     </section>`;
 }
