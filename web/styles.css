@@ -1,6 +1,6 @@
 /* Firstprint website styles
    Palette: ink navy surfaces; a five-step outcome scale from Crash (red) to Moon (gold).
-   Type: the Apple system font (SF Pro) where available, Inter elsewhere. */
+   Type: Inter everywhere (variable, 400-700), the system font only as a fallback. */
 
 /* Brand "The Ladder": night indigo surfaces, the five outcome colours as the palette
    (Moon gold, Up green, Flat grey, Down orange, Crash red), signal indigo for focus and
@@ -36,8 +36,8 @@
   --moon: #ffd60a;
 
   /* SF Pro on Apple devices (Display for large sizes is picked automatically), Inter elsewhere. */
-  --display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --display: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --body: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 
   --r-sm: 10px;
   --r-md: 14px;
@@ -128,8 +128,7 @@ body {
     var(--bg);
   background-repeat: no-repeat;
   color: var(--text);
-  font: 15px/1.5 var(--body);
-  font-variant-numeric: tabular-nums;
+  font: 15px/1.55 var(--body);
 }
 
 a {
@@ -169,7 +168,7 @@ h1,
 h2,
 h3 {
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   margin: 0;
   letter-spacing: -0.01em;
 }
@@ -182,7 +181,7 @@ h3 {
 .oc {
   color: var(--c);
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .loading {
@@ -215,7 +214,7 @@ h3 {
   display: inline-flex;
   align-items: center;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 20px;
   line-height: 1;
   letter-spacing: -0.022em;
@@ -334,7 +333,7 @@ h3 {
 }
 .wallet-list .addr {
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .radar td {
@@ -343,7 +342,7 @@ h3 {
 .radar-sym {
   display: block;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 18px;
 }
 .radar-title {
@@ -387,7 +386,7 @@ a.radar-title:hover {
 
 .points {
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 15px;
   padding: 5px 12px;
   border: 1px solid var(--line);
@@ -497,7 +496,7 @@ main:focus {
   font-size: clamp(26px, 3.4vw, 36px);
   line-height: 0.98;
   letter-spacing: -0.022em;
-  font-weight: 700;
+  font-weight: 600;
 }
 .featured h1 .countdown {
   display: block;
@@ -547,7 +546,7 @@ main:focus {
 }
 .mini-rung .pct {
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* ----------------------------------------------------------------- Toolbar */
@@ -632,7 +631,7 @@ main:focus {
 }
 .sym {
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 20px;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -765,7 +764,7 @@ main:focus {
 .stats dd {
   margin: 0;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 20px;
 }
 
@@ -785,7 +784,7 @@ main:focus {
 }
 .chart-head .now {
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 18px;
 }
 .chart svg {
@@ -875,7 +874,7 @@ main:focus {
 .rung .num {
   text-align: right;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 16px;
 }
 .rung .num small {
@@ -1047,7 +1046,7 @@ main:focus {
   border: 0;
   background: transparent;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 26px;
   padding: 8px 0;
   outline: none;
@@ -1095,7 +1094,7 @@ main:focus {
 .summary .big dd {
   font-family: var(--display);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--c);
 }
 
@@ -1104,7 +1103,7 @@ main:focus {
   border: 0;
   border-radius: var(--r-md);
   padding: 14px;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 16px;
   background: var(--c, var(--text));
   color: var(--bg);
@@ -1170,22 +1169,22 @@ main:focus {
 }
 .rank {
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 18px;
   width: 48px;
 }
 .profit-pos {
   color: var(--up);
-  font-weight: 700;
+  font-weight: 600;
 }
 .profit-neg {
   color: var(--crash);
-  font-weight: 700;
+  font-weight: 600;
 }
 .table td a {
   text-decoration: none;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
 }
 .table td b {
   color: var(--c);
@@ -1201,7 +1200,7 @@ main:focus {
 }
 .balance .amount {
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: clamp(36px, 5vw, 48px);
   letter-spacing: -0.022em;
   line-height: 1;
@@ -1509,11 +1508,11 @@ main:focus {
 }
 .checks td.pass {
   color: var(--up);
-  font-weight: 700;
+  font-weight: 600;
 }
 .checks td.fail {
   color: var(--crash);
-  font-weight: 700;
+  font-weight: 600;
 }
 .footer a {
   color: var(--muted);
@@ -1729,7 +1728,7 @@ code {
   background: color-mix(in srgb, var(--moon) 14%, var(--bg));
   color: var(--text);
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 14px;
   padding: 5px 12px;
   border-radius: 999px;
@@ -1789,7 +1788,7 @@ code {
   top: 14px;
   right: 16px;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 28px;
   line-height: 1;
   color: var(--line);
@@ -1837,7 +1836,7 @@ code {
   top: -10px;
   left: 14px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   padding: 2px 9px;
   border-radius: 999px;
   background: var(--moon);
@@ -2037,7 +2036,7 @@ code {
 .stat-tile dd {
   margin: 4px 0 2px;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 26px;
   letter-spacing: -0.02em;
   line-height: 1.1;
@@ -2195,7 +2194,7 @@ code {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 14px;
   padding: 5px 12px;
   border-radius: 999px;
@@ -2234,7 +2233,7 @@ code {
   display: grid;
   place-items: center;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   background: var(--raised);
 }
 .howto .muted,
@@ -2263,7 +2262,7 @@ code {
   display: grid;
   place-items: center;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
 }
 .steplist li.done .step-check {
   background: var(--up);
@@ -2439,7 +2438,7 @@ code {
 }
 .task-done {
   color: var(--up);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .task-form {
@@ -2715,7 +2714,7 @@ main .input-wrap input:not([type='checkbox']) {
   background: var(--surface);
   color: var(--text);
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 14px;
   text-decoration: none;
   white-space: nowrap;
@@ -2772,7 +2771,7 @@ main .input-wrap input:not([type='checkbox']) {
   background: linear-gradient(140deg, hsl(var(--h) 72% 60%), hsl(calc(var(--h) + 50) 68% 42%));
   color: #fff;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: calc(var(--size) * 0.44);
   line-height: 1;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
@@ -2802,7 +2801,7 @@ main .input-wrap input:not([type='checkbox']) {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--muted);
@@ -2828,7 +2827,7 @@ main .input-wrap input:not([type='checkbox']) {
   padding: 3px 10px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
   line-height: 1.5;
   font-family: var(--body);
@@ -2860,7 +2859,7 @@ main .input-wrap input:not([type='checkbox']) {
   color: var(--muted);
   font-family: var(--body);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   vertical-align: 3px;
 }
 
@@ -3037,7 +3036,7 @@ main .input-wrap input:not([type='checkbox']) {
 }
 .featured .h1-soft {
   color: var(--muted);
-  font-weight: 700;
+  font-weight: 600;
 }
 .hero-name {
   margin: 6px 0 0;
@@ -3079,7 +3078,7 @@ main .input-wrap input:not([type='checkbox']) {
 .hero-facts dd {
   margin: 0;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 17px;
 }
 .featured .actions {
@@ -3230,7 +3229,7 @@ main .input-wrap input:not([type='checkbox']) {
 .card-foot .pool {
   color: var(--text);
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
 }
 .card-foot .pool .i {
   color: var(--moon);
@@ -3394,7 +3393,7 @@ main .input-wrap input:not([type='checkbox']) {
   text-transform: uppercase;
   font-size: 11.5px;
   letter-spacing: 0.06em;
-  font-weight: 700;
+  font-weight: 600;
 }
 .market-layout .section {
   border-top: 0;
@@ -3416,7 +3415,7 @@ main .input-wrap input:not([type='checkbox']) {
 .feed .who {
   color: var(--text);
   font-family: var(--body);
-  font-weight: 700;
+  font-weight: 600;
 }
 .activity {
   font-size: 14px;
@@ -3569,7 +3568,7 @@ main .input-wrap input:not([type='checkbox']) {
   text-transform: uppercase;
   font-size: 11.5px;
   letter-spacing: 0.06em;
-  font-weight: 700;
+  font-weight: 600;
   padding: 10px 12px;
   background: color-mix(in srgb, var(--raised) 45%, transparent);
 }
@@ -3585,7 +3584,7 @@ main .input-wrap input:not([type='checkbox']) {
 }
 .table .num-cell {
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
 }
 .table tr.row-off td {
   opacity: 0.6;
@@ -3747,7 +3746,7 @@ main .input-wrap input:not([type='checkbox']) {
 .earn-stats dd {
   margin: 0;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 18px;
   white-space: nowrap;
   overflow: hidden;
@@ -3846,7 +3845,7 @@ main .input-wrap input:not([type='checkbox']) {
 }
 .task-body .pts {
   color: var(--up);
-  font-weight: 700;
+  font-weight: 600;
 }
 .task-done {
   display: inline-flex;
@@ -3979,7 +3978,7 @@ main .input-wrap input:not([type='checkbox']) {
   gap: 10px;
   padding: 6px 8px 4px;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 16px;
 }
 .admin-brand .i {
@@ -4033,7 +4032,7 @@ main .input-wrap input:not([type='checkbox']) {
   background: var(--crash);
   color: #fff;
   font-size: 11.5px;
-  font-weight: 700;
+  font-weight: 600;
 }
 .admin-lock {
   width: 100%;
@@ -4064,7 +4063,7 @@ main .input-wrap input:not([type='checkbox']) {
   padding: 6px 12px;
   border-radius: 999px;
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 600;
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--muted);
@@ -4254,7 +4253,7 @@ main .input-wrap input:not([type='checkbox']) {
 }
 .admin-form details > summary::before {
   content: '+';
-  font-weight: 700;
+  font-weight: 600;
 }
 .admin-form details[open] > summary::before {
   content: '−';
@@ -4675,7 +4674,7 @@ main .search input:not([type='checkbox']) {
   border-radius: 12px;
   color: var(--c);
   background: color-mix(in srgb, var(--c) 12%, transparent);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 13px;
 }
 .chance b {
@@ -4719,7 +4718,7 @@ main .search input:not([type='checkbox']) {
 .odds-big {
   margin: -4px 0 12px;
   color: var(--c);
-  font-weight: 700;
+  font-weight: 600;
 }
 .odds-big b {
   font-family: var(--display);
@@ -4790,7 +4789,7 @@ main .search input:not([type='checkbox']) {
 .user-link {
   color: inherit;
   text-decoration: none;
-  font-weight: 700;
+  font-weight: 600;
 }
 .user-link:hover {
   color: var(--brand);
@@ -5214,7 +5213,7 @@ main,
 .wordmark .mark i:nth-child(4) { width: 15px; background: #ff9f0a; }
 .wordmark .mark i:nth-child(5) { width: 20px; background: #ff453a; }
 .wordmark .word {
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.022em;
 }
 @media (max-width: 350px) {
@@ -5286,7 +5285,7 @@ h2,
   color: #fff;
   font-family: var(--body);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   box-shadow: 0 0 0 2px var(--bg);
 }
 
@@ -5388,7 +5387,7 @@ h2,
 .win-amount {
   margin: 0;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 44px;
   line-height: 1;
   color: var(--gold);
@@ -5680,7 +5679,7 @@ main textarea::placeholder,
   margin: 0;
   font-family: var(--display);
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.15;
   letter-spacing: -0.01em;
   overflow: hidden;
@@ -5777,7 +5776,7 @@ main textarea::placeholder,
 .sum-value {
   font-family: var(--display);
   font-size: 30px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.05;
   letter-spacing: -0.02em;
 }
@@ -5807,7 +5806,7 @@ main textarea::placeholder,
   margin: 4px 0 0;
   font-family: var(--display);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
 }
 .record-grid p {
   margin: 2px 0 0;
@@ -5960,7 +5959,7 @@ main textarea::placeholder,
   align-items: center;
   gap: 8px;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
 }
 .dash-card-head h2 .i {
   width: 16px;
@@ -6148,7 +6147,7 @@ main textarea::placeholder,
 .dash-insights .section-head h2 {
   font-family: var(--body);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   margin: 0;
 }
 .dash-insights .section-ico {
@@ -6226,14 +6225,14 @@ body {
   font-size: 15px;
   line-height: 1.5;
   letter-spacing: -0.006em;
-  font-feature-settings: 'tnum' 1, 'cv11' 1;
+  font-feature-settings: 'cv11' 1;
 }
 h1,
 .page-title,
 .featured h1,
 .m-title .sym,
 .dash-name {
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.022em;
   line-height: 1.12;
 }
@@ -6293,7 +6292,7 @@ h3,
   letter-spacing: 0.04em;
 }
 .wordmark .word {
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.02em;
 }
 .m-question {
@@ -6894,7 +6893,7 @@ main:has(.home) {
   border-radius: 6px;
   background: var(--raised);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text);
 }
 .home-main {
@@ -7810,4 +7809,641 @@ main:has(.home) {
   .home .featured .mini-ladder.quiet {
     display: none;
   }
+}
+
+
+/* =====================================================================
+   Type system. One family (Inter), one scale, five roles:
+   titles · outcome labels · numbers · descriptions · metadata.
+   Weights: 400 reading, 500 labels and navigation, 600 titles, numbers
+   and buttons, 650 only for page-level titles. Numbers use tabular
+   figures so points, percentages and countdowns line up and don't jitter.
+   ===================================================================== */
+:root {
+  --fs-meta: 12px;
+  --fs-sm: 13px;
+  --fs-base: 15px;
+  --fs-md: 16px;
+  --fs-lg: 18px;
+  --fs-xl: 22px;
+  --fs-2xl: 28px;
+  --lh-tight: 1.15;
+  --lh-snug: 1.3;
+  --lh-body: 1.55;
+}
+body {
+  font-family: var(--body);
+  font-optical-sizing: auto;
+  letter-spacing: -0.006em;
+}
+b,
+strong {
+  font-weight: 600;
+}
+
+/* Page-level titles: page, featured market, market page, dashboard name. */
+h1,
+.page-title,
+.featured h1,
+.mh .m-title .sym,
+.dash-name {
+  font-weight: 650;
+  line-height: var(--lh-tight);
+  letter-spacing: -0.022em;
+}
+.page-title,
+.mh .m-title .sym {
+  font-size: var(--fs-2xl);
+}
+.featured h1 {
+  font-size: clamp(26px, 2.6vw, 32px);
+}
+.dash-name {
+  font-size: 24px;
+}
+.featured .h1-soft {
+  font-weight: 400;
+}
+
+/* Section headings and card headings. */
+h2,
+.section-head h2,
+.home-head h2 {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  letter-spacing: -0.012em;
+}
+.rail-head h3,
+.dash-card-head h2,
+.trade-card h2,
+.m-rules summary,
+.modal h2 {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  letter-spacing: -0.01em;
+}
+.trade-card h2 {
+  font-size: var(--fs-lg);
+}
+
+/* Market titles on cards and lists. */
+.mcard .sym,
+.mkt-cell span,
+.rail-list li > a,
+.who-cell a {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  letter-spacing: -0.01em;
+}
+.mkt-cell span,
+.rail-list li > a,
+.who-cell a {
+  font-size: var(--fs-base);
+}
+.mcard .card-name,
+.mh .m-name,
+.hero-name {
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  line-height: var(--lh-snug);
+  color: var(--muted);
+}
+.hero-name {
+  font-size: var(--fs-base);
+}
+
+/* Outcome labels: coloured, medium weight. */
+.o-name,
+.rung-name b,
+.mini-rung b,
+.qp span,
+.qp-yn .qp,
+.odds-legend span,
+.orec-name {
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+.o-name,
+.mini-rung b,
+.qp span {
+  font-size: var(--fs-base);
+}
+.qp span {
+  font-size: var(--fs-sm);
+}
+.market-layout .rung-name b {
+  font-size: var(--fs-md);
+  font-weight: 500;
+}
+.o-name small,
+.rung-name small,
+.mini-rung .muted {
+  font-size: var(--fs-meta);
+  font-weight: 400;
+}
+
+/* Numbers: semibold, tabular, slightly tight. */
+.tick,
+.num,
+.num-cell,
+.o-pct,
+.pct,
+.gauge b,
+.qp b,
+.qp-sm,
+.sum-value,
+.record-grid dd,
+.m-facts dd,
+.hero-facts dd,
+.stats dd,
+.stat-tile dd,
+.rail-list b,
+.dash-ledger b,
+.points,
+.chance b,
+.odds-legend b,
+.odds-big b,
+.orec-num,
+.side-n,
+.count,
+.count-badge,
+.rail-rank,
+.table td.right,
+.table th.right,
+.stake-input input,
+#stake,
+.summary dd,
+.when,
+.card-foot,
+.m-facts,
+.hero-facts,
+.mobile-bar,
+.odds-axis,
+.odds-time,
+.pchart-axis,
+.bell-n,
+.gift-n {
+  font-variant-numeric: tabular-nums;
+}
+.o-pct,
+.market-layout .rung .num,
+.gauge b,
+.m-facts dd,
+.hero-facts dd,
+.rail-list b,
+.dash-ledger b,
+.record-grid dd,
+.sum-value {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.qp b {
+  font-weight: 500;
+}
+.sum-value {
+  font-size: var(--fs-2xl);
+  line-height: var(--lh-tight);
+}
+.record-grid dd {
+  font-size: var(--fs-lg);
+}
+
+/* Descriptions: regular weight, comfortable line height. */
+.mh .m-question {
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.lede,
+.page-lede,
+.section-head p,
+.card-quiet,
+.card-result,
+.rail-card p,
+.dash-card-text,
+.dash-empty p,
+.empty p,
+.home-note,
+.m-note,
+.rules li,
+.howto li {
+  font-weight: 400;
+  line-height: var(--lh-body);
+}
+.section-head p,
+.card-quiet,
+.rail-card p,
+.dash-card-text,
+.dash-empty p,
+.home-note {
+  font-size: var(--fs-sm);
+}
+.fine,
+.ladder-note {
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* Metadata: small, regular, muted. Labels above values stay quiet. */
+.mcard .card-foot,
+.m-facts dt,
+.m-refs,
+.odds-time,
+.dash-meta,
+.feed .muted,
+.dw-main .muted,
+.dl-main small,
+.mcard .card-mine,
+.timeline .muted {
+  font-size: var(--fs-meta);
+  font-weight: 400;
+}
+.mcard .card-foot .st {
+  font-weight: 500;
+}
+.mcard .card-foot .when {
+  font-weight: 500;
+  color: var(--text);
+}
+.sum-label,
+.record-grid dt,
+.hero-facts dt,
+.field-label {
+  font-weight: 500;
+}
+.eyebrow,
+.dash-eyebrow,
+.side-label,
+.ladder-head,
+.table th,
+.mini-head,
+.hero-facts dt.caps {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Navigation and controls. */
+.subnav a {
+  font-size: 14px;
+  font-weight: 500;
+}
+.subnav a[aria-current='page'] {
+  font-weight: 500;
+}
+.home-side button,
+.top-menu a,
+.top-menu button {
+  font-size: 14px;
+  font-weight: 400;
+}
+.home-side button[aria-current='true'] {
+  font-weight: 500;
+}
+.top-menu .menu-quiet {
+  font-size: var(--fs-sm);
+}
+.tabs button,
+.dash-tabs button {
+  font-size: 14px;
+  font-weight: 500;
+}
+.tabbar a {
+  font-size: 11px;
+  font-weight: 500;
+}
+.chip {
+  font-family: var(--body);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+.chip.points {
+  font-weight: 600;
+}
+.btn {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+.btn-gold,
+.btn-solid,
+.btn-lg {
+  font-weight: 600;
+}
+.st,
+.pill,
+.tag {
+  font-weight: 500;
+}
+.wordmark .word {
+  font-weight: 650;
+}
+
+@media (max-width: 640px) {
+  .page-title,
+  .mh .m-title .sym {
+    font-size: 24px;
+  }
+  .mh .m-question {
+    font-size: var(--fs-md);
+  }
+  .sum-value {
+    font-size: 26px;
+  }
+}
+/* Outcome names inside sentences and the prediction panel's outcome buttons. */
+.oc,
+.picker button b {
+  font-weight: 500;
+}
+.picker button small {
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+/* Featured facts: spacing instead of dots, so a wrapped line never starts with a stray "·". */
+.home .featured .hero-facts > div + div::before {
+  content: none;
+}
+.home .featured .hero-facts {
+  gap: 6px 20px;
+}
+
+/* =====================================================================
+   Featured market: one flat panel. Left: who, what, when, one action.
+   Right: the outcomes as a single list where each row is the pick.
+   No glows, no boxes inside boxes.
+   ===================================================================== */
+.feat {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 var(--hairline-hi);
+  overflow: hidden;
+}
+.feat-main {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 28px;
+}
+.feat-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+.feat-id {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.feat-id h1 {
+  margin: 0;
+  font-size: var(--fs-2xl);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.022em;
+}
+.feat-id p {
+  margin: 2px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.feat-q {
+  margin: 0;
+  max-width: 44ch;
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--text) 82%, var(--muted));
+}
+.feat-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 0;
+  margin: 0;
+}
+.feat-facts > div {
+  padding: 0 20px;
+  border-left: 1px solid var(--line);
+}
+.feat-facts > div:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+.feat-facts dt {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+.feat-facts dd {
+  margin: 2px 0 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.feat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 4px;
+}
+.feat-actions .btn {
+  min-height: 40px;
+  padding: 0 16px;
+}
+.feat-actions .btn .i {
+  width: 15px;
+  height: 15px;
+}
+.feat-hint {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.feat-side {
+  display: grid;
+  align-content: start;
+  padding: 12px 0;
+  border-left: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 35%, var(--surface));
+}
+.feat-side-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 24px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fo-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 64px;
+  align-items: center;
+  gap: 16px;
+  min-height: 52px;
+  padding: 0 24px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  transition: background-color 140ms var(--ease-out);
+}
+.fo-row:first-of-type {
+  border-top: 0;
+}
+.fo-row::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--share);
+  background: color-mix(in srgb, var(--c) 10%, transparent);
+  pointer-events: none;
+}
+.fo-row > * {
+  position: relative;
+}
+.fo-row:hover:not(:disabled),
+.fo-row:focus-visible {
+  background: color-mix(in srgb, var(--c) 8%, transparent);
+  outline: none;
+}
+.fo-row:focus-visible {
+  box-shadow: inset 2px 0 0 var(--c);
+}
+.fo-row:disabled {
+  cursor: default;
+}
+.fo-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-base);
+  font-weight: 500;
+  color: var(--c);
+}
+.fo-name .i {
+  width: 16px;
+  height: 16px;
+}
+.fo-range {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fo-val {
+  justify-self: end;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.fo-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+.fo-pick .i {
+  width: 14px;
+  height: 14px;
+}
+.fo-row:hover .fo-pick,
+.fo-row:focus-visible .fo-pick {
+  opacity: 1;
+  color: var(--c);
+}
+@media (hover: none) {
+  .fo-pick {
+    opacity: 1;
+  }
+}
+
+/* "Only market" note: plain text, no dashed box. */
+.home-note {
+  border: 0;
+  padding: 8px 0 0;
+  text-align: left;
+  font-size: var(--fs-sm);
+}
+
+@media (max-width: 1240px) and (min-width: 901px) {
+  .feat {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .feat-side {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+@media (max-width: 900px) {
+  .feat {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .feat-side {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+@media (max-width: 640px) {
+  .feat-main {
+    padding: 20px;
+    gap: 14px;
+  }
+  .feat-id h1 {
+    font-size: 24px;
+  }
+  .feat-side-head,
+  .fo-row {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .fo-row {
+    grid-template-columns: minmax(0, 1fr) auto 52px;
+    gap: 10px;
+    min-height: 50px;
+  }
+  .fo-range {
+    font-size: var(--fs-meta);
+  }
+}
+.feat-sub {
+  margin-left: 4px;
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--muted);
+}
+/* Facts as a tidy grid: wraps cleanly, no dividers left hanging. */
+.feat-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, max-content));
+  gap: 12px 32px;
+}
+.feat-facts > div,
+.feat-facts > div:first-child {
+  padding: 0;
+  border: 0;
+}
+.feat-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
 }

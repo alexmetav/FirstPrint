@@ -493,6 +493,8 @@ function homeView() {
   const shown = base.filter((m) => S.exchange === 'all' || !S.exchange || venuesOf(m).includes(S.exchange));
   const onlyFeatured = !S.query && featured && ['trending', 'ending', 'new'].includes(S.filter) && shown.length === 1 && shown[0].id === featured.id;
   const exchanges = [...new Set([...S.lists.open, ...S.lists.live, ...S.lists.settled].flatMap(venuesOf))].sort();
+  // Only exchanges that have markets in this tab (plus the one currently chosen).
+  const exList = exchanges.map((e) => [e, base.filter((m) => venuesOf(m).includes(e)).length]).filter(([e, n]) => n > 0 || S.exchange === e);
   const filterBtn = ([id, icon, label]) =>
     `<button data-filter="${id}" aria-current="${S.filter === id && !S.query}">${ico(icon)}<span>${label}</span><span class="side-n">${count(id)}</span></button>`;
   const exBtn = (id, label, n) => `<button data-exchange="${esc(id)}" aria-current="${(S.exchange ?? 'all') === id}">${id === 'all' ? ico('landmark') : `<span class="ex-dot" aria-hidden="true">${esc(label.slice(0, 1))}</span>`}<span>${esc(label)}</span><span class="side-n">${n}</span></button>`;
@@ -501,7 +503,7 @@ function homeView() {
     <div class="home">
       <aside class="home-side" aria-label="Filter markets">
         <div class="side-group">${HOME_TABS.map(filterBtn).join('')}</div>
-        ${exchanges.length > 1 ? `<div class="side-label">Exchanges</div><div class="side-group">${exBtn('all', 'All exchanges', base.length)}${exchanges.map((e) => exBtn(e, e, base.filter((m) => venuesOf(m).includes(e)).length)).join('')}</div>` : ''}
+        ${exList.length > 1 ? `<div class="side-label">Exchanges</div><div class="side-group">${exBtn('all', 'All exchanges', base.length)}${exList.map(([e, n]) => exBtn(e, e, n)).join('')}</div>` : ''}
       </aside>
       <div class="home-main">
         ${featured && !S.query ? featuredView(featured) : ''}
@@ -601,53 +603,56 @@ function featuredSide(m) {
 }
 
 function featuredView(m) {
-  if (isYesNo(m)) {
-    const yes = m.pool ? Math.round(share(m, 'up') * 100) : null;
-    return `
-    <section class="featured" aria-labelledby="featured-title">
-      <div class="featured-main">
-        <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Featured market · Yes / No</span>
-        <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">above ${fmtPrice(m.basePrice)}?</span></h1><p class="hero-name">${esc(m.name || m.symbol)} · ${yes === null ? 'no predictions yet' : `${yes}% say Yes`}</p></div></div>
-        <p class="lede">Will ${esc(m.name || m.symbol)} be at or above ${fmtPrice(m.basePrice)} when the result is posted? Pick Yes or No.</p>
-        ${heroFacts(m, 'Closes in', until(m.closeAt))}
-        <div class="actions">
-          <a class="btn btn-gold btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
-          <a class="btn btn-lg" href="#how">How it works</a>
-        </div>
-      </div>
-      ${featuredSide(m)}
-    </section>`;
-  }
-  if (isManual(m)) {
-    return `
-    <section class="featured" aria-labelledby="featured-title">
-      <div class="featured-main">
-        <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Featured market · open for predictions</span>
-        <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">is open</span></h1><p class="hero-name">${esc(m.name || m.symbol)}${m.pool ? ` · start price ${fmtPrice(m.basePrice)}` : ''}</p></div></div>
-        <p class="lede">Predict where ${esc(m.name || m.symbol)} is priced at the result, compared with the start price. ${m.pool ? '' : 'Nobody has predicted yet, so early picks get the biggest bonus.'}</p>
-        ${heroFacts(m, 'Closes in', until(m.closeAt))}
-        ${quickPicks(m)}
-        <a class="feat-open" href="#/market/${encodeURIComponent(m.id)}">Open market ${ico('chevronRight')}</a>
-      </div>
-      ${featuredSide(m)}
-    </section>`;
-  }
+  const yn = isYesNo(m);
+  const manual = isManual(m);
   const pre = m.phase === 'pre_listing';
-  const test = m.kind === 'live_test';
-  const verb = test ? (pre ? 'market starts' : 'market is live') : `${pre ? 'lists' : 'is trading'} on ${esc(m.exchange)}`;
+  const open = m.status === 'open' && m.phase !== 'awaiting_result';
+  const name = esc(m.name || m.symbol);
+  const href = `#/market/${encodeURIComponent(m.id)}`;
+  const question = yn
+    ? `Will ${name} be at or above ${fmtPrice(m.basePrice)} when the result is posted?`
+    : manual
+    ? `Where will ${name} be priced at the result, compared with ${fmtPrice(m.basePrice)}?`
+    : `Where will ${name} trade ${fmtSpan(m.settleAt - m.listingAt)} after ${m.kind === 'live_test' ? 'the market starts' : 'listing'}?`;
+
+  const fact = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
+  const facts = [
+    manual ? fact(yn ? 'Target price' : 'Start price', fmtPrice(m.basePrice)) : '',
+    pre ? fact(m.kind === 'live_test' ? 'Starts in' : 'Lists in', until(m.listingAt)) : fact('Closes in', until(m.closeAt)),
+    m.pool ? fact('Pool', `${tick(`pool:hero:${m.id}`, m.pool)} pts <span class="feat-sub">${fmtNum(m.predictors)} player${m.predictors === 1 ? '' : 's'}</span>`) : '',
+  ].join('');
+
+  // One list of outcomes; each row is the pick button.
+  const rows = bucketsOf(m)
+    .map((b) => {
+      const pct = m.pool ? Math.round(share(m, b) * 100) : null;
+      return `<button class="fo-row" style="--c:${oVar(b, yn)};--share:${pct ?? 0}%" data-action="quick-pick" data-id="${esc(m.id)}" data-bucket="${b}"${open ? '' : ' disabled'} aria-label="Pick ${oName(b, yn)}: ${rangeOf(m, b)}${pct === null ? '' : `, ${pct}% of the pool`}">
+        <span class="fo-name">${icon(b, yn)}${oName(b, yn)}</span>
+        <span class="fo-range">${rangeOf(m, b)}</span>
+        <span class="fo-val">${pct === null ? `<span class="fo-pick">Pick ${ico('chevronRight')}</span>` : `${pct}%`}</span>
+      </button>`;
+    })
+    .join('');
+
   return `
-    <section class="featured" aria-labelledby="featured-title">
-      <div class="featured-main">
-        <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Featured market</span>
-        <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">${verb}</span></h1><p class="hero-name">${esc(m.name || m.symbol)}</p></div></div>
-        <p class="lede">Predict where ${esc(m.name || m.symbol)} trades ${fmtSpan(m.settleAt - m.listingAt)} after ${test ? `the market starts, using live prices from ${esc(venueNames(m))}` : 'listing'}.</p>
-        ${heroFacts(m, pre ? (test ? 'Starts in' : 'Lists in') : 'Closes in', pre ? until(m.listingAt) : until(m.closeAt))}
-        <div class="actions">
-          <a class="btn btn-gold btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
-          <a class="btn btn-lg" href="#how">How it works</a>
+    <section class="feat" aria-labelledby="featured-title">
+      <div class="feat-main">
+        <div class="feat-kicker"><span class="st st-live"><i aria-hidden="true"></i>${pre ? 'Upcoming' : 'Open'}</span><span aria-hidden="true">·</span><span>Featured market</span></div>
+        <div class="feat-id">
+          ${tokenAvatar(m, 'avatar-lg')}
+          <div><h1 id="featured-title">${esc(m.symbol)}</h1>${m.name ? `<p>${esc(m.name)}</p>` : ''}</div>
+        </div>
+        <p class="feat-q">${question}</p>
+        <dl class="feat-facts">${facts}</dl>
+        <div class="feat-actions">
+          <a class="btn btn-gold" href="${href}">Open market ${ico('arrowRight')}</a>
+          ${m.pool ? '' : '<span class="feat-hint">No predictions yet. Early picks earn the biggest bonus.</span>'}
         </div>
       </div>
-      ${miniLadder(m)}
+      <div class="feat-side" role="group" aria-label="Pick an outcome">
+        <div class="feat-side-head"><span>${yn ? 'Your answer' : 'Outcomes'}</span><span>${m.pool ? 'Crowd' : 'Tap to pick'}</span></div>
+        ${rows}
+      </div>
     </section>`;
 }
 

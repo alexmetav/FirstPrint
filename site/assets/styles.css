@@ -20,8 +20,8 @@
   --up: #30d158;
   --moon: #ffd60a;
 
-  --display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --display: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --body: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 
   --r-sm: 10px;
   --r-md: 16px;
@@ -198,7 +198,7 @@ body[data-view='landing'] .app {
 .chip {
   display: inline-block;
   font-size: 11.5px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--moon);
@@ -213,7 +213,7 @@ body[data-view='landing'] .app {
   display: inline-flex;
   align-items: center;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 22px;
   letter-spacing: -0.022em;
   text-decoration: none;
@@ -419,7 +419,7 @@ body[data-view='landing'] .app {
 
 .hero-title {
   font-size: clamp(36px, 4.4vw, 56px);
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.022em;
   line-height: 0.98;
 }
@@ -535,7 +535,7 @@ body[data-view='landing'] .app {
 .hm-ladder em {
   font-style: normal;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 14px;
 }
 .hm-ladder li.dim {
@@ -586,7 +586,7 @@ body[data-view='landing'] .app {
   align-items: center;
   gap: 10px;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 17px;
   color: color-mix(in srgb, var(--text) 70%, var(--bg));
   white-space: nowrap;
@@ -624,7 +624,7 @@ body[data-view='landing'] .app {
 }
 .section-head h2 {
   font-size: clamp(28px, 3.2vw, 40px);
-  font-weight: 700;
+  font-weight: 600;
 }
 .section-head .sub {
   margin-top: 18px;
@@ -659,7 +659,7 @@ body[data-view='landing'] .app {
 }
 .step-n {
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 13px;
   letter-spacing: 0.12em;
   color: var(--muted);
@@ -775,7 +775,7 @@ body[data-view='landing'] .app {
 .big-stats dd {
   margin: 0;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: clamp(28px, 3.2vw, 40px);
   letter-spacing: -0.022em;
   line-height: 1;
@@ -848,7 +848,7 @@ body[data-view='landing'] .app {
   display: grid;
   place-items: center;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 16px;
 }
 .ex-logo img:not([hidden]) + .monogram {
@@ -916,7 +916,7 @@ body[data-view='landing'] .app {
   list-style: none;
   padding: 22px 44px 22px 0;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 19px;
   position: relative;
   transition: color 0.25s var(--swift);
@@ -970,7 +970,7 @@ body[data-view='landing'] .app {
 }
 .cta-inner h2 {
   font-size: clamp(26px, 3vw, 36px);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 /* Footer */
@@ -1055,7 +1055,7 @@ body[data-view='landing'] .app {
 }
 .soon {
   font-size: 10.5px;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--moon);
@@ -1077,7 +1077,7 @@ body[data-view='landing'] .app {
 }
 .page-title {
   font-size: clamp(28px, 3.2vw, 40px);
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.022em;
 }
 .page-lede {
@@ -1119,7 +1119,7 @@ body[data-view='landing'] .app {
 .summary-stats dd {
   margin: 6px 0 0;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 28px;
   letter-spacing: -0.022em;
 }
@@ -1210,7 +1210,7 @@ body[data-view='landing'] .app {
 }
 .num {
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 16px;
 }
 .rank {
@@ -1320,7 +1320,7 @@ body[data-view='landing'] .app {
 .detail-stats dd {
   margin: 8px 0 0;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 26px;
   letter-spacing: -0.022em;
 }
@@ -1389,7 +1389,7 @@ body[data-view='landing'] .app {
 }
 .soon-page h1 {
   font-size: clamp(32px, 4vw, 48px);
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.022em;
 }
 .soon-page .lede {
@@ -1720,7 +1720,7 @@ body[data-view='landing'] .app {
   right: 16px;
   top: 14px;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 30px;
   letter-spacing: -0.022em;
   color: var(--c, var(--muted));
@@ -1771,7 +1771,7 @@ body[data-view='landing'] .app {
 .try-picks button em {
   font-style: normal;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   color: var(--muted);
   min-width: 42px;
   text-align: right;
@@ -1895,7 +1895,7 @@ body[data-view='landing'] .app {
 .trend-sym {
   display: block;
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 19px;
   letter-spacing: -0.02em;
   margin: 6px 0 2px;
