@@ -230,6 +230,17 @@ function skeletonView(name) {
   return `<div class="skeleton" aria-busy="true" aria-label="Loading"><i class="sk sk-title w40"></i><i class="sk sk-line w60"></i><div class="sk-card block"></div></div>`;
 }
 
+/** A short fade-and-rise when a new page appears (not on live updates of the same page). */
+function enterView() {
+  const view = $('#view');
+  if (!view) return;
+  view.classList.remove('view-enter');
+  void view.offsetWidth;
+  view.classList.add('view-enter');
+  clearTimeout(enterView.timer);
+  enterView.timer = setTimeout(() => view.classList.remove('view-enter'), 500);
+}
+
 async function onRoute() {
   const next = parseRoute();
   const changed = next.name !== S.route.name || next.id !== S.route.id;
@@ -242,6 +253,7 @@ async function onRoute() {
   }
   renderTop();
   await loadRoute(changed);
+  if (changed) enterView();
   if (changed && document.activeElement?.id !== 'market-search') $('#view').focus({ preventScroll: true });
 }
 
@@ -486,6 +498,7 @@ function marketResults() {
 }
 
 function homeView() {
+  const tnCard = startChecklist();
   if (!HOME_TABS.some(([id]) => id === S.filter)) S.filter = 'trending';
   const featured = [...S.lists.open].sort(byTrending)[0];
   const count = (id) => (id === 'live' ? S.lists.live.length : id === 'settled' ? S.lists.settled.length : S.lists.open.length);
@@ -499,8 +512,8 @@ function homeView() {
     `<button data-filter="${id}" aria-current="${S.filter === id && !S.query}">${ico(icon)}<span>${label}</span><span class="side-n">${count(id)}</span></button>`;
   const exBtn = (id, label, n) => `<button data-exchange="${esc(id)}" aria-current="${(S.exchange ?? 'all') === id}">${id === 'all' ? ico('landmark') : `<span class="ex-dot" aria-hidden="true">${esc(label.slice(0, 1))}</span>`}<span>${esc(label)}</span><span class="side-n">${n}</span></button>`;
   return `
-    ${startChecklist()}
-    ${S.query ? '' : homeHero()}
+    ${tnCard}
+    ${S.query ? '' : homeHero(!tnCard)}
     <div class="home">
       <aside class="home-side" aria-label="Filter markets">
         <div class="side-group">${HOME_TABS.map(filterBtn).join('')}</div>
@@ -520,7 +533,7 @@ function homeView() {
 }
 
 /** Top banner: what Firstprint is, in one line, with live numbers from open markets. */
-function homeHero() {
+function homeHero(showLive = true) {
   const open = S.lists.open;
   const inPlay = [...open, ...S.lists.live].reduce((sum, m) => sum + (m.pool || 0), 0);
   const best = Math.max(0, ...open.flatMap((m) => bucketsOf(m).map((b) => poolMultiple(m, b) ?? 0)));
@@ -541,7 +554,11 @@ function homeHero() {
         <circle cx="1040" cy="70" r="4" fill="currentColor" />
       </svg>
       <div class="hero-copy">
-        <p class="hero-badge">${ico('sparkles')}Listing prediction markets<span class="hero-badge-more"> · Free to play</span></p>
+        ${
+          showLive && testnetLive()
+            ? `<a class="hero-badge hero-badge-live" href="#/earn"><span class="dot-live" aria-hidden="true"></span>Testnet live<span class="hero-badge-more"> · Claim 1,000 TestFPT</span> ${ico('arrowRight')}</a>`
+            : `<p class="hero-badge">${ico('sparkles')}Listing prediction markets<span class="hero-badge-more"> · Free to play</span></p>`
+        }
         <h1 id="hero-title">Predict where new listings land.<span class="soft"> Before the price settles.</span></h1>
         <p class="hero-sub">Pick one of five outcomes (${LADDER.map(word).join(', ')}) on freshly listed tokens${venues.length ? ` across ${esc(list(venues))}` : ''}. Points only, no real money.</p>
         ${stats.length ? `<dl class="hero-stats">${stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
@@ -1406,6 +1423,71 @@ function celebrate(bucket) {
   celebrate.timer = setTimeout(() => (root.innerHTML = ''), 1800);
 }
 
+/**
+ * Coins fly from where points were earned (a button, a card) into the points balance in the top
+ * bar, which then pulses and shows "+N". Resolves when the first coin lands, so the balance can
+ * update right as it arrives. People who prefer less motion just see the pulse.
+ */
+function collectPoints(from, amount = 0, to = '.chip.points') {
+  const target = typeof to === 'string' ? $(to) || $('.chip.points') : to;
+  const start = from instanceof Element ? from.getBoundingClientRect() : from;
+  const land = () => {
+    const el = typeof to === 'string' ? $(to) || $('.chip.points') : to;
+    if (!el) return;
+    el.classList.remove('pts-hit');
+    void el.offsetWidth;
+    el.classList.add('pts-hit');
+    if (amount) {
+      const r = el.getBoundingClientRect();
+      const gain = document.createElement('span');
+      gain.className = 'pts-gain';
+      gain.setAttribute('aria-hidden', 'true');
+      gain.textContent = `+${fmtNum(amount)}`;
+      gain.style.left = `${r.left + r.width / 2}px`;
+      gain.style.top = `${r.bottom + 4}px`;
+      document.body.appendChild(gain);
+      setTimeout(() => gain.remove(), 1300);
+    }
+  };
+  if (!target || !start || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    land();
+    return Promise.resolve();
+  }
+  const end = target.getBoundingClientRect();
+  const sx = start.left + start.width / 2;
+  const sy = start.top + start.height / 2;
+  const ex = end.left + Math.min(22, end.width / 2);
+  const ey = end.top + end.height / 2;
+  const count = Math.max(8, Math.min(16, Math.round(Math.log10(Math.max(10, amount)) * 5)));
+  return new Promise((resolve) => {
+    let landed = 0;
+    for (let i = 0; i < count; i++) {
+      const c = document.createElement('i');
+      c.className = 'coin-fly';
+      c.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(c);
+      // Burst out a little, then curve into the balance.
+      const mx = sx + (Math.random() - 0.5) * 150;
+      const my = sy - 30 - Math.random() * 80;
+      const anim = c.animate(
+        [
+          { transform: `translate(${sx}px, ${sy}px) scale(0.3) rotate(0deg)`, opacity: 0 },
+          { transform: `translate(${mx}px, ${my}px) scale(1) rotate(160deg)`, opacity: 1, offset: 0.35 },
+          { transform: `translate(${ex}px, ${ey}px) scale(0.5) rotate(320deg)`, opacity: 0.85 },
+        ],
+        { duration: 820, delay: i * 38, easing: 'cubic-bezier(0.55, 0, 0.2, 1)', fill: 'both' },
+      );
+      anim.onfinish = () => {
+        c.remove();
+        if (++landed === 1) {
+          land();
+          resolve();
+        }
+      };
+    }
+  });
+}
+
 function openSheet() {
   const el = $('#trade');
   if (!el) return;
@@ -1888,13 +1970,55 @@ function startSteps() {
 }
 
 /** A card at the top of the main pages until the player has claimed their starting points. */
+/** localStorage that never throws (private windows, blocked storage). */
+const readPref = (k) => {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+};
+const writePref = (k, v) => {
+  try {
+    localStorage.setItem(k, v);
+  } catch {
+    /* storage blocked */
+  }
+};
+const testnetLive = () => Boolean(S.rewards?.onChain ?? S.cfg?.rewards?.onChain);
+
+/** "Testnet is live": what TestFPT is, and the player's next step (sign in, link a wallet, claim). */
 function startChecklist() {
-  if (!S.me || !S.rewards?.onChain || S.rewards.welcomeClaimed) return '';
+  if (!testnetLive() || (S.me && (!S.rewards || S.rewards.welcomeClaimed))) return '';
+  if (!S.me && readPref('fp:testnet-hide')) return '';
+  const signedIn = Boolean(S.me);
+  const wallet = Boolean(S.me?.wallets?.length);
+  const steps = [
+    ['Sign in', 'Google, email or wallet', signedIn],
+    ['Link a wallet', 'Phantom, Solflare or Backpack', wallet],
+    ['Claim TestFPT', 'Free test SOL pays the fee', false],
+  ];
+  const done = steps.filter((x) => x[2]).length;
+  const next = steps.findIndex((x) => !x[2]);
+  const cta = !signedIn
+    ? `<button class="btn btn-gold" data-action="connect">Sign in to claim ${ico('arrowRight')}</button>`
+    : !wallet
+    ? `<button class="btn btn-gold" data-action="start-guide">Link a wallet ${ico('arrowRight')}</button>`
+    : `<a class="btn btn-gold" href="#/earn">Claim 1,000 TestFPT ${ico('arrowRight')}</a>`;
   return `
-    <section class="start-card">
-      <span class="start-ico">${ico('token')}</span>
-      <div class="start-text"><h2>Claim your 1,000 TestFPT to start</h2><p class="muted">Link a wallet, get free test SOL for the fee, then claim. Takes about two minutes.</p></div>
-      <div class="start-actions"><button class="btn btn-solid" data-action="start-guide">${ico('list')}Show me the steps</button><a class="btn" href="#/earn">Claim</a></div>
+    <section class="testnet-card" aria-labelledby="testnet-title" style="--done:${done / steps.length}">
+      <div class="tn-coins" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="tn-copy">
+        <p class="tn-kicker"><span class="dot-live" aria-hidden="true"></span>Testnet is live</p>
+        <h2 id="testnet-title">Claim 1,000 free TestFPT<span class="soft"> on Solana ${clusterName()}.</span></h2>
+        <p class="tn-sub">Your Firstprint points, as a token in your own wallet. Takes about two minutes. Test network only, no real money.</p>
+      </div>
+      <ol class="tn-steps">${steps
+        .map(([t, sub, ok], i) => `<li class="${ok ? 'done' : i === next ? 'next' : ''}"><span class="tn-n">${ok ? ico('check') : `0${i + 1}`}</span><span><b>${t}</b><small>${sub}</small></span></li>`)
+        .join('')}</ol>
+      <div class="tn-actions">${cta}${signedIn ? '<button class="btn tn-more" data-action="start-guide">See all steps</button>' : ''}</div>
+      <span class="tn-progress" aria-hidden="true"><i></i></span>
+      ${signedIn ? '' : `<button class="tn-close" data-action="testnet-hide" aria-label="Hide this">${ico('cross')}</button>`}
     </section>`;
 }
 
@@ -2030,6 +2154,7 @@ async function claimTokens() {
   if (!wallet) return openAuth('link');
   S.claimBusy = true;
   const btn = $('[data-action="claim-tokens"]');
+  const from = btn?.getBoundingClientRect();
   if (btn) {
     btn.disabled = true;
     btn.textContent = 'Claiming…';
@@ -2048,6 +2173,7 @@ async function claimTokens() {
       res = await S.api.claimStatus(c.claimId);
     }
     if (res.status === 'confirmed') {
+      await collectPoints(from, res.amount);
       celebrate('moon');
       toast(`${fmtNum(res.amount)} TestFPT claimed. Check your wallet!`);
     } else if (res.status === 'submitted') {
@@ -2065,17 +2191,21 @@ async function claimTokens() {
   }
 }
 
-async function onTaskVerify(taskId) {
+async function onTaskVerify(taskId, btn) {
+  const from = btn?.getBoundingClientRect();
   try {
     const out = await S.api.verifyTask(taskId);
-    celebrate('up');
+    await refreshMe();
+    if (S.route.name === 'earn') $('#view').innerHTML = earnView();
+    // On-chain rewards wait in the claim bar; otherwise they go straight to the balance.
+    await collectPoints(from, out.points, out.onChain ? '.claim-card .claim-ico' : '.chip.points');
     toast(out.onChain ? `+${fmtNum(out.points)} points ready to claim as TestFPT` : `+${fmtNum(out.points)} points added`);
   } catch (err) {
     toast(err.message, true);
     if (err.code === 'x_required') $('#x-form input')?.focus();
+    await refreshMe();
+    if (S.route.name === 'earn') $('#view').innerHTML = earnView();
   }
-  await refreshMe();
-  if (S.route.name === 'earn') $('#view').innerHTML = earnView();
 }
 
 async function submitX(form) {
@@ -3552,14 +3682,19 @@ document.addEventListener('click', async (e) => {
       return loadRoute();
     case 'claim':
       try {
-        S.me = await S.api.claimDaily();
-        celebrate('moon');
+        const from = t.closest('[data-action]').getBoundingClientRect();
+        const me = await S.api.claimDaily();
+        await collectPoints(from, 100);
+        S.me = me;
         toast('+100 points added. See you tomorrow!');
         renderTop();
         return loadRoute();
       } catch (err) {
         return toast(err.message, true);
       }
+    case 'testnet-hide':
+      writePref('fp:testnet-hide', '1');
+      return t.closest('.testnet-card')?.remove();
     case 'faucet':
       return openAuth('faucet');
     case 'start-guide':
@@ -3593,7 +3728,7 @@ document.addEventListener('click', async (e) => {
       return;
     }
     case 'task-verify':
-      return onTaskVerify(t.closest('[data-task]').dataset.task);
+      return onTaskVerify(t.closest('[data-task]').dataset.task, t.closest('[data-action]'));
     case 'copy-text':
       return copyText(t.closest('[data-text]').dataset.text);
     case 'predict':
