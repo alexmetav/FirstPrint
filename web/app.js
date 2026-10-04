@@ -163,6 +163,13 @@ async function loadHome() {
   const [open, live, settled] = await Promise.all(['open', 'live', 'settled'].map((f) => S.api.markets(f)));
   syncClock(open.serverTime);
   S.lists = { open: open.markets, live: live.markets, settled: settled.markets };
+  const featured = [...S.lists.open].sort(byTrending)[0];
+  const [odds, leaders] = await Promise.all([
+    featured && S.api.odds ? S.api.odds(featured.id).catch(() => null) : null,
+    S.api.leaderboard ? S.api.leaderboard('week').catch(() => null) : null,
+  ]);
+  S.featuredOdds = featured ? { id: featured.id, odds } : null;
+  S.weekLeaders = leaders?.entries?.slice(0, 5) ?? [];
 }
 
 async function loadMarket(id) {
@@ -227,6 +234,7 @@ async function onRoute() {
   const next = parseRoute();
   const changed = next.name !== S.route.name || next.id !== S.route.id;
   S.route = next;
+  S.menuOpen = false;
   if (changed) {
     closeSheet();
     $('#view').innerHTML = skeletonView(next.name);
@@ -234,7 +242,7 @@ async function onRoute() {
   }
   renderTop();
   await loadRoute(changed);
-  if (changed) $('#view').focus({ preventScroll: true });
+  if (changed && document.activeElement?.id !== 'market-search') $('#view').focus({ preventScroll: true });
 }
 
 async function loadRoute() {
@@ -245,7 +253,17 @@ async function loadRoute() {
       view.innerHTML = homeView();
     } else if (S.route.name === 'market') {
       await loadMarket(S.route.id);
+      const pending = S.pendingPick;
+      if (pending?.id === S.route.id) {
+        S.pendingPick = null;
+        if (S.market.status === 'open' && bucketsOf(S.market).includes(pending.bucket)) S.trade.bucket = pending.bucket;
+      }
       renderMarket();
+      if (pending?.id === S.route.id && S.trade.bucket) {
+        requestQuote();
+        if (isMobile()) openSheet();
+        else setTimeout(() => $('#stake')?.focus({ preventScroll: true }), 50);
+      }
     } else if (S.route.name === 'leaderboard') {
       const lb = await S.api.leaderboard(S.lbPeriod);
       view.innerHTML = leaderboardView(lb);
@@ -355,6 +373,18 @@ function themeButton() {
 }
 
 function renderTop() {
+  // Keep typing in the search box when the bar redraws (e.g. after jumping to Markets).
+  const typing = document.activeElement?.id === 'market-search' ? document.activeElement : null;
+  const caret = typing ? [typing.selectionStart, typing.selectionEnd] : null;
+  drawTop();
+  if (typing) {
+    const input = $('#market-search');
+    input.focus();
+    input.setSelectionRange(...caret);
+  }
+}
+
+function drawTop() {
   const cur = (name) => (S.route.name === name || (name === 'home' && S.route.name === 'market') ? ' aria-current="page"' : '');
   const wallet = S.me?.wallets?.[0]?.address;
   const pages = [
@@ -370,21 +400,38 @@ function renderTop() {
   $('#topbar').innerHTML = `
     <div class="topbar-inner">
       <a class="wordmark" href="#/" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="word">Firstprint</span></a>
-      <nav class="nav" aria-label="Main">
-        ${pages.map(([name, href, label]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}${label}</a>`).join('')}
-      </nav>
+      <label class="top-search">${ico('search')}<input id="market-search" type="search" placeholder="Search markets" value="${esc(S.query ?? '')}" autocomplete="off" aria-label="Search markets" /><kbd aria-hidden="true">/</kbd></label>
       <div class="account">
-        ${themeButton()}
-        ${S.cfg?.rewards ? `<button class="chip chip-faucet" data-action="faucet" title="Get free test SOL for network fees">${ico('droplet')}<span class="faucet-label">Test SOL</span></button>` : ''}
         ${
           S.me
             ? `<button class="chip bell${S.me.unreadNotifications ? ' has-new' : ''}" data-action="inbox" aria-label="Your results${S.me.unreadNotifications ? `, ${S.me.unreadNotifications} new` : ''}">${ico('bell')}${S.me.unreadNotifications ? `<span class="bell-n">${S.me.unreadNotifications > 9 ? '9+' : S.me.unreadNotifications}</span>` : ''}</button>
                ${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim 100 free daily points">${ico('gift')}<span class="gift-n">+100</span></button>` : ''}
                <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${tick('me:points:top', S.me.points)}<span class="unit">pts</span></a>
                <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
-            : `<button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button>`
+            : `<a class="top-link hide-sm" href="#/" data-action="how">${ico('info')}How it works</a><button class="btn btn-gold" data-action="connect">Log in</button>`
         }
+        <button class="chip menu-btn" data-action="menu" aria-label="Menu" aria-haspopup="true" aria-expanded="${S.menuOpen ? 'true' : 'false'}" aria-controls="top-menu">${ico('menu')}</button>
       </div>
+      ${S.menuOpen ? menuView(pages) : ''}
+    </div>
+    <nav class="subnav" aria-label="Main">
+      ${pages.map(([name, href, label]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}${label}</a>`).join('')}
+    </nav>`;
+}
+
+/** Everything secondary: pages, test SOL, the theme switch, help and the account. */
+function menuView(pages) {
+  const light = currentTheme() === 'light';
+  return `
+    <div class="top-menu" id="top-menu" role="menu">
+      ${pages.filter(([name]) => name !== 'home').map(([name, href, label]) => `<a role="menuitem" href="${href}">${ico(NAV_ICONS[name])}${label}</a>`).join('')}
+      ${S.me ? `<a role="menuitem" href="#/u/${encodeURIComponent(S.me.username)}">${ico('user')}Public profile</a>` : ''}
+      ${S.cfg?.rewards ? `<button role="menuitem" data-action="faucet">${ico('droplet')}Get test SOL</button>` : ''}
+      <button role="menuitemcheckbox" aria-checked="${!light}" data-action="theme" class="menu-switch">${ico('moon')}Dark mode<span class="switch-track" aria-hidden="true"><i></i></span></button>
+      <hr />
+      <a role="menuitem" class="menu-quiet" href="#/" data-action="how">How it works</a>
+      <a role="menuitem" class="menu-quiet" href="/privacy.html">Privacy</a>
+      ${S.me ? `<button role="menuitem" class="menu-quiet" data-action="logout">${ico('logout')}Log out</button>` : `<button role="menuitem" class="menu-quiet" data-action="connect">${ico('wallet')}Log in</button>`}
     </div>`;
 }
 
@@ -440,29 +487,53 @@ function marketResults() {
 
 function homeView() {
   if (!HOME_TABS.some(([id]) => id === S.filter)) S.filter = 'trending';
-  const all = [...S.lists.open, ...S.lists.live, ...S.lists.settled];
-  const exchanges = [...new Set(all.flatMap(venuesOf))].sort();
   const featured = [...S.lists.open].sort(byTrending)[0];
   const count = (id) => (id === 'live' ? S.lists.live.length : id === 'settled' ? S.lists.settled.length : S.lists.open.length);
-  const tab = ([id, icon, label]) =>
-    `<button role="tab" aria-selected="${S.filter === id && !S.query}" data-filter="${id}">${ico(icon)}${label}${id === 'live' || id === 'settled' || id === 'trending' ? `<span class="count">${count(id)}</span>` : ''}</button>`;
-
+  const base = tabList(S.filter);
+  const shown = base.filter((m) => S.exchange === 'all' || !S.exchange || venuesOf(m).includes(S.exchange));
+  const onlyFeatured = !S.query && featured && ['trending', 'ending', 'new'].includes(S.filter) && shown.length === 1 && shown[0].id === featured.id;
+  const exchanges = [...new Set([...S.lists.open, ...S.lists.live, ...S.lists.settled].flatMap(venuesOf))].sort();
+  const filterBtn = ([id, icon, label]) =>
+    `<button data-filter="${id}" aria-current="${S.filter === id && !S.query}">${ico(icon)}<span>${label}</span><span class="side-n">${count(id)}</span></button>`;
+  const exBtn = (id, label, n) => `<button data-exchange="${esc(id)}" aria-current="${(S.exchange ?? 'all') === id}">${id === 'all' ? ico('landmark') : `<span class="ex-dot" aria-hidden="true">${esc(label.slice(0, 1))}</span>`}<span>${esc(label)}</span><span class="side-n">${n}</span></button>`;
   return `
     ${startChecklist()}
-    ${featured ? featuredView(featured) : ''}
-    <div class="section-head section-head-tight"><span class="section-ico">${ico('grid')}</span><div><h2>All markets</h2><p class="muted">Pick a market, choose an outcome, stake points.</p></div></div>
-    <div class="toolbar">
-      <label class="search">${ico('search')}<input id="market-search" type="search" placeholder="Search markets" value="${esc(S.query ?? '')}" autocomplete="off" aria-label="Search markets" /></label>
-      <label class="select">${ico('landmark')}<span class="hide-sm">Exchange</span>
-        <select id="exchange-filter">
-          <option value="all">All exchanges</option>
-          ${exchanges.map((e) => `<option value="${esc(e)}"${S.exchange === e ? ' selected' : ''}>${esc(e)}</option>`).join('')}
-        </select>
-      </label>
+    <div class="home">
+      <aside class="home-side" aria-label="Filter markets">
+        <div class="side-group">${HOME_TABS.map(filterBtn).join('')}</div>
+        ${exchanges.length > 1 ? `<div class="side-label">Exchanges</div><div class="side-group">${exBtn('all', 'All exchanges', base.length)}${exchanges.map((e) => exBtn(e, e, base.filter((m) => venuesOf(m).includes(e)).length)).join('')}</div>` : ''}
+      </aside>
+      <div class="home-main">
+        ${featured && !S.query ? featuredView(featured) : ''}
+        <div class="home-head">
+          ${onlyFeatured ? '' : `<h2>${S.query ? 'Search results' : (HOME_TABS.find(([id]) => id === S.filter)?.[2] ?? 'Markets')}</h2>`}
+          ${S.exchange && S.exchange !== 'all' ? `<button class="chip chip-sm" data-exchange="all">${esc(S.exchange)} ${ico('cross')}</button>` : ''}
+        </div>
+        <div id="market-results">${onlyFeatured ? '<p class="home-note">This is the only open market right now. New markets show up here as soon as they open.</p>' : marketResults()}</div>
+      </div>
+      <aside class="home-rail" aria-label="Highlights">${homeRail()}</aside>
     </div>
-    <div class="tabs tabs-scroll" role="tablist" aria-label="Sort markets">${HOME_TABS.map(tab).join('')}</div>
-    <div id="market-results">${marketResults()}</div>
     ${howItWorks()}`;
+}
+
+/** Right column: this week's best players, ways to earn, and the daily claim. */
+function homeRail() {
+  const leaders = S.weekLeaders ?? [];
+  return `
+    ${S.me?.canClaimDaily ? `<section class="rail-card rail-claim"><div><b>Your daily 100 points</b><p>Free every day. Use them on any open market.</p></div><button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim</button></section>` : ''}
+    <section class="rail-card">
+      <div class="rail-head"><h3>Top this week</h3><a href="#/leaderboard">See all ${ico('chevronRight')}</a></div>
+      ${
+        leaders.length
+          ? `<ol class="rail-list">${leaders.map((e) => `<li><span class="rail-rank">${e.rank}</span>${avatar(e.name, 'avatar-sm')}${userLink(e.name)}<b class="${e.profit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(e.profit)}</b></li>`).join('')}</ol>`
+          : '<p class="rail-empty">No settled markets this week yet. Win one to top the board.</p>'
+      }
+    </section>
+    <section class="rail-card rail-earn">
+      <span class="rail-ico">${ico('sparkles')}</span>
+      <div><b>Earn more points</b><p>Complete quick tasks and invite friends.</p></div>
+      <a class="btn btn-sm" href="#/earn">Earn</a>
+    </section>`;
 }
 
 function emptyText() {
@@ -475,6 +546,14 @@ function emptyText() {
 
 /** The pool split as five bars, Moon on top, used by the featured market. */
 function miniLadder(m) {
+  if (!m.pool) {
+    const yn = isYesNo(m);
+    return `
+    <div class="mini-ladder quiet" aria-label="Outcomes">
+      <div class="mini-head"><span>Outcomes</span><span>No predictions yet</span></div>
+      ${bucketsOf(m).map((b) => `<div class="mini-rung" style="--c:${oVar(b, yn)};--share:0%"><b>${icon(b, yn)}${oName(b, yn)}</b><span class="muted">${rangeOf(m, b)}</span><span></span></div>`).join('')}
+    </div>`;
+  }
   return `
     <div class="mini-ladder" aria-label="Pool split by outcome">
       <div class="mini-head"><span>Where the crowd is</span><span>${fmtPts(m.pool)}</span></div>
@@ -490,10 +569,35 @@ function miniLadder(m) {
 function heroFacts(m, whenLabel, whenValue) {
   return `
     <dl class="hero-facts">
-      <div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:hero:${m.id}`, m.pool)} pts</dd></div>
-      <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
+      ${
+        m.pool
+          ? `<div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:hero:${m.id}`, m.pool)} pts</dd></div>
+             <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>`
+          : isManual(m)
+          ? `<div>${ico('dollar')}<dt>${isYesNo(m) ? 'Target' : 'Start price'}</dt><dd>${fmtPrice(m.basePrice)}</dd></div>`
+          : ''
+      }
       <div>${ico('clock')}<dt>${whenLabel}</dt><dd>${whenValue}</dd></div>
     </dl>`;
+}
+
+/** Quick-pick buttons for every outcome, tinted in each outcome's colour. */
+function quickPicks(m, cls = '') {
+  const yn = isYesNo(m);
+  const open = m.status === 'open' && m.phase !== 'awaiting_result';
+  return `<div class="qp-row${yn ? ' qp-yn' : ''} ${cls}">${bucketsOf(m)
+    .map((b) => {
+      const pct = m.pool ? `<b>${Math.round(share(m, b) * 100)}%</b>` : '';
+      return `<button class="qp" style="--c:${oVar(b, yn)}" data-action="quick-pick" data-id="${esc(m.id)}" data-bucket="${b}"${open ? '' : ' disabled'}><span>${oName(b, yn)}</span>${pct}</button>`;
+    })
+    .join('')}</div>`;
+}
+
+/** The featured market's crowd odds over time, or the pool split when there is no history yet. */
+function featuredSide(m) {
+  const o = S.featuredOdds?.id === m.id ? S.featuredOdds.odds : null;
+  if (!o || o.series.length < 2) return miniLadder(m);
+  return `<div class="feat-chart">${oddsPlot(m, o)}</div>`;
 }
 
 function featuredView(m) {
@@ -511,7 +615,7 @@ function featuredView(m) {
           <a class="btn btn-lg" href="#how">How it works</a>
         </div>
       </div>
-      ${miniLadder(m)}
+      ${featuredSide(m)}
     </section>`;
   }
   if (isManual(m)) {
@@ -519,15 +623,13 @@ function featuredView(m) {
     <section class="featured" aria-labelledby="featured-title">
       <div class="featured-main">
         <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Featured market · open for predictions</span>
-        <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">is open</span></h1><p class="hero-name">${esc(m.name || m.symbol)} · start price ${fmtPrice(m.basePrice)}</p></div></div>
+        <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">is open</span></h1><p class="hero-name">${esc(m.name || m.symbol)}${m.pool ? ` · start price ${fmtPrice(m.basePrice)}` : ''}</p></div></div>
         <p class="lede">Predict where ${esc(m.name || m.symbol)} is priced at the result, compared with the start price. ${m.pool ? '' : 'Nobody has predicted yet, so early picks get the biggest bonus.'}</p>
         ${heroFacts(m, 'Closes in', until(m.closeAt))}
-        <div class="actions">
-          <a class="btn btn-gold btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
-          <a class="btn btn-lg" href="#how">How it works</a>
-        </div>
+        ${quickPicks(m)}
+        <a class="feat-open" href="#/market/${encodeURIComponent(m.id)}">Open market ${ico('chevronRight')}</a>
       </div>
-      ${miniLadder(m)}
+      ${featuredSide(m)}
     </section>`;
   }
   const pre = m.phase === 'pre_listing';
@@ -559,53 +661,80 @@ function cardStatus(m) {
   return '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>';
 }
 
+/** Semicircle gauge with the leading chance, as on trading cards. */
+function gauge(pct, color, label) {
+  const v = pct === null ? 0 : Math.max(0, Math.min(100, pct));
+  return `<span class="gauge" style="--c:${color}" role="img" aria-label="${pct === null ? 'No predictions yet' : `${label} ${pct}%`}">
+    <svg viewBox="0 0 48 28" aria-hidden="true"><path class="g-track" d="M4 26 A20 20 0 0 1 44 26" pathLength="100" /><path class="g-fill" d="M4 26 A20 20 0 0 1 44 26" pathLength="100" stroke-dasharray="${v} 100" /></svg>
+    <b>${pct === null ? '–' : `${pct}%`}</b><small>${esc(label)}</small></span>`;
+}
+
 function cardView(m) {
-  const lead = leader(m);
-  let leadText;
   const yn = isYesNo(m);
-  if (m.status === 'resolved') leadText = yn ? `Resolved ${outcome(m.result.winningBucket, true)} at ${fmtPrice(m.result.finalPrice)}` : `Settled in ${outcome(m.result.winningBucket)} at ${fmtPct(m.result.returnPct)}`;
-  else if (m.phase === 'awaiting_result') leadText = 'Predictions closed. Result coming soon';
-  else if (m.status === 'void') leadText = 'Cancelled. Points were returned.';
-  else if (m.live?.projectedBucket) leadText = `Now ${fmtPct(m.live.returnPct)}, tracking ${outcome(m.live.projectedBucket)}`;
-  else if (yn) leadText = `Will it be at or above ${fmtPrice(m.basePrice)}?`;
-  else if (lead) {
-    const x = poolMultiple(m, lead);
-    leadText = `${outcome(lead)} leads with ${Math.round(share(m, lead) * 100)}%${x ? ` <span class="lead-pays">· pays ${x.toFixed(1)}×</span>` : ''}`;
+  const lead = leader(m);
+  const open = m.status === 'open' && m.phase !== 'awaiting_result';
+  const href = `#/market/${encodeURIComponent(m.id)}`;
+  const soon = m.status === 'open' && m.closeAt - now() < 15 * 60_000 && m.closeAt > now();
+
+  // Gauge: Yes chance on Yes/No markets, the leading outcome on five-outcome markets.
+  const g = !m.pool
+    ? '<span class="card-new">New</span>'
+    : yn
+    ? gauge(m.pool ? Math.round(share(m, 'up') * 100) : null, 'var(--up)', 'Yes')
+    : gauge(lead ? Math.round(share(m, lead) * 100) : null, lead ? oVar(lead, false) : 'var(--flat)', lead ? oName(lead, false) : 'No picks');
+
+  let body;
+  if (m.status === 'resolved') {
+    body = `<p class="card-result">${yn ? `Resolved ${outcome(m.result.winningBucket, true)} at ${fmtPrice(m.result.finalPrice)}` : `Settled in ${outcome(m.result.winningBucket)} at ${fmtPct(m.result.returnPct)}`}</p>`;
+  } else if (m.status === 'void') {
+    body = '<p class="card-result muted">Cancelled. Points were returned.</p>';
+  } else if (yn) {
+    body = quickPicks(m, 'qp-card');
+  } else if (!m.pool) {
+    body = `<p class="card-quiet">No predictions yet. Early picks get the biggest bonus.</p>${quickPicks(m, 'qp-mini')}`;
+  } else {
+    // The two outcomes the crowd backs most (Up and Down before anyone predicts).
+    const top = m.pool ? [...bucketsOf(m)].sort((a, b) => m.totals[b] - m.totals[a]).slice(0, 2) : ['up', 'down'];
+    body = `<div class="o-rows">${top
+      .map((b) => {
+        const x = poolMultiple(m, b);
+        return `<div class="o-row" style="--c:var(--${b})">
+          <span class="o-name">${icon(b)}${oName(b)}<small>${rangeOf(m, b)}</small></span>
+          <b class="o-pct">${m.pool ? `${Math.round(share(m, b) * 100)}%` : '–'}</b>
+          <button class="qp qp-sm" style="--c:var(--${b})" data-action="quick-pick" data-id="${esc(m.id)}" data-bucket="${b}"${open ? '' : ' disabled'} aria-label="Pick ${oName(b)} on ${esc(m.symbol)}">${x ? `${x.toFixed(1)}×` : 'Pick'}</button>
+        </div>`;
+      })
+      .join('')}</div>`;
   }
-  else leadText = '<span class="muted">No predictions yet. Be the first.</span>';
 
   let when;
   if (m.phase === 'pre_listing') when = `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}`;
-  else if (m.phase === 'baseline') when = `Closes in ${until(m.closeAt)}`;
+  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Closes in ${until(m.closeAt)}`;
   else if (m.phase === 'running') when = `Result in ${until(m.settleAt)}`;
   else if (m.phase === 'awaiting_result') when = 'Awaiting result';
   else when = fmtDate(m.settleAt);
 
-  const soon = m.status === 'open' && m.closeAt - now() < 15 * 60_000 && m.closeAt > now();
+  const state =
+    m.status === 'resolved' ? '<span class="st st-done">Settled</span>'
+    : m.status === 'void' ? '<span class="st st-off">Cancelled</span>'
+    : m.phase === 'awaiting_result' ? '<span class="st st-wait">Awaiting</span>'
+    : soon ? `<span class="st st-hot">${ico('flame')}Closing soon</span>`
+    : '<span class="st st-live"><i aria-hidden="true"></i>Open</span>';
+
   return `
-    <a class="card${soon ? ' soon' : ''}" href="#/market/${encodeURIComponent(m.id)}">
+    <article class="card mcard${soon ? ' soon' : ''}">
       <div class="card-top">
         ${tokenAvatar(m, 'avatar-md')}
-        <div class="card-title"><span class="sym">${esc(m.symbol)}${yn ? ' <span class="tag tag-yn">Yes / No</span>' : ''}</span><span class="card-name">${esc(m.name || '')}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</span></div>
-        ${soon ? `<span class="pill pill-hot">${ico('flame')}Closing soon</span>` : cardStatus(m)}
+        <a class="card-link" href="${href}"><span class="sym">${esc(m.symbol)}${yn ? ' <span class="tag tag-yn">Yes / No</span>' : ''}</span><span class="card-name">${esc(m.name || '')}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</span></a>
+        ${g}
       </div>
-      <div class="card-lead">${leadText}</div>
-      ${
-        yn
-          ? `<div class="chance-row"><span class="chance" style="--c:var(--up)"><b>${m.pool ? `${Math.round(share(m, 'up') * 100)}%` : '–'}</b> Yes</span><span class="chance" style="--c:var(--crash)"><b>${m.pool ? `${Math.round(share(m, 'down') * 100)}%` : '–'}</b> No</span></div>
-             <div class="strip${m.pool ? '' : ' empty'}" aria-hidden="true"><span style="--c:var(--up);flex:${m.pool ? m.totals.up : 1}"></span><span style="--c:var(--crash);flex:${m.pool ? m.totals.down : 1}"></span></div>`
-          : `<div class="strip${m.pool ? '' : ' empty'}" aria-hidden="true">
-        ${['crash', 'down', 'flat', 'up', 'moon'].map((b) => `<span style="--c:var(--${b});flex:${m.pool ? m.totals[b] : 1}"></span>`).join('')}
-      </div>`
-      }
+      ${body}
       ${myPickLine(m)}
-      <div class="card-venues">${ico('landmark')}${esc(venueNames(m))}</div>
       <div class="card-foot">
-        <span class="when">${ico('clock')}${when}</span>
-        <span>${ico('users')}${fmtNum(m.predictors)}</span>
-        <span class="pool">${ico('coins')}${tick(`pool:card:${m.id}`, m.pool)}</span>
+        ${state}${m.pool ? `<span class="dot-sep" aria-hidden="true">·</span><span>${tick(`pool:card:${m.id}`, m.pool)} pts</span>` : ''}<span class="dot-sep" aria-hidden="true">·</span><span class="card-ex">${esc(venueNames(m))}</span>
+        <span class="when">${when}</span>
       </div>
-    </a>`;
+    </article>`;
 }
 
 /** "You: Up · 250" on a card, so players can see their picks without opening the market. */
@@ -705,74 +834,86 @@ function marketMain(m) {
   for (const p of m.mine) mineBy[p.bucket] = (mineBy[p.bucket] ?? 0) + p.stake;
   const nowBucket = m.live?.projectedBucket;
   const net = m.result ? m.result.pool - m.result.fee : 0;
-
   const yn = isYesNo(m);
+  // No predictions yet: hide crowd %, payouts and pool sizes instead of showing rows of zeros.
+  const quiet = !m.pool;
+
   const rungs = bucketsOf(m).map((b) => {
     const pct = share(m, b) * 100;
     const won = m.status === 'resolved' && m.result.winningBucket === b;
     let pays = '–';
-    if (canPick) pays = `${estMultiple(m, b).toFixed(1)}×`;
+    if (canPick && m.totals[b]) pays = `${estMultiple(m, b).toFixed(1)}×`;
+    else if (canPick) pays = 'Be first';
     else if (won && m.totals[b]) pays = `${(net / m.totals[b]).toFixed(2)}×`;
     else if (!settled && m.totals[b]) pays = `${(m.pool * (1 - m.feeBps / 10_000) / m.totals[b]).toFixed(1)}×`;
     return `
       <button class="rung${won ? ' won' : ''}${yn ? ' rung-yn' : ''}" style="--c:${oVar(b, yn)};--share:${pct}%" data-bucket="${b}"
         aria-pressed="${S.trade.bucket === b}" ${canPick ? '' : 'disabled'}
-        aria-label="${oName(b, yn)}, ${rangeOf(m, b)}, ${Math.round(pct)}% of pool">
+        aria-label="${oName(b, yn)}, ${rangeOf(m, b)}${quiet ? '' : `, ${Math.round(pct)}% of pool`}">
         <span class="rung-name">
           <b>${icon(b, yn)}${oName(b, yn)}${mineBy[b] ? `<span class="tag tag-you">You ${fmtNum(mineBy[b])}</span>` : ''}${
             nowBucket === b ? `<span class="tag tag-now">Now ${fmtPct(m.live.returnPct)}</span>` : ''
           }${won ? '<span class="tag tag-now">Winner</span>' : ''}</b>
           <small>${rangeOf(m, b)}</small>
         </span>
-        <span class="num">${Math.round(pct)}%</span>
-        <span class="num">${pays}</span>
-        <span class="num pool-col">${fmtNum(m.totals[b])}<small>pts</small></span>
+        ${
+          quiet
+            ? `<span class="rung-cta">${canPick ? `Pick ${ico('chevronRight')}` : ''}</span>`
+            : `<span class="num">${Math.round(pct)}%</span>
+        <span class="num${pays === 'Be first' ? ' num-soft' : ''}">${pays}</span>
+        <span class="num pool-col">${fmtNum(m.totals[b])}<small>pts</small></span>`
+        }
       </button>`;
   }).join('');
 
+  const question = yn
+    ? `Will ${esc(m.name || m.symbol)} be at or above ${fmtPrice(m.basePrice)} at the result?`
+    : isManual(m)
+    ? `Where will ${esc(m.name || m.symbol)} be priced at the result, compared with the start price of ${fmtPrice(m.basePrice)}?`
+    : m.kind === 'live_test'
+    ? `Where will ${esc(m.name || m.symbol)} trade ${span} after this market starts?`
+    : `Where will ${esc(m.name || m.symbol)} trade ${span} after listing on ${esc(m.exchange)}?`;
+
+  // One line of facts: price, timing, where the price comes from, and the pool once it exists.
+  const fact = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
+  const facts = [
+    isManual(m) ? fact(yn ? 'Target price' : 'Start price', fmtPrice(m.basePrice)) : fact(m.kind === 'live_test' ? 'Starts' : 'Listing', fmtDate(m.listingAt)),
+    m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running'
+      ? fact('Closes', `${fmtDate(m.closeAt)} <span class="muted">· in ${until(m.closeAt)}</span>`)
+      : fact('Result', fmtDate(m.settleAt)),
+    settled || m.phase === 'awaiting_result' ? '' : fact('Result expected', fmtDate(m.settleAt)),
+    m.pool ? fact('Pool', `${tick(`pool:page:${m.id}`, m.pool)} pts <span class="muted">· ${fmtNum(m.predictors)} predictor${m.predictors === 1 ? '' : 's'}</span>`) : '',
+  ].join('');
+
   return `
     <a class="back" href="#/">${ico('arrowLeft')}All markets</a>
-    <header class="m-head">
+    <header class="m-head mh">
       <div class="m-title">${tokenAvatar(m, 'avatar-lg')}<div class="m-title-text"><div class="m-title-row"><h1 class="sym">${esc(m.symbol)}</h1>${cardStatus(m)}${
         (m.phase === 'baseline' || m.phase === 'running') && S.live && !isManual(m) ? '<span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Live price</span>' : ''
-      }</div>${m.name ? `<span class="m-name">${esc(m.name)}</span>` : ''}</div><button class="btn share-btn" data-action="share" aria-label="Share this market">${ico('share')}<span class="hide-sm">Share</span></button></div>
-      <p class="m-question">${
-        yn
-          ? `Will ${esc(m.name || m.symbol)} be at or above ${fmtPrice(m.basePrice)} at the result?`
-          : isManual(m)
-          ? `Where will ${esc(m.name || m.symbol)} be priced at the result, compared with the start price of ${fmtPrice(m.basePrice)}?`
-          : m.kind === 'live_test'
-          ? `Where will ${esc(m.name || m.symbol)} trade ${span} after this market starts?`
-          : `Where will ${esc(m.name || m.symbol)} trade ${span} after listing on ${esc(m.exchange)}?`
-      }</p>
-      <p class="m-status">${statusLine(m)}</p>
-      <p class="m-venues">${m.kind === 'live_test' ? '<span class="tag tag-test">Live test</span> ' : ''}${ico('landmark')}${isManual(m) ? `Reference exchanges: ${esc(venueNames(m))}` : `Prices from ${esc(venueNames(m))}`}</p>
-      ${priceLinks(m)}
+      }${m.kind === 'live_test' ? '<span class="tag tag-test">Live test</span>' : ''}</div>${m.name ? `<span class="m-name">${esc(m.name)}</span>` : ''}</div><button class="btn btn-sm share-btn" data-action="share" aria-label="Share this market">${ico('share')}<span class="hide-sm">Share</span></button></div>
+      <p class="m-question">${question}</p>
+      ${m.status === 'resolved' || m.status === 'void' || m.phase === 'awaiting_result' ? `<p class="m-status">${statusLine(m)}</p>` : ''}
+      <dl class="m-facts">${facts}</dl>
+      <div class="m-refs">${ico('landmark')}<span>${isManual(m) ? 'Reference' : 'Prices from'} ${esc(venueNames(m))}</span>${priceLinks(m)}</div>
     </header>
-
-    <dl class="stats">
-      <div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:page:${m.id}`, m.pool)} pts</dd></div>
-      <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
-      ${
-        isManual(m)
-          ? `<div>${ico(yn ? 'target' : 'dollar')}<dt>${yn ? 'Target price' : 'Start price'}</dt><dd>${fmtPrice(m.basePrice)}</dd></div><div>${ico('calendar')}<dt>Closes</dt><dd>${fmtDate(m.closeAt)}</dd></div>`
-          : `<div>${ico('calendar')}<dt>${m.kind === 'live_test' ? 'Starts' : 'Listing'}</dt><dd>${fmtDate(m.listingAt)}</dd></div><div>${ico('clock')}<dt>Result</dt><dd>${fmtDate(m.settleAt)}</dd></div>`
-      }
-    </dl>
 
     ${isManual(m) ? manualPanel(m) : chartView(m)}
 
-    <div class="ladder${settled ? ' settled' : ''}${yn ? ' ladder-yn' : ''}" role="group" aria-label="Outcomes">
-      <div class="ladder-head"><span>${yn ? 'Your answer' : isManual(m) ? 'Final price vs start' : `Price after ${span}`}</span><span>Crowd</span><span>Pays</span><span class="pool-col">Pool</span></div>
+    <section class="ladder${settled ? ' settled' : ''}${yn ? ' ladder-yn' : ''}${quiet ? ' ladder-quiet' : ''}" role="group" aria-label="Outcomes">
+      <div class="ladder-head"><span>${yn ? 'Your answer' : isManual(m) ? 'Final price vs start' : `Price after ${span}`}</span>${quiet ? '' : '<span>Crowd</span><span>Pays</span><span class="pool-col">Pool</span>'}</div>
       ${rungs}
-      ${canPick ? '<p class="fine" style="margin:2px 0 0">Pays shows the current payout per point before early bonuses. Your estimate in the prediction panel includes your bonus.</p>' : ''}
-    </div>
+    </section>
+    ${
+      canPick
+        ? `<p class="fine ladder-note">${quiet ? `No predictions yet. Early picks get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.` : 'Pays is the current payout per point before early bonuses. Your estimate in the prediction panel includes your bonus.'}</p>`
+        : ''
+    }
 
     ${oddsView(m)}
     ${holdersView(m)}
 
-    <section class="section panel">
-      <div class="section-head"><span class="section-ico">${ico('shield')}</span><h2>How this market settles</h2></div>
+    <details class="m-rules">
+      <summary>${ico('shield')}How this market settles${ico('chevronRight')}</summary>
       ${isManual(m) ? manualRules(m) : ''}
       <ol class="rules"${isManual(m) ? ' hidden' : ''}>
         <li>Starting price: the average price over the first ${fmtSpan(m.closeAt - m.listingAt)} ${m.kind === 'live_test' ? 'after the market starts' : 'of trading'}, from ${esc(venueNames(m))}.</li>
@@ -781,7 +922,7 @@ function marketMain(m) {
         <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
         <li>The market is cancelled and refunded if the listing is delayed more than 24 hours, trading halts for too long, there isn’t enough trading data, or nobody picks the winning outcome.</li>
       </ol>
-    </section>
+    </details>
 
     ${
       m.scorecard
@@ -797,17 +938,17 @@ function marketMain(m) {
         : ''
     }
 
-    <section class="section panel">
-      <div class="section-head"><span class="section-ico">${ico('activity')}</span><h2>Recent predictions</h2></div>
-      ${
-        S.activity.length
-          ? `<ul class="activity feed">${S.activity
+    ${
+      S.activity.length
+        ? `<section class="section panel">
+            <div class="section-head"><span class="section-ico">${ico('activity')}</span><h2>Recent predictions</h2></div>
+            <ul class="activity feed">${S.activity
               .slice(0, 12)
               .map((a) => `<li>${avatar(a.username, 'avatar-sm')}<span class="feed-main">${userLink(a.username, 'who')} picked ${outcome(a.bucket, yn)}</span><span class="muted">${fmtPts(a.stake)} · ${fmtAgo(a.placedAt)}</span></li>`)
-              .join('')}</ul>`
-          : '<p class="muted">No predictions yet.</p>'
-      }
-    </section>`;
+              .join('')}</ul>
+          </section>`
+        : ''
+    }`;
 }
 
 /** Where to see the live price of a token on each exchange (spot, against USDT). */
@@ -853,12 +994,13 @@ function manualPanel(m) {
   const r = m.result;
   if (!r || r.finalPrice == null) {
     const closed = m.phase === 'awaiting_result';
-    const step = (state, title, when) => `<li class="${state}"><span class="step-dot" aria-hidden="true">${state === 'done' ? ico('check') : ''}</span><b>${title}</b><span class="muted">${when}</span></li>`;
+    if (!closed) return ''; // open markets: the facts line already says when they close and settle
+    const step = (state, title, when) => `<li class="${state}"><span class="step-dot" aria-hidden="true"></span><b>${title}</b><span class="muted">${when}</span></li>`;
     return `
       <ol class="timeline" aria-label="Market timeline">
         ${step('done', 'Market opened', fmtDate(m.openedAt))}
-        ${step(closed ? 'done' : 'now', closed ? 'Predictions closed' : 'Predictions close', closed ? fmtDate(m.closeAt) : `${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`)}
-        ${step(closed ? 'now' : '', 'Result posted', `Expected around ${fmtDate(m.settleAt)}`)}
+        ${step(closed ? 'done' : 'now', closed ? 'Predictions closed' : 'Predictions close', fmtDate(m.closeAt))}
+        ${step(closed ? 'now' : '', 'Result', `~ ${fmtDate(m.settleAt)}`)}
       </ol>`;
   }
   const b = r.winningBucket ?? 'flat';
@@ -909,6 +1051,15 @@ function manualRules(m) {
 function oddsView(m) {
   const o = S.odds;
   if (!o || o.series.length < 2) return '';
+  return `
+    <section class="section panel odds">
+      <div class="section-head"><span class="section-ico">${ico('dashboard')}</span><div><h2>Crowd odds over time</h2><p class="muted">Each outcome’s share of the pool after every prediction.</p></div></div>
+      ${oddsPlot(m, o)}
+    </section>`;
+}
+
+/** Legend, step lines and time axis for a market's odds history. */
+function oddsPlot(m, o) {
   const yn = isYesNo(m);
   const lines = yn ? ['up'] : bucketsOf(m).filter((b) => o.series.some((p) => (p.shares[b] ?? 0) > 0));
   const t0 = o.series[0].t;
@@ -928,8 +1079,6 @@ function oddsView(m) {
     ? `<div class="odds-big" style="--c:var(--up)"><b>${Math.round((last.up ?? 0) * 100)}%</b> chance of Yes</div>`
     : `<div class="odds-legend">${lines.map((b) => `<span style="--c:var(--${b})"><i></i>${oName(b)} <b>${Math.round((last[b] ?? 0) * 100)}%</b></span>`).join('')}</div>`;
   return `
-    <section class="section panel odds">
-      <div class="section-head"><span class="section-ico">${ico('dashboard')}</span><div><h2>Crowd odds over time</h2><p class="muted">Each outcome’s share of the pool after every prediction.</p></div></div>
       ${head}
       <div class="odds-plot">
         <div class="odds-axis" aria-hidden="true"><span>100%</span><span>50%</span><span>0%</span></div>
@@ -939,8 +1088,7 @@ function oddsView(m) {
           ${lines.map((b) => `<path class="odds-line" d="${path(b)}" stroke="${oVar(b, yn)}" vector-effect="non-scaling-stroke" />`).join('')}
         </svg>
       </div>
-      <div class="odds-time muted"><span>${fmtDate(t0)}</span><span>${t1 >= now() - 60_000 ? 'Now' : fmtDate(t1)}</span></div>
-    </section>`;
+      <div class="odds-time muted"><span>${fmtDate(t0)}</span><span>${t1 >= now() - 60_000 ? 'Now' : fmtDate(t1)}</span></div>`;
 }
 
 /** The players with the most points on this market and what they picked. */
@@ -1064,7 +1212,7 @@ function renderTrade() {
     $('#picker').classList.toggle('picker-yn', yn);
     $('#picker').innerHTML = bucketsOf(m).map(
       (b) =>
-        `<button type="button" role="radio" aria-checked="${S.trade.bucket === b}" data-pick="${b}" style="--c:${oVar(b, yn)}"><span class="pick-ico">${icon(b, yn)}</span><b>${oName(b, yn)}</b><small>${Math.round(share(m, b) * 100)}%</small></button>`,
+        `<button type="button" role="radio" aria-checked="${S.trade.bucket === b}" data-pick="${b}" style="--c:${oVar(b, yn)}"><span class="pick-ico">${icon(b, yn)}</span><b>${oName(b, yn)}</b>${m.pool ? `<small>${Math.round(share(m, b) * 100)}%</small>` : ''}</button>`,
     ).join('');
     updateSummary();
   } else if (mode === 'closed') {
@@ -3273,6 +3421,13 @@ document.addEventListener('click', async (e) => {
   const action = t.closest('[data-action]')?.dataset.action;
   const filter = t.closest('[data-filter]')?.dataset.filter;
   const lbPeriod = t.closest('[data-lb-period]')?.dataset.lbPeriod;
+  if (S.menuOpen && !t.closest('#top-menu') && !t.closest('[data-action="menu"]')) closeMenu();
+  const exchangePick = t.closest('[data-exchange]')?.dataset.exchange;
+  if (exchangePick) {
+    S.exchange = exchangePick;
+    $('#view').innerHTML = homeView();
+    return;
+  }
   const dashTab = t.closest('[data-dash-tab]')?.dataset.dashTab;
   if (dashTab) return showDashTab(dashTab);
   if (lbPeriod) {
@@ -3288,6 +3443,7 @@ document.addEventListener('click', async (e) => {
   if (filter) {
     S.filter = filter;
     S.query = '';
+    if ($('#market-search')) $('#market-search').value = '';
     $('#view').innerHTML = homeView();
     return;
   }
@@ -3402,6 +3558,23 @@ document.addEventListener('click', async (e) => {
       return closeSheet();
     case 'theme':
       return setTheme(currentTheme() === 'light' ? 'dark' : 'light');
+    case 'menu':
+      S.menuOpen = !S.menuOpen;
+      renderTop();
+      if (S.menuOpen) $('#top-menu a, #top-menu button')?.focus();
+      return;
+    case 'quick-pick':
+      S.pendingPick = { id: t.closest('[data-id]').dataset.id, bucket: t.closest('[data-bucket]').dataset.bucket };
+      location.hash = `#/market/${encodeURIComponent(S.pendingPick.id)}`;
+      return;
+    case 'how':
+      e.preventDefault();
+      closeMenu();
+      if (S.route.name !== 'home') {
+        location.hash = '#/';
+        setTimeout(() => $('#how')?.scrollIntoView({ behavior: 'smooth' }), 500);
+      } else $('#how')?.scrollIntoView({ behavior: 'smooth' });
+      return;
     case 'logo-clear':
       return setLogo(t.closest('form'), '');
     case 'retry':
@@ -3423,6 +3596,10 @@ document.addEventListener('click', async (e) => {
 document.addEventListener('input', (e) => {
   if (e.target.id === 'market-search') {
     S.query = e.target.value;
+    if (S.route.name !== 'home') {
+      location.hash = '#/';
+      return;
+    }
     const out = $('#market-results');
     if (out) out.innerHTML = marketResults();
     document.querySelectorAll('[data-filter]').forEach((b) => b.setAttribute('aria-selected', String(!S.query && b.dataset.filter === S.filter)));
@@ -3671,3 +3848,21 @@ if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
     card.style.setProperty('--my', `${e.clientY - r.top}px`);
   });
 }
+
+function closeMenu() {
+  if (!S.menuOpen) return;
+  S.menuOpen = false;
+  renderTop();
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && S.menuOpen) {
+    closeMenu();
+    $('[data-action="menu"]')?.focus();
+  }
+  // "/" jumps to search, as on most trading sites.
+  if (e.key === '/' && !e.target.closest?.('input, textarea, select, [contenteditable]')) {
+    e.preventDefault();
+    $('#market-search')?.focus();
+  }
+});
