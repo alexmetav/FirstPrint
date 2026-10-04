@@ -67,3 +67,41 @@ test('telegram: channel names and channel posts', async () => {
   assert.match(res!, /\$0\.0421 → \$0\.052 \(\+23\.4%\)/);
   assert.equal(marketResultText({ ...base, result: null }), null);
 });
+
+test('channel: posts open markets not posted yet, then a single last-hour reminder', async () => {
+  const { openDb } = await import('../src/db/db.ts');
+  const { ManualClock } = await import('../src/clock.ts');
+  const { FirstprintService } = await import('../src/services/firstprint.ts');
+  const { ChannelPoster } = await import('../src/services/channel.ts');
+  const HOUR = 3_600_000;
+  const T0 = Date.UTC(2026, 9, 5, 8);
+  const clock = new ManualClock(T0);
+  const boom = async () => {
+    throw new Error('no exchange calls');
+  };
+  const service = new FirstprintService(openDb(':memory:'), clock, [{ id: 'mexc', name: 'MEXC', pair: (b: string) => `${b}USDT`, fetchTicker: boom, fetchCandles: boom, listPairs: boom }]);
+  const posts: string[] = [];
+  const { t } = fakeTelegram([]);
+  t.sendTo = async (chat: string, html: string) => void posts.push(`${chat} ${html.split('\n')[0]}`);
+  const channel = new ChannelPoster(service, t, 'https://x/app/', () => {}, 0);
+  const make = (symbol: string, closeIn: number) =>
+    service.createManualMarket({ symbol, exchanges: ['mexc'], basePrice: 1, closeAt: T0 + closeIn, resultAt: T0 + closeIn + 24 * HOUR, publish: true });
+
+  const long = make('LONG', 5 * HOUR);
+  make('SHORT', 90 * 60_000); // open for only 1.5 hours: no reminder
+  service.createManualMarket({ symbol: 'DRAFT', exchanges: ['mexc'], basePrice: 1, closeAt: T0 + 5 * HOUR, resultAt: T0 + 30 * HOUR });
+
+  assert.throws(() => channel.postAllOpen(), /No player channel/);
+  service.setSetting('telegram_channel', 'firstprintfun');
+  assert.equal(channel.postAllOpen(), 2);
+  await channel.later(async () => {});
+  assert.deepEqual(posts, ['@firstprintfun 🟢 <b>New market: SHORT</b>', '@firstprintfun 🟢 <b>New market: LONG</b>'], 'soonest to close first');
+  assert.equal(channel.postAllOpen(), 0, 'already posted');
+
+  clock.advance(4 * HOUR + 10 * 60_000); // LONG closes in 50 minutes
+  channel.remindClosing();
+  channel.remindClosing();
+  await channel.later(async () => {});
+  assert.deepEqual(posts.slice(2), ['@firstprintfun ⏳ <b>Last hour: LONG</b>']);
+  assert.equal(service.getMarket(long).symbol, 'LONG');
+});

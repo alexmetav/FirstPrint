@@ -1517,6 +1517,38 @@ export class FirstprintService {
     return this.autoListingsEnabled();
   }
 
+  // --- Public Telegram channel ------------------------------------------------------
+
+  markAnnounced(marketId: string) {
+    this.db.prepare('UPDATE markets SET announced_at = ? WHERE id = ?').run(this.clock.now(), marketId);
+  }
+
+  /** Open, published markets that were never posted to the channel (e.g. made before it was set up). */
+  unannouncedOpenMarkets(): string[] {
+    return as<{ id: string }[]>(
+      this.db.prepare("SELECT id FROM markets WHERE status = 'open' AND published = 1 AND announced_at IS NULL AND kind = 'listing' ORDER BY listing_at").all(),
+    ).map((r) => r.id);
+  }
+
+  /**
+   * Open markets whose predictions close within the next hour and haven't had a reminder yet.
+   * Markets that were only open for two hours or less are skipped: their "new market" post is recent enough.
+   */
+  marketsClosingSoon(withinMs = 60 * MINUTE): string[] {
+    const now = this.clock.now();
+    const rows = as<MarketRow[]>(this.db.prepare("SELECT * FROM markets WHERE status = 'open' AND published = 1 AND reminded_at IS NULL AND kind = 'listing'").all());
+    return rows
+      .filter((m) => {
+        const { closeAt } = windows(parseConfig(m), m.listing_at);
+        return closeAt > now && closeAt - now <= withinMs && closeAt - m.opened_at > 2 * withinMs;
+      })
+      .map((m) => m.id);
+  }
+
+  markReminded(marketId: string) {
+    this.db.prepare('UPDATE markets SET reminded_at = ? WHERE id = ?').run(this.clock.now(), marketId);
+  }
+
   /** Listings left in the review queue for days are no longer worth a market. */
   expireDetections(listedBefore: number) {
     this.db.prepare("UPDATE detected_listings SET status = 'ignored' WHERE status = 'pending' AND listing_at IS NOT NULL AND listing_at < ?").run(listedBefore);

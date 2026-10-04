@@ -133,3 +133,10 @@ export function marketResultText(m: ChannelMarket & { result: { winningBucket: s
   const move = r.basePrice !== null && r.finalPrice !== null ? `${price(r.basePrice)} → ${price(r.finalPrice)}${r.returnPct !== null ? ` (${r.returnPct >= 0 ? '+' : ''}${(r.returnPct * 100).toFixed(1)}%)` : ''}` : '';
   return `🏁 <b>${esc(m.symbol)} result: ${won}</b>\n${move}\nPool of ${r.pool.toLocaleString('en-US')} pts paid to the winners.`;
 }
+
+/** "Closing in an hour" reminder for the public channel. */
+export function closingSoonText(m: ChannelMarket & { pool: number; predictors: number }) {
+  const what = m.basePrice === null ? `${esc(m.symbol)} lists on ${esc(m.exchange)} in about an hour, and predictions close when it does.` : `Predictions on ${esc(m.symbol)} close in about an hour.`;
+  const crowd = m.predictors ? `${m.predictors} predictor${m.predictors === 1 ? '' : 's'}, ${m.pool.toLocaleString('en-US')} pts in the pool so far.` : 'Nobody has picked yet: be the first, early picks earn more.';
+  return `⏳ <b>Last hour: ${esc(m.symbol)}${m.name ? ` (${esc(m.name)})` : ''}</b>\n${what}\n${crowd}\nCloses: ${utc(m.closeAt)}`;
+}

@@ -28,6 +28,8 @@ function migrate(db: DB) {
   ensure('markets', 'note', 'note TEXT');
   ensure('markets', 'logo_url', 'logo_url TEXT');
   ensure('detected_listings', 'name', 'name TEXT');
+  ensure('markets', 'announced_at', 'announced_at INTEGER');
+  ensure('markets', 'reminded_at', 'reminded_at INTEGER');
   ensure('users', 'x_username', 'x_username TEXT');
   ensure('users', 'referral_code', 'referral_code TEXT');
   ensure('users', 'referred_by', 'referred_by TEXT');

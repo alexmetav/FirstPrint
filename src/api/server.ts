@@ -11,6 +11,7 @@ import type { Bucket } from '../engine/engine.ts';
 import { linkSiteToApp } from '../site/links.ts';
 import { fetchImage } from './fetchImage.ts';
 import { channelName, type Telegram } from '../services/telegram.ts';
+import type { ChannelPoster } from '../services/channel.ts';
 import type { RewardsService, TaskInput } from '../services/rewards.ts';
 
 export interface ServerOptions {
@@ -36,6 +37,8 @@ export interface ServerOptions {
   autoListings?: { mode: 'review' | 'publish'; perDay: number; hours: number } | null;
   /** Admin alerts on Telegram, when TELEGRAM_BOT_TOKEN is set. */
   telegram?: Telegram | null;
+  /** Posts to the public player channel. */
+  channel?: ChannelPoster | null;
   /** Tasks, referrals and TestFPT claims. */
   rewards?: RewardsService | null;
   /** Public site URL used in wallet sign-in messages, e.g. https://firstprint.xyz */
@@ -540,6 +543,32 @@ export function createApiServer(opts: ServerOptions): Server {
     return { channel: name };
   });
 
+  const channelOn = () => {
+    if (!opts.channel?.channel) throw new AppError(409, 'no_channel', 'Set the player channel in Settings first.');
+    return opts.channel;
+  };
+
+  // Post one open market to the channel now (e.g. one made before the channel was set up).
+  route('POST', '/api/admin/markets/:id/telegram', async ({ req, params, requireAdmin }) => {
+    requireAdmin();
+    try {
+      await channelOn().postLive(params.id);
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw new AppError(502, 'telegram_failed', (err as Error).message);
+    }
+    audit(req, 'telegram_posted', params.id);
+    return { posted: true };
+  });
+
+  // Post every open market that hasn't been posted yet, a few seconds apart.
+  route('POST', '/api/admin/telegram/post-open', ({ req, requireAdmin }) => {
+    requireAdmin();
+    const count = channelOn().postAllOpen();
+    audit(req, 'telegram_posted_open', null, String(count));
+    return { count };
+  });
+
   route('POST', '/api/admin/telegram/disconnect', async ({ req, requireAdmin }) => {
     requireAdmin();
     telegramOn().setChat(null);
@@ -658,7 +687,12 @@ export function createApiServer(opts: ServerOptions): Server {
       exchanges: service.exchangeSettings(),
       manualOnly: opts.manualOnly ?? false,
       autoListings: opts.autoListings ? { ...opts.autoListings, enabled: service.autoListingsEnabled() } : null,
-      telegram: { configured: Boolean(opts.telegram), connected: Boolean(opts.telegram?.connected), channel: service.getSetting('telegram_channel') },
+      telegram: {
+        configured: Boolean(opts.telegram),
+        connected: Boolean(opts.telegram?.connected),
+        channel: service.getSetting('telegram_channel'),
+        unposted: service.unannouncedOpenMarkets().length,
+      },
       backup: opts.backupStatus?.() ?? { enabled: false, lastOkAt: null, lastError: null },
       presets: Object.entries(LIVE_PRESETS).map(([id, p]) => ({ id, label: p.label })),
       suggestedTokens: SUGGESTED_LIVE_TOKENS,
