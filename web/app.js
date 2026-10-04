@@ -3284,6 +3284,8 @@ const ADMIN_ACTIONS = {
   telegram_disconnected: 'Disconnected Telegram alerts',
   telegram_channel_on: 'Set the player Telegram channel',
   telegram_channel_off: 'Stopped posting to the Telegram channel',
+  telegram_posted: 'Posted a market to the Telegram channel',
+  telegram_posted_open: 'Posted open markets to the Telegram channel',
 };
 
 /** Settings: automatic markets for new MEXC listings. */
@@ -3588,7 +3590,8 @@ function telegramPanel(t) {
         ${
           t.channel
             ? `<p class="all-good">${ico('checkCircle')}Posting to <a href="https://t.me/${esc(t.channel)}" target="_blank" rel="noopener noreferrer">@${esc(t.channel)}</a></p>
-               <div class="admin-actions"><button class="btn btn-sm" data-action="admin-tg-channel-remove">Stop posting</button></div>`
+               <p class="muted">New markets and results are posted by themselves, and a “last hour” reminder goes out an hour before predictions close.${t.unposted ? ` <b>${t.unposted} open market${t.unposted === 1 ? ' hasn’t' : 's haven’t'} been posted yet</b> (made before the channel was set up).` : ''}</p>
+               <div class="admin-actions">${t.unposted ? `<button class="btn btn-solid btn-sm" data-action="admin-tg-post-open">${ico('telegram')}Post ${t.unposted === 1 ? 'it' : `all ${t.unposted}`} now</button>` : ''}<button class="btn btn-sm" data-action="admin-tg-channel-remove">Stop posting</button></div>`
             : `<ol class="tg-steps">
                 <li>In Telegram, create a <b>New Channel</b>, make it <b>Public</b> and give it a link, like <code>firstprint_markets</code>.</li>
                 <li>Open the channel → <b>Administrators</b> → <b>Add Admin</b>, pick your bot, and leave <b>Post Messages</b> on.</li>
@@ -3612,6 +3615,7 @@ function marketActions(m) {
   if (manualOpen) out.push(btn('admin-edit', 'edit', 'Edit'));
   if (manualOpen && !m.published) out.push(btn('admin-publish', 'send', 'Publish', ' btn-solid'), btn('admin-delete', 'trash', 'Delete', ' btn-danger'));
   if (manualOpen && m.published && m.predictors === 0) out.push(btn('admin-unpublish', 'eye', 'Unpublish'));
+  if (A.info.telegram?.channel && m.status === 'open' && m.published && m.kind !== 'live_test') out.push(btn('admin-tg-post', 'telegram', 'Post to Telegram'));
   if ((m.status === 'open' || m.status === 'locked') && (m.published || m.mode !== 'manual')) out.push(btn('admin-cancel', 'undo', 'Cancel and refund', ' btn-danger'));
   return out.join(' ');
 }
@@ -3821,6 +3825,33 @@ async function onAdminAction(action, el) {
         return;
       }
       return renderAdmin();
+    }
+    case 'admin-tg-post':
+      if (!confirm('Post this market to the Telegram channel now?')) return;
+      el.disabled = true;
+      try {
+        await A.api.telegramPost(el.dataset.id);
+        toast('Posted to the channel.');
+        A.info = await A.api.ping();
+      } catch (err) {
+        toast(err.message, true);
+      }
+      el.disabled = false;
+      return;
+    case 'admin-tg-post-open': {
+      el.disabled = true;
+      try {
+        const { count } = await A.api.telegramPostOpen();
+        toast(count ? `Posting ${count} market${count === 1 ? '' : 's'}, a few seconds apart. Check the channel.` : 'Everything is posted already.');
+        setTimeout(async () => {
+          A.info = await A.api.ping().catch(() => A.info);
+          if (A.tab === 'settings') renderAdmin();
+        }, count * 3_600 + 2_000);
+      } catch (err) {
+        toast(err.message, true);
+        el.disabled = false;
+      }
+      return;
     }
     case 'admin-tg-disconnect':
       if (!confirm('Stop sending alerts to this Telegram chat?')) return;

@@ -16,7 +16,8 @@ import type { Venue } from './exchanges/types.ts';
 import { ConsoleMailer, ResendMailer, type Mailer } from './auth/mailer.ts';
 import { resultEmail } from './services/notify.ts';
 import { RewardsService } from './services/rewards.ts';
-import { Telegram, marketLiveText, marketResultText, newListingText, resultDueText } from './services/telegram.ts';
+import { Telegram, newListingText, resultDueText } from './services/telegram.ts';
+import { ChannelPoster } from './services/channel.ts';
 import { rpcChain, rpcUrlFor, type Cluster } from './solana/testfpt.ts';
 
 const log = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
@@ -78,16 +79,19 @@ const alert = (text: string) => {
 };
 
 // New markets and results go to the public channel players join (set in Admin → Settings).
+const channel = new ChannelPoster(service, telegram, appUrl, log);
 service.onAnnounce = (kind, id) => {
-  const channel = service.getSetting('telegram_channel');
-  if (!telegram || !channel) return;
-  const m = service.getMarket(id);
-  if (!m.published) return;
-  const text = kind === 'live' ? marketLiveText(m) : marketResultText(m);
-  if (!text) return;
-  const button = { text: kind === 'live' ? 'Predict now' : 'See the result', url: `${appUrl}#/market/${encodeURIComponent(id)}` };
-  telegram.sendTo(`@${channel}`, text, button).catch((err: Error) => log(`telegram channel post failed: ${err.message}`));
+  if (!channel.channel) return;
+  void channel.later(() => (kind === 'live' ? channel.postLive(id) : channel.postResult(id)));
 };
+// "Last hour" reminders in the channel.
+setInterval(() => {
+  try {
+    channel.remindClosing();
+  } catch (err) {
+    log(`closing reminders failed: ${(err as Error).message}`);
+  }
+}, 60_000).unref();
 
 // Manual-only servers still watch MEXC for new listings. By default each one waits in the admin's
 // review queue (with a Telegram alert); AUTO_LISTINGS=publish opens self-settling markets instead,
@@ -146,6 +150,7 @@ const server = createApiServer({
   manualOnly: cfg.manualOnly,
   autoListings: autoListings === 'off' ? null : { mode: autoListings, perDay: cfg.autoMarketsPerDay, hours: cfg.autoMarketHours },
   telegram,
+  channel,
   trustProxyHops: cfg.trustProxyHops,
   backupStatus: () => backup?.status() ?? { enabled: false, lastOkAt: null, lastError: null },
   googleClientId: cfg.googleClientId,
