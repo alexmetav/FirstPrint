@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Firstprint: predict new exchange listings</title>
     <meta name="description" content="Free prediction markets on newly listed crypto tokens. Pick Crash, Down, Flat, Up or Moon with free points and track your win rate." />
-    <meta name="theme-color" content="#0b0f2a" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#f4f5ff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/icon-180.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&family=DM+Sans:opsz,wght@9..40,400..700&display=swap" rel="stylesheet" />
+    <!-- Apple devices use SF Pro (system font); everyone else gets Inter, its closest match. -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" rel="stylesheet" />
     <script>
 // Applies the saved light/dark choice before the page paints, so there is no flash of the wrong theme.
 // A separate file (not an inline script) so the Content-Security-Policy can keep forbidding inline scripts.
@@ -28,41 +29,44 @@
     <style>
 /* Firstprint website styles
    Palette: ink navy surfaces; a five-step outcome scale from Crash (red) to Moon (gold).
-   Type: Bricolage Grotesque for display and numbers, system UI for reading text. */
+   Type: the Apple system font (SF Pro) where available, Inter elsewhere. */
 
 /* Brand "The Ladder": night indigo surfaces, the five outcome colours as the palette
    (Moon gold, Up green, Flat grey, Down orange, Crash red), signal indigo for focus and
    active states, and Moon gold for the main call to action. */
 :root {
-  --bg: #070914;
-  --surface: #0e1226;
-  --surface-2: #141a37;
-  --raised: #1d2449;
-  --line: #262e55;
-  --line-strong: #3c467d;
-  --text: #fbfbff;
-  --muted: #b8bcd9;
-  --label: #e1e4f7;
-  --field: #090c1b;
-  --field-line: #3f4985;
-  --focus: #b3bdff;
-  --brand: #8f9cff;
-  --brand-2: #ffc53d;
-  --gold: #ffc53d;
-  --on-gold: #0b0f2a;
-  --on-solid: #0b0f2a;
-  --glow: rgba(143, 156, 255, 0.18);
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 14px 34px -18px rgba(0, 0, 0, 0.9);
-  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 26px 60px -24px rgba(0, 0, 0, 0.95);
+  --bg: #09090b;
+  --surface: #111114;
+  --surface-2: #151519;
+  --raised: #1d1d22;
+  --line: #25252b;
+  --line-strong: #35353e;
+  --text: #f5f5f7;
+  --muted: #a1a1aa;
+  --label: #e4e4e7;
+  --field: #0c0c0f;
+  --field-line: #3a3a43;
+  --focus: #4da3ff;
+  --brand: #0a84ff;
+  --brand-2: #ffd60a;
+  --cta: #0a84ff;
+  --on-cta: #ffffff;
+  --gold: #ffd60a;
+  --on-gold: #1d1d1f;
+  --on-solid: #09090b;
+  --glow: rgba(10, 132, 255, 0.08);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 32px -20px rgba(0, 0, 0, 0.9);
+  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 24px 56px -28px rgba(0, 0, 0, 0.95);
 
-  --crash: #ff4d6a;
-  --down: #ff8a5c;
-  --flat: #a3aec4;
-  --up: #3fd69a;
-  --moon: #ffc53d;
+  --crash: #ff453a;
+  --down: #ff9f0a;
+  --flat: #8e8e93;
+  --up: #30d158;
+  --moon: #ffd60a;
 
-  --display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
-  --body: 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* SF Pro on Apple devices (Display for large sizes is picked automatically), Inter elsewhere. */
+  --display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 
   --r-sm: 10px;
   --r-md: 14px;
@@ -74,60 +78,64 @@
 
 /* Light theme: chosen in the app (data-theme="light"), or the device setting when nothing is chosen. */
 :root[data-theme='light'] {
-    --bg: #eef0f8;
+    --bg: #f5f5f7;
     --surface: #ffffff;
-    --surface-2: #fafbff;
-    --raised: #e5e8f8;
-    --line: #d5d9ee;
-    --line-strong: #b3badc;
-    --text: #080b1f;
-    --muted: #474d72;
-    --label: #1b2046;
+    --surface-2: #fbfbfd;
+    --raised: #ececf0;
+    --line: #e3e3e8;
+    --line-strong: #c9c9d1;
+    --text: #1d1d1f;
+    --muted: #6e6e73;
+    --label: #1d1d1f;
     --field: #ffffff;
-    --field-line: #aab2d6;
-    --focus: #3f4fe0;
-    --brand: #3f4fe0;
-    --brand-2: #a87700;
-    --gold: #ffc53d;
-    --on-gold: #0b0f2a;
+    --field-line: #c7c7cc;
+    --focus: #0071e3;
+    --brand: #0071e3;
+    --brand-2: #a2670a;
+    --cta: #0071e3;
+    --on-cta: #ffffff;
+    --gold: #ffcc00;
+    --on-gold: #1d1d1f;
     --on-solid: #ffffff;
-    --glow: rgba(63, 79, 224, 0.12);
-    --shadow: 0 1px 2px rgba(8, 11, 31, 0.06), 0 8px 24px -14px rgba(8, 11, 31, 0.22);
-    --shadow-lg: 0 1px 2px rgba(8, 11, 31, 0.07), 0 20px 48px -20px rgba(8, 11, 31, 0.3);
-    --crash: #d0223f;
-    --down: #cc5420;
-    --flat: #5f6b82;
-    --up: #0a9159;
-    --moon: #a87700;
+    --glow: rgba(0, 113, 227, 0.06);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(0, 0, 0, 0.16);
+    --shadow-lg: 0 1px 2px rgba(0, 0, 0, 0.05), 0 20px 48px -24px rgba(0, 0, 0, 0.22);
+    --crash: #d70015;
+    --down: #c93400;
+    --flat: #6e6e73;
+    --up: #248a3d;
+    --moon: #a2670a;
     color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) {
-    --bg: #eef0f8;
+    --bg: #f5f5f7;
     --surface: #ffffff;
-    --surface-2: #fafbff;
-    --raised: #e5e8f8;
-    --line: #d5d9ee;
-    --line-strong: #b3badc;
-    --text: #080b1f;
-    --muted: #474d72;
-    --label: #1b2046;
+    --surface-2: #fbfbfd;
+    --raised: #ececf0;
+    --line: #e3e3e8;
+    --line-strong: #c9c9d1;
+    --text: #1d1d1f;
+    --muted: #6e6e73;
+    --label: #1d1d1f;
     --field: #ffffff;
-    --field-line: #aab2d6;
-    --focus: #3f4fe0;
-    --brand: #3f4fe0;
-    --brand-2: #a87700;
-    --gold: #ffc53d;
-    --on-gold: #0b0f2a;
+    --field-line: #c7c7cc;
+    --focus: #0071e3;
+    --brand: #0071e3;
+    --brand-2: #a2670a;
+    --cta: #0071e3;
+    --on-cta: #ffffff;
+    --gold: #ffcc00;
+    --on-gold: #1d1d1f;
     --on-solid: #ffffff;
-    --glow: rgba(63, 79, 224, 0.12);
-    --shadow: 0 1px 2px rgba(8, 11, 31, 0.06), 0 8px 24px -14px rgba(8, 11, 31, 0.22);
-    --shadow-lg: 0 1px 2px rgba(8, 11, 31, 0.07), 0 20px 48px -20px rgba(8, 11, 31, 0.3);
-    --crash: #d0223f;
-    --down: #cc5420;
-    --flat: #5f6b82;
-    --up: #0a9159;
-    --moon: #a87700;
+    --glow: rgba(0, 113, 227, 0.06);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(0, 0, 0, 0.16);
+    --shadow-lg: 0 1px 2px rgba(0, 0, 0, 0.05), 0 20px 48px -24px rgba(0, 0, 0, 0.22);
+    --crash: #d70015;
+    --down: #c93400;
+    --flat: #6e6e73;
+    --up: #248a3d;
+    --moon: #a2670a;
     color-scheme: light;
   }
 }
@@ -236,10 +244,10 @@ h3 {
   display: inline-flex;
   align-items: center;
   font-family: var(--display);
-  font-weight: 800;
-  font-size: 23px;
+  font-weight: 700;
+  font-size: 20px;
   line-height: 1;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.022em;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -364,7 +372,7 @@ h3 {
 .radar-sym {
   display: block;
   font-family: var(--display);
-  font-weight: 800;
+  font-weight: 700;
   font-size: 18px;
 }
 .radar-title {
@@ -493,7 +501,7 @@ main:focus {
 }
 
 .page-title {
-  font-size: clamp(28px, 4vw, 40px);
+  font-size: clamp(24px, 3vw, 30px);
   letter-spacing: -0.025em;
 }
 .page-lede {
@@ -515,11 +523,10 @@ main:focus {
 }
 
 .featured h1 {
-  font-size: clamp(34px, 5.4vw, 64px);
+  font-size: clamp(26px, 3.4vw, 36px);
   line-height: 0.98;
-  letter-spacing: -0.035em;
-  font-weight: 800;
-  font-stretch: 88%;
+  letter-spacing: -0.022em;
+  font-weight: 700;
 }
 .featured h1 .countdown {
   display: block;
@@ -654,8 +661,8 @@ main:focus {
 }
 .sym {
   font-family: var(--display);
-  font-weight: 800;
-  font-size: 26px;
+  font-weight: 700;
+  font-size: 20px;
   letter-spacing: -0.02em;
   line-height: 1;
 }
@@ -752,9 +759,8 @@ main:focus {
   flex-wrap: wrap;
 }
 .m-title .sym {
-  font-size: clamp(40px, 6vw, 60px);
-  letter-spacing: -0.035em;
-  font-stretch: 90%;
+  font-size: clamp(28px, 3.6vw, 38px);
+  letter-spacing: -0.022em;
 }
 .m-question {
   font-size: 18px;
@@ -1117,8 +1123,8 @@ main:focus {
 }
 .summary .big dd {
   font-family: var(--display);
-  font-size: 22px;
-  font-weight: 800;
+  font-size: 20px;
+  font-weight: 700;
   color: var(--c);
 }
 
@@ -1193,7 +1199,7 @@ main:focus {
 }
 .rank {
   font-family: var(--display);
-  font-weight: 800;
+  font-weight: 700;
   font-size: 18px;
   width: 48px;
 }
@@ -1224,9 +1230,9 @@ main:focus {
 }
 .balance .amount {
   font-family: var(--display);
-  font-weight: 800;
-  font-size: clamp(44px, 7vw, 72px);
-  letter-spacing: -0.04em;
+  font-weight: 700;
+  font-size: clamp(36px, 5vw, 48px);
+  letter-spacing: -0.022em;
   line-height: 1;
 }
 
@@ -1249,7 +1255,7 @@ main:focus {
   padding: 22px;
 }
 .modal h2 {
-  font-size: 24px;
+  font-size: 20px;
   margin-bottom: 4px;
 }
 .modal form {
@@ -1812,7 +1818,7 @@ code {
   top: 14px;
   right: 16px;
   font-family: var(--display);
-  font-weight: 800;
+  font-weight: 700;
   font-size: 28px;
   line-height: 1;
   color: var(--line);
@@ -2060,8 +2066,8 @@ code {
 .stat-tile dd {
   margin: 4px 0 2px;
   font-family: var(--display);
-  font-weight: 800;
-  font-size: 30px;
+  font-weight: 700;
+  font-size: 26px;
   letter-spacing: -0.02em;
   line-height: 1.1;
 }
@@ -2204,7 +2210,7 @@ code {
     gap: 8px;
   }
   .stat-tile dd {
-    font-size: 24px;
+    font-size: 22px;
   }
   .orec li {
     grid-template-columns: 82px 1fr auto;
@@ -2257,7 +2263,7 @@ code {
   display: grid;
   place-items: center;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
   background: var(--raised);
 }
 .howto .muted,
@@ -2286,7 +2292,7 @@ code {
   display: grid;
   place-items: center;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 700;
 }
 .steplist li.done .step-check {
   background: var(--up);
@@ -2363,7 +2369,7 @@ code {
 }
 .claim-amount b {
   font-family: var(--display);
-  font-size: clamp(34px, 6vw, 48px);
+  font-size: clamp(30px, 4.5vw, 38px);
   letter-spacing: -0.02em;
   line-height: 1.05;
 }
@@ -2752,7 +2758,7 @@ main .input-wrap input:not([type='checkbox']) {
   height: 16px;
 }
 .chip-faucet .i {
-  color: #62b6ff;
+  color: var(--brand);
 }
 .points .i {
   color: var(--moon);
@@ -2795,7 +2801,7 @@ main .input-wrap input:not([type='checkbox']) {
   background: linear-gradient(140deg, hsl(var(--h) 72% 60%), hsl(calc(var(--h) + 50) 68% 42%));
   color: #fff;
   font-family: var(--display);
-  font-weight: 800;
+  font-weight: 700;
   font-size: calc(var(--size) * 0.44);
   line-height: 1;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
@@ -3055,7 +3061,7 @@ main .input-wrap input:not([type='checkbox']) {
   gap: 16px;
 }
 .featured h1 {
-  font-size: clamp(34px, 5vw, 56px);
+  font-size: clamp(26px, 3.4vw, 36px);
   line-height: 1;
 }
 .featured .h1-soft {
@@ -3102,7 +3108,7 @@ main .input-wrap input:not([type='checkbox']) {
 .hero-facts dd {
   margin: 0;
   font-family: var(--display);
-  font-weight: 800;
+  font-weight: 700;
   font-size: 17px;
 }
 .featured .actions {
@@ -3203,7 +3209,7 @@ main .input-wrap input:not([type='checkbox']) {
   min-width: 0;
 }
 .card .sym {
-  font-size: 22px;
+  font-size: 18px;
 }
 .card-name {
   margin: 2px 0 0;
@@ -3323,7 +3329,7 @@ main .input-wrap input:not([type='checkbox']) {
   flex-wrap: wrap;
 }
 .m-title .sym {
-  font-size: clamp(36px, 5vw, 52px);
+  font-size: clamp(28px, 3.6vw, 38px);
 }
 .m-name {
   color: var(--muted);
@@ -3673,7 +3679,7 @@ main .input-wrap input:not([type='checkbox']) {
   font-weight: 600;
 }
 .stat-tile dd {
-  font-size: 30px;
+  font-size: 26px;
 }
 .tile-btn {
   margin-top: 12px;
@@ -3770,7 +3776,7 @@ main .input-wrap input:not([type='checkbox']) {
 .earn-stats dd {
   margin: 0;
   font-family: var(--display);
-  font-weight: 800;
+  font-weight: 700;
   font-size: 18px;
   white-space: nowrap;
   overflow: hidden;
@@ -4002,7 +4008,7 @@ main .input-wrap input:not([type='checkbox']) {
   gap: 10px;
   padding: 6px 8px 4px;
   font-family: var(--display);
-  font-weight: 800;
+  font-weight: 700;
   font-size: 16px;
 }
 .admin-brand .i {
@@ -4056,7 +4062,7 @@ main .input-wrap input:not([type='checkbox']) {
   background: var(--crash);
   color: #fff;
   font-size: 11.5px;
-  font-weight: 800;
+  font-weight: 700;
 }
 .admin-lock {
   width: 100%;
@@ -4277,7 +4283,7 @@ main .input-wrap input:not([type='checkbox']) {
 }
 .admin-form details > summary::before {
   content: '+';
-  font-weight: 800;
+  font-weight: 700;
 }
 .admin-form details[open] > summary::before {
   content: '−';
@@ -4746,7 +4752,7 @@ main .search input:not([type='checkbox']) {
 }
 .odds-big b {
   font-family: var(--display);
-  font-size: 34px;
+  font-size: 28px;
   margin-right: 4px;
 }
 .odds-legend {
@@ -5133,7 +5139,7 @@ main,
     gap: 12px;
   }
   .m-title .sym {
-    font-size: clamp(28px, 9vw, 40px);
+    font-size: clamp(24px, 7vw, 30px);
   }
   .m-title-row {
     gap: 6px;
@@ -5198,7 +5204,7 @@ main,
     font-size: 14px;
   }
   .featured h1 {
-    font-size: 32px;
+    font-size: 26px;
   }
   .hero-token .avatar-xl {
     --size: 44px;
@@ -5218,8 +5224,8 @@ main,
   height: 32px;
   margin-right: 0;
   border-radius: 9px;
-  background: #0b0f2a;
-  box-shadow: inset 0 0 0 1px #313b80;
+  background: #111114;
+  box-shadow: inset 0 0 0 1px #35353e;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
@@ -5231,14 +5237,14 @@ main,
   height: 3px;
   border-radius: 2px;
 }
-.wordmark .mark i:nth-child(1) { width: 20px; background: #ffc53d; }
-.wordmark .mark i:nth-child(2) { width: 15px; background: #3fd69a; }
-.wordmark .mark i:nth-child(3) { width: 10px; background: #9faac0; }
-.wordmark .mark i:nth-child(4) { width: 15px; background: #ff8a5c; }
-.wordmark .mark i:nth-child(5) { width: 20px; background: #ff4d6a; }
+.wordmark .mark i:nth-child(1) { width: 20px; background: #ffd60a; }
+.wordmark .mark i:nth-child(2) { width: 15px; background: #30d158; }
+.wordmark .mark i:nth-child(3) { width: 10px; background: #8e8e93; }
+.wordmark .mark i:nth-child(4) { width: 15px; background: #ff9f0a; }
+.wordmark .mark i:nth-child(5) { width: 20px; background: #ff453a; }
 .wordmark .word {
-  font-weight: 800;
-  letter-spacing: -0.035em;
+  font-weight: 700;
+  letter-spacing: -0.022em;
 }
 @media (max-width: 350px) {
   .wordmark .mark {
@@ -5250,29 +5256,29 @@ main,
   }
 }
 
-/* Gold is kept for the one action that matters on a screen. */
+/* The one action that matters on a screen. */
 .btn-gold,
 .btn-gold:hover {
-  background: var(--gold);
-  border-color: var(--gold);
-  color: var(--on-gold);
-  box-shadow: 0 10px 26px -12px rgba(255, 197, 61, 0.7);
+  background: var(--cta);
+  border-color: var(--cta);
+  color: var(--on-cta);
+  box-shadow: 0 8px 20px -12px color-mix(in srgb, var(--cta) 80%, transparent);
 }
 .btn-gold:hover {
   filter: brightness(1.05);
 }
 .mobile-bar .cta {
-  background: var(--gold);
-  color: var(--on-gold);
+  background: var(--cta);
+  color: var(--on-cta);
 }
 .nav a[aria-current='page'] .i,
 .tabbar a[aria-current='page'] .i {
-  color: var(--gold);
+  color: var(--brand);
 }
 h1,
 h2,
 .page-title {
-  letter-spacing: -0.03em;
+  letter-spacing: -0.022em;
 }
 
 /* =====================================================================
@@ -5309,7 +5315,7 @@ h2,
   color: #fff;
   font-family: var(--body);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 700;
   box-shadow: 0 0 0 2px var(--bg);
 }
 
@@ -5383,7 +5389,7 @@ h2,
 }
 .win-modal {
   background:
-    radial-gradient(320px 180px at 50% 0%, rgba(255, 197, 61, 0.22), transparent 70%),
+    radial-gradient(320px 180px at 50% 0%, color-mix(in srgb, var(--gold) 18%, transparent), transparent 70%),
     linear-gradient(180deg, var(--surface-2), var(--surface));
   border-color: color-mix(in srgb, var(--gold) 45%, var(--line));
 }
@@ -5411,11 +5417,11 @@ h2,
 .win-amount {
   margin: 0;
   font-family: var(--display);
-  font-weight: 800;
-  font-size: 52px;
+  font-weight: 700;
+  font-size: 44px;
   line-height: 1;
   color: var(--gold);
-  letter-spacing: -0.03em;
+  letter-spacing: -0.022em;
 }
 .win-amount small {
   font-size: 0.4em;
@@ -5611,9 +5617,13 @@ main textarea::placeholder,
 .tabs button[aria-selected='true'],
 .nav a[aria-current='page'],
 .admin-nav button[aria-current='page'] {
-  background: color-mix(in srgb, var(--brand) 16%, var(--surface));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 55%, transparent);
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
   color: var(--text);
+}
+.tabs button[aria-selected='true'] .i,
+.admin-nav button[aria-current='page'] .i {
+  color: var(--brand);
 }
 .venues .check,
 .check {
@@ -5698,7 +5708,7 @@ main textarea::placeholder,
 .dash-name {
   margin: 0;
   font-family: var(--display);
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1.15;
   letter-spacing: -0.01em;
@@ -5795,7 +5805,7 @@ main textarea::placeholder,
 }
 .sum-value {
   font-family: var(--display);
-  font-size: 36px;
+  font-size: 30px;
   font-weight: 700;
   line-height: 1.05;
   letter-spacing: -0.02em;
@@ -6098,7 +6108,7 @@ main textarea::placeholder,
     padding-bottom: 16px;
   }
   .dash-name {
-    font-size: 22px;
+    font-size: 20px;
   }
   .dash-actions {
     width: 100%;
@@ -6120,7 +6130,7 @@ main textarea::placeholder,
     padding: 16px;
   }
   .sum-value {
-    font-size: 30px;
+    font-size: 26px;
   }
   .record-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6228,7 +6238,390 @@ main textarea::placeholder,
     margin-top: 4px;
   }
   .sum-value {
-    font-size: 28px;
+    font-size: 24px;
+  }
+}
+
+/* ------------------------------------------------------------- Typography
+   Apple-style scale: Bold only for large titles, Semibold for headings, numbers and
+   buttons, Medium for labels, Regular for reading text. Slightly tighter tracking on
+   large sizes, as SF Pro Display does. */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+body {
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: -0.006em;
+  font-feature-settings: 'tnum' 1, 'cv11' 1;
+}
+h1,
+.page-title,
+.featured h1,
+.m-title .sym,
+.dash-name {
+  font-weight: 700;
+  letter-spacing: -0.022em;
+  line-height: 1.12;
+}
+h2,
+h3,
+.section-head h2,
+.modal h2,
+.card .sym,
+.sym {
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+.section-head h2 {
+  font-size: 18px;
+}
+.featured .h1-soft,
+.page-lede,
+.hero-name {
+  font-weight: 400;
+}
+.btn,
+.chip,
+.tabs button,
+.dash-tabs button,
+.pill {
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+.nav a,
+.admin-nav button,
+.field-label,
+.sum-label,
+.dash-card-head h2 {
+  font-weight: 500;
+}
+.dash-card-head h2,
+.sum-label {
+  font-weight: 600;
+}
+.stat-tile dd,
+.sum-value,
+.record-grid dd,
+.hero-facts dd,
+.balance .amount,
+.claim-amount b,
+.odds-big b,
+.win-amount,
+.points,
+.summary .big dd {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.eyebrow,
+.dash-eyebrow,
+.table th {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.wordmark .word {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.m-question {
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.012em;
+}
+.tabbar a {
+  font-weight: 500;
+}
+
+/* Graphite palette: neutral surfaces carry the content; blue only marks the main action,
+   focus and the current page; gold only marks points and rewards. */
+.card-mine {
+  background: var(--raised);
+}
+.card-mine > .i {
+  color: var(--muted);
+}
+.featured .h1-soft {
+  color: var(--muted);
+}
+.section-ico,
+.page-ico {
+  color: var(--text);
+  background: var(--raised);
+  border-color: var(--line);
+}
+
+/* =====================================================================
+   Premium details: hairlines, spotlight, tickers, segmented tabs, glass
+   top bar, skeletons, press feedback. Only transform and opacity move.
+   ===================================================================== */
+
+:root {
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --hairline-hi: rgba(255, 255, 255, 0.06);
+}
+:root[data-theme='light'] {
+  --hairline-hi: rgba(255, 255, 255, 0.8);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --hairline-hi: rgba(255, 255, 255, 0.8);
+  }
+}
+
+/* 1. Hairline borders with a faint inner top highlight. */
+.card,
+.panel,
+.dash-card,
+.sum-card,
+.featured,
+.trade,
+.trade-card,
+.stat-tile,
+.hero-facts > div {
+  box-shadow: inset 0 1px 0 var(--hairline-hi), var(--shadow);
+}
+.dash-card,
+.sum-card {
+  box-shadow: inset 0 1px 0 var(--hairline-hi);
+}
+.card:hover {
+  border-color: color-mix(in srgb, var(--text) 16%, var(--line));
+  box-shadow: inset 0 1px 0 var(--hairline-hi), var(--shadow-lg);
+}
+
+/* 2. Spotlight that follows the pointer on market cards. */
+.card {
+  position: relative;
+  isolation: isolate;
+}
+.card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--brand) 12%, transparent), transparent 65%);
+  transition: opacity 200ms var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .card:hover::after {
+    opacity: 1;
+  }
+}
+.card:hover {
+  transform: translateY(-2px);
+}
+
+/* 3. Numbers that count to new values, with a short green or red flash. */
+.tick {
+  font-variant-numeric: tabular-nums;
+  border-radius: 6px;
+  padding: 0 2px;
+  margin: 0 -2px;
+}
+.tick-up {
+  animation: tickUp 700ms var(--ease-out);
+}
+.tick-down {
+  animation: tickDown 700ms var(--ease-out);
+}
+@keyframes tickUp {
+  0% { background: color-mix(in srgb, var(--up) 22%, transparent); color: var(--up); }
+  100% { background: transparent; }
+}
+@keyframes tickDown {
+  0% { background: color-mix(in srgb, var(--crash) 22%, transparent); color: var(--crash); }
+  100% { background: transparent; }
+}
+
+/* 4. Payout multiple next to the leading outcome on cards. */
+.lead-pays {
+  color: var(--muted);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 5. Segmented tabs with a sliding highlight. */
+.tabs,
+.dash-tabs {
+  position: relative;
+}
+.tabs.seg-on::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: var(--seg-w, 0);
+  transform: translateX(var(--seg-x, 0));
+  border-radius: 999px;
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--line-strong), inset 0 1px 0 var(--hairline-hi);
+  pointer-events: none;
+}
+.tabs.seg-ready::before {
+  transition: transform 260ms var(--ease-out), width 260ms var(--ease-out);
+}
+.tabs.seg-on button {
+  position: relative;
+  z-index: 1;
+}
+.tabs.seg-on button[aria-selected='true'] {
+  background: transparent;
+  box-shadow: none;
+}
+.dash-tabs.seg-on::before {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  width: var(--seg-w, 0);
+  transform: translateX(var(--seg-x, 0));
+  border-radius: 2px;
+  background: var(--brand);
+  pointer-events: none;
+}
+.dash-tabs.seg-ready::before {
+  transition: transform 260ms var(--ease-out), width 260ms var(--ease-out);
+}
+.dash-tabs.seg-on button[aria-selected='true']::after {
+  display: none;
+}
+
+/* 6. Frosted glass top bar. Safari needs literal values in -webkit-backdrop-filter. */
+.topbar {
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+/* 7. Skeletons shaped like the page that is loading. */
+.skeleton {
+  display: grid;
+  gap: 16px;
+  padding-top: 8px;
+}
+.sk {
+  display: block;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  position: relative;
+  overflow: hidden;
+}
+.sk::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 6%, transparent), transparent);
+  animation: skShimmer 1.4s ease-in-out infinite;
+}
+@keyframes skShimmer {
+  to { transform: translateX(100%); }
+}
+.sk-line { height: 12px; width: 60%; }
+.sk-title { height: 28px; width: 50%; border-radius: 10px; }
+.sk-bar { height: 8px; width: 100%; border-radius: 999px; }
+.sk-circle { width: 42px; height: 42px; border-radius: 50%; flex: none; }
+.sk-circle.lg { width: 54px; height: 54px; }
+.w20 { width: 20%; } .w25 { width: 25%; } .w30 { width: 30%; } .w40 { width: 40%; }
+.w50 { width: 50%; } .w60 { width: 60%; } .w70 { width: 70%; }
+.sk-hero {
+  display: grid;
+  gap: 12px;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  background: var(--surface);
+}
+.sk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.sk-grid.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.sk-card {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-height: 180px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.sk-card.tall { min-height: 140px; }
+.sk-card.block { min-height: 280px; }
+.sk-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sk-col {
+  display: grid;
+  gap: 8px;
+  flex: 1;
+}
+
+/* 8. Buttons press in slightly; the main action brightens on hover. */
+.btn,
+.chip,
+.tabs button,
+.dash-tabs button,
+.card {
+  transition-property: transform, background-color, border-color, color, box-shadow, opacity, filter;
+  transition-duration: 160ms;
+  transition-timing-function: var(--ease-out);
+}
+.btn:active:not(:disabled),
+.chip:active,
+.tabs button:active {
+  transform: scale(0.98);
+  transition-duration: 80ms;
+}
+.btn-gold:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--cta) 88%, #ffffff);
+  border-color: color-mix(in srgb, var(--cta) 88%, #ffffff);
+  filter: none;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .sk-grid.two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sk-hero {
+    padding: 20px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk::after,
+  .tick-up,
+  .tick-down {
+    animation: none;
+  }
+  .card:hover {
+    transform: none;
+  }
+  .tabs.seg-ready::before,
+  .dash-tabs.seg-ready::before {
+    transition: none;
   }
 }
 
@@ -6239,7 +6632,7 @@ main textarea::placeholder,
     <div id="app">
       <header class="topbar" id="topbar"></header>
       <div id="demo-bar"></div>
-      <main id="view" tabindex="-1"><p class="loading">Loading markets</p></main>
+      <main id="view" tabindex="-1"><div class="skeleton" aria-busy="true" aria-label="Loading markets"><div class="sk-hero"><i class="sk sk-line w30"></i><i class="sk sk-title"></i><i class="sk sk-line w50"></i></div><div class="sk-grid"><div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div><div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div><div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div></div></div></main>
       <footer class="footer">
         <p>Points have no cash value. Firstprint is independent and not affiliated with any exchange. <a href="/privacy.html">Privacy</a></p>
       </footer>
@@ -8027,6 +8420,12 @@ function esc(v) {
 const fmtNum = (n) => Math.round(n ?? 0).toLocaleString('en-US');
 const fmtPts = (n) => `${fmtNum(n)} pts`;
 
+/** A number that counts smoothly to its new value when it changes (see the ticker observer below). */
+const tick = (key, n) => `<span class="tick" data-tick="${esc(key)}" data-val="${Number(n) || 0}">${fmtNum(n)}</span>`;
+
+/** Payout multiple for one outcome as the pool stands now, after the fee. */
+const poolMultiple = (m, b) => (m.totals[b] ? (m.pool * (1 - m.feeBps / 10_000)) / m.totals[b] : null);
+
 function fmtPct(r, digits = 1) {
   if (r === null || r === undefined) return '–';
   const v = Math.abs(r * 100).toFixed(digits);
@@ -8169,13 +8568,22 @@ function parseRoute() {
   return { name: 'home' };
 }
 
+/** Placeholders shaped like the page that is loading, instead of a spinner. */
+function skeletonView(name) {
+  const card = '<div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div>';
+  const grid = `<div class="sk-grid">${card.repeat(6)}</div>`;
+  if (name === 'home') return `<div class="skeleton" aria-busy="true" aria-label="Loading markets"><div class="sk-hero"><i class="sk sk-line w30"></i><i class="sk sk-title"></i><i class="sk sk-line w50"></i></div>${grid}</div>`;
+  if (name === 'portfolio') return `<div class="skeleton" aria-busy="true" aria-label="Loading your dashboard"><div class="sk-row"><i class="sk sk-circle lg"></i><span class="sk-col"><i class="sk sk-line w20"></i><i class="sk sk-title w30"></i></span></div><div class="sk-grid two"><div class="sk-card tall"></div><div class="sk-card tall"></div></div><div class="sk-card block"></div></div>`;
+  return `<div class="skeleton" aria-busy="true" aria-label="Loading"><i class="sk sk-title w40"></i><i class="sk sk-line w60"></i><div class="sk-card block"></div></div>`;
+}
+
 async function onRoute() {
   const next = parseRoute();
   const changed = next.name !== S.route.name || next.id !== S.route.id;
   S.route = next;
   if (changed) {
     closeSheet();
-    $('#view').innerHTML = '<p class="loading">Loading</p>';
+    $('#view').innerHTML = skeletonView(next.name);
     window.scrollTo(0, 0);
   }
   renderTop();
@@ -8288,7 +8696,7 @@ function setTheme(theme) {
 
 /** Keeps the browser's address-bar colour in step with the theme. */
 function syncThemeColor() {
-  const color = currentTheme() === 'light' ? '#eef0f8' : '#070914';
+  const color = currentTheme() === 'light' ? '#f5f5f7' : '#09090b';
   document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
     m.setAttribute('content', color);
     m.removeAttribute('media');
@@ -8326,7 +8734,7 @@ function renderTop() {
           S.me
             ? `<button class="chip bell${S.me.unreadNotifications ? ' has-new' : ''}" data-action="inbox" aria-label="Your results${S.me.unreadNotifications ? `, ${S.me.unreadNotifications} new` : ''}">${ico('bell')}${S.me.unreadNotifications ? `<span class="bell-n">${S.me.unreadNotifications > 9 ? '9+' : S.me.unreadNotifications}</span>` : ''}</button>
                ${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim 100 free daily points">${ico('gift')}<span class="gift-n">+100</span></button>` : ''}
-               <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${fmtNum(S.me.points)}<span class="unit">pts</span></a>
+               <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${tick('me:points:top', S.me.points)}<span class="unit">pts</span></a>
                <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
             : `<button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button>`
         }
@@ -8436,7 +8844,7 @@ function miniLadder(m) {
 function heroFacts(m, whenLabel, whenValue) {
   return `
     <dl class="hero-facts">
-      <div>${ico('coins')}<dt>Pool</dt><dd>${fmtPts(m.pool)}</dd></div>
+      <div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:hero:${m.id}`, m.pool)} pts</dd></div>
       <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
       <div>${ico('clock')}<dt>${whenLabel}</dt><dd>${whenValue}</dd></div>
     </dl>`;
@@ -8514,7 +8922,10 @@ function cardView(m) {
   else if (m.status === 'void') leadText = 'Cancelled. Points were returned.';
   else if (m.live?.projectedBucket) leadText = `Now ${fmtPct(m.live.returnPct)}, tracking ${outcome(m.live.projectedBucket)}`;
   else if (yn) leadText = `Will it be at or above ${fmtPrice(m.basePrice)}?`;
-  else if (lead) leadText = `${outcome(lead)} leads with ${Math.round(share(m, lead) * 100)}%`;
+  else if (lead) {
+    const x = poolMultiple(m, lead);
+    leadText = `${outcome(lead)} leads with ${Math.round(share(m, lead) * 100)}%${x ? ` <span class="lead-pays">· pays ${x.toFixed(1)}×</span>` : ''}`;
+  }
   else leadText = '<span class="muted">No predictions yet. Be the first.</span>';
 
   let when;
@@ -8546,7 +8957,7 @@ function cardView(m) {
       <div class="card-foot">
         <span class="when">${ico('clock')}${when}</span>
         <span>${ico('users')}${fmtNum(m.predictors)}</span>
-        <span class="pool">${ico('coins')}${fmtNum(m.pool)}</span>
+        <span class="pool">${ico('coins')}${tick(`pool:card:${m.id}`, m.pool)}</span>
       </div>
     </a>`;
 }
@@ -8694,7 +9105,7 @@ function marketMain(m) {
     </header>
 
     <dl class="stats">
-      <div>${ico('coins')}<dt>Pool</dt><dd>${fmtPts(m.pool)}</dd></div>
+      <div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:page:${m.id}`, m.pool)} pts</dd></div>
       <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
       ${
         isManual(m)
@@ -9314,7 +9725,7 @@ function dashSummary(st) {
     <div class="sum-card sum-points">
       <div class="sum-top"><span class="sum-label">${ico('coins')}Points</span>
         ${S.me.canClaimDaily ? `<button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim 100</button>` : '<span class="sum-note">Daily claim used</span>'}</div>
-      <div class="sum-value">${fmtNum(S.me.points)}</div>
+      <div class="sum-value">${tick('me:points:dash', S.me.points)}</div>
       <p class="sum-sub">${st?.open.staked ? `${fmtNum(st.open.staked)} more in play` : 'Available to predict with'}</p>
     </div>`;
   const settled = Boolean(st?.settled);
@@ -11546,6 +11957,74 @@ setInterval(() => {
     if ((S.modal === 'link' || (S.modal === 'connect' && S.auth?.step === 'start')) && !S.modalBusy) renderAuth();
   });
 })();
+
+
+// ---------------------------------------------------------------- Motion details
+
+const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)');
+const TICKS = new Map();
+
+/** Counts a ticker from its last shown value to the new one and flashes it green or red. */
+function runTicker(el) {
+  const key = el.dataset.tick;
+  const to = Number(el.dataset.val);
+  const from = TICKS.get(key);
+  TICKS.set(key, to);
+  if (from === undefined || from === to || REDUCED_MOTION.matches) return;
+  el.classList.remove('tick-up', 'tick-down');
+  void el.offsetWidth; // restart the flash
+  el.classList.add(to > from ? 'tick-up' : 'tick-down');
+  const start = performance.now();
+  const dur = 550;
+  const step = (t) => {
+    const k = Math.min(1, (t - start) / dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmtNum(Math.round(from + (to - from) * e));
+    if (k < 1 && el.isConnected) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/** Moves the sliding highlight of a tab group to its selected tab. */
+function syncSeg(group) {
+  const on = group.querySelector('[aria-selected="true"]');
+  if (!on) return group.classList.remove('seg-on');
+  group.style.setProperty('--seg-x', `${on.offsetLeft}px`);
+  group.style.setProperty('--seg-w', `${on.offsetWidth}px`);
+  if (!group.classList.contains('seg-on')) requestAnimationFrame(() => group.classList.add('seg-on', 'seg-ready'));
+}
+const SEG_GROUPS = '.tabs, .dash-tabs';
+const syncAllSegs = () => document.querySelectorAll(SEG_GROUPS).forEach(syncSeg);
+
+new MutationObserver((records) => {
+  let segs = false;
+  for (const r of records) {
+    if (r.type === 'attributes') {
+      if (r.target.closest?.(SEG_GROUPS)) segs = true;
+      continue;
+    }
+    for (const n of r.addedNodes) {
+      if (n.nodeType !== 1) continue;
+      if (n.matches('[data-tick]')) runTicker(n);
+      n.querySelectorAll('[data-tick]').forEach(runTicker);
+      if (n.matches(SEG_GROUPS) || n.querySelector(SEG_GROUPS)) segs = true;
+    }
+  }
+  if (segs) syncAllSegs();
+}).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-selected'] });
+window.addEventListener('resize', syncAllSegs);
+document.fonts?.ready.then(syncAllSegs);
+
+// A soft light follows the pointer across market cards (mouse and trackpad only).
+if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
+  document.addEventListener('pointermove', (e) => {
+    const card = e.target.closest?.('.card');
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    card.style.setProperty('--mx', `${e.clientX - r.left}px`);
+    card.style.setProperty('--my', `${e.clientY - r.top}px`);
+  });
+}
 
 </script>
   </body>
