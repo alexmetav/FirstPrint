@@ -8172,3 +8172,278 @@ h2,
 .home .featured .hero-facts {
   gap: 6px 20px;
 }
+
+/* =====================================================================
+   Featured market: one flat panel. Left: who, what, when, one action.
+   Right: the outcomes as a single list where each row is the pick.
+   No glows, no boxes inside boxes.
+   ===================================================================== */
+.feat {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 var(--hairline-hi);
+  overflow: hidden;
+}
+.feat-main {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  padding: 28px;
+}
+.feat-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+.feat-id {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.feat-id h1 {
+  margin: 0;
+  font-size: var(--fs-2xl);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.022em;
+}
+.feat-id p {
+  margin: 2px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.feat-q {
+  margin: 0;
+  max-width: 44ch;
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--text) 82%, var(--muted));
+}
+.feat-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 0;
+  margin: 0;
+}
+.feat-facts > div {
+  padding: 0 20px;
+  border-left: 1px solid var(--line);
+}
+.feat-facts > div:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+.feat-facts dt {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+.feat-facts dd {
+  margin: 2px 0 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.feat-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 4px;
+}
+.feat-actions .btn {
+  min-height: 40px;
+  padding: 0 16px;
+}
+.feat-actions .btn .i {
+  width: 15px;
+  height: 15px;
+}
+.feat-hint {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.feat-side {
+  display: grid;
+  align-content: start;
+  padding: 12px 0;
+  border-left: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 35%, var(--surface));
+}
+.feat-side-head {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 24px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.fo-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 64px;
+  align-items: center;
+  gap: 16px;
+  min-height: 52px;
+  padding: 0 24px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  transition: background-color 140ms var(--ease-out);
+}
+.fo-row:first-of-type {
+  border-top: 0;
+}
+.fo-row::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--share);
+  background: color-mix(in srgb, var(--c) 10%, transparent);
+  pointer-events: none;
+}
+.fo-row > * {
+  position: relative;
+}
+.fo-row:hover:not(:disabled),
+.fo-row:focus-visible {
+  background: color-mix(in srgb, var(--c) 8%, transparent);
+  outline: none;
+}
+.fo-row:focus-visible {
+  box-shadow: inset 2px 0 0 var(--c);
+}
+.fo-row:disabled {
+  cursor: default;
+}
+.fo-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-base);
+  font-weight: 500;
+  color: var(--c);
+}
+.fo-name .i {
+  width: 16px;
+  height: 16px;
+}
+.fo-range {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fo-val {
+  justify-self: end;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.fo-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 140ms var(--ease-out), color 140ms var(--ease-out);
+}
+.fo-pick .i {
+  width: 14px;
+  height: 14px;
+}
+.fo-row:hover .fo-pick,
+.fo-row:focus-visible .fo-pick {
+  opacity: 1;
+  color: var(--c);
+}
+@media (hover: none) {
+  .fo-pick {
+    opacity: 1;
+  }
+}
+
+/* "Only market" note: plain text, no dashed box. */
+.home-note {
+  border: 0;
+  padding: 8px 0 0;
+  text-align: left;
+  font-size: var(--fs-sm);
+}
+
+@media (max-width: 1240px) and (min-width: 901px) {
+  .feat {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .feat-side {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+@media (max-width: 900px) {
+  .feat {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .feat-side {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+@media (max-width: 640px) {
+  .feat-main {
+    padding: 20px;
+    gap: 14px;
+  }
+  .feat-id h1 {
+    font-size: 24px;
+  }
+  .feat-side-head,
+  .fo-row {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .fo-row {
+    grid-template-columns: minmax(0, 1fr) auto 52px;
+    gap: 10px;
+    min-height: 50px;
+  }
+  .fo-range {
+    font-size: var(--fs-meta);
+  }
+}
+.feat-sub {
+  margin-left: 4px;
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--muted);
+}
+/* Facts as a tidy grid: wraps cleanly, no dividers left hanging. */
+.feat-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, max-content));
+  gap: 12px 32px;
+}
+.feat-facts > div,
+.feat-facts > div:first-child {
+  padding: 0;
+  border: 0;
+}
+.feat-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+}
