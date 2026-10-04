@@ -163,6 +163,13 @@ async function loadHome() {
   const [open, live, settled] = await Promise.all(['open', 'live', 'settled'].map((f) => S.api.markets(f)));
   syncClock(open.serverTime);
   S.lists = { open: open.markets, live: live.markets, settled: settled.markets };
+  const featured = [...S.lists.open].sort(byTrending)[0];
+  const [odds, leaders] = await Promise.all([
+    featured && S.api.odds ? S.api.odds(featured.id).catch(() => null) : null,
+    S.api.leaderboard ? S.api.leaderboard('week').catch(() => null) : null,
+  ]);
+  S.featuredOdds = featured ? { id: featured.id, odds } : null;
+  S.weekLeaders = leaders?.entries?.slice(0, 5) ?? [];
 }
 
 async function loadMarket(id) {
@@ -227,6 +234,7 @@ async function onRoute() {
   const next = parseRoute();
   const changed = next.name !== S.route.name || next.id !== S.route.id;
   S.route = next;
+  S.menuOpen = false;
   if (changed) {
     closeSheet();
     $('#view').innerHTML = skeletonView(next.name);
@@ -234,7 +242,7 @@ async function onRoute() {
   }
   renderTop();
   await loadRoute(changed);
-  if (changed) $('#view').focus({ preventScroll: true });
+  if (changed && document.activeElement?.id !== 'market-search') $('#view').focus({ preventScroll: true });
 }
 
 async function loadRoute() {
@@ -245,7 +253,17 @@ async function loadRoute() {
       view.innerHTML = homeView();
     } else if (S.route.name === 'market') {
       await loadMarket(S.route.id);
+      const pending = S.pendingPick;
+      if (pending?.id === S.route.id) {
+        S.pendingPick = null;
+        if (S.market.status === 'open' && bucketsOf(S.market).includes(pending.bucket)) S.trade.bucket = pending.bucket;
+      }
       renderMarket();
+      if (pending?.id === S.route.id && S.trade.bucket) {
+        requestQuote();
+        if (isMobile()) openSheet();
+        else setTimeout(() => $('#stake')?.focus({ preventScroll: true }), 50);
+      }
     } else if (S.route.name === 'leaderboard') {
       const lb = await S.api.leaderboard(S.lbPeriod);
       view.innerHTML = leaderboardView(lb);
@@ -355,6 +373,18 @@ function themeButton() {
 }
 
 function renderTop() {
+  // Keep typing in the search box when the bar redraws (e.g. after jumping to Markets).
+  const typing = document.activeElement?.id === 'market-search' ? document.activeElement : null;
+  const caret = typing ? [typing.selectionStart, typing.selectionEnd] : null;
+  drawTop();
+  if (typing) {
+    const input = $('#market-search');
+    input.focus();
+    input.setSelectionRange(...caret);
+  }
+}
+
+function drawTop() {
   const cur = (name) => (S.route.name === name || (name === 'home' && S.route.name === 'market') ? ' aria-current="page"' : '');
   const wallet = S.me?.wallets?.[0]?.address;
   const pages = [
@@ -370,21 +400,38 @@ function renderTop() {
   $('#topbar').innerHTML = `
     <div class="topbar-inner">
       <a class="wordmark" href="#/" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="word">Firstprint</span></a>
-      <nav class="nav" aria-label="Main">
-        ${pages.map(([name, href, label]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}${label}</a>`).join('')}
-      </nav>
+      <label class="top-search">${ico('search')}<input id="market-search" type="search" placeholder="Search markets" value="${esc(S.query ?? '')}" autocomplete="off" aria-label="Search markets" /><kbd aria-hidden="true">/</kbd></label>
       <div class="account">
-        ${themeButton()}
-        ${S.cfg?.rewards ? `<button class="chip chip-faucet" data-action="faucet" title="Get free test SOL for network fees">${ico('droplet')}<span class="faucet-label">Test SOL</span></button>` : ''}
         ${
           S.me
             ? `<button class="chip bell${S.me.unreadNotifications ? ' has-new' : ''}" data-action="inbox" aria-label="Your results${S.me.unreadNotifications ? `, ${S.me.unreadNotifications} new` : ''}">${ico('bell')}${S.me.unreadNotifications ? `<span class="bell-n">${S.me.unreadNotifications > 9 ? '9+' : S.me.unreadNotifications}</span>` : ''}</button>
                ${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim 100 free daily points">${ico('gift')}<span class="gift-n">+100</span></button>` : ''}
                <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${tick('me:points:top', S.me.points)}<span class="unit">pts</span></a>
                <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
-            : `<button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button>`
+            : `<a class="top-link hide-sm" href="#/" data-action="how">${ico('info')}How it works</a><button class="btn btn-gold" data-action="connect">Log in</button>`
         }
+        <button class="chip menu-btn" data-action="menu" aria-label="Menu" aria-haspopup="true" aria-expanded="${S.menuOpen ? 'true' : 'false'}" aria-controls="top-menu">${ico('menu')}</button>
       </div>
+      ${S.menuOpen ? menuView(pages) : ''}
+    </div>
+    <nav class="subnav" aria-label="Main">
+      ${pages.map(([name, href, label]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}${label}</a>`).join('')}
+    </nav>`;
+}
+
+/** Everything secondary: pages, test SOL, the theme switch, help and the account. */
+function menuView(pages) {
+  const light = currentTheme() === 'light';
+  return `
+    <div class="top-menu" id="top-menu" role="menu">
+      ${pages.filter(([name]) => name !== 'home').map(([name, href, label]) => `<a role="menuitem" href="${href}">${ico(NAV_ICONS[name])}${label}</a>`).join('')}
+      ${S.me ? `<a role="menuitem" href="#/u/${encodeURIComponent(S.me.username)}">${ico('user')}Public profile</a>` : ''}
+      ${S.cfg?.rewards ? `<button role="menuitem" data-action="faucet">${ico('droplet')}Get test SOL</button>` : ''}
+      <button role="menuitemcheckbox" aria-checked="${!light}" data-action="theme" class="menu-switch">${ico('moon')}Dark mode<span class="switch-track" aria-hidden="true"><i></i></span></button>
+      <hr />
+      <a role="menuitem" class="menu-quiet" href="#/" data-action="how">How it works</a>
+      <a role="menuitem" class="menu-quiet" href="/privacy.html">Privacy</a>
+      ${S.me ? `<button role="menuitem" class="menu-quiet" data-action="logout">${ico('logout')}Log out</button>` : `<button role="menuitem" class="menu-quiet" data-action="connect">${ico('wallet')}Log in</button>`}
     </div>`;
 }
 
@@ -440,29 +487,51 @@ function marketResults() {
 
 function homeView() {
   if (!HOME_TABS.some(([id]) => id === S.filter)) S.filter = 'trending';
-  const all = [...S.lists.open, ...S.lists.live, ...S.lists.settled];
-  const exchanges = [...new Set(all.flatMap(venuesOf))].sort();
   const featured = [...S.lists.open].sort(byTrending)[0];
   const count = (id) => (id === 'live' ? S.lists.live.length : id === 'settled' ? S.lists.settled.length : S.lists.open.length);
-  const tab = ([id, icon, label]) =>
-    `<button role="tab" aria-selected="${S.filter === id && !S.query}" data-filter="${id}">${ico(icon)}${label}${id === 'live' || id === 'settled' || id === 'trending' ? `<span class="count">${count(id)}</span>` : ''}</button>`;
-
+  const base = tabList(S.filter);
+  const exchanges = [...new Set([...S.lists.open, ...S.lists.live, ...S.lists.settled].flatMap(venuesOf))].sort();
+  const filterBtn = ([id, icon, label]) =>
+    `<button data-filter="${id}" aria-current="${S.filter === id && !S.query}">${ico(icon)}<span>${label}</span><span class="side-n">${count(id)}</span></button>`;
+  const exBtn = (id, label, n) => `<button data-exchange="${esc(id)}" aria-current="${(S.exchange ?? 'all') === id}">${id === 'all' ? ico('landmark') : `<span class="ex-dot" aria-hidden="true">${esc(label.slice(0, 1))}</span>`}<span>${esc(label)}</span><span class="side-n">${n}</span></button>`;
   return `
     ${startChecklist()}
-    ${featured ? featuredView(featured) : ''}
-    <div class="section-head section-head-tight"><span class="section-ico">${ico('grid')}</span><div><h2>All markets</h2><p class="muted">Pick a market, choose an outcome, stake points.</p></div></div>
-    <div class="toolbar">
-      <label class="search">${ico('search')}<input id="market-search" type="search" placeholder="Search markets" value="${esc(S.query ?? '')}" autocomplete="off" aria-label="Search markets" /></label>
-      <label class="select">${ico('landmark')}<span class="hide-sm">Exchange</span>
-        <select id="exchange-filter">
-          <option value="all">All exchanges</option>
-          ${exchanges.map((e) => `<option value="${esc(e)}"${S.exchange === e ? ' selected' : ''}>${esc(e)}</option>`).join('')}
-        </select>
-      </label>
+    <div class="home">
+      <aside class="home-side" aria-label="Filter markets">
+        <div class="side-group">${HOME_TABS.map(filterBtn).join('')}</div>
+        ${exchanges.length > 1 ? `<div class="side-label">Exchanges</div><div class="side-group">${exBtn('all', 'All exchanges', base.length)}${exchanges.map((e) => exBtn(e, e, base.filter((m) => venuesOf(m).includes(e)).length)).join('')}</div>` : ''}
+      </aside>
+      <div class="home-main">
+        ${featured && !S.query ? featuredView(featured) : ''}
+        <div class="home-head">
+          <h2>${S.query ? 'Search results' : (HOME_TABS.find(([id]) => id === S.filter)?.[2] ?? 'Markets')}</h2>
+          ${S.exchange && S.exchange !== 'all' ? `<button class="chip chip-sm" data-exchange="all">${esc(S.exchange)} ${ico('cross')}</button>` : ''}
+        </div>
+        <div id="market-results">${marketResults()}</div>
+      </div>
+      <aside class="home-rail" aria-label="Highlights">${homeRail()}</aside>
     </div>
-    <div class="tabs tabs-scroll" role="tablist" aria-label="Sort markets">${HOME_TABS.map(tab).join('')}</div>
-    <div id="market-results">${marketResults()}</div>
     ${howItWorks()}`;
+}
+
+/** Right column: this week's best players, ways to earn, and the daily claim. */
+function homeRail() {
+  const leaders = S.weekLeaders ?? [];
+  return `
+    ${S.me?.canClaimDaily ? `<section class="rail-card rail-claim"><div><b>Your daily 100 points</b><p>Free every day. Use them on any open market.</p></div><button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim</button></section>` : ''}
+    <section class="rail-card">
+      <div class="rail-head"><h3>Top this week</h3><a href="#/leaderboard">See all ${ico('chevronRight')}</a></div>
+      ${
+        leaders.length
+          ? `<ol class="rail-list">${leaders.map((e) => `<li><span class="rail-rank">${e.rank}</span>${avatar(e.name, 'avatar-sm')}${userLink(e.name)}<b class="${e.profit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(e.profit)}</b></li>`).join('')}</ol>`
+          : '<p class="rail-empty">No settled markets this week yet. Win one to top the board.</p>'
+      }
+    </section>
+    <section class="rail-card rail-earn">
+      <span class="rail-ico">${ico('sparkles')}</span>
+      <div><b>Earn more points</b><p>Complete quick tasks and invite friends.</p></div>
+      <a class="btn btn-sm" href="#/earn">Earn</a>
+    </section>`;
 }
 
 function emptyText() {
@@ -496,6 +565,25 @@ function heroFacts(m, whenLabel, whenValue) {
     </dl>`;
 }
 
+/** Quick-pick buttons for every outcome, tinted in each outcome's colour. */
+function quickPicks(m, cls = '') {
+  const yn = isYesNo(m);
+  const open = m.status === 'open' && m.phase !== 'awaiting_result';
+  return `<div class="qp-row${yn ? ' qp-yn' : ''} ${cls}">${bucketsOf(m)
+    .map((b) => {
+      const pct = m.pool ? `${Math.round(share(m, b) * 100)}%` : '–';
+      return `<button class="qp" style="--c:${oVar(b, yn)}" data-action="quick-pick" data-id="${esc(m.id)}" data-bucket="${b}"${open ? '' : ' disabled'}><span>${oName(b, yn)}</span><b>${pct}</b></button>`;
+    })
+    .join('')}</div>`;
+}
+
+/** The featured market's crowd odds over time, or the pool split when there is no history yet. */
+function featuredSide(m) {
+  const o = S.featuredOdds?.id === m.id ? S.featuredOdds.odds : null;
+  if (!o || o.series.length < 2) return miniLadder(m);
+  return `<div class="feat-chart">${oddsPlot(m, o)}</div>`;
+}
+
 function featuredView(m) {
   if (isYesNo(m)) {
     const yes = m.pool ? Math.round(share(m, 'up') * 100) : null;
@@ -511,7 +599,7 @@ function featuredView(m) {
           <a class="btn btn-lg" href="#how">How it works</a>
         </div>
       </div>
-      ${miniLadder(m)}
+      ${featuredSide(m)}
     </section>`;
   }
   if (isManual(m)) {
@@ -522,12 +610,10 @@ function featuredView(m) {
         <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">is open</span></h1><p class="hero-name">${esc(m.name || m.symbol)} · start price ${fmtPrice(m.basePrice)}</p></div></div>
         <p class="lede">Predict where ${esc(m.name || m.symbol)} is priced at the result, compared with the start price. ${m.pool ? '' : 'Nobody has predicted yet, so early picks get the biggest bonus.'}</p>
         ${heroFacts(m, 'Closes in', until(m.closeAt))}
-        <div class="actions">
-          <a class="btn btn-gold btn-lg" href="#/market/${encodeURIComponent(m.id)}">${ico('target')}Make a prediction</a>
-          <a class="btn btn-lg" href="#how">How it works</a>
-        </div>
+        ${quickPicks(m)}
+        <a class="feat-open" href="#/market/${encodeURIComponent(m.id)}">Open market ${ico('chevronRight')}</a>
       </div>
-      ${miniLadder(m)}
+      ${featuredSide(m)}
     </section>`;
   }
   const pre = m.phase === 'pre_listing';
@@ -559,53 +645,76 @@ function cardStatus(m) {
   return '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>';
 }
 
+/** Semicircle gauge with the leading chance, as on trading cards. */
+function gauge(pct, color, label) {
+  const v = pct === null ? 0 : Math.max(0, Math.min(100, pct));
+  return `<span class="gauge" style="--c:${color}" role="img" aria-label="${pct === null ? 'No predictions yet' : `${label} ${pct}%`}">
+    <svg viewBox="0 0 48 28" aria-hidden="true"><path class="g-track" d="M4 26 A20 20 0 0 1 44 26" pathLength="100" /><path class="g-fill" d="M4 26 A20 20 0 0 1 44 26" pathLength="100" stroke-dasharray="${v} 100" /></svg>
+    <b>${pct === null ? '–' : `${pct}%`}</b><small>${esc(label)}</small></span>`;
+}
+
 function cardView(m) {
-  const lead = leader(m);
-  let leadText;
   const yn = isYesNo(m);
-  if (m.status === 'resolved') leadText = yn ? `Resolved ${outcome(m.result.winningBucket, true)} at ${fmtPrice(m.result.finalPrice)}` : `Settled in ${outcome(m.result.winningBucket)} at ${fmtPct(m.result.returnPct)}`;
-  else if (m.phase === 'awaiting_result') leadText = 'Predictions closed. Result coming soon';
-  else if (m.status === 'void') leadText = 'Cancelled. Points were returned.';
-  else if (m.live?.projectedBucket) leadText = `Now ${fmtPct(m.live.returnPct)}, tracking ${outcome(m.live.projectedBucket)}`;
-  else if (yn) leadText = `Will it be at or above ${fmtPrice(m.basePrice)}?`;
-  else if (lead) {
-    const x = poolMultiple(m, lead);
-    leadText = `${outcome(lead)} leads with ${Math.round(share(m, lead) * 100)}%${x ? ` <span class="lead-pays">· pays ${x.toFixed(1)}×</span>` : ''}`;
+  const lead = leader(m);
+  const open = m.status === 'open' && m.phase !== 'awaiting_result';
+  const href = `#/market/${encodeURIComponent(m.id)}`;
+  const soon = m.status === 'open' && m.closeAt - now() < 15 * 60_000 && m.closeAt > now();
+
+  // Gauge: Yes chance on Yes/No markets, the leading outcome on five-outcome markets.
+  const g = yn
+    ? gauge(m.pool ? Math.round(share(m, 'up') * 100) : null, 'var(--up)', 'Yes')
+    : gauge(lead ? Math.round(share(m, lead) * 100) : null, lead ? oVar(lead, false) : 'var(--flat)', lead ? oName(lead, false) : 'No picks');
+
+  let body;
+  if (m.status === 'resolved') {
+    body = `<p class="card-result">${yn ? `Resolved ${outcome(m.result.winningBucket, true)} at ${fmtPrice(m.result.finalPrice)}` : `Settled in ${outcome(m.result.winningBucket)} at ${fmtPct(m.result.returnPct)}`}</p>`;
+  } else if (m.status === 'void') {
+    body = '<p class="card-result muted">Cancelled. Points were returned.</p>';
+  } else if (yn) {
+    body = quickPicks(m, 'qp-card');
+  } else {
+    // The two outcomes the crowd backs most (Up and Down before anyone predicts).
+    const top = m.pool ? [...bucketsOf(m)].sort((a, b) => m.totals[b] - m.totals[a]).slice(0, 2) : ['up', 'down'];
+    body = `<div class="o-rows">${top
+      .map((b) => {
+        const x = poolMultiple(m, b);
+        return `<div class="o-row" style="--c:var(--${b})">
+          <span class="o-name">${icon(b)}${oName(b)}<small>${rangeOf(m, b)}</small></span>
+          <b class="o-pct">${m.pool ? `${Math.round(share(m, b) * 100)}%` : '–'}</b>
+          <button class="qp qp-sm" style="--c:var(--${b})" data-action="quick-pick" data-id="${esc(m.id)}" data-bucket="${b}"${open ? '' : ' disabled'} aria-label="Pick ${oName(b)} on ${esc(m.symbol)}">${x ? `${x.toFixed(1)}×` : 'Pick'}</button>
+        </div>`;
+      })
+      .join('')}</div>`;
   }
-  else leadText = '<span class="muted">No predictions yet. Be the first.</span>';
 
   let when;
   if (m.phase === 'pre_listing') when = `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}`;
-  else if (m.phase === 'baseline') when = `Closes in ${until(m.closeAt)}`;
+  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Closes in ${until(m.closeAt)}`;
   else if (m.phase === 'running') when = `Result in ${until(m.settleAt)}`;
   else if (m.phase === 'awaiting_result') when = 'Awaiting result';
   else when = fmtDate(m.settleAt);
 
-  const soon = m.status === 'open' && m.closeAt - now() < 15 * 60_000 && m.closeAt > now();
+  const state =
+    m.status === 'resolved' ? '<span class="st st-done">Settled</span>'
+    : m.status === 'void' ? '<span class="st st-off">Cancelled</span>'
+    : m.phase === 'awaiting_result' ? '<span class="st st-wait">Awaiting</span>'
+    : soon ? `<span class="st st-hot">${ico('flame')}Closing soon</span>`
+    : '<span class="st st-live"><i aria-hidden="true"></i>Open</span>';
+
   return `
-    <a class="card${soon ? ' soon' : ''}" href="#/market/${encodeURIComponent(m.id)}">
+    <article class="card mcard${soon ? ' soon' : ''}">
       <div class="card-top">
         ${tokenAvatar(m, 'avatar-md')}
-        <div class="card-title"><span class="sym">${esc(m.symbol)}${yn ? ' <span class="tag tag-yn">Yes / No</span>' : ''}</span><span class="card-name">${esc(m.name || '')}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</span></div>
-        ${soon ? `<span class="pill pill-hot">${ico('flame')}Closing soon</span>` : cardStatus(m)}
+        <a class="card-link" href="${href}"><span class="sym">${esc(m.symbol)}${yn ? ' <span class="tag tag-yn">Yes / No</span>' : ''}</span><span class="card-name">${esc(m.name || '')}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</span></a>
+        ${g}
       </div>
-      <div class="card-lead">${leadText}</div>
-      ${
-        yn
-          ? `<div class="chance-row"><span class="chance" style="--c:var(--up)"><b>${m.pool ? `${Math.round(share(m, 'up') * 100)}%` : '–'}</b> Yes</span><span class="chance" style="--c:var(--crash)"><b>${m.pool ? `${Math.round(share(m, 'down') * 100)}%` : '–'}</b> No</span></div>
-             <div class="strip${m.pool ? '' : ' empty'}" aria-hidden="true"><span style="--c:var(--up);flex:${m.pool ? m.totals.up : 1}"></span><span style="--c:var(--crash);flex:${m.pool ? m.totals.down : 1}"></span></div>`
-          : `<div class="strip${m.pool ? '' : ' empty'}" aria-hidden="true">
-        ${['crash', 'down', 'flat', 'up', 'moon'].map((b) => `<span style="--c:var(--${b});flex:${m.pool ? m.totals[b] : 1}"></span>`).join('')}
-      </div>`
-      }
+      ${body}
       ${myPickLine(m)}
-      <div class="card-venues">${ico('landmark')}${esc(venueNames(m))}</div>
       <div class="card-foot">
-        <span class="when">${ico('clock')}${when}</span>
-        <span>${ico('users')}${fmtNum(m.predictors)}</span>
-        <span class="pool">${ico('coins')}${tick(`pool:card:${m.id}`, m.pool)}</span>
+        ${state}<span class="dot-sep" aria-hidden="true">·</span><span>${tick(`pool:card:${m.id}`, m.pool)} pts</span><span class="dot-sep" aria-hidden="true">·</span><span class="card-ex">${esc(venueNames(m))}</span>
+        <span class="when">${when}</span>
       </div>
-    </a>`;
+    </article>`;
 }
 
 /** "You: Up · 250" on a card, so players can see their picks without opening the market. */
@@ -909,6 +1018,15 @@ function manualRules(m) {
 function oddsView(m) {
   const o = S.odds;
   if (!o || o.series.length < 2) return '';
+  return `
+    <section class="section panel odds">
+      <div class="section-head"><span class="section-ico">${ico('dashboard')}</span><div><h2>Crowd odds over time</h2><p class="muted">Each outcome’s share of the pool after every prediction.</p></div></div>
+      ${oddsPlot(m, o)}
+    </section>`;
+}
+
+/** Legend, step lines and time axis for a market's odds history. */
+function oddsPlot(m, o) {
   const yn = isYesNo(m);
   const lines = yn ? ['up'] : bucketsOf(m).filter((b) => o.series.some((p) => (p.shares[b] ?? 0) > 0));
   const t0 = o.series[0].t;
@@ -928,8 +1046,6 @@ function oddsView(m) {
     ? `<div class="odds-big" style="--c:var(--up)"><b>${Math.round((last.up ?? 0) * 100)}%</b> chance of Yes</div>`
     : `<div class="odds-legend">${lines.map((b) => `<span style="--c:var(--${b})"><i></i>${oName(b)} <b>${Math.round((last[b] ?? 0) * 100)}%</b></span>`).join('')}</div>`;
   return `
-    <section class="section panel odds">
-      <div class="section-head"><span class="section-ico">${ico('dashboard')}</span><div><h2>Crowd odds over time</h2><p class="muted">Each outcome’s share of the pool after every prediction.</p></div></div>
       ${head}
       <div class="odds-plot">
         <div class="odds-axis" aria-hidden="true"><span>100%</span><span>50%</span><span>0%</span></div>
@@ -939,8 +1055,7 @@ function oddsView(m) {
           ${lines.map((b) => `<path class="odds-line" d="${path(b)}" stroke="${oVar(b, yn)}" vector-effect="non-scaling-stroke" />`).join('')}
         </svg>
       </div>
-      <div class="odds-time muted"><span>${fmtDate(t0)}</span><span>${t1 >= now() - 60_000 ? 'Now' : fmtDate(t1)}</span></div>
-    </section>`;
+      <div class="odds-time muted"><span>${fmtDate(t0)}</span><span>${t1 >= now() - 60_000 ? 'Now' : fmtDate(t1)}</span></div>`;
 }
 
 /** The players with the most points on this market and what they picked. */
@@ -3273,6 +3388,13 @@ document.addEventListener('click', async (e) => {
   const action = t.closest('[data-action]')?.dataset.action;
   const filter = t.closest('[data-filter]')?.dataset.filter;
   const lbPeriod = t.closest('[data-lb-period]')?.dataset.lbPeriod;
+  if (S.menuOpen && !t.closest('#top-menu') && !t.closest('[data-action="menu"]')) closeMenu();
+  const exchangePick = t.closest('[data-exchange]')?.dataset.exchange;
+  if (exchangePick) {
+    S.exchange = exchangePick;
+    $('#view').innerHTML = homeView();
+    return;
+  }
   const dashTab = t.closest('[data-dash-tab]')?.dataset.dashTab;
   if (dashTab) return showDashTab(dashTab);
   if (lbPeriod) {
@@ -3288,6 +3410,7 @@ document.addEventListener('click', async (e) => {
   if (filter) {
     S.filter = filter;
     S.query = '';
+    if ($('#market-search')) $('#market-search').value = '';
     $('#view').innerHTML = homeView();
     return;
   }
@@ -3402,6 +3525,23 @@ document.addEventListener('click', async (e) => {
       return closeSheet();
     case 'theme':
       return setTheme(currentTheme() === 'light' ? 'dark' : 'light');
+    case 'menu':
+      S.menuOpen = !S.menuOpen;
+      renderTop();
+      if (S.menuOpen) $('#top-menu a, #top-menu button')?.focus();
+      return;
+    case 'quick-pick':
+      S.pendingPick = { id: t.closest('[data-id]').dataset.id, bucket: t.closest('[data-bucket]').dataset.bucket };
+      location.hash = `#/market/${encodeURIComponent(S.pendingPick.id)}`;
+      return;
+    case 'how':
+      e.preventDefault();
+      closeMenu();
+      if (S.route.name !== 'home') {
+        location.hash = '#/';
+        setTimeout(() => $('#how')?.scrollIntoView({ behavior: 'smooth' }), 500);
+      } else $('#how')?.scrollIntoView({ behavior: 'smooth' });
+      return;
     case 'logo-clear':
       return setLogo(t.closest('form'), '');
     case 'retry':
@@ -3423,6 +3563,10 @@ document.addEventListener('click', async (e) => {
 document.addEventListener('input', (e) => {
   if (e.target.id === 'market-search') {
     S.query = e.target.value;
+    if (S.route.name !== 'home') {
+      location.hash = '#/';
+      return;
+    }
     const out = $('#market-results');
     if (out) out.innerHTML = marketResults();
     document.querySelectorAll('[data-filter]').forEach((b) => b.setAttribute('aria-selected', String(!S.query && b.dataset.filter === S.filter)));
@@ -3671,3 +3815,21 @@ if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
     card.style.setProperty('--my', `${e.clientY - r.top}px`);
   });
 }
+
+function closeMenu() {
+  if (!S.menuOpen) return;
+  S.menuOpen = false;
+  renderTop();
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && S.menuOpen) {
+    closeMenu();
+    $('[data-action="menu"]')?.focus();
+  }
+  // "/" jumps to search, as on most trading sites.
+  if (e.key === '/' && !e.target.closest?.('input, textarea, select, [contenteditable]')) {
+    e.preventDefault();
+    $('#market-search')?.focus();
+  }
+});
