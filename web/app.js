@@ -4,7 +4,7 @@ import { bucketRangeLabel } from './engine.js';
 import { ApiError, backendAvailable, captureReferral, createAdminApi, createApi, wake } from './api.js';
 import { DemoBackend } from './demo.js';
 import { OUTCOME_ICONS, ico } from './icons.js';
-import { INSTALL_LINKS, connectAndSign, disconnectWallets, isMobileDevice, listWallets, mobileWalletLinks, onWalletsChanged, shortAddress, signTransactionWith } from './wallet.js';
+import { INSTALL_LINKS, WALLET_LOGOS, connectAndSign, disconnectWallets, isMobileDevice, listWallets, mobileWalletLinks, onWalletsChanged, shortAddress, signTransactionWith } from './wallet.js';
 
 const LADDER = ['moon', 'up', 'flat', 'down', 'crash'];
 const NAMES = { crash: 'Crash', down: 'Down', flat: 'Flat', up: 'Up', moon: 'Moon' };
@@ -1737,7 +1737,7 @@ function walletsCard() {
         ws.length
           ? `<ul class="dash-wallets">${ws
               .map(
-                (w) => `<li><span class="dw-main"><span class="addr" title="${esc(w.address)}">${esc(shortAddress(w.address))}</span><span class="muted">${esc(w.walletName || 'Solana wallet')}</span></span>
+                (w) => `<li>${WALLET_LOGOS[w.walletName] ? `<img class="wallet-logo" src="${WALLET_LOGOS[w.walletName]}" alt="" width="20" height="20" />` : ''}<span class="dw-main"><span class="addr" title="${esc(w.address)}">${esc(shortAddress(w.address))}</span><span class="muted">${esc(w.walletName || 'Solana wallet')}</span></span>
                   <a class="dw-link" href="https://solscan.io/account/${encodeURIComponent(w.address)}" target="_blank" rel="noopener noreferrer" aria-label="View ${esc(shortAddress(w.address))} on Solscan">Solscan ${ico('external')}</a></li>`,
               )
               .join('')}</ul>`
@@ -2311,7 +2311,7 @@ function walletButtons(purpose) {
     .map(
       (w, i) => `
       <button class="wallet-option" data-wallet="${i}" data-purpose="${purpose}">
-        ${w.icon ? `<img src="${esc(w.icon)}" alt="" width="28" height="28" />` : `<span class="wallet-fallback" aria-hidden="true">${esc(w.name[0])}</span>`}
+        ${w.icon || WALLET_LOGOS[w.name] ? `<img src="${esc(w.icon || WALLET_LOGOS[w.name])}" alt="" width="28" height="28" />` : `<span class="wallet-fallback" aria-hidden="true">${esc(w.name[0])}</span>`}
         <span>${esc(w.name)}</span><span class="muted">Detected</span>
       </button>`,
     )
@@ -2321,7 +2321,14 @@ function walletButtons(purpose) {
   return `
     <div class="no-wallet">
       <p>${isMobileDevice() ? 'Open Firstprint inside your wallet app to connect.' : 'No Solana wallet found in this browser. Install one, then reload this page.'}</p>
-      <div class="wallet-links">${links.map((l) => `<a class="btn" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${isMobileDevice() ? `Open in ${esc(l.name)}` : esc(l.name)}</a>`).join('')}</div>
+      <div class="wallet-options">${links
+        .map(
+          (l) => `<a class="wallet-option" href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">
+            <img src="${esc(l.logo)}" alt="" width="28" height="28" />
+            <span>${isMobileDevice() ? `Open in ${esc(l.name)}` : esc(l.name)}</span><span class="muted">${isMobileDevice() ? 'App' : 'Install'} ${ico('chevronRight')}</span>
+          </a>`,
+        )
+        .join('')}</div>
     </div>`;
 }
 
