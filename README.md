@@ -2,7 +2,7 @@
 
 Predict where newly listed crypto tokens trade after they list.
 
-In trading, the *first print* is a token's very first trade. Firstprint runs prediction markets on newly listed tokens. Admins open the markets (new MEXC listings are detected automatically and queued for review) and post the result. Players sign in with Google, an email code or a Solana wallet and stake free points on a five-outcome ladder (Crash, Down, Flat, Up, Moon) or a Yes/No question. Points have no cash value; the 1,000 starting points and Earn rewards can be claimed as TestFPT on Solana's test network.
+In trading, the *first print* is a token's very first trade. Firstprint runs prediction markets on newly listed tokens. Admins open the markets (new listings on MEXC, OKX, Gate, Bitget and KuCoin are detected automatically and queued for review) and post the result. Players sign in with Google, an email code or a Solana wallet and stake free points on a five-outcome ladder (Crash, Down, Flat, Up, Moon) or a Yes/No question. Points have no cash value; the 1,000 starting points and Earn rewards can be claimed as TestFPT on Solana's test network.
 
 The full seven-exchange scanner with self-settling markets also exists (`MANUAL_ONLY=0`), but production runs admin-run markets (`MANUAL_ONLY=1`).
 
@@ -12,7 +12,7 @@ The full seven-exchange scanner with self-settling markets also exists (`MANUAL_
 
 | Area | What it does |
 |---|---|
-| **Listing tracker** | Reads new-listing announcements (Binance, Bybit, OKX, Bitget, KuCoin) and detects new USDT trading pairs on all seven exchanges (adds MEXC and Gate). With `MANUAL_ONLY=0`, detections appear on the public Listing radar page and wait for admin approval, or open markets automatically. With `MANUAL_ONLY=1` (production) only MEXC is checked, and new pairs wait in Admin → New listings. |
+| **Listing tracker** | Reads new-listing announcements (Binance, Bybit, OKX, Bitget, KuCoin) and detects new USDT trading pairs on all seven exchanges (adds MEXC and Gate). With `MANUAL_ONLY=0`, detections appear on the public Listing radar page and wait for admin approval, or open markets automatically. With `MANUAL_ONLY=1` (production) only MEXC, OKX, Gate, Bitget and KuCoin are checked (`LISTING_VENUES`), and new listings wait in Admin → New listings. |
 | **Live data** | Pulls 1-minute candles for settlement and live tickers every few seconds, then streams prices to browsers over Server-Sent Events. |
 | **Market engine** | Outcome buckets, 1-hour average prices at start and end, volume-weighted median across exchanges, pool caps, early-bird weights, payouts, and cancellation rules. |
 | **Accounts** | Continue with Google, a one-time email code, or Sign-In With Solana (Phantom, Solflare, Backpack, or any Wallet Standard wallet). Users, wallets, points, predictions, and settlements are stored in the database. |
@@ -34,7 +34,7 @@ One "Log in or sign up" popup, like Polymarket: **Continue with Google**, **Cont
 
 ## Running markets from the admin panel
 
-By default (`MANUAL_ONLY=1`) admins run markets at `/#/admin`, and the only thing fetched from exchanges by itself is MEXC's list of new pairs (see *New listings* below):
+By default (`MANUAL_ONLY=1`) admins run markets at `/#/admin`, and the only things fetched from exchanges by themselves are new pairs and listing announcements (see *New listings* below):
 
 1. **Exchanges:** switch exchanges on or off. Only enabled exchanges can be used in new markets.
 2. **Create a market:** token, start price, which exchanges, when predictions close, when the result is expected, a description, and optional outcome ranges, fee and pool limit. Save as a draft (users can't see it) or publish.
@@ -44,7 +44,7 @@ By default (`MANUAL_ONLY=1`) admins run markets at `/#/admin`, and the only thin
 
 ### New listings and Telegram alerts
 
-Every 2 minutes the server checks MEXC's public pair list (`/api/v3/exchangeInfo`, no API key) for new USDT pairs. Each new one appears under **New listings** in Admin (Overview and Markets) and, if connected, as a Telegram message. **Review** opens the market form already filled in: symbol, name, MEXC, close time (when trading starts for an upcoming token, otherwise an hour from now), a result 72 hours after listing, a description, and the live MEXC price with a one-click "Use as start price". Add the logo link (a copy is saved), check everything, and publish. **Skip** removes it. Tokens that already have a market, pairs that opened more than a day ago, and listings left for 3 days are dropped. Admins can pause the check in Settings; `AUTO_LISTINGS=0` turns it off, and `AUTO_LISTINGS=publish` instead opens self-settling markets straight away (at most `AUTO_MARKETS_PER_DAY`, default 5, a day, with results after `AUTO_MARKET_HOURS`, default 72). Results for admin-run markets have a "Use live price" button too.
+Every 2 minutes the server checks the public pair lists of MEXC, OKX, Gate, Bitget and KuCoin (no API keys) for new USDT pairs, plus the listing announcements of OKX, Bitget and KuCoin. `LISTING_VENUES` (comma-separated ids) changes the list; Binance and Bybit refuse servers in the US, so add them only on a server in another region (Admin → Settings → **Exchange check** shows which exchanges answer). Switching an exchange off under Reference exchanges stops checking it too. Each new listing appears under **New listings** in Admin (Overview and Markets) and, if connected, as a Telegram message. A token that already has a market or is already waiting (found on another exchange, or announced first) is not repeated, and announcements more than 2 days old are skipped. **Review** opens the market form already filled in: symbol, name, the exchange it listed on, close time (when trading starts for an upcoming token, otherwise an hour from now), a result 72 hours after listing, a description, and the live price with a one-click "Use as start price". Add the logo link (a copy is saved), check everything, and publish. **Skip** removes it. Tokens that already have a market, pairs that opened more than a day ago, and listings left for 3 days are dropped. Admins can pause the check in Settings; `AUTO_LISTINGS=0` turns it off, and `AUTO_LISTINGS=publish` instead opens self-settling markets straight away (at most `AUTO_MARKETS_PER_DAY`, default 5, a day, with results after `AUTO_MARKET_HOURS`, default 72). Results for admin-run markets have a "Use live price" button too.
 
 Telegram alerts: create a bot with @BotFather, set `TELEGRAM_BOT_TOKEN` on the server, then in Admin → Settings send the shown code to the bot and click Connect. Alerts go out for new listings and for markets that close and need a result. For players, add the same bot as an admin (with Post Messages) of a public channel and enter its name under **Player channel** in Settings: every published market is posted there with the fixed new-market banner and a *Predict now* button, a "last hour" reminder goes out an hour before predictions close, and every result with a winner is posted (cancelled markets are not). Each token's own banner (logo, ticker, details, drawn on the server with resvg from a PNG copy of the logo the admin page saves) is built in but off for now; the `telegram_token_banners` setting set to `1` turns it on. Settings → Player channel can also post open markets that were never posted, or all of them again. Players then see a Telegram button on market pages, on their dashboard and profile, and in the menu. The server must stay awake for any of this (Render's free plan sleeps, so ping `/api/health` every few minutes).
 
@@ -176,7 +176,7 @@ Signed-in requests use the `fp_session` HttpOnly cookie (or `Authorization: Bear
 | POST | `/api/admin/markets/:id/listing-time`, `/retract`, `/halt` | Corrections |
 | GET, POST | `/api/admin/manual-markets`, `/:id`, `/:id/publish`, `/unpublish`, `/delete`, `/preview`, `/resolve`, `/start-price` | Admin-run markets (`detectionId` links a New listings entry) |
 | POST | `/api/admin/price-check`; GET `/api/admin/market-checks`, `/api/admin/fetch-image?url=` | Live prices, warnings, logo copies |
-| POST | `/api/admin/auto-listings` | `{ enabled }` pauses or resumes the MEXC check |
+| POST | `/api/admin/auto-listings` | `{ enabled }` pauses or resumes the new-listing check |
 | POST | `/api/admin/telegram/connect`, `/test`, `/channel`, `/post-open`, `/disconnect`; `/api/admin/markets/:id/telegram` | Telegram alerts and the player channel |
 | GET, POST | `/api/admin/analytics?days=`, `/api/admin/analytics/share` | Analytics; `{ enabled }` creates a new share link or turns it off |
 | GET, POST | `/api/admin/token`, `/api/admin/tasks`, `/api/admin/log` | TestFPT setup, tasks, admin activity |

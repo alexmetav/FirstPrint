@@ -34,8 +34,8 @@ export interface ServerOptions {
   backupStatus?: () => { enabled: boolean; lastOkAt: number | null; lastError: string | null };
   /** True when exchange auto-detection and live prices are off and admins run every market. */
   manualOnly?: boolean;
-  /** Automatic markets for new MEXC listings, when the server runs them. */
-  autoListings?: { mode: 'review' | 'publish'; perDay: number; hours: number } | null;
+  /** New-listing checks (and the exchanges watched), when the server runs them. */
+  autoListings?: { mode: 'review' | 'publish'; perDay: number; hours: number; venues: string[] } | null;
   /** Admin alerts on Telegram, when TELEGRAM_BOT_TOKEN is set. */
   telegram?: Telegram | null;
   /** Posts to the public player channel. */
@@ -510,7 +510,7 @@ export function createApiServer(opts: ServerOptions): Server {
     }
     if (!found) throw new AppError(404, 'not_found', `No message with ${code} yet. Send it to your bot in Telegram, then try again.`);
     audit(req, 'telegram_connected', null);
-    await t.send('✅ Firstprint alerts are connected. New MEXC listings and markets that need a result will show up here.').catch(() => {});
+    await t.send('✅ Firstprint alerts are connected. New listings and markets that need a result will show up here.').catch(() => {});
     return { connected: true };
   });
 
@@ -736,7 +736,14 @@ export function createApiServer(opts: ServerOptions): Server {
       venues: service.venueList(),
       exchanges: service.exchangeSettings(),
       manualOnly: opts.manualOnly ?? false,
-      autoListings: opts.autoListings ? { ...opts.autoListings, enabled: service.autoListingsEnabled() } : null,
+      autoListings: opts.autoListings
+        ? {
+            ...opts.autoListings,
+            enabled: service.autoListingsEnabled(),
+            // Exchanges actually checked now: watched by this server and not switched off in Settings.
+            exchanges: service.exchangeSettings().filter((e) => e.enabled && opts.autoListings!.venues.includes(e.id)).map((e) => e.name),
+          }
+        : null,
       telegram: {
         configured: Boolean(opts.telegram),
         connected: Boolean(opts.telegram?.connected),

@@ -13249,7 +13249,7 @@ function howItWorks() {
     return `
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
-        <li>Firstprint opens markets on newly listed tokens on major exchanges, including new MEXC listings it spots automatically. Log in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
+        <li>Firstprint opens markets on newly listed tokens on major exchanges, including new listings it spots automatically on MEXC, OKX, Gate, Bitget and KuCoin. Log in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
         <li>Pick one of five outcomes for where the price ends up compared with the start price, from Crash to Moon. Predictions close at the time shown, and earlier predictions earn a bigger share.</li>
         <li>When the result is due, the final price and the winners appear on the market page.</li>
         <li>Everyone who picked the winning outcome splits the pool, minus the fee shown on the market (usually 4%). Everyone gets their points back if nobody picked the winner, everyone picked the same outcome, or the market is cancelled.</li>
@@ -15331,7 +15331,7 @@ async function renderAdmin() {
   const waiting = markets.filter((m) => m.mode === 'manual' && m.phase === 'awaiting_result');
   const drafts = markets.filter((m) => m.phase === 'draft');
   const tab = ADMIN_TABS.some(([id]) => id === A.tab) ? A.tab : 'overview';
-  // New MEXC listings waiting for review (manual-only servers); the old scanner shows its own list in Settings.
+  // New exchange listings waiting for review (manual-only servers); the old scanner shows its own list in Settings.
   const pending = manualOnly ? detected : [];
   if (A.review && !pending.some((d) => d.id === A.review.id)) A.review = null;
   const review = !editing && A.review ? A.review : null;
@@ -15360,7 +15360,7 @@ async function renderAdmin() {
       ${autoListingsPanel(A.info.autoListings)}
       ${telegramPanel(A.info.telegram)}
       <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('landmark')}</span><div><h2>Reference exchanges</h2><p class="muted">Switch off an exchange to stop it being offered for new markets you create. They are shown to users as the reference for the price you enter.</p></div></div>
+        <div class="section-head"><span class="section-ico">${ico('landmark')}</span><div><h2>Reference exchanges</h2><p class="muted">Switch off an exchange to stop it being offered for new markets you create and to stop checking it for new listings. They are shown to users as the reference for the price you enter.</p></div></div>
         <div class="toggle-grid">${A.info.exchanges
           .map((e) => `<label class="toggle"><input type="checkbox" data-action="admin-exchange" data-id="${esc(e.id)}"${e.enabled ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>${esc(e.name)}</label>`)
           .join('')}</div>
@@ -15699,17 +15699,23 @@ const ADMIN_ACTIONS = {
   telegram_posted_open: 'Posted open markets to the Telegram channel',
 };
 
-/** Settings: automatic markets for new MEXC listings. */
+/** "MEXC, OKX and Gate" */
+function listNames(names) {
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/** Settings: new listings from the watched exchanges (review queue, or automatic markets). */
 function autoListingsPanel(a) {
   if (!a) return '';
+  const where = !a.exchanges ? 'the watched exchanges' : a.exchanges.length ? listNames(a.exchanges) : 'no exchange (all are switched off under Reference exchanges)';
   return `
       <section class="panel">
         <div class="section-head"><span class="section-ico">${ico('zap')}</span><div><h2>${a.mode === 'review' ? 'New listings' : 'Automatic markets'}</h2><p class="muted">${
           a.mode === 'review'
-            ? 'Every 2 minutes Firstprint checks MEXC for new USDT listings. Each one appears under New listings in Overview and Markets (and on Telegram, if connected). Review it to open a market with the start price, logo and description you choose.'
-            : `Every 2 minutes Firstprint checks MEXC for new USDT listings and opens a market by itself, up to ${a.perDay} a day. Predictions stay open until 1 hour after trading starts. The start price is the average of that first hour and the result comes ${a.hours} hours after listing, both from MEXC, with no admin needed. You can cancel any of them in Markets.`
+            ? `Every 2 minutes Firstprint checks ${esc(where)} for new USDT listings and listing announcements. Each one appears under New listings in Overview and Markets (and on Telegram, if connected). A token that already has a market or is already waiting is not repeated. Review it to open a market with the start price, logo and description you choose. Switch an exchange off under Reference exchanges to stop checking it.`
+            : `Every 2 minutes Firstprint checks ${esc(where)} for new USDT listings and opens a market by itself, up to ${a.perDay} a day. Predictions stay open until 1 hour after trading starts. The start price is the average of that first hour and the result comes ${a.hours} hours after listing, both from the exchange it listed on, with no admin needed. You can cancel any of them in Markets.`
         }</p></div></div>
-        <div class="toggle-grid"><label class="toggle"><input type="checkbox" data-action="admin-auto-listings"${a.enabled ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>New MEXC listings</label></div>
+        <div class="toggle-grid"><label class="toggle"><input type="checkbox" data-action="admin-auto-listings"${a.enabled ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>Check for new listings</label></div>
       </section>`;
 }
 
@@ -15957,7 +15963,7 @@ function reviewPrefill(d) {
   };
 }
 
-/** New MEXC listings waiting for the admin: review (opens the market form filled in) or skip. */
+/** New exchange listings waiting for the admin: review (opens the market form filled in) or skip. */
 function listingsPanel(pending) {
   if (!pending.length) return '';
   const now = Date.now();
@@ -16015,7 +16021,7 @@ function telegramPanel(t) {
     : '';
   return `
       <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('bell')}</span><div><h2>Telegram alerts</h2><p class="muted">A message to you when a new token lists on MEXC, and when a market closes and needs your result.</p></div></div>
+        <div class="section-head"><span class="section-ico">${ico('bell')}</span><div><h2>Telegram alerts</h2><p class="muted">A message to you when a new token lists on an exchange we watch, and when a market closes and needs your result.</p></div></div>
         ${body}
       </section>${channel}`;
 }

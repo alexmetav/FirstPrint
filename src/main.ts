@@ -93,11 +93,13 @@ setInterval(() => {
   }
 }, 60_000).unref();
 
-// Manual-only servers still watch MEXC for new listings. By default each one waits in the admin's
-// review queue (with a Telegram alert); AUTO_LISTINGS=publish opens self-settling markets instead,
-// and AUTO_LISTINGS=0 turns it off. Admins can pause it in Settings. Otherwise the full scanner runs.
+// Manual-only servers still watch some exchanges for new listings (LISTING_VENUES: MEXC, OKX, Gate,
+// Bitget and KuCoin by default). By default each one waits in the admin's review queue (with a Telegram
+// alert); AUTO_LISTINGS=publish opens self-settling markets instead, and AUTO_LISTINGS=0 turns it off.
+// Admins can pause it, or switch single exchanges off, in Settings. Otherwise the full scanner runs.
 const autoListings = cfg.manualOnly ? cfg.autoListings : 'off';
-const tracked = cfg.manualOnly ? (autoListings !== 'off' ? venues.filter((v) => v.id === 'mexc') : []) : venues.filter((v) => cfg.trackVenues.includes(v.id));
+const tracked = cfg.manualOnly ? (autoListings !== 'off' ? venues.filter((v) => cfg.listingVenues.includes(v.id)) : []) : venues.filter((v) => cfg.trackVenues.includes(v.id));
+const venueEnabled = cfg.manualOnly ? (id: string) => service.exchangeEnabled(id) : undefined;
 const tracker = !tracked.length
   ? null
   : autoListings === 'review'
@@ -105,6 +107,7 @@ const tracker = !tracked.length
         autoCreate: false,
         review: true,
         enabled: () => service.autoListingsEnabled(),
+        venueEnabled,
         onNew: (found) => {
           for (const d of found) alert(newListingText(d, adminUrl, systemClock.now()));
         },
@@ -115,6 +118,7 @@ const tracker = !tracked.length
           maxPerDay: cfg.autoMarketsPerDay,
           durationMs: cfg.autoMarketHours * 3_600_000,
           enabled: () => service.autoListingsEnabled(),
+          venueEnabled,
         })
       : new ListingTracker(service, tracked, { autoCreate: cfg.autoCreateMarkets });
 
@@ -149,7 +153,7 @@ const server = createApiServer({
   rewards,
   adminKey: cfg.adminKey,
   manualOnly: cfg.manualOnly,
-  autoListings: autoListings === 'off' ? null : { mode: autoListings, perDay: cfg.autoMarketsPerDay, hours: cfg.autoMarketHours },
+  autoListings: autoListings === 'off' ? null : { mode: autoListings, perDay: cfg.autoMarketsPerDay, hours: cfg.autoMarketHours, venues: tracked.map((v) => v.id) },
   telegram,
   channel,
   trustProxyHops: cfg.trustProxyHops,

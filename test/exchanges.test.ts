@@ -138,7 +138,7 @@ test('bitget and kucoin: candles and announcements', async () => {
 
 // --- Listing tracker -----------------------------------------------------------------
 
-function fakeVenue(id: string, state: { pairs: { pair: string; base: string; listingAt: number | null }[]; anns: { id: string; title: string; listingAt: number | null }[] }): Venue {
+function fakeVenue(id: string, state: { pairs: { pair: string; base: string; listingAt: number | null }[]; anns: { id: string; title: string; listingAt: number | null; publishedAt?: number }[] }): Venue {
   return {
     id,
     name: id.toUpperCase(),
@@ -147,7 +147,7 @@ function fakeVenue(id: string, state: { pairs: { pair: string; base: string; lis
     fetchTicker: async () => ({ price: 1, ts: Date.now() }),
     listPairs: async () => state.pairs.map((p) => ({ ...p, quote: 'USDT' })),
     fetchAnnouncements: async () =>
-      state.anns.map((a) => ({ exchange: id, id: a.id, title: a.title, url: `https://ex/${a.id}`, publishedAt: T, listingAt: a.listingAt, symbols: extractSymbols(a.title) })),
+      state.anns.map((a) => ({ exchange: id, id: a.id, title: a.title, url: `https://ex/${a.id}`, publishedAt: a.publishedAt ?? T, listingAt: a.listingAt, symbols: extractSymbols(a.title) })),
   };
 }
 
@@ -316,6 +316,50 @@ test('review queue: new listings wait for the admin, with an alert; old pairs an
   clock.advance(4 * 24 * 60 * MIN);
   await tracker.run();
   assert.equal(service.detections({ status: 'pending' }).length, 0, 'listings left for days drop off the queue');
+});
+
+test('review queue across exchanges: one alert per token, old announcements skipped, an exchange can be switched off', async () => {
+  const clock = new ManualClock(T);
+  type S = { pairs: { pair: string; base: string; listingAt: number | null }[]; anns: { id: string; title: string; listingAt: number | null; publishedAt?: number }[] };
+  const mexcState: S = { pairs: [{ pair: 'BTCUSDT', base: 'BTC', listingAt: null }], anns: [] };
+  const gateState: S = {
+    pairs: [{ pair: 'ETHUSDT', base: 'ETH', listingAt: null }],
+    // Announcements a newly watched exchange already had: a week old is skipped, today's is kept.
+    anns: [
+      { id: 'old', title: 'GATE Will List Ancient Coin (ANCI)', listingAt: null, publishedAt: T - 7 * 24 * 60 * MIN },
+      { id: 'new', title: 'GATE Will List Fresh Coin (FRSH)', listingAt: T + 5 * 60 * MIN },
+    ],
+  };
+  const mexc = fakeVenue('mexc', mexcState);
+  delete mexc.fetchAnnouncements;
+  const gate = fakeVenue('gate', gateState);
+  const service = new FirstprintService(openDb(':memory:'), clock, [mexc, gate]);
+  const alerts: string[] = [];
+  const tracker = new ListingTracker(service, [mexc, gate], {
+    autoCreate: false,
+    review: true,
+    venueEnabled: (id) => service.exchangeEnabled(id),
+    onNew: (ds) => void alerts.push(...ds.map((d) => `${d.symbol}@${d.exchange}`)),
+  });
+  await tracker.run();
+  assert.deepEqual(alerts, ['FRSH@gate'], 'first run: only the recent announcement, no existing pairs');
+
+  // The same new token on both exchanges in one run: one alert, from the exchange seen first.
+  mexcState.pairs.push({ pair: 'DUOUSDT', base: 'DUO', listingAt: T + 60 * MIN });
+  gateState.pairs.push({ pair: 'DUOUSDT', base: 'DUO', listingAt: T + 60 * MIN });
+  // Announced earlier on Gate, now its pair appears too: no second alert.
+  gateState.pairs.push({ pair: 'FRSHUSDT', base: 'FRSH', listingAt: T + 5 * 60 * MIN });
+  await tracker.run();
+  assert.deepEqual(alerts, ['FRSH@gate', 'DUO@mexc']);
+  assert.deepEqual(service.detections({ status: 'pending' }).map((d) => `${d.symbol}@${d.exchange}`).sort(), ['DUO@mexc', 'FRSH@gate']);
+
+  // Switched off under Reference exchanges: not checked at all.
+  service.setExchangeEnabled('gate', false);
+  gateState.pairs.push({ pair: 'OFFUSDT', base: 'OFF', listingAt: T + 60 * MIN });
+  assert.equal((await tracker.run()).detected, 0);
+  service.setExchangeEnabled('gate', true);
+  await tracker.run();
+  assert.deepEqual(alerts.at(-1), 'OFF@gate', 'picked up once switched back on');
 });
 
 test('review queue: deleting a draft made from a listing returns it to the queue; stale drafts and time-less listings', async () => {
