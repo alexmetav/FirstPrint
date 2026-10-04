@@ -291,6 +291,7 @@ export class DemoBackend {
       name: m.name,
       exchange: m.exchange,
       sourceUrl: null,
+      logoUrl: m.logoUrl ?? null,
       status: m.status,
       phase,
       announcedListingAt: m.announcedListingAt,

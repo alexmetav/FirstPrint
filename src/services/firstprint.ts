@@ -74,6 +74,7 @@ interface MarketRow {
   exchange: string;
   venues: string;
   source_url: string | null;
+  logo_url?: string | null;
   announced_listing_at: number;
   listing_at: number;
   opened_at: number;
@@ -146,6 +147,8 @@ export interface ManualMarketInput {
   config?: Partial<MarketConfig>;
   note?: string;
   sourceUrl?: string;
+  /** Token logo: an https image URL or a small data:image (png, jpeg, webp, gif) the admin uploaded. Empty string removes it. */
+  logoUrl?: string;
   publish?: boolean;
 }
 
@@ -814,8 +817,9 @@ export class FirstprintService {
     const name = input.name ? String(input.name).trim().slice(0, 80) : null;
     const note = input.note ? String(input.note).trim().slice(0, 2000) : null;
     const sourceUrl = input.sourceUrl ? String(input.sourceUrl).trim().slice(0, 500) : null;
+    const logoUrl = cleanLogo(input.logoUrl);
     void now;
-    return { symbol, name, venues, exchangeLabel, basePrice, closeAt, cfg, note, sourceUrl };
+    return { symbol, name, venues, exchangeLabel, basePrice, closeAt, cfg, note, sourceUrl, logoUrl };
   }
 
   /** Creates a draft (hidden from users) or, with publish: true, an open market. */
@@ -827,10 +831,10 @@ export class FirstprintService {
     this.db
       .prepare(
         `INSERT INTO markets (id, symbol, name, exchange, venues, source_url, announced_listing_at, listing_at,
-          opened_at, config, scorecard, status, kind, created_at, mode, published, base_price, note)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', 'listing', ?, 'manual', ?, ?, ?)`,
+          opened_at, config, scorecard, status, kind, created_at, mode, published, base_price, note, logo_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', 'listing', ?, 'manual', ?, ?, ?, ?)`,
       )
-      .run(id, f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, now, JSON.stringify(f.cfg), now, input.publish ? 1 : 0, f.basePrice, f.note);
+      .run(id, f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, now, JSON.stringify(f.cfg), now, input.publish ? 1 : 0, f.basePrice, f.note, f.logoUrl);
     this.log(`manual market ${input.publish ? 'published' : 'drafted'} ${id}`);
     if (input.publish) this.onEvent('market', { marketId: id });
     return id;
@@ -858,6 +862,7 @@ export class FirstprintService {
       config: cfg,
       note: m.note ?? undefined,
       sourceUrl: m.source_url ?? undefined,
+      logoUrl: m.logo_url ?? undefined,
     };
     if (m.published === 1 && hasPredictions) {
       const locked = ['symbol', 'basePrice', 'config'] as const;
@@ -876,9 +881,9 @@ export class FirstprintService {
     this.db
       .prepare(
         `UPDATE markets SET symbol = ?, name = ?, exchange = ?, venues = ?, source_url = ?, announced_listing_at = ?,
-          listing_at = ?, config = ?, base_price = ?, note = ? WHERE id = ?`,
+          listing_at = ?, config = ?, base_price = ?, note = ?, logo_url = ? WHERE id = ?`,
       )
-      .run(f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, JSON.stringify(f.cfg), f.basePrice, f.note, marketId);
+      .run(f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, JSON.stringify(f.cfg), f.basePrice, f.note, f.logoUrl, marketId);
     if (m.published === 1) this.onEvent('market', { marketId }); // drafts stay private
     return marketId;
   }
@@ -1813,6 +1818,7 @@ export class FirstprintService {
       exchange: m.exchange,
       venues: (JSON.parse(m.venues) as VenueRef[]).map((v) => ({ id: v.venue, name: this.venues.get(v.venue)?.name ?? v.venue, pair: v.symbol })),
       sourceUrl: m.source_url,
+      logoUrl: m.logo_url ?? null,
       status: m.status,
       phase,
       announcedListingAt: m.announced_listing_at,
@@ -1919,4 +1925,23 @@ export function weekStart(now: number): number {
   const d = new Date(now);
   const day = (d.getUTCDay() + 6) % 7;
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day);
+}
+
+const LOGO_DATA = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
+const MAX_LOGO = 40_000;
+
+/** Accepts an https image URL or a small base64 image; empty means no logo. */
+function cleanLogo(v: unknown): string | null {
+  const s = typeof v === 'string' ? v.trim() : '';
+  if (!s) return null;
+  if (s.length > MAX_LOGO) throw new AppError(400, 'bad_logo', 'The logo is too large. Use an image under 25 KB or a link to one.');
+  if (LOGO_DATA.test(s)) return s;
+  let url: URL;
+  try {
+    url = new URL(s);
+  } catch {
+    throw new AppError(400, 'bad_logo', 'The logo must be an https:// image link or an uploaded PNG, JPG, WebP or GIF.');
+  }
+  if (url.protocol !== 'https:') throw new AppError(400, 'bad_logo', 'The logo link must start with https://');
+  return url.toString();
 }

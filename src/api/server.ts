@@ -451,6 +451,7 @@ export function createApiServer(opts: ServerOptions): Server {
     config: b.config as never,
     note: b.note as string | undefined,
     sourceUrl: b.sourceUrl as string | undefined,
+    logoUrl: b.logoUrl as string | undefined,
   });
 
   route('GET', '/api/admin/exchanges', ({ requireAdmin }) => {

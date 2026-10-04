@@ -2753,6 +2753,18 @@ main .input-wrap input:not([type='checkbox']) {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 4px 12px -6px hsl(var(--h) 70% 40%);
 }
+.avatar-img {
+  background: var(--surface-2);
+  overflow: hidden;
+  text-shadow: none;
+  box-shadow: inset 0 0 0 1px var(--line), 0 4px 12px -6px rgba(0, 0, 0, 0.5);
+}
+.avatar-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 .avatar-sm { --size: 26px; }
 .avatar-md { --size: 42px; }
 .avatar-lg { --size: 54px; }
@@ -5457,6 +5469,27 @@ h2,
   }
 }
 
+/* Token logo field in the admin market form */
+.logo-field { display: grid; gap: 8px; }
+.logo-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.logo-preview {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px dashed var(--line-strong);
+  color: var(--muted, #8b93c9);
+}
+.logo-preview img { width: 100%; height: 100%; object-fit: cover; }
+.logo-preview svg { width: 22px; height: 22px; }
+.logo-link { flex: 1 1 260px; min-width: 0; }
+.logo-upload { cursor: pointer; }
+.logo-field small { font-size: 0.8rem; }
+
 </style>
   </head>
   <body>
@@ -6584,6 +6617,7 @@ class DemoBackend {
       name: m.name,
       exchange: m.exchange,
       sourceUrl: null,
+      logoUrl: m.logoUrl ?? null,
       status: m.status,
       phase,
       announcedListingAt: m.announcedListingAt,
@@ -7100,6 +7134,8 @@ const P = {
   // Navigation and objects
   home: '<path d="M4 19V9l8-5 8 5v10"/><path d="M9 19v-6h6v6"/>',
   grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
+  upload: '<path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
   radar: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 12l5-5"/>',
   trophy:
     '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
@@ -7458,6 +7494,23 @@ function titleFor() {
   return 'Firstprint: predict new exchange listings';
 }
 
+/** A market's token logo, falling back to the letter circle. Takes a market, or a row with symbol + marketId. */
+function tokenAvatar(m, cls = '') {
+  const logo = m.logoUrl ?? logoOf(m.marketId);
+  if (!logo) return avatar(m.symbol, cls);
+  return `<span class="avatar avatar-img${cls ? ` ${cls}` : ''}" aria-hidden="true"><img class="tok-logo" src="${esc(logo)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-sym="${esc(m.symbol)}" /></span>`;
+}
+
+/** Looks up a logo from the loaded market lists (portfolio and history rows carry only the id). */
+function logoOf(id) {
+  if (!id || !S.lists) return null;
+  for (const list of [S.lists.open, S.lists.live, S.lists.settled]) {
+    const hit = (list ?? []).find((x) => x.id === id);
+    if (hit) return hit.logoUrl ?? null;
+  }
+  return null;
+}
+
 // ------------------------------------------------------------------ Top bar
 
 /** Navigation: the same pages in the top bar (wide screens) and the tab bar (phones). */
@@ -7619,7 +7672,7 @@ function featuredView(m) {
     <section class="featured" aria-labelledby="featured-title">
       <div class="featured-main">
         <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Featured market · Yes / No</span>
-        <div class="hero-token">${avatar(m.symbol, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">above ${fmtPrice(m.basePrice)}?</span></h1><p class="hero-name">${esc(m.name || m.symbol)} · ${yes === null ? 'no predictions yet' : `${yes}% say Yes`}</p></div></div>
+        <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">above ${fmtPrice(m.basePrice)}?</span></h1><p class="hero-name">${esc(m.name || m.symbol)} · ${yes === null ? 'no predictions yet' : `${yes}% say Yes`}</p></div></div>
         <p class="lede">Will ${esc(m.name || m.symbol)} be at or above ${fmtPrice(m.basePrice)} when the result is posted? Pick Yes or No.</p>
         ${heroFacts(m, 'Closes in', until(m.closeAt))}
         <div class="actions">
@@ -7635,7 +7688,7 @@ function featuredView(m) {
     <section class="featured" aria-labelledby="featured-title">
       <div class="featured-main">
         <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Featured market · open for predictions</span>
-        <div class="hero-token">${avatar(m.symbol, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">is open</span></h1><p class="hero-name">${esc(m.name || m.symbol)} · start price ${fmtPrice(m.basePrice)}</p></div></div>
+        <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">is open</span></h1><p class="hero-name">${esc(m.name || m.symbol)} · start price ${fmtPrice(m.basePrice)}</p></div></div>
         <p class="lede">Predict where ${esc(m.name || m.symbol)} is priced at the result, compared with the start price. ${m.pool ? '' : 'Nobody has predicted yet, so early picks get the biggest bonus.'}</p>
         ${heroFacts(m, 'Closes in', until(m.closeAt))}
         <div class="actions">
@@ -7653,7 +7706,7 @@ function featuredView(m) {
     <section class="featured" aria-labelledby="featured-title">
       <div class="featured-main">
         <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Featured market</span>
-        <div class="hero-token">${avatar(m.symbol, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">${verb}</span></h1><p class="hero-name">${esc(m.name || m.symbol)}</p></div></div>
+        <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">${verb}</span></h1><p class="hero-name">${esc(m.name || m.symbol)}</p></div></div>
         <p class="lede">Predict where ${esc(m.name || m.symbol)} trades ${fmtSpan(m.settleAt - m.listingAt)} after ${test ? `the market starts, using live prices from ${esc(venueNames(m))}` : 'listing'}.</p>
         ${heroFacts(m, pre ? (test ? 'Starts in' : 'Lists in') : 'Closes in', pre ? until(m.listingAt) : until(m.closeAt))}
         <div class="actions">
@@ -7698,7 +7751,7 @@ function cardView(m) {
   return `
     <a class="card${soon ? ' soon' : ''}" href="#/market/${encodeURIComponent(m.id)}">
       <div class="card-top">
-        ${avatar(m.symbol, 'avatar-md')}
+        ${tokenAvatar(m, 'avatar-md')}
         <div class="card-title"><span class="sym">${esc(m.symbol)}${yn ? ' <span class="tag tag-yn">Yes / No</span>' : ''}</span><span class="card-name">${esc(m.name || '')}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</span></div>
         ${soon ? `<span class="pill pill-hot">${ico('flame')}Closing soon</span>` : cardStatus(m)}
       </div>
@@ -7846,7 +7899,7 @@ function marketMain(m) {
   return `
     <a class="back" href="#/">${ico('arrowLeft')}All markets</a>
     <header class="m-head">
-      <div class="m-title">${avatar(m.symbol, 'avatar-lg')}<div class="m-title-text"><div class="m-title-row"><h1 class="sym">${esc(m.symbol)}</h1>${cardStatus(m)}${
+      <div class="m-title">${tokenAvatar(m, 'avatar-lg')}<div class="m-title-text"><div class="m-title-row"><h1 class="sym">${esc(m.symbol)}</h1>${cardStatus(m)}${
         (m.phase === 'baseline' || m.phase === 'running') && S.live && !isManual(m) ? '<span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Live price</span>' : ''
       }</div>${m.name ? `<span class="m-name">${esc(m.name)}</span>` : ''}</div><button class="btn share-btn" data-action="share" aria-label="Share this market">${ico('share')}<span class="hide-sm">Share</span></button></div>
       <p class="m-question">${
@@ -8417,7 +8470,7 @@ function portfolioView(preds, history = [], stats = null) {
     ? `<table class="table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right">Status</th></tr></thead><tbody>${active
         .map((p) => {
           const status = p.marketStatus === 'open' ? '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>' : `<span class="pill pill-wait">${p.mode === 'manual' ? 'Awaiting result' : 'In play'}</span>`;
-          return `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(p.marketId)}">${avatar(p.symbol, 'avatar-sm')}<span>${esc(p.symbol)}</span></a></td><td>${outcome(p.bucket, p.outcomes === 'binary')}</td><td class="right num-cell">${fmtNum(p.stake)}</td><td class="right">${status}</td></tr>`;
+          return `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(p.marketId)}">${tokenAvatar(p, 'avatar-sm')}<span>${esc(p.symbol)}</span></a></td><td>${outcome(p.bucket, p.outcomes === 'binary')}</td><td class="right num-cell">${fmtNum(p.stake)}</td><td class="right">${status}</td></tr>`;
         })
         .join('')}</tbody></table>`
     : `<p class="muted pad">Nothing in play right now. <a href="#/">Pick a market</a> to get started.</p>`;
@@ -8470,7 +8523,7 @@ function profileView(p) {
   const positions = p.positions.length
     ? `<table class="table"><thead><tr><th>Market</th><th>Pick</th><th class="right">Points</th><th class="right">Status</th></tr></thead><tbody>${p.positions
         .map(
-          (x) => `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(x.marketId)}">${avatar(x.symbol, 'avatar-sm')}<span>${esc(x.symbol)}</span></a></td><td>${outcome(x.bucket, x.outcomes === 'binary')}</td><td class="right num-cell">${fmtNum(x.stake)}</td><td class="right">${
+          (x) => `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(x.marketId)}">${tokenAvatar(x, 'avatar-sm')}<span>${esc(x.symbol)}</span></a></td><td>${outcome(x.bucket, x.outcomes === 'binary')}</td><td class="right num-cell">${fmtNum(x.stake)}</td><td class="right">${
             x.marketStatus === 'open' ? '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>' : '<span class="pill pill-wait">Awaiting result</span>'
           }</td></tr>`,
         )
@@ -8593,7 +8646,7 @@ function pastMarkets(st) {
           ? `<table class="table"><thead><tr><th>Market</th><th>Your pick</th><th class="hide-sm">Result</th><th class="right">Staked</th><th class="right">Points</th></tr></thead><tbody>${rows
               .map(
                 (m) => `<tr>
-                  <td><a class="mkt-cell" href="#/market/${encodeURIComponent(m.marketId)}">${avatar(m.symbol, 'avatar-sm')}<span>${esc(m.symbol)}</span></a> <span class="muted hide-sm">${fmtAgo(m.settledAt)}</span></td>
+                  <td><a class="mkt-cell" href="#/market/${encodeURIComponent(m.marketId)}">${tokenAvatar(m, 'avatar-sm')}<span>${esc(m.symbol)}</span></a> <span class="muted hide-sm">${fmtAgo(m.settledAt)}</span></td>
                   <td>${m.buckets.map((b) => outcome(b, m.binary)).join(' ')}</td>
                   <td class="hide-sm">${m.winningBucket ? outcome(m.winningBucket, m.binary) : '–'}</td>
                   <td class="right">${fmtNum(m.staked)}</td>
@@ -9681,7 +9734,7 @@ function adminMarketsTab(markets, waiting) {
           ? `<div class="table-scroll"><table class="table"><thead><tr><th>Market</th><th class="hide-sm">Type</th><th>Status</th><th class="right">Pool</th><th class="right"></th></tr></thead><tbody>${markets
               .map(
                 (m) => `<tr>
-                  <td><span class="mkt-cell">${avatar(m.symbol, 'avatar-sm')}<span>${m.published ? `<a href="#/market/${encodeURIComponent(m.id)}">${esc(m.symbol)}</a>` : `<b>${esc(m.symbol)}</b>`}<small class="muted hide-sm">${esc(venueNames(m))}</small></span></span></td>
+                  <td><span class="mkt-cell">${tokenAvatar(m, 'avatar-sm')}<span>${m.published ? `<a href="#/market/${encodeURIComponent(m.id)}">${esc(m.symbol)}</a>` : `<b>${esc(m.symbol)}</b>`}<small class="muted hide-sm">${esc(venueNames(m))}</small></span></span></td>
                   <td class="hide-sm">${isYesNo(m) ? 'Yes / No' : m.mode === 'manual' ? 'Five outcomes' : m.kind === 'live_test' ? 'Live test' : 'Listing'}</td>
                   <td>${adminPhasePill(m)}</td>
                   <td class="right num-cell">${fmtNum(m.pool)}</td>
@@ -9891,6 +9944,17 @@ function marketForm(m) {
       ${locked ? '<p class="muted" style="grid-column:1/-1">Users have already predicted, so the token, start price, ranges, and pool rules are locked. You can still edit the description, exchanges, and move the close time later. To change anything else, cancel and refund the market.</p>' : ''}
       <label><span class="field-label">Token symbol</span><input name="symbol" placeholder="XYZ" value="${esc(m?.symbol ?? '')}" required autocomplete="off"${lock} /></label>
       <label><span class="field-label">Token name (optional)</span><input name="name" placeholder="XYZ Protocol" value="${esc(m?.name ?? '')}" autocomplete="off" /></label>
+      <div class="logo-field" style="grid-column:1/-1">
+        <span class="field-label">Token logo (optional)</span>
+        <div class="logo-row">
+          <span class="logo-preview" data-logo-preview>${m?.logoUrl ? `<img src="${esc(m.logoUrl)}" alt="" referrerpolicy="no-referrer" />` : ico('image')}</span>
+          <input type="hidden" name="logoUrl" value="${esc(m?.logoUrl ?? '')}" />
+          <input class="logo-link" data-logo-link type="url" inputmode="url" placeholder="Paste an image link (https://…)" value="${m?.logoUrl && !m.logoUrl.startsWith('data:') ? esc(m.logoUrl) : ''}" autocomplete="off" />
+          <label class="btn btn-sm logo-upload">${ico('upload')}Upload<input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-logo-file hidden /></label>
+          <button class="btn btn-sm" type="button" data-action="logo-clear"${m?.logoUrl ? '' : ' hidden'}>Remove</button>
+        </div>
+        <small class="muted">Square images look best. Uploads are shrunk to 128 × 128. Tip: on CoinGecko, right-click the token's logo and choose “Copy image address”.</small>
+      </div>
       <label><span class="field-label"><span class="ladder-only">Start price (USD)</span><span class="binary-only">Target price (USD)</span></span><input name="basePrice" type="number" step="any" min="0" placeholder="0.25" value="${m?.basePrice ?? ''}" required${lock} /></label>
       <label><span class="field-label">Predictions close (your time)</span><input name="closeAt" type="datetime-local" value="${toLocalInput(m?.closeAt ?? soon)}" required /></label>
       <label><span class="field-label">Result expected by (your time)</span><input name="resultAt" type="datetime-local" value="${toLocalInput(m?.settleAt ?? soon + 24 * 3_600_000)}" required /></label>
@@ -10046,6 +10110,8 @@ async function onAdminAction(action, el) {
         toast(err.message, true);
       }
       return renderAdmin();
+    case 'logo-clear':
+      return setLogo(el.closest('form'), '');
     case 'admin-logout':
       A.api = null;
       A.info = null;
@@ -10198,6 +10264,7 @@ async function submitAdminMarket(form, intent) {
     closeAt: inputMs(d.get('closeAt')),
     resultAt: inputMs(d.get('resultAt')),
     note: String(d.get('note') || '').trim(),
+    logoUrl: String(d.get('logoUrl') || '').trim(),
   };
   // Disabled (locked) fields are absent from FormData and stay unchanged on the server.
   if (d.has('symbol')) body.symbol = String(d.get('symbol') || '').trim();
@@ -10426,6 +10493,72 @@ document.addEventListener('input', (e) => {
     requestQuote();
   }
 });
+
+document.addEventListener('input', (e) => {
+  if (!e.target.matches?.('[data-logo-link]')) return;
+  const v = e.target.value.trim();
+  if (!v || /^https:\/\/\S+$/i.test(v)) setLogo(e.target.form, v, { keepLink: true });
+});
+
+document.addEventListener('change', async (e) => {
+  if (!e.target.matches?.('[data-logo-file]')) return;
+  const file = e.target.files?.[0];
+  const form = e.target.form;
+  e.target.value = '';
+  if (!file) return;
+  if (!file.type.startsWith('image/')) return toast('Choose an image file (PNG, JPG, WebP, GIF or SVG).', true);
+  if (file.size > 5_000_000) return toast('That image is over 5 MB. Choose a smaller one.', true);
+  try {
+    setLogo(form, await shrinkImage(file, 128));
+  } catch {
+    toast('Couldn’t read that image. Try a PNG or JPG.', true);
+  }
+});
+
+// A broken logo link falls back to the letter circle. Image errors don't bubble, so listen while capturing.
+document.addEventListener(
+  'error',
+  (e) => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement) || !img.classList.contains('tok-logo')) return;
+    img.closest('.avatar')?.replaceWith(Object.assign(document.createElement('template'), { innerHTML: avatar(img.dataset.sym, [...img.parentElement.classList].filter((c) => /^avatar-(sm|md|lg|xl)$/.test(c)).join(' ')) }).content);
+  },
+  true,
+);
+
+/** Puts a logo (link or data URL, '' for none) into the market form and its preview. */
+function setLogo(form, value, { keepLink = false } = {}) {
+  if (!form) return;
+  form.querySelector('[name=logoUrl]').value = value;
+  if (!keepLink) form.querySelector('[data-logo-link]').value = value.startsWith('data:') ? '' : value;
+  const preview = form.querySelector('[data-logo-preview]');
+  preview.innerHTML = value ? `<img src="${esc(value)}" alt="" referrerpolicy="no-referrer" />` : ico('image');
+  form.querySelector('[data-action=logo-clear]').hidden = !value;
+}
+
+/** Draws an image into a size × size square (cropped to the centre) and returns a small data URL. */
+async function shrinkImage(file, size) {
+  // Read as a data URL: the page's security policy allows data: images but not blob: ones.
+  const src = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = src;
+  });
+  const w = img.naturalWidth || size;
+  const h = img.naturalHeight || size;
+  const side = Math.min(w, h);
+  const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size });
+  canvas.getContext('2d').drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, size, size);
+  const webp = canvas.toDataURL('image/webp', 0.9);
+  return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/png');
+}
 
 document.addEventListener('input', (e) => {
   if (e.target.id !== 'auth-code') return;
