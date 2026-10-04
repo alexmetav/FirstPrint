@@ -10,6 +10,7 @@ import type { Mailer } from '../auth/mailer.ts';
 import type { Bucket } from '../engine/engine.ts';
 import { linkSiteToApp } from '../site/links.ts';
 import { fetchImage } from './fetchImage.ts';
+import type { Telegram } from '../services/telegram.ts';
 import type { RewardsService, TaskInput } from '../services/rewards.ts';
 
 export interface ServerOptions {
@@ -32,7 +33,9 @@ export interface ServerOptions {
   /** True when exchange auto-detection and live prices are off and admins run every market. */
   manualOnly?: boolean;
   /** Automatic markets for new MEXC listings, when the server runs them. */
-  autoListings?: { perDay: number; hours: number } | null;
+  autoListings?: { mode: 'review' | 'publish'; perDay: number; hours: number } | null;
+  /** Admin alerts on Telegram, when TELEGRAM_BOT_TOKEN is set. */
+  telegram?: Telegram | null;
   /** Tasks, referrals and TestFPT claims. */
   rewards?: RewardsService | null;
   /** Public site URL used in wallet sign-in messages, e.g. https://firstprint.xyz */
@@ -479,10 +482,53 @@ export function createApiServer(opts: ServerOptions): Server {
     return { enabled };
   });
 
+  const telegramOn = () => {
+    if (!opts.telegram) throw new AppError(409, 'telegram_off', 'Add TELEGRAM_BOT_TOKEN on the server first.');
+    return opts.telegram;
+  };
+
+  route('POST', '/api/admin/telegram/connect', async ({ req, body, requireAdmin }) => {
+    requireAdmin();
+    const code = String((await body()).code ?? '').trim();
+    if (!/^FP-\d{6}$/.test(code)) throw new AppError(400, 'bad_code', 'Use the code shown in Admin.');
+    const t = telegramOn();
+    let found: boolean;
+    try {
+      found = await t.connect(code);
+    } catch (err) {
+      throw new AppError(502, 'telegram_failed', (err as Error).message);
+    }
+    if (!found) throw new AppError(404, 'not_found', `No message with ${code} yet. Send it to your bot in Telegram, then try again.`);
+    audit(req, 'telegram_connected', null);
+    await t.send('✅ Firstprint alerts are connected. New MEXC listings and markets that need a result will show up here.').catch(() => {});
+    return { connected: true };
+  });
+
+  route('POST', '/api/admin/telegram/test', async ({ requireAdmin }) => {
+    requireAdmin();
+    const t = telegramOn();
+    if (!t.connected) throw new AppError(409, 'not_connected', 'Connect a chat first.');
+    try {
+      await t.send('🔔 Test alert from Firstprint. Alerts are working.');
+    } catch (err) {
+      throw new AppError(502, 'telegram_failed', (err as Error).message);
+    }
+    return { sent: true };
+  });
+
+  route('POST', '/api/admin/telegram/disconnect', async ({ req, requireAdmin }) => {
+    requireAdmin();
+    telegramOn().setChat(null);
+    audit(req, 'telegram_disconnected', null);
+    return { connected: false };
+  });
+
   route('POST', '/api/admin/manual-markets', async ({ req, body, requireAdmin }) => {
     requireAdmin();
     const b = await body();
     const id = service.createManualMarket({ ...manualBody(b), publish: b.publish === true });
+    // Made from a listing in the review queue: take it off the queue.
+    if (Number.isInteger(b.detectionId)) service.linkDetection(b.detectionId as number, id);
     audit(req, b.publish === true ? 'market_published' : 'market_drafted', id, `${String(b.symbol ?? '').toUpperCase()} start price ${b.basePrice}`);
     return service.getMarket(id, undefined, true);
   });
@@ -588,6 +634,7 @@ export function createApiServer(opts: ServerOptions): Server {
       exchanges: service.exchangeSettings(),
       manualOnly: opts.manualOnly ?? false,
       autoListings: opts.autoListings ? { ...opts.autoListings, enabled: service.autoListingsEnabled() } : null,
+      telegram: { configured: Boolean(opts.telegram), connected: Boolean(opts.telegram?.connected) },
       backup: opts.backupStatus?.() ?? { enabled: false, lastOkAt: null, lastError: null },
       presets: Object.entries(LIVE_PRESETS).map(([id, p]) => ({ id, label: p.label })),
       suggestedTokens: SUGGESTED_LIVE_TOKENS,

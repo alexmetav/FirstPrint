@@ -31,7 +31,7 @@ One "Log in or sign up" popup, like Polymarket: **Continue with Google**, **Cont
 
 ## Running markets from the admin panel
 
-By default (`MANUAL_ONLY=1`) admins run markets at `/#/admin`, and the only thing fetched from exchanges is MEXC's list of new pairs (see *Automatic markets* below):
+By default (`MANUAL_ONLY=1`) admins run markets at `/#/admin`, and the only thing fetched from exchanges by itself is MEXC's list of new pairs (see *New listings* below):
 
 1. **Exchanges:** switch exchanges on or off. Only enabled exchanges can be used in new markets.
 2. **Create a market:** token, start price, which exchanges, when predictions close, when the result is expected, a description, and optional outcome ranges, fee and pool limit. Save as a draft (users can't see it) or publish.
@@ -39,9 +39,11 @@ By default (`MANUAL_ONLY=1`) admins run markets at `/#/admin`, and the only thin
 4. **Timer ends:** the market closes automatically and waits under "Waiting for your result". Nothing settles by itself.
 5. **Post the result:** enter the final price. The panel previews the winning outcome, the winners and each payout; confirm to pay. The result, final price, your note and the winners then appear on the market page. You can override the outcome if the price source was disputed. If nobody picked the winning outcome, or everyone picked the same one, the market is cancelled and refunded.
 
-### Automatic markets
+### New listings and Telegram alerts
 
-Every 2 minutes the server checks MEXC's public pair list (`/api/v3/exchangeInfo`, no API key) for new USDT pairs. Each one that hasn't opened yet, or opened less than 40 minutes ago, gets a market that is published straight away: predictions stay open until 1 hour after trading starts, the start price is the average of that first hour and the final price the average of the last hour before the result, all from MEXC, and the market settles by itself. At most `AUTO_MARKETS_PER_DAY` (default 5) are opened in any 24 hours, and results come `AUTO_MARKET_HOURS` (default 72) after listing. Admins can pause this in Settings and cancel any automatic market in Markets. `AUTO_LISTINGS=0` turns it off completely. The server must stay awake for it to work (Render's free plan sleeps, so ping `/api/health` every few minutes).
+Every 2 minutes the server checks MEXC's public pair list (`/api/v3/exchangeInfo`, no API key) for new USDT pairs. Each new one appears under **New listings** in Admin (Overview and Markets) and, if connected, as a Telegram message. **Review** opens the market form already filled in: symbol, name, MEXC, close time (when trading starts for an upcoming token, otherwise an hour from now), a result 72 hours after listing, a description, and the live MEXC price with a one-click "Use as start price". Add the logo link (a copy is saved), check everything, and publish. **Skip** removes it. Tokens that already have a market, pairs that opened more than a day ago, and listings left for 3 days are dropped. Admins can pause the check in Settings; `AUTO_LISTINGS=0` turns it off, and `AUTO_LISTINGS=publish` instead opens self-settling markets straight away (at most `AUTO_MARKETS_PER_DAY`, default 5, a day, with results after `AUTO_MARKET_HOURS`, default 72). Results for admin-run markets have a "Use live price" button too.
+
+Telegram alerts: create a bot with @BotFather, set `TELEGRAM_BOT_TOKEN` on the server, then in Admin → Settings send the shown code to the bot and click Connect. Alerts go out for new listings and for markets that close and need a result. The server must stay awake for any of this (Render's free plan sleeps, so ping `/api/health` every few minutes).
 
 Set `MANUAL_ONLY=0` to bring back the exchange scanner, live prices and live test markets.
 

@@ -286,3 +286,34 @@ test('automatic listing markets: upcoming and just-opened pairs, 72h results, da
   await tracker.run();
   assert.ok(service.listMarkets('open').some((m) => m.symbol === 'OFF'));
 });
+
+test('review queue: new listings wait for the admin, with an alert; old pairs and tokens with a market are skipped', async () => {
+  const clock = new ManualClock(T);
+  const state = { pairs: [{ pair: 'OLDUSDT', base: 'OLD', listingAt: T - 30 * 24 * 60 * MIN }] as { pair: string; base: string; listingAt: number | null; name?: string }[], anns: [] };
+  const venue = fakeVenue('mexc', state);
+  delete venue.fetchAnnouncements;
+  const service = new FirstprintService(openDb(':memory:'), clock, [venue]);
+  const alerts: string[] = [];
+  const tracker = new ListingTracker(service, [venue], { autoCreate: false, review: true, onNew: (ds) => void alerts.push(...ds.map((d) => `${d.symbol}:${d.name ?? ''}`)) });
+  await tracker.run();
+
+  service.createMarket({ symbol: 'HAS', exchange: 'MEXC', venues: [{ venue: 'mexc', symbol: 'HASUSDT' }], announcedListingAt: T + 60 * MIN, listingAt: T + 60 * MIN });
+  state.pairs.push(
+    { pair: 'NEWUSDT', base: 'NEW', listingAt: T + 2 * 60 * MIN, name: 'New Token' },
+    { pair: 'RECENTUSDT', base: 'RECENT', listingAt: T - 3 * 60 * MIN },
+    { pair: 'BACKUSDT', base: 'BACK', listingAt: T - 5 * 24 * 60 * MIN }, // an old pair switched back on
+    { pair: 'HASUSDT', base: 'HAS', listingAt: T + 60 * MIN }, // already has a market
+  );
+  await tracker.run();
+  assert.deepEqual(alerts.sort(), ['NEW:New Token', 'RECENT:']);
+  assert.deepEqual(service.detections({ status: 'pending' }).map((d) => d.symbol).sort(), ['NEW', 'RECENT']);
+  assert.equal(service.listMarkets('open').length, 1, 'nothing is published by itself');
+
+  const d = service.detections({ status: 'pending' }).find((x) => x.symbol === 'NEW')!;
+  service.linkDetection(d.id, service.listMarkets('open')[0].id);
+  assert.equal(service.detections({ status: 'pending' }).length, 1);
+
+  clock.advance(4 * 24 * 60 * MIN);
+  await tracker.run();
+  assert.equal(service.detections({ status: 'pending' }).length, 0, 'listings left for days drop off the queue');
+});

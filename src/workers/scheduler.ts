@@ -15,6 +15,7 @@ export class Scheduler {
   notify: Notifier;
   tracker: ListingTracker | null;
   live: LiveFeed | null;
+  onClosed: (marketIds: string[]) => void;
   opts: { tickMs: number; liveMs: number; trackEveryMs: number };
   private timers: NodeJS.Timeout[] = [];
   private busy = { tick: false, live: false, track: false };
@@ -22,12 +23,21 @@ export class Scheduler {
   constructor(
     service: FirstprintService,
     notify: Notifier,
-    opts: { tickMs: number; liveMs?: number; trackEveryMs?: number; tracker?: ListingTracker | null; live?: LiveFeed | null },
+    opts: {
+      tickMs: number;
+      liveMs?: number;
+      trackEveryMs?: number;
+      tracker?: ListingTracker | null;
+      live?: LiveFeed | null;
+      /** Called with markets whose predictions just closed. */
+      onClosed?: (marketIds: string[]) => void;
+    },
   ) {
     this.service = service;
     this.notify = notify;
     this.tracker = opts.tracker ?? null;
     this.live = opts.live ?? null;
+    this.onClosed = opts.onClosed ?? (() => {});
     this.opts = { tickMs: opts.tickMs, liveMs: opts.liveMs ?? 5_000, trackEveryMs: opts.trackEveryMs ?? 120_000 };
   }
 
@@ -46,7 +56,8 @@ export class Scheduler {
   tick() {
     return this.guard('tick', async () => {
       await this.service.ingestPrices();
-      this.service.closeDueMarkets();
+      const closed = this.service.closeDueMarkets();
+      if (closed.length) this.onClosed(closed);
       const notes = this.service.settleDueMarkets();
       if (notes.length) await this.notify(notes);
     });

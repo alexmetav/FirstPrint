@@ -1398,13 +1398,14 @@ export class FirstprintService {
     listingAt: number | null;
     publishedAt: number | null;
     dedupeKey: string;
+    name?: string | null;
   }): number | null {
     const res = this.db
       .prepare(
-        `INSERT OR IGNORE INTO detected_listings (exchange, symbol, pair, source, title, url, listing_at, published_at, detected_at, dedupe_key)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO detected_listings (exchange, symbol, pair, source, title, url, listing_at, published_at, detected_at, dedupe_key, name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(d.exchange, d.symbol, d.pair, d.source, d.title, d.url, d.listingAt, d.publishedAt, this.clock.now(), d.dedupeKey);
+      .run(d.exchange, d.symbol, d.pair, d.source, d.title, d.url, d.listingAt, d.publishedAt, this.clock.now(), d.dedupeKey, d.name ?? null);
     if (res.changes !== 1) return null;
     const id = Number(res.lastInsertRowid);
     this.onEvent('listing', { id, exchange: d.exchange, symbol: d.symbol });
@@ -1438,6 +1439,7 @@ export class FirstprintService {
       exchange: r.exchange as string,
       exchangeName: this.venues.get(r.exchange as string)?.name ?? (r.exchange as string),
       symbol: r.symbol as string | null,
+      name: (r.name as string | null) ?? null,
       pair: r.pair as string | null,
       source: r.source as string,
       title: r.title as string | null,
@@ -1496,6 +1498,25 @@ export class FirstprintService {
   setAutoListings(enabled: boolean) {
     this.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('auto_listings', enabled ? '1' : '0');
     return this.autoListingsEnabled();
+  }
+
+  /** Listings left in the review queue for days are no longer worth a market. */
+  expireDetections(listedBefore: number) {
+    this.db.prepare("UPDATE detected_listings SET status = 'ignored' WHERE status = 'pending' AND listing_at IS NOT NULL AND listing_at < ?").run(listedBefore);
+  }
+
+  /** Marks a detected listing as done once the admin has made a market for it from the review queue. */
+  linkDetection(id: number, marketId: string) {
+    this.db.prepare("UPDATE detected_listings SET status = 'approved', market_id = ? WHERE id = ? AND status = 'pending'").run(marketId, id);
+  }
+
+  getSetting(key: string): string | null {
+    return as<{ value: string } | undefined>(this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key))?.value ?? null;
+  }
+
+  setSetting(key: string, value: string | null) {
+    if (value === null) this.db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+    else this.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
   }
 
   ignoreDetection(id: number) {

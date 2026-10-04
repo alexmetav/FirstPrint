@@ -9633,3 +9633,44 @@ a.wallet-option {
     justify-self: start;
   }
 }
+
+/* Admin: new listings queue, live price fill, Telegram setup */
+.todo-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.live-fill {
+  margin-top: 6px;
+  justify-self: start;
+  width: fit-content;
+}
+.tg-steps {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  color: var(--text-2, var(--muted));
+}
+.tg-steps code,
+.tg-code {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--surface-2, var(--surface));
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+.tg-code {
+  font-size: 15px;
+  font-weight: 600;
+  user-select: all;
+}
+@media (max-width: 640px) {
+  .todo li .todo-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
