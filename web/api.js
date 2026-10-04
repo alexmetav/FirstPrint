@@ -142,6 +142,7 @@ export function createAdminApi(key, baseUrl = '') {
     track: () => post('/api/admin/track'),
     log: () => request('/api/admin/log'),
     exchanges: () => request('/api/admin/exchanges'),
+    setAutoListings: (enabled) => post('/api/admin/auto-listings', { enabled }),
     setExchange: (id, enabled) => post(`/api/admin/exchanges/${encodeURIComponent(id)}`, { enabled }),
     createManual: (body) => post('/api/admin/manual-markets', body),
     updateManual: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}`, body),

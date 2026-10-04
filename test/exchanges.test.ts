@@ -220,3 +220,69 @@ test('live feed emits price events with projected outcome', async () => {
   assert.ok((price!.returnPct as number) > 0.1);
   assert.ok(['up', 'moon'].includes(price!.projectedBucket as string));
 });
+
+test('MEXC pairs carry the trading start time and name; paused pairs are left out', async () => {
+  const soon = Date.now() + 60 * MIN;
+  const v = mexc(
+    fakeHttp([
+      [
+        '/api/v3/exchangeInfo',
+        {
+          symbols: [
+            { symbol: 'AGENCYUSDT', baseAsset: 'AGENCY', quoteAsset: 'USDT', isSpotTradingAllowed: true, firstOpenTime: T, fullName: 'Agency' },
+            { symbol: 'SOONUSDT', baseAsset: 'SOON', quoteAsset: 'USDT', isSpotTradingAllowed: false, firstOpenTime: soon, fullName: 'Soon' },
+            { symbol: 'DEADUSDT', baseAsset: 'DEAD', quoteAsset: 'USDT', isSpotTradingAllowed: false, firstOpenTime: T },
+            { symbol: 'AGENCYUSDC', baseAsset: 'AGENCY', quoteAsset: 'USDC', isSpotTradingAllowed: true },
+          ],
+        },
+      ],
+    ]),
+  );
+  assert.deepEqual(await v.listPairs(), [
+    { pair: 'AGENCYUSDT', base: 'AGENCY', quote: 'USDT', listingAt: T, name: 'Agency' },
+    { pair: 'SOONUSDT', base: 'SOON', quote: 'USDT', listingAt: soon, name: 'Soon' },
+  ]);
+});
+
+test('automatic listing markets: upcoming and just-opened pairs, 72h results, daily limit, switch off', async () => {
+  const clock = new ManualClock(T);
+  const state = { pairs: [{ pair: 'OLDUSDT', base: 'OLD', listingAt: T - 30 * 24 * 60 * MIN }] as { pair: string; base: string; listingAt: number | null; name?: string }[], anns: [] };
+  const venue = fakeVenue('mexc', state);
+  delete venue.fetchAnnouncements;
+  const service = new FirstprintService(openDb(':memory:'), clock, [venue]);
+  const tracker = new ListingTracker(service, [venue], { autoCreate: true, maxPerDay: 5, durationMs: 72 * 60 * MIN, enabled: () => service.autoListingsEnabled() });
+
+  await tracker.run(); // first run only learns the existing pairs
+  assert.equal(service.listMarkets('open').length, 0);
+
+  state.pairs.push(
+    { pair: 'UPUSDT', base: 'UP', listingAt: T + 2 * 60 * MIN, name: 'Up Token' }, // upcoming
+    { pair: 'JUSTUSDT', base: 'JUST', listingAt: T - 10 * MIN }, // opened 10 minutes ago
+    { pair: 'LATEUSDT', base: 'LATE', listingAt: T - 2 * 60 * MIN }, // opened 2 hours ago: too late
+    { pair: 'NOTIMEUSDT', base: 'NOTIME', listingAt: null },
+  );
+  await tracker.run();
+  const open = service.listMarkets('open');
+  assert.deepEqual(open.map((m) => m.symbol).sort(), ['JUST', 'UP']);
+  const up = open.find((m) => m.symbol === 'UP')!;
+  assert.equal(up.name, 'Up Token');
+  assert.equal(up.listingAt, T + 2 * 60 * MIN);
+  assert.equal(service.getMarket(up.id).settleAt - up.listingAt, 72 * 60 * MIN);
+  assert.equal(service.getMarket(open.find((m) => m.symbol === 'JUST')!.id).listingAt, T - 10 * MIN, 'keeps the real start, so the start price is the first hour');
+
+  state.pairs.push({ pair: 'UP2USDT', base: 'UP', listingAt: T + 3 * 60 * MIN }); // same token again: no second market
+  await tracker.run();
+  assert.equal(service.listMarkets('open').filter((m) => m.symbol === 'UP').length, 1);
+
+  for (let i = 0; i < 6; i++) state.pairs.push({ pair: `N${i}USDT`, base: `NEWT${i}`, listingAt: T + 60 * MIN });
+  await tracker.run();
+  assert.equal(service.listMarkets('open').length, 5, 'no more than 5 in 24 hours');
+
+  clock.advance(25 * 60 * MIN);
+  service.setAutoListings(false);
+  state.pairs.push({ pair: 'OFFUSDT', base: 'OFF', listingAt: T + 26 * 60 * MIN });
+  assert.equal((await tracker.run()).detected, 0, 'switched off: nothing is checked');
+  service.setAutoListings(true);
+  await tracker.run();
+  assert.ok(service.listMarkets('open').some((m) => m.symbol === 'OFF'));
+});

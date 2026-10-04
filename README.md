@@ -31,13 +31,17 @@ One "Log in or sign up" popup, like Polymarket: **Continue with Google**, **Cont
 
 ## Running markets from the admin panel
 
-By default (`MANUAL_ONLY=1`) nothing is fetched from exchanges. Admins run every market at `/#/admin`:
+By default (`MANUAL_ONLY=1`) admins run markets at `/#/admin`, and the only thing fetched from exchanges is MEXC's list of new pairs (see *Automatic markets* below):
 
 1. **Exchanges:** switch exchanges on or off. Only enabled exchanges can be used in new markets.
 2. **Create a market:** token, start price, which exchanges, when predictions close, when the result is expected, a description, and optional outcome ranges, fee and pool limit. Save as a draft (users can't see it) or publish.
 3. **Edit:** drafts are fully editable. After users have predicted, the token, start price, ranges and pool rules lock; the description, exchanges and a *later* close time can still change. You can unpublish only while nobody has predicted, and cancel with a full refund at any time before the result.
 4. **Timer ends:** the market closes automatically and waits under "Waiting for your result". Nothing settles by itself.
 5. **Post the result:** enter the final price. The panel previews the winning outcome, the winners and each payout; confirm to pay. The result, final price, your note and the winners then appear on the market page. You can override the outcome if the price source was disputed. If nobody picked the winning outcome, or everyone picked the same one, the market is cancelled and refunded.
+
+### Automatic markets
+
+Every 2 minutes the server checks MEXC's public pair list (`/api/v3/exchangeInfo`, no API key) for new USDT pairs. Each one that hasn't opened yet, or opened less than 40 minutes ago, gets a market that is published straight away: predictions stay open until 1 hour after trading starts, the start price is the average of that first hour and the final price the average of the last hour before the result, all from MEXC, and the market settles by itself. At most `AUTO_MARKETS_PER_DAY` (default 5) are opened in any 24 hours, and results come `AUTO_MARKET_HOURS` (default 72) after listing. Admins can pause this in Settings and cancel any automatic market in Markets. `AUTO_LISTINGS=0` turns it off completely. The server must stay awake for it to work (Render's free plan sleeps, so ping `/api/health` every few minutes).
 
 Set `MANUAL_ONLY=0` to bring back the exchange scanner, live prices and live test markets.
 

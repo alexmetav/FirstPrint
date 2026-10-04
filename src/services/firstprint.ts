@@ -129,6 +129,8 @@ export interface CreateMarketInput {
   config?: Partial<MarketConfig>;
   scorecard?: Scorecard;
   kind?: 'listing' | 'live_test';
+  /** Allow a listing that has already started, while its start-price hour is still running. */
+  allowStarted?: boolean;
 }
 
 export interface ManualMarketInput {
@@ -571,14 +573,15 @@ export class FirstprintService {
       if (!v.symbol) throw new AppError(400, 'bad_venues', 'Each venue needs a trading symbol, e.g. XYZUSDT.');
     }
     const now = this.clock.now();
-    if (!Number.isFinite(input.listingAt) || input.listingAt <= now) {
+    const cfg = mergeConfig(input.config);
+    const startedOk = input.allowStarted && Number.isFinite(input.listingAt) && now < input.listingAt + cfg.baselineMs;
+    if (!Number.isFinite(input.listingAt) || (input.listingAt <= now && !startedOk)) {
       throw new AppError(400, 'bad_listing_time', 'Listing time must be in the future.');
     }
     if (!Number.isFinite(input.announcedListingAt)) {
       throw new AppError(400, 'bad_listing_time', 'Announced listing time is required.');
     }
 
-    const cfg = mergeConfig(input.config);
     const id = `${symbol.toLowerCase()}-${input.exchange.toLowerCase()}-${randomUUID().slice(0, 6)}`;
     this.db
       .prepare(
@@ -1448,7 +1451,7 @@ export class FirstprintService {
   }
 
   /** Turns a detection into a market. Listing time and symbol can be corrected here. */
-  approveDetection(id: number, input: { symbol?: string; name?: string; listingAt?: number; config?: Partial<MarketConfig> } = {}) {
+  approveDetection(id: number, input: { symbol?: string; name?: string; listingAt?: number; config?: Partial<MarketConfig>; allowStarted?: boolean } = {}) {
     const d = as<Record<string, unknown> | undefined>(this.db.prepare('SELECT * FROM detected_listings WHERE id = ?').get(id));
     if (!d) throw new AppError(404, 'detection_not_found', 'Detected listing not found.');
     if (d.status === 'approved') throw new AppError(409, 'already_approved', 'This listing already has a market.');
@@ -1468,9 +1471,31 @@ export class FirstprintService {
       announcedListingAt: listingAt,
       listingAt,
       config: input.config,
+      allowStarted: input.allowStarted,
     });
     this.db.prepare("UPDATE detected_listings SET status = 'approved', market_id = ?, symbol = ?, listing_at = ? WHERE id = ?").run(marketId, symbol, listingAt, id);
     return marketId;
+  }
+
+  /** Listing markets created since a time (automatic ones count toward the daily limit). */
+  listingMarketsSince(since: number): number {
+    return as<{ n: number }>(this.db.prepare("SELECT COUNT(*) AS n FROM markets WHERE mode = 'auto' AND kind = 'listing' AND created_at >= ?").get(since)).n;
+  }
+
+  /** Whether a market for this token is open or waiting for its result (any kind, including drafts). */
+  hasActiveMarket(symbol: string): boolean {
+    return Boolean(this.db.prepare("SELECT 1 FROM markets WHERE symbol = ? AND status IN ('open', 'locked') LIMIT 1").get(symbol.toUpperCase()));
+  }
+
+  /** Automatic markets for new listings: on unless an admin switched them off. */
+  autoListingsEnabled(): boolean {
+    const r = as<{ value: string } | undefined>(this.db.prepare("SELECT value FROM settings WHERE key = 'auto_listings'").get());
+    return r?.value !== '0';
+  }
+
+  setAutoListings(enabled: boolean) {
+    this.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('auto_listings', enabled ? '1' : '0');
+    return this.autoListingsEnabled();
   }
 
   ignoreDetection(id: number) {
