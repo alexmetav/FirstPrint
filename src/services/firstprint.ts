@@ -589,7 +589,7 @@ export class FirstprintService {
         input.name ?? null,
         input.exchange,
         JSON.stringify(input.venues),
-        input.sourceUrl ?? null,
+        input.sourceUrl && /^https:\/\/\S+$/i.test(input.sourceUrl) ? input.sourceUrl : null,
         input.announcedListingAt,
         input.listingAt,
         now,
@@ -817,6 +817,7 @@ export class FirstprintService {
     const name = input.name ? String(input.name).trim().slice(0, 80) : null;
     const note = input.note ? String(input.note).trim().slice(0, 2000) : null;
     const sourceUrl = input.sourceUrl ? String(input.sourceUrl).trim().slice(0, 500) : null;
+    if (sourceUrl && !/^https:\/\/\S+$/i.test(sourceUrl)) throw new AppError(400, 'bad_source_url', 'The source link must start with https://');
     const logoUrl = cleanLogo(input.logoUrl);
     void now;
     return { symbol, name, venues, exchangeLabel, basePrice, closeAt, cfg, note, sourceUrl, logoUrl };

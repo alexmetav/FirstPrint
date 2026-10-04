@@ -551,7 +551,7 @@ export class RewardsService {
     if (c.status !== 'pending') throw new AppError(409, 'claim_closed', `This claim is ${c.status}. Start a new one.`);
     let wire;
     try {
-      wire = checkSignedClaim(String(signed ?? ''), c.message, c.wallet, this.authority.address);
+      wire = await checkSignedClaim(String(signed ?? ''), c.message, c.wallet, this.authority);
     } catch (err) {
       throw new AppError(400, 'bad_signed_claim', (err as Error).message);
     }

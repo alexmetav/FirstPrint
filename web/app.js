@@ -307,6 +307,38 @@ function avatar(name, cls = '') {
   return `<span class="avatar${cls ? ` ${cls}` : ''}" style="--h:${h}" aria-hidden="true">${esc(text.replace(/^@/, '').slice(0, 1).toUpperCase())}</span>`;
 }
 
+/** The theme in use: the saved choice, else the device setting. */
+function currentTheme() {
+  const set = document.documentElement.dataset.theme;
+  if (set === 'light' || set === 'dark') return set;
+  return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  try {
+    localStorage.setItem('fp:theme', theme);
+  } catch {
+    /* storage blocked: the choice lasts for this visit */
+  }
+  syncThemeColor();
+  renderTop();
+}
+
+/** Keeps the browser's address-bar colour in step with the theme. */
+function syncThemeColor() {
+  const color = currentTheme() === 'light' ? '#eef0f8' : '#070914';
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
+    m.setAttribute('content', color);
+    m.removeAttribute('media');
+  });
+}
+
+function themeButton() {
+  const light = currentTheme() === 'light';
+  return `<button class="chip theme-toggle" data-action="theme" aria-label="Switch to ${light ? 'dark' : 'light'} mode" title="Switch to ${light ? 'dark' : 'light'} mode">${ico(light ? 'moon' : 'sun')}</button>`;
+}
+
 function renderTop() {
   const cur = (name) => (S.route.name === name || (name === 'home' && S.route.name === 'market') ? ' aria-current="page"' : '');
   const wallet = S.me?.wallets?.[0]?.address;
@@ -327,6 +359,7 @@ function renderTop() {
         ${pages.map(([name, href, label]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}${label}</a>`).join('')}
       </nav>
       <div class="account">
+        ${themeButton()}
         ${S.cfg?.rewards ? `<button class="chip chip-faucet" data-action="faucet" title="Get free test SOL for network fees">${ico('droplet')}<span class="faucet-label">Test SOL</span></button>` : ''}
         ${
           S.me
@@ -2893,8 +2926,6 @@ async function onAdminAction(action, el) {
         toast(err.message, true);
       }
       return renderAdmin();
-    case 'logo-clear':
-      return setLogo(el.closest('form'), '');
     case 'admin-logout':
       A.api = null;
       A.info = null;
@@ -3245,6 +3276,10 @@ document.addEventListener('click', async (e) => {
       return openSheet();
     case 'close-sheet':
       return closeSheet();
+    case 'theme':
+      return setTheme(currentTheme() === 'light' ? 'dark' : 'light');
+    case 'logo-clear':
+      return setLogo(t.closest('form'), '');
     case 'retry':
       return loadRoute();
     case 'skip':
@@ -3410,6 +3445,11 @@ setInterval(() => {
   // A server outage must never silently replace real balances with simulated ones.
   S.api = forceDemo ? new DemoBackend() : createApi();
   renderDemoBar();
+  if (document.documentElement.dataset.theme) syncThemeColor();
+  // Following the device setting: redraw the switch icon when the device flips light/dark.
+  matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => {
+    if (!document.documentElement.dataset.theme) renderTop();
+  });
   wake.onWaking = () => {
     if (!$('.wake-bar')) {
       $('#demo-bar').innerHTML = '<div class="wake-bar" role="status"><p>Waking up the server. The first visit after a quiet period can take up to a minute. This page will load by itself.</p></div>';

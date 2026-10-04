@@ -6,27 +6,30 @@
    (Moon gold, Up green, Flat grey, Down orange, Crash red), signal indigo for focus and
    active states, and Moon gold for the main call to action. */
 :root {
-  --bg: #0b0f2a;
-  --surface: #11173f;
-  --surface-2: #151c4c;
-  --raised: #1c2460;
-  --line: #222a62;
-  --line-strong: #313b80;
-  --text: #f5f6ff;
-  --muted: #a9afd6;
-  --focus: #a8b4ff;
-  --brand: #7c8cff;
+  --bg: #070914;
+  --surface: #0e1226;
+  --surface-2: #141a37;
+  --raised: #1d2449;
+  --line: #262e55;
+  --line-strong: #3c467d;
+  --text: #fbfbff;
+  --muted: #b8bcd9;
+  --label: #e1e4f7;
+  --field: #090c1b;
+  --field-line: #3f4985;
+  --focus: #b3bdff;
+  --brand: #8f9cff;
   --brand-2: #ffc53d;
   --gold: #ffc53d;
   --on-gold: #0b0f2a;
   --on-solid: #0b0f2a;
-  --glow: rgba(124, 140, 255, 0.2);
-  --shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 32px -16px rgba(3, 5, 20, 0.85);
-  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 24px 60px -24px rgba(3, 5, 20, 0.9);
+  --glow: rgba(143, 156, 255, 0.18);
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 14px 34px -18px rgba(0, 0, 0, 0.9);
+  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 26px 60px -24px rgba(0, 0, 0, 0.95);
 
   --crash: #ff4d6a;
   --down: #ff8a5c;
-  --flat: #9faac0;
+  --flat: #a3aec4;
   --up: #3fd69a;
   --moon: #ffc53d;
 
@@ -41,30 +44,62 @@
   color-scheme: dark;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f4f5ff;
+/* Light theme: chosen in the app (data-theme="light"), or the device setting when nothing is chosen. */
+:root[data-theme='light'] {
+    --bg: #eef0f8;
     --surface: #ffffff;
-    --surface-2: #fbfbff;
-    --raised: #eceeff;
-    --line: #e0e3f5;
-    --line-strong: #cbd0ec;
-    --text: #0b0f2a;
-    --muted: #545a85;
-    --focus: #4f5ee8;
-    --brand: #4f5ee8;
-    --brand-2: #b7860b;
+    --surface-2: #fafbff;
+    --raised: #e5e8f8;
+    --line: #d5d9ee;
+    --line-strong: #b3badc;
+    --text: #080b1f;
+    --muted: #474d72;
+    --label: #1b2046;
+    --field: #ffffff;
+    --field-line: #aab2d6;
+    --focus: #3f4fe0;
+    --brand: #3f4fe0;
+    --brand-2: #a87700;
     --gold: #ffc53d;
     --on-gold: #0b0f2a;
     --on-solid: #ffffff;
-    --glow: rgba(79, 94, 232, 0.12);
-    --shadow: 0 1px 2px rgba(11, 15, 42, 0.05), 0 8px 24px -14px rgba(11, 15, 42, 0.2);
-    --shadow-lg: 0 1px 2px rgba(11, 15, 42, 0.06), 0 20px 48px -20px rgba(11, 15, 42, 0.28);
-    --crash: #d92d4b;
-    --down: #d9612e;
-    --flat: #6e7a90;
-    --up: #0e9f63;
-    --moon: #b7860b;
+    --glow: rgba(63, 79, 224, 0.12);
+    --shadow: 0 1px 2px rgba(8, 11, 31, 0.06), 0 8px 24px -14px rgba(8, 11, 31, 0.22);
+    --shadow-lg: 0 1px 2px rgba(8, 11, 31, 0.07), 0 20px 48px -20px rgba(8, 11, 31, 0.3);
+    --crash: #d0223f;
+    --down: #cc5420;
+    --flat: #5f6b82;
+    --up: #0a9159;
+    --moon: #a87700;
+    color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --bg: #eef0f8;
+    --surface: #ffffff;
+    --surface-2: #fafbff;
+    --raised: #e5e8f8;
+    --line: #d5d9ee;
+    --line-strong: #b3badc;
+    --text: #080b1f;
+    --muted: #474d72;
+    --label: #1b2046;
+    --field: #ffffff;
+    --field-line: #aab2d6;
+    --focus: #3f4fe0;
+    --brand: #3f4fe0;
+    --brand-2: #a87700;
+    --gold: #ffc53d;
+    --on-gold: #0b0f2a;
+    --on-solid: #ffffff;
+    --glow: rgba(63, 79, 224, 0.12);
+    --shadow: 0 1px 2px rgba(8, 11, 31, 0.06), 0 8px 24px -14px rgba(8, 11, 31, 0.22);
+    --shadow-lg: 0 1px 2px rgba(8, 11, 31, 0.07), 0 20px 48px -20px rgba(8, 11, 31, 0.3);
+    --crash: #d0223f;
+    --down: #cc5420;
+    --flat: #5f6b82;
+    --up: #0a9159;
+    --moon: #a87700;
     color-scheme: light;
   }
 }
@@ -5474,3 +5509,119 @@ h2,
 .logo-link { flex: 1 1 260px; min-width: 0; }
 .logo-upload { cursor: pointer; }
 .logo-field small { font-size: 0.8rem; }
+
+/* ------------------------------------------------- Contrast and theme layer
+   Clear steps between page, cards and fields; brighter labels; visible borders. */
+
+body {
+  background:
+    radial-gradient(1200px 560px at 50% -280px, var(--glow), transparent 70%),
+    var(--bg);
+  background-repeat: no-repeat;
+}
+.topbar {
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+.card,
+.panel {
+  border-color: var(--line);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface) 70%);
+}
+.field-label,
+legend.field-label,
+summary.field-label {
+  color: var(--label);
+  font-size: 13px;
+  font-weight: 600;
+}
+main input:not([type='checkbox']):not([type='radio']),
+main select,
+main textarea,
+.modal input,
+.modal select,
+.admin-form input:not([type='checkbox']):not([type='radio']),
+.admin-form select,
+.admin-form textarea,
+.admin-detect input {
+  background: var(--field);
+  border: 1px solid var(--field-line);
+  color: var(--text);
+  border-radius: var(--r-sm);
+}
+main input:not([type='checkbox']):not([type='radio']):hover,
+main select:hover,
+main textarea:hover {
+  border-color: color-mix(in srgb, var(--brand) 55%, var(--field-line));
+}
+.admin-form input:not([type='checkbox']):not([type='radio']):focus,
+.admin-form textarea:focus,
+.admin-form select:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 25%, transparent);
+}
+main input::placeholder,
+main textarea::placeholder,
+.modal input::placeholder {
+  color: color-mix(in srgb, var(--muted) 80%, transparent);
+}
+.muted,
+.hero-name,
+.section-head p {
+  color: var(--muted);
+}
+.btn:not(.btn-solid):not(.btn-gold) {
+  border-color: var(--line-strong);
+}
+.btn:not(.btn-solid):not(.btn-gold):hover {
+  border-color: color-mix(in srgb, var(--brand) 60%, var(--line-strong));
+}
+.chip {
+  border-color: var(--line-strong);
+}
+.tabs button[aria-selected='true'],
+.nav a[aria-current='page'],
+.admin-nav button[aria-current='page'] {
+  background: color-mix(in srgb, var(--brand) 16%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 55%, transparent);
+  color: var(--text);
+}
+.venues .check,
+.check {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.check:has(input:checked) {
+  border-color: color-mix(in srgb, var(--brand) 70%, transparent);
+  background: color-mix(in srgb, var(--brand) 14%, var(--surface));
+}
+.type-card:has(input:checked) > span,
+.type-card input:checked + span {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 12%, var(--surface));
+}
+
+/* Theme switch in the top bar */
+.theme-toggle {
+  width: 36px;
+  padding: 0;
+  justify-content: center;
+}
+.theme-toggle .i {
+  color: var(--moon);
+}
+.featured .h1-soft {
+  color: color-mix(in srgb, var(--brand) 75%, var(--text));
+}
+@media (max-width: 900px) {
+  .admin-nav {
+    padding: 2px;
+    scroll-padding-inline: 12px;
+  }
+}
+.btn[hidden],
+.chip[hidden] {
+  display: none;
+}
