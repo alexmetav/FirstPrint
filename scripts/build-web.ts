@@ -26,6 +26,7 @@ const css = read('web/styles.css');
 const js = [engineJs, read('web/api.js'), read('web/wallet.js'), read('web/demo.js'), read('web/icons.js'), read('web/app.js')].map(inline).join('\n;\n');
 
 const preview = html
+  .replace(/<script src="\.\/theme\.js"><\/script>/, () => `<script>\n${read('web/theme.js')}\n</script>`)
   .replace(/<link rel="stylesheet" href="\.\/styles\.css"\s*\/?>/, () => `<style>\n${css}\n</style>`)
   .replace(/<script type="module" src="\.\/app\.js"><\/script>/, () => `<script>window.FP_FORCE_DEMO = true;</script>\n<script type="module">\n${js}\n</script>`);
 

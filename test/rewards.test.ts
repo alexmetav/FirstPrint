@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LiteSVM, FailedTransactionMetadata } from 'litesvm';
-import { generateKeyPairSigner, getBase64Encoder, getBase64EncodedWireTransaction, getTransactionDecoder, lamports, signTransaction, type Address, type KeyPairSigner } from '@solana/kit';
+import { generateKeyPairSigner, getBase64Encoder, getBase64EncodedWireTransaction, getTransactionDecoder, lamports, partiallySignTransaction, type Address, type KeyPairSigner } from '@solana/kit';
 import { TOKEN_2022_PROGRAM_ADDRESS, decodeMint, decodeToken, findAssociatedTokenPda } from '@solana-program/token-2022';
 import { openDb } from '../src/db/db.ts';
 import { ManualClock } from '../src/clock.ts';
@@ -64,7 +64,7 @@ async function player(service: FirstprintService, email: string, ref?: string) {
 
 async function signAsWallet(base64: string, wallet: KeyPairSigner) {
   const tx = getTransactionDecoder().decode(getBase64Encoder().encode(base64));
-  return getBase64EncodedWireTransaction(await signTransaction([wallet.keyPair], tx));
+  return getBase64EncodedWireTransaction(await partiallySignTransaction([wallet.keyPair], tx));
 }
 
 async function tokenBalance(svm: LiteSVM, owner: Address, mint: Address) {
@@ -109,6 +109,10 @@ test('TestFPT: admin sets up the token, a new player claims 1,000 to their walle
   const solBefore = svm.getBalance(wallet.address)!;
   claim = await rewards.startClaim(user.id, wallet.address);
   assert.equal(claim.amount, START_POINTS);
+  // The transaction handed to the wallet carries no mint-authority signature, so it can't be
+  // broadcast without going through submitClaim.
+  const unsigned = getTransactionDecoder().decode(getBase64Encoder().encode(claim.transaction));
+  assert.ok(Object.values(unsigned.signatures).every((sig) => sig === null), 'no signatures before the wallet signs');
   const done = await rewards.submitClaim(user.id, claim.claimId, await signAsWallet(claim.transaction, wallet));
   assert.equal(done.status, 'confirmed');
   assert.match(done.explorerUrl ?? '', /explorer\.solana\.com\/tx\/.+\?cluster=testnet/);

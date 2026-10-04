@@ -255,7 +255,7 @@ export function createApiServer(opts: ServerOptions): Server {
     const { user, created } = service.verifyEmailCode(String(b.email ?? ''), String(b.code ?? ''), refOf(b));
     const session = service.createSession(user.id);
     setSessionCookie(res, session.token, SESSION_MS);
-    return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created, token: session.token };
+    return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
   });
 
   route('POST', '/api/auth/google', async ({ req, res, body }) => {
@@ -267,7 +267,7 @@ export function createApiServer(opts: ServerOptions): Server {
     const { user, created } = service.signInWithVerifiedEmail(who.email, who.name, refOf(b));
     const session = service.createSession(user.id);
     setSessionCookie(res, session.token, SESSION_MS);
-    return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created, token: session.token };
+    return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
   });
 
   // --- Solana wallet sign-in -----------------------------------------------------
@@ -295,7 +295,7 @@ export function createApiServer(opts: ServerOptions): Server {
     });
     const session = service.createSession(user.id);
     setSessionCookie(res, session.token, SESSION_MS);
-    return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created, token: session.token };
+    return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
   });
 
   route('POST', '/api/auth/login', async ({ req, res, body }) => {
@@ -305,7 +305,7 @@ export function createApiServer(opts: ServerOptions): Server {
     const user = await service.authenticate(String(b.email ?? ''), String(b.password ?? ''));
     const session = service.createSession(user.id);
     setSessionCookie(res, session.token, SESSION_MS);
-    return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), token: session.token };
+    return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)) };
   });
 
   route('POST', '/api/auth/logout', ({ req, res }) => {
@@ -451,6 +451,7 @@ export function createApiServer(opts: ServerOptions): Server {
     config: b.config as never,
     note: b.note as string | undefined,
     sourceUrl: b.sourceUrl as string | undefined,
+    logoUrl: b.logoUrl as string | undefined,
   });
 
   route('GET', '/api/admin/exchanges', ({ requireAdmin }) => {
@@ -700,9 +701,17 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // --- Live updates (Server-Sent Events) -------------------------------------------
 
+  /** Open live-update streams per visitor, so one client can't use up every connection. */
+  const streamsByVisitor = new Map<string, number>();
+  const MAX_STREAMS_PER_VISITOR = 8;
+
   function openStream(req: IncomingMessage, res: ServerResponse) {
     if (!opts.live) return send(res, 404, { error: 'not_found', message: 'Live updates are not enabled.' });
     if (opts.live.connections >= 5_000) return send(res, 503, { error: 'busy', message: 'Too many live connections. Try again soon.' });
+    const who = visitor(req);
+    const open = streamsByVisitor.get(who) ?? 0;
+    if (open >= MAX_STREAMS_PER_VISITOR) return send(res, 429, { error: 'rate_limited', message: 'Too many live connections from your network. Close some tabs and try again.' });
+    streamsByVisitor.set(who, open + 1);
     res.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
       'cache-control': 'no-store',
@@ -717,6 +726,9 @@ export function createApiServer(opts: ServerOptions): Server {
     req.on('close', () => {
       clearInterval(heartbeat);
       unsubscribe();
+      const left = (streamsByVisitor.get(who) ?? 1) - 1;
+      if (left > 0) streamsByVisitor.set(who, left);
+      else streamsByVisitor.delete(who);
     });
   }
 

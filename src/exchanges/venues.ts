@@ -144,7 +144,8 @@ function announcement(exchange: string, id: unknown, title: unknown, url: unknow
     exchange,
     id: String(id ?? t),
     title: t,
-    url: url ? String(url) : null,
+    // Only https links: these end up in href attributes in the app.
+    url: /^https:\/\//i.test(String(url ?? '')) ? String(url) : null,
     publishedAt: toMs(publishedAt),
     listingAt: listingAt ?? extractListingTime(`${t}\n${body}`),
     symbols: extractSymbols(t).length ? extractSymbols(t) : extractSymbols(body),

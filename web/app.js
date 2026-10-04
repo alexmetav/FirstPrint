@@ -277,6 +277,23 @@ function titleFor() {
   return 'Firstprint: predict new exchange listings';
 }
 
+/** A market's token logo, falling back to the letter circle. Takes a market, or a row with symbol + marketId. */
+function tokenAvatar(m, cls = '') {
+  const logo = m.logoUrl ?? logoOf(m.marketId);
+  if (!logo) return avatar(m.symbol, cls);
+  return `<span class="avatar avatar-img${cls ? ` ${cls}` : ''}" aria-hidden="true"><img class="tok-logo" src="${esc(logo)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-sym="${esc(m.symbol)}" /></span>`;
+}
+
+/** Looks up a logo from the loaded market lists (portfolio and history rows carry only the id). */
+function logoOf(id) {
+  if (!id || !S.lists) return null;
+  for (const list of [S.lists.open, S.lists.live, S.lists.settled]) {
+    const hit = (list ?? []).find((x) => x.id === id);
+    if (hit) return hit.logoUrl ?? null;
+  }
+  return null;
+}
+
 // ------------------------------------------------------------------ Top bar
 
 /** Navigation: the same pages in the top bar (wide screens) and the tab bar (phones). */
@@ -288,6 +305,38 @@ function avatar(name, cls = '') {
   let h = 0;
   for (const ch of text) h = (h * 31 + ch.codePointAt(0)) % 360;
   return `<span class="avatar${cls ? ` ${cls}` : ''}" style="--h:${h}" aria-hidden="true">${esc(text.replace(/^@/, '').slice(0, 1).toUpperCase())}</span>`;
+}
+
+/** The theme in use: the saved choice, else the device setting. */
+function currentTheme() {
+  const set = document.documentElement.dataset.theme;
+  if (set === 'light' || set === 'dark') return set;
+  return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  try {
+    localStorage.setItem('fp:theme', theme);
+  } catch {
+    /* storage blocked: the choice lasts for this visit */
+  }
+  syncThemeColor();
+  renderTop();
+}
+
+/** Keeps the browser's address-bar colour in step with the theme. */
+function syncThemeColor() {
+  const color = currentTheme() === 'light' ? '#eef0f8' : '#070914';
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
+    m.setAttribute('content', color);
+    m.removeAttribute('media');
+  });
+}
+
+function themeButton() {
+  const light = currentTheme() === 'light';
+  return `<button class="chip theme-toggle" data-action="theme" aria-label="Switch to ${light ? 'dark' : 'light'} mode" title="Switch to ${light ? 'dark' : 'light'} mode">${ico(light ? 'moon' : 'sun')}</button>`;
 }
 
 function renderTop() {
@@ -310,6 +359,7 @@ function renderTop() {
         ${pages.map(([name, href, label]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}${label}</a>`).join('')}
       </nav>
       <div class="account">
+        ${themeButton()}
         ${S.cfg?.rewards ? `<button class="chip chip-faucet" data-action="faucet" title="Get free test SOL for network fees">${ico('droplet')}<span class="faucet-label">Test SOL</span></button>` : ''}
         ${
           S.me
@@ -438,7 +488,7 @@ function featuredView(m) {
     <section class="featured" aria-labelledby="featured-title">
       <div class="featured-main">
         <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Featured market · Yes / No</span>
-        <div class="hero-token">${avatar(m.symbol, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">above ${fmtPrice(m.basePrice)}?</span></h1><p class="hero-name">${esc(m.name || m.symbol)} · ${yes === null ? 'no predictions yet' : `${yes}% say Yes`}</p></div></div>
+        <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">above ${fmtPrice(m.basePrice)}?</span></h1><p class="hero-name">${esc(m.name || m.symbol)} · ${yes === null ? 'no predictions yet' : `${yes}% say Yes`}</p></div></div>
         <p class="lede">Will ${esc(m.name || m.symbol)} be at or above ${fmtPrice(m.basePrice)} when the result is posted? Pick Yes or No.</p>
         ${heroFacts(m, 'Closes in', until(m.closeAt))}
         <div class="actions">
@@ -454,7 +504,7 @@ function featuredView(m) {
     <section class="featured" aria-labelledby="featured-title">
       <div class="featured-main">
         <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Featured market · open for predictions</span>
-        <div class="hero-token">${avatar(m.symbol, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">is open</span></h1><p class="hero-name">${esc(m.name || m.symbol)} · start price ${fmtPrice(m.basePrice)}</p></div></div>
+        <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">is open</span></h1><p class="hero-name">${esc(m.name || m.symbol)} · start price ${fmtPrice(m.basePrice)}</p></div></div>
         <p class="lede">Predict where ${esc(m.name || m.symbol)} is priced at the result, compared with the start price. ${m.pool ? '' : 'Nobody has predicted yet, so early picks get the biggest bonus.'}</p>
         ${heroFacts(m, 'Closes in', until(m.closeAt))}
         <div class="actions">
@@ -472,7 +522,7 @@ function featuredView(m) {
     <section class="featured" aria-labelledby="featured-title">
       <div class="featured-main">
         <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Featured market</span>
-        <div class="hero-token">${avatar(m.symbol, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">${verb}</span></h1><p class="hero-name">${esc(m.name || m.symbol)}</p></div></div>
+        <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">${verb}</span></h1><p class="hero-name">${esc(m.name || m.symbol)}</p></div></div>
         <p class="lede">Predict where ${esc(m.name || m.symbol)} trades ${fmtSpan(m.settleAt - m.listingAt)} after ${test ? `the market starts, using live prices from ${esc(venueNames(m))}` : 'listing'}.</p>
         ${heroFacts(m, pre ? (test ? 'Starts in' : 'Lists in') : 'Closes in', pre ? until(m.listingAt) : until(m.closeAt))}
         <div class="actions">
@@ -517,7 +567,7 @@ function cardView(m) {
   return `
     <a class="card${soon ? ' soon' : ''}" href="#/market/${encodeURIComponent(m.id)}">
       <div class="card-top">
-        ${avatar(m.symbol, 'avatar-md')}
+        ${tokenAvatar(m, 'avatar-md')}
         <div class="card-title"><span class="sym">${esc(m.symbol)}${yn ? ' <span class="tag tag-yn">Yes / No</span>' : ''}</span><span class="card-name">${esc(m.name || '')}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</span></div>
         ${soon ? `<span class="pill pill-hot">${ico('flame')}Closing soon</span>` : cardStatus(m)}
       </div>
@@ -665,7 +715,7 @@ function marketMain(m) {
   return `
     <a class="back" href="#/">${ico('arrowLeft')}All markets</a>
     <header class="m-head">
-      <div class="m-title">${avatar(m.symbol, 'avatar-lg')}<div class="m-title-text"><div class="m-title-row"><h1 class="sym">${esc(m.symbol)}</h1>${cardStatus(m)}${
+      <div class="m-title">${tokenAvatar(m, 'avatar-lg')}<div class="m-title-text"><div class="m-title-row"><h1 class="sym">${esc(m.symbol)}</h1>${cardStatus(m)}${
         (m.phase === 'baseline' || m.phase === 'running') && S.live && !isManual(m) ? '<span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Live price</span>' : ''
       }</div>${m.name ? `<span class="m-name">${esc(m.name)}</span>` : ''}</div><button class="btn share-btn" data-action="share" aria-label="Share this market">${ico('share')}<span class="hide-sm">Share</span></button></div>
       <p class="m-question">${
@@ -1236,7 +1286,7 @@ function portfolioView(preds, history = [], stats = null) {
     ? `<table class="table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right">Status</th></tr></thead><tbody>${active
         .map((p) => {
           const status = p.marketStatus === 'open' ? '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>' : `<span class="pill pill-wait">${p.mode === 'manual' ? 'Awaiting result' : 'In play'}</span>`;
-          return `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(p.marketId)}">${avatar(p.symbol, 'avatar-sm')}<span>${esc(p.symbol)}</span></a></td><td>${outcome(p.bucket, p.outcomes === 'binary')}</td><td class="right num-cell">${fmtNum(p.stake)}</td><td class="right">${status}</td></tr>`;
+          return `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(p.marketId)}">${tokenAvatar(p, 'avatar-sm')}<span>${esc(p.symbol)}</span></a></td><td>${outcome(p.bucket, p.outcomes === 'binary')}</td><td class="right num-cell">${fmtNum(p.stake)}</td><td class="right">${status}</td></tr>`;
         })
         .join('')}</tbody></table>`
     : `<p class="muted pad">Nothing in play right now. <a href="#/">Pick a market</a> to get started.</p>`;
@@ -1289,7 +1339,7 @@ function profileView(p) {
   const positions = p.positions.length
     ? `<table class="table"><thead><tr><th>Market</th><th>Pick</th><th class="right">Points</th><th class="right">Status</th></tr></thead><tbody>${p.positions
         .map(
-          (x) => `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(x.marketId)}">${avatar(x.symbol, 'avatar-sm')}<span>${esc(x.symbol)}</span></a></td><td>${outcome(x.bucket, x.outcomes === 'binary')}</td><td class="right num-cell">${fmtNum(x.stake)}</td><td class="right">${
+          (x) => `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(x.marketId)}">${tokenAvatar(x, 'avatar-sm')}<span>${esc(x.symbol)}</span></a></td><td>${outcome(x.bucket, x.outcomes === 'binary')}</td><td class="right num-cell">${fmtNum(x.stake)}</td><td class="right">${
             x.marketStatus === 'open' ? '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>' : '<span class="pill pill-wait">Awaiting result</span>'
           }</td></tr>`,
         )
@@ -1412,7 +1462,7 @@ function pastMarkets(st) {
           ? `<table class="table"><thead><tr><th>Market</th><th>Your pick</th><th class="hide-sm">Result</th><th class="right">Staked</th><th class="right">Points</th></tr></thead><tbody>${rows
               .map(
                 (m) => `<tr>
-                  <td><a class="mkt-cell" href="#/market/${encodeURIComponent(m.marketId)}">${avatar(m.symbol, 'avatar-sm')}<span>${esc(m.symbol)}</span></a> <span class="muted hide-sm">${fmtAgo(m.settledAt)}</span></td>
+                  <td><a class="mkt-cell" href="#/market/${encodeURIComponent(m.marketId)}">${tokenAvatar(m, 'avatar-sm')}<span>${esc(m.symbol)}</span></a> <span class="muted hide-sm">${fmtAgo(m.settledAt)}</span></td>
                   <td>${m.buckets.map((b) => outcome(b, m.binary)).join(' ')}</td>
                   <td class="hide-sm">${m.winningBucket ? outcome(m.winningBucket, m.binary) : '–'}</td>
                   <td class="right">${fmtNum(m.staked)}</td>
@@ -2500,7 +2550,7 @@ function adminMarketsTab(markets, waiting) {
           ? `<div class="table-scroll"><table class="table"><thead><tr><th>Market</th><th class="hide-sm">Type</th><th>Status</th><th class="right">Pool</th><th class="right"></th></tr></thead><tbody>${markets
               .map(
                 (m) => `<tr>
-                  <td><span class="mkt-cell">${avatar(m.symbol, 'avatar-sm')}<span>${m.published ? `<a href="#/market/${encodeURIComponent(m.id)}">${esc(m.symbol)}</a>` : `<b>${esc(m.symbol)}</b>`}<small class="muted hide-sm">${esc(venueNames(m))}</small></span></span></td>
+                  <td><span class="mkt-cell">${tokenAvatar(m, 'avatar-sm')}<span>${m.published ? `<a href="#/market/${encodeURIComponent(m.id)}">${esc(m.symbol)}</a>` : `<b>${esc(m.symbol)}</b>`}<small class="muted hide-sm">${esc(venueNames(m))}</small></span></span></td>
                   <td class="hide-sm">${isYesNo(m) ? 'Yes / No' : m.mode === 'manual' ? 'Five outcomes' : m.kind === 'live_test' ? 'Live test' : 'Listing'}</td>
                   <td>${adminPhasePill(m)}</td>
                   <td class="right num-cell">${fmtNum(m.pool)}</td>
@@ -2710,6 +2760,17 @@ function marketForm(m) {
       ${locked ? '<p class="muted" style="grid-column:1/-1">Users have already predicted, so the token, start price, ranges, and pool rules are locked. You can still edit the description, exchanges, and move the close time later. To change anything else, cancel and refund the market.</p>' : ''}
       <label><span class="field-label">Token symbol</span><input name="symbol" placeholder="XYZ" value="${esc(m?.symbol ?? '')}" required autocomplete="off"${lock} /></label>
       <label><span class="field-label">Token name (optional)</span><input name="name" placeholder="XYZ Protocol" value="${esc(m?.name ?? '')}" autocomplete="off" /></label>
+      <div class="logo-field" style="grid-column:1/-1">
+        <span class="field-label">Token logo (optional)</span>
+        <div class="logo-row">
+          <span class="logo-preview" data-logo-preview>${m?.logoUrl ? `<img src="${esc(m.logoUrl)}" alt="" referrerpolicy="no-referrer" />` : ico('image')}</span>
+          <input type="hidden" name="logoUrl" value="${esc(m?.logoUrl ?? '')}" />
+          <input class="logo-link" data-logo-link type="url" inputmode="url" placeholder="Paste an image link (https://…)" value="${m?.logoUrl && !m.logoUrl.startsWith('data:') ? esc(m.logoUrl) : ''}" autocomplete="off" />
+          <label class="btn btn-sm logo-upload">${ico('upload')}Upload<input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-logo-file hidden /></label>
+          <button class="btn btn-sm" type="button" data-action="logo-clear"${m?.logoUrl ? '' : ' hidden'}>Remove</button>
+        </div>
+        <small class="muted">Square images look best. Uploads are shrunk to 128 × 128. Tip: on CoinGecko, right-click the token's logo and choose “Copy image address”.</small>
+      </div>
       <label><span class="field-label"><span class="ladder-only">Start price (USD)</span><span class="binary-only">Target price (USD)</span></span><input name="basePrice" type="number" step="any" min="0" placeholder="0.25" value="${m?.basePrice ?? ''}" required${lock} /></label>
       <label><span class="field-label">Predictions close (your time)</span><input name="closeAt" type="datetime-local" value="${toLocalInput(m?.closeAt ?? soon)}" required /></label>
       <label><span class="field-label">Result expected by (your time)</span><input name="resultAt" type="datetime-local" value="${toLocalInput(m?.settleAt ?? soon + 24 * 3_600_000)}" required /></label>
@@ -3017,6 +3078,7 @@ async function submitAdminMarket(form, intent) {
     closeAt: inputMs(d.get('closeAt')),
     resultAt: inputMs(d.get('resultAt')),
     note: String(d.get('note') || '').trim(),
+    logoUrl: String(d.get('logoUrl') || '').trim(),
   };
   // Disabled (locked) fields are absent from FormData and stay unchanged on the server.
   if (d.has('symbol')) body.symbol = String(d.get('symbol') || '').trim();
@@ -3214,6 +3276,10 @@ document.addEventListener('click', async (e) => {
       return openSheet();
     case 'close-sheet':
       return closeSheet();
+    case 'theme':
+      return setTheme(currentTheme() === 'light' ? 'dark' : 'light');
+    case 'logo-clear':
+      return setLogo(t.closest('form'), '');
     case 'retry':
       return loadRoute();
     case 'skip':
@@ -3245,6 +3311,72 @@ document.addEventListener('input', (e) => {
     requestQuote();
   }
 });
+
+document.addEventListener('input', (e) => {
+  if (!e.target.matches?.('[data-logo-link]')) return;
+  const v = e.target.value.trim();
+  if (!v || /^https:\/\/\S+$/i.test(v)) setLogo(e.target.form, v, { keepLink: true });
+});
+
+document.addEventListener('change', async (e) => {
+  if (!e.target.matches?.('[data-logo-file]')) return;
+  const file = e.target.files?.[0];
+  const form = e.target.form;
+  e.target.value = '';
+  if (!file) return;
+  if (!file.type.startsWith('image/')) return toast('Choose an image file (PNG, JPG, WebP, GIF or SVG).', true);
+  if (file.size > 5_000_000) return toast('That image is over 5 MB. Choose a smaller one.', true);
+  try {
+    setLogo(form, await shrinkImage(file, 128));
+  } catch {
+    toast('Couldn’t read that image. Try a PNG or JPG.', true);
+  }
+});
+
+// A broken logo link falls back to the letter circle. Image errors don't bubble, so listen while capturing.
+document.addEventListener(
+  'error',
+  (e) => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement) || !img.classList.contains('tok-logo')) return;
+    img.closest('.avatar')?.replaceWith(Object.assign(document.createElement('template'), { innerHTML: avatar(img.dataset.sym, [...img.parentElement.classList].filter((c) => /^avatar-(sm|md|lg|xl)$/.test(c)).join(' ')) }).content);
+  },
+  true,
+);
+
+/** Puts a logo (link or data URL, '' for none) into the market form and its preview. */
+function setLogo(form, value, { keepLink = false } = {}) {
+  if (!form) return;
+  form.querySelector('[name=logoUrl]').value = value;
+  if (!keepLink) form.querySelector('[data-logo-link]').value = value.startsWith('data:') ? '' : value;
+  const preview = form.querySelector('[data-logo-preview]');
+  preview.innerHTML = value ? `<img src="${esc(value)}" alt="" referrerpolicy="no-referrer" />` : ico('image');
+  form.querySelector('[data-action=logo-clear]').hidden = !value;
+}
+
+/** Draws an image into a size × size square (cropped to the centre) and returns a small data URL. */
+async function shrinkImage(file, size) {
+  // Read as a data URL: the page's security policy allows data: images but not blob: ones.
+  const src = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+  const img = await new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = src;
+  });
+  const w = img.naturalWidth || size;
+  const h = img.naturalHeight || size;
+  const side = Math.min(w, h);
+  const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size });
+  canvas.getContext('2d').drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, size, size);
+  const webp = canvas.toDataURL('image/webp', 0.9);
+  return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/png');
+}
 
 document.addEventListener('input', (e) => {
   if (e.target.id !== 'auth-code') return;
@@ -3313,6 +3445,11 @@ setInterval(() => {
   // A server outage must never silently replace real balances with simulated ones.
   S.api = forceDemo ? new DemoBackend() : createApi();
   renderDemoBar();
+  if (document.documentElement.dataset.theme) syncThemeColor();
+  // Following the device setting: redraw the switch icon when the device flips light/dark.
+  matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => {
+    if (!document.documentElement.dataset.theme) renderTop();
+  });
   wake.onWaking = () => {
     if (!$('.wake-bar')) {
       $('#demo-bar').innerHTML = '<div class="wake-bar" role="status"><p>Waking up the server. The first visit after a quiet period can take up to a minute. This page will load by itself.</p></div>';

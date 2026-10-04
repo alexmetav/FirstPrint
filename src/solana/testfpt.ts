@@ -158,7 +158,11 @@ export async function createTestFptMint(chain: Chain, authority: KeyPairSigner):
 }
 
 export interface BuiltClaim {
-  /** The transaction to give to the wallet, signed by the mint authority only. */
+  /**
+   * The transaction to give to the wallet. It carries no signature from the mint authority: the
+   * server adds that only after checking the player's signature (checkSignedClaim), so nobody can
+   * broadcast a mint the server has not approved.
+   */
   transaction: Base64EncodedWireTransaction;
   /** The exact message the wallet must sign, to compare with what comes back. */
   message: string;
@@ -169,6 +173,7 @@ export interface BuiltClaim {
 export async function buildClaimTransaction(chain: Chain, authority: KeyPairSigner, mint: Address, owner: Address, amount: bigint): Promise<BuiltClaim> {
   const [ata] = await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_2022_PROGRAM_ADDRESS });
   const payer = createNoopSigner(owner);
+  const mintAuthority = createNoopSigner(authority.address);
   const { blockhash, lastValidBlockHeight } = await chain.latestBlockhash();
   const tx = await pipe(
     createTransactionMessage({ version: 0 }),
@@ -178,7 +183,7 @@ export async function buildClaimTransaction(chain: Chain, authority: KeyPairSign
       appendTransactionMessageInstructions(
         [
           getCreateAssociatedTokenIdempotentInstruction({ payer, ata, owner, mint, tokenProgram: TOKEN_2022_PROGRAM_ADDRESS }),
-          getMintToCheckedInstruction({ mint, token: ata, mintAuthority: authority, amount, decimals: TOKEN_DECIMALS }, { programAddress: TOKEN_2022_PROGRAM_ADDRESS }),
+          getMintToCheckedInstruction({ mint, token: ata, mintAuthority, amount, decimals: TOKEN_DECIMALS }, { programAddress: TOKEN_2022_PROGRAM_ADDRESS }),
         ],
         m,
       ),
@@ -193,9 +198,9 @@ export async function buildClaimTransaction(chain: Chain, authority: KeyPairSign
 
 /**
  * Checks a transaction the wallet signed: it must be exactly the message the server built, with a
- * valid signature from every signer (the player and the mint authority). Returns it ready to send.
+ * valid signature from the player. Only then does the mint authority sign it. Returns it ready to send.
  */
-export function checkSignedClaim(signedBase64: string, expectedMessage: string, owner: string, authority: string): Base64EncodedWireTransaction {
+export async function checkSignedClaim(signedBase64: string, expectedMessage: string, owner: string, authority: KeyPairSigner): Promise<Base64EncodedWireTransaction> {
   let tx: Transaction;
   try {
     tx = getTransactionDecoder().decode(getBase64Encoder().encode(signedBase64));
@@ -204,11 +209,10 @@ export function checkSignedClaim(signedBase64: string, expectedMessage: string, 
   }
   const message = Uint8Array.from(tx.messageBytes);
   if (Buffer.from(message).toString('base64') !== expectedMessage) throw new Error('The signed transaction is not the one Firstprint prepared.');
-  for (const who of [owner, authority]) {
-    const sig = tx.signatures[address(who)];
-    if (!sig || !verifyEd25519(who, message, Uint8Array.from(sig))) throw new Error(`The transaction is missing a valid signature from ${who === owner ? 'your wallet' : 'Firstprint'}.`);
-  }
-  return getBase64EncodedWireTransaction(tx);
+  const sig = tx.signatures[address(owner)];
+  if (!sig || !verifyEd25519(owner, message, Uint8Array.from(sig))) throw new Error('The transaction is missing a valid signature from your wallet.');
+  const [authoritySig] = await authority.signMessages([{ content: message, signatures: {} }]);
+  return getBase64EncodedWireTransaction({ ...tx, signatures: { ...tx.signatures, ...authoritySig } } as Transaction);
 }
 
 /** The first signature of a transaction is its id on chain. */
