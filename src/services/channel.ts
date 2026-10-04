@@ -72,10 +72,10 @@ export class ChannelPoster {
     if (text) await this.telegram.sendTo(`@${channel}`, text, { text: 'See the result', url: this.link(id) });
   }
 
-  /** Posts every open market that hasn't been posted yet, a few seconds apart, in the background. */
-  postAllOpen(): number {
+  /** Posts open markets (only never-posted ones unless `again`), a few seconds apart, in the background. */
+  postAllOpen(again = false): number {
     if (!this.channel) throw new Error('No player channel is set.');
-    const ids = this.service.unannouncedOpenMarkets().slice(0, 20);
+    const ids = this.service.channelMarkets(!again).slice(0, 20);
     ids.forEach((id, i) => this.later(() => this.postLive(id), i === 0 ? 0 : this.gapMs));
     return ids.length;
   }

@@ -98,6 +98,9 @@ test('channel: posts open markets not posted yet, then a single last-hour remind
   await channel.later(async () => {});
   assert.deepEqual(posts, ['@firstprintfun [banner ok] 🟢 <b>New market: SHORT</b>', '@firstprintfun [banner ok] 🟢 <b>New market: LONG</b>'], 'soonest to close first, with the banner');
   assert.equal(channel.postAllOpen(), 0, 'already posted');
+  assert.equal(channel.postAllOpen(true), 2, 'posting again includes posted ones');
+  await channel.later(async () => {});
+  posts.splice(2);
 
   clock.advance(4 * HOUR + 10 * 60_000); // LONG closes in 50 minutes
   channel.remindClosing();
