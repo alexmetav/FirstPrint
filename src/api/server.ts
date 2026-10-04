@@ -10,7 +10,7 @@ import type { Mailer } from '../auth/mailer.ts';
 import type { Bucket } from '../engine/engine.ts';
 import { linkSiteToApp } from '../site/links.ts';
 import { fetchImage } from './fetchImage.ts';
-import type { Telegram } from '../services/telegram.ts';
+import { channelName, type Telegram } from '../services/telegram.ts';
 import type { RewardsService, TaskInput } from '../services/rewards.ts';
 
 export interface ServerOptions {
@@ -199,6 +199,8 @@ export function createApiServer(opts: ServerOptions): Server {
     manualOnly: opts.manualOnly ?? false,
     // Points as TestFPT on a Solana test network, and where to get test SOL for the fee.
     rewards: opts.rewards ? { onChain: opts.rewards.ready(), cluster: opts.rewards.cluster(), faucetUrl: 'https://faucet.solana.com' } : null,
+    // Public Telegram channel where new markets and results are posted (username, no @).
+    telegramChannel: opts.telegram ? service.getSetting('telegram_channel') : null,
   }));
 
   // --- Earn: rewards, tasks, referrals, TestFPT claims --------------------------------
@@ -516,6 +518,28 @@ export function createApiServer(opts: ServerOptions): Server {
     return { sent: true };
   });
 
+  // The public channel players join. The bot must be an admin of it with "Post messages".
+  route('POST', '/api/admin/telegram/channel', async ({ req, body, requireAdmin }) => {
+    requireAdmin();
+    const raw = String((await body()).channel ?? '').trim();
+    if (!raw) {
+      service.setSetting('telegram_channel', null);
+      audit(req, 'telegram_channel_off', null);
+      return { channel: null };
+    }
+    const name = channelName(raw);
+    if (!name) throw new AppError(400, 'bad_channel', 'Enter the channel’s public username, like @firstprint_markets.');
+    const t = telegramOn();
+    try {
+      await t.sendTo(`@${name}`, '👋 Firstprint is connected. New prediction markets and their results will be posted here.');
+    } catch (err) {
+      throw new AppError(502, 'telegram_failed', `Couldn’t post to @${name}. Add your bot to the channel as an admin who can post messages, then try again. (${(err as Error).message})`);
+    }
+    service.setSetting('telegram_channel', name);
+    audit(req, 'telegram_channel_on', `@${name}`);
+    return { channel: name };
+  });
+
   route('POST', '/api/admin/telegram/disconnect', async ({ req, requireAdmin }) => {
     requireAdmin();
     telegramOn().setChat(null);
@@ -634,7 +658,7 @@ export function createApiServer(opts: ServerOptions): Server {
       exchanges: service.exchangeSettings(),
       manualOnly: opts.manualOnly ?? false,
       autoListings: opts.autoListings ? { ...opts.autoListings, enabled: service.autoListingsEnabled() } : null,
-      telegram: { configured: Boolean(opts.telegram), connected: Boolean(opts.telegram?.connected) },
+      telegram: { configured: Boolean(opts.telegram), connected: Boolean(opts.telegram?.connected), channel: service.getSetting('telegram_channel') },
       backup: opts.backupStatus?.() ?? { enabled: false, lastOkAt: null, lastError: null },
       presets: Object.entries(LIVE_PRESETS).map(([id, p]) => ({ id, label: p.label })),
       suggestedTokens: SUGGESTED_LIVE_TOKENS,

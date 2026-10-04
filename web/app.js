@@ -437,12 +437,31 @@ function drawTop() {
 }
 
 /** Everything secondary: pages, test SOL, the theme switch, help and the account. */
+/** The public Telegram channel where new markets and results are posted, if the admin set one. */
+function telegramUrl() {
+  const c = S.cfg?.telegramChannel;
+  return c && /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(c) ? `https://t.me/${c}` : null;
+}
+
+/** "Get new markets on Telegram" card for the dashboard. */
+function telegramCard() {
+  const url = telegramUrl();
+  if (!url) return '';
+  return `
+    <section class="panel tg-card">
+      <span class="tg-logo" aria-hidden="true">${ico('telegram')}</span>
+      <div><b>Never miss a new market</b><p class="muted">Join @${esc(S.cfg.telegramChannel)} on Telegram. Every new market is posted the moment it opens, and every result when it’s in.</p></div>
+      <a class="btn btn-sm tg-join" href="${url}" target="_blank" rel="noopener noreferrer">${ico('telegram')}Join on Telegram</a>
+    </section>`;
+}
+
 function menuView(pages) {
   const light = currentTheme() === 'light';
   return `
     <div class="top-menu" id="top-menu" role="menu">
       ${pages.filter(([name]) => name !== 'home').map(([name, href, label]) => `<a role="menuitem" href="${href}">${ico(NAV_ICONS[name])}${label}</a>`).join('')}
       ${S.me ? `<a role="menuitem" href="#/u/${encodeURIComponent(S.me.username)}">${ico('user')}Public profile</a>` : ''}
+      ${telegramUrl() ? `<a role="menuitem" href="${telegramUrl()}" target="_blank" rel="noopener noreferrer">${ico('telegram')}Telegram alerts</a>` : ''}
       ${S.cfg?.rewards ? `<button role="menuitem" data-action="faucet">${ico('droplet')}Get test SOL</button>` : ''}
       <button role="menuitemcheckbox" aria-checked="${!light}" data-action="theme" class="menu-switch">${ico('moon')}Dark mode<span class="switch-track" aria-hidden="true"><i></i></span></button>
       <hr />
@@ -969,7 +988,7 @@ function marketMain(m) {
     <header class="m-head mh">
       <div class="m-title">${tokenAvatar(m, 'avatar-lg')}<div class="m-title-text"><div class="m-title-row"><h1 class="sym">${esc(m.symbol)}</h1>${cardStatus(m)}${
         (m.phase === 'baseline' || m.phase === 'running') && S.live && !isManual(m) ? '<span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Live price</span>' : ''
-      }${m.kind === 'live_test' ? '<span class="tag tag-test">Live test</span>' : ''}</div>${m.name ? `<span class="m-name">${esc(m.name)}</span>` : ''}</div><button class="btn btn-sm share-btn" data-action="share" aria-label="Share this market">${ico('share')}<span class="hide-sm">Share</span></button></div>
+      }${m.kind === 'live_test' ? '<span class="tag tag-test">Live test</span>' : ''}</div>${m.name ? `<span class="m-name">${esc(m.name)}</span>` : ''}</div><span class="m-head-actions">${telegramUrl() ? `<a class="btn btn-sm tg-join" href="${telegramUrl()}" target="_blank" rel="noopener noreferrer" aria-label="Get new markets on Telegram" title="Get new markets on Telegram">${ico('telegram')}<span class="hide-sm">Alerts</span></a>` : ''}<button class="btn btn-sm share-btn" data-action="share" aria-label="Share this market">${ico('share')}<span class="hide-sm">Share</span></button></span></div>
       <p class="m-question">${question}</p>
       ${
         isUpcoming(m)
@@ -1632,6 +1651,7 @@ function portfolioView(preds, history = [], stats = null) {
           <div role="tabpanel" id="dp-past" aria-labelledby="dt-past"${tab === 'past' ? '' : ' hidden'}>${pastTable(stats)}</div>
         </section>
         <aside class="dash-side">
+          ${telegramCard()}
           ${walletsCard()}
           ${historyView(history)}
         </aside>
@@ -1773,6 +1793,7 @@ function profileView(p) {
       </div>
       <div class="profile-actions">
         ${p.isMe ? `<a class="btn" href="#/portfolio">${ico('dashboard')}Your dashboard</a>` : ''}
+        ${p.isMe && telegramUrl() ? `<a class="btn tg-join" href="${telegramUrl()}" target="_blank" rel="noopener noreferrer">${ico('telegram')}Telegram alerts</a>` : ''}
         <button class="btn" data-action="copy-text" data-text="${esc(location.href.split('#')[0])}#/u/${encodeURIComponent(p.username)}">${ico('share')}Copy link</button>
       </div>
     </section>
@@ -3261,6 +3282,8 @@ const ADMIN_ACTIONS = {
   auto_listings_off: 'Switched automatic markets off',
   telegram_connected: 'Connected Telegram alerts',
   telegram_disconnected: 'Disconnected Telegram alerts',
+  telegram_channel_on: 'Set the player Telegram channel',
+  telegram_channel_off: 'Stopped posting to the Telegram channel',
 };
 
 /** Settings: automatic markets for new MEXC listings. */
@@ -3558,11 +3581,28 @@ function telegramPanel(t) {
   } else
     body = `<p class="all-good">${ico('checkCircle')}Connected. New listings and markets that need a result are sent to your chat.</p>
       <div class="admin-actions"><button class="btn btn-sm" data-action="tg-test">${ico('send')}Send a test alert</button><button class="btn btn-sm" data-action="tg-disconnect">Disconnect</button></div>`;
+  const channel = t.configured
+    ? `
+      <section class="panel">
+        <div class="section-head"><span class="section-ico">${ico('telegram')}</span><div><h2>Player channel</h2><p class="muted">A public Telegram channel players join. Every market you publish is posted there with a “Predict now” button, and every result when it’s in. Players see a Telegram button on market pages, their dashboard and the menu.</p></div></div>
+        ${
+          t.channel
+            ? `<p class="all-good">${ico('checkCircle')}Posting to <a href="https://t.me/${esc(t.channel)}" target="_blank" rel="noopener noreferrer">@${esc(t.channel)}</a></p>
+               <div class="admin-actions"><button class="btn btn-sm" data-action="tg-channel-remove">Stop posting</button></div>`
+            : `<ol class="tg-steps">
+                <li>In Telegram, create a <b>New Channel</b>, make it <b>Public</b> and give it a link, like <code>firstprint_markets</code>.</li>
+                <li>Open the channel → <b>Administrators</b> → <b>Add Admin</b>, pick your bot, and leave <b>Post Messages</b> on.</li>
+                <li>Enter the channel name here and save. A welcome message is posted to check it works.</li>
+              </ol>
+              <div class="tg-channel-form"><input id="tg-channel" placeholder="@firstprint_markets" autocomplete="off" /><button class="btn btn-solid btn-sm" data-action="tg-channel-save">Save channel</button></div>`
+        }
+      </section>`
+    : '';
   return `
       <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('bell')}</span><div><h2>Telegram alerts</h2><p class="muted">A message when a new token lists on MEXC, and when a market closes and needs your result.</p></div></div>
+        <div class="section-head"><span class="section-ico">${ico('bell')}</span><div><h2>Telegram alerts</h2><p class="muted">A message to you when a new token lists on MEXC, and when a market closes and needs your result.</p></div></div>
         ${body}
-      </section>`;
+      </section>${channel}`;
 }
 
 function marketActions(m) {
@@ -3765,6 +3805,23 @@ async function onAdminAction(action, el) {
         toast(err.message, true);
       }
       return;
+    case 'tg-channel-save':
+    case 'tg-channel-remove': {
+      const value = action === 'tg-channel-save' ? $('#tg-channel')?.value.trim() : '';
+      if (action === 'tg-channel-save' && !value) return toast('Enter the channel name, like @firstprint_markets.', true);
+      if (action === 'tg-channel-remove' && !confirm('Stop posting new markets to the channel?')) return;
+      el.disabled = true;
+      try {
+        await A.api.telegramChannel(value);
+        A.info = await A.api.ping();
+        toast(value ? 'Channel saved. Check it for the welcome message.' : 'Stopped posting to the channel.');
+      } catch (err) {
+        toast(err.message, true);
+        el.disabled = false;
+        return;
+      }
+      return renderAdmin();
+    }
     case 'tg-disconnect':
       if (!confirm('Stop sending alerts to this Telegram chat?')) return;
       await A.api.telegramDisconnect().catch((err) => toast(err.message, true));

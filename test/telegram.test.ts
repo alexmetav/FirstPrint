@@ -46,3 +46,24 @@ test('telegram: alert texts', () => {
   assert.match(newListingText({ symbol: 'X', name: null, exchangeName: 'MEXC', listingAt: now - 20 * 60_000 }, 'u', now), /Trading started .* \(20m ago\)/);
   assert.match(resultDueText({ symbol: 'PNT', basePrice: null, pool: 1500, predictors: 3 }, 'u'), /no start price yet[\s\S]*1,500 pts from 3 predictors/);
 });
+
+test('telegram: channel names and channel posts', async () => {
+  const { channelName, marketLiveText, marketResultText } = await import('../src/services/telegram.ts');
+  assert.equal(channelName('@firstprint_markets'), 'firstprint_markets');
+  assert.equal(channelName('https://t.me/firstprint_markets'), 'firstprint_markets');
+  assert.equal(channelName('fp'), null);
+  assert.equal(channelName('@bad name'), null);
+
+  const base = { symbol: 'AGENCY', name: 'Agency', exchange: 'MEXC', outcomes: 'ladder', basePrice: 0.0421, closeAt: Date.UTC(2026, 9, 5, 12), settleAt: Date.UTC(2026, 9, 8, 12) };
+  const live = marketLiveText(base);
+  assert.match(live, /New market: AGENCY \(Agency\)/);
+  assert.match(live, /Start price: \$0\.0421/);
+  assert.match(live, /Predictions close: 5 Oct, 12:00 UTC/);
+  assert.match(marketLiveText({ ...base, basePrice: null }), /Lists on MEXC around 5 Oct, 12:00 UTC/);
+  assert.match(marketLiveText({ ...base, outcomes: 'binary' }), /Will AGENCY be at or above \$0\.0421 on MEXC\?/);
+
+  const res = marketResultText({ ...base, result: { winningBucket: 'up', returnPct: 0.234, basePrice: 0.0421, finalPrice: 0.052, pool: 1500 } });
+  assert.match(res!, /AGENCY result: Up/);
+  assert.match(res!, /\$0\.0421 → \$0\.052 \(\+23\.4%\)/);
+  assert.equal(marketResultText({ ...base, result: null }), null);
+});

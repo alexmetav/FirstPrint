@@ -16,7 +16,7 @@ import type { Venue } from './exchanges/types.ts';
 import { ConsoleMailer, ResendMailer, type Mailer } from './auth/mailer.ts';
 import { resultEmail } from './services/notify.ts';
 import { RewardsService } from './services/rewards.ts';
-import { Telegram, newListingText, resultDueText } from './services/telegram.ts';
+import { Telegram, marketLiveText, marketResultText, newListingText, resultDueText } from './services/telegram.ts';
 import { rpcChain, rpcUrlFor, type Cluster } from './solana/testfpt.ts';
 
 const log = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
@@ -75,6 +75,18 @@ const telegram = cfg.telegramBotToken
   : null;
 const alert = (text: string) => {
   telegram?.send(text).catch((err: Error) => log(`telegram failed: ${err.message}`));
+};
+
+// New markets and results go to the public channel players join (set in Admin → Settings).
+service.onAnnounce = (kind, id) => {
+  const channel = service.getSetting('telegram_channel');
+  if (!telegram || !channel) return;
+  const m = service.getMarket(id);
+  if (!m.published) return;
+  const text = kind === 'live' ? marketLiveText(m) : marketResultText(m);
+  if (!text) return;
+  const button = { text: kind === 'live' ? 'Predict now' : 'See the result', url: `${appUrl}#/market/${encodeURIComponent(id)}` };
+  telegram.sendTo(`@${channel}`, text, button).catch((err: Error) => log(`telegram channel post failed: ${err.message}`));
 };
 
 // Manual-only servers still watch MEXC for new listings. By default each one waits in the admin's

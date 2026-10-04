@@ -219,6 +219,17 @@ export class FirstprintService {
   livePrices = new Map<string, { price: number; ts: number }>();
   /** Event hook for live updates (SSE). */
   onEvent: (type: 'market' | 'price' | 'listing', data: Record<string, unknown>) => void = () => {};
+  /** A market just went live for players, or just got its result (for the public Telegram channel). */
+  onAnnounce: (kind: 'live' | 'result', marketId: string) => void = () => {};
+  private announce(kind: 'live' | 'result', marketId: string) {
+    queueMicrotask(() => {
+      try {
+        this.onAnnounce(kind, marketId);
+      } catch (err) {
+        this.log(`announce failed ${marketId}: ${(err as Error).message}`);
+      }
+    });
+  }
   /**
    * True when points are claimed to wallets as TestFPT. New accounts then get their welcome
    * points as a reward to claim instead of straight into their balance.
@@ -605,6 +616,7 @@ export class FirstprintService {
         now,
       );
     this.log(`market created ${id}`);
+    if ((input.kind ?? 'listing') === 'listing') this.announce('live', id);
     return id;
   }
 
@@ -904,7 +916,10 @@ export class FirstprintService {
       )
       .run(id, f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, now, JSON.stringify(f.cfg), now, input.publish ? 1 : 0, f.basePrice, f.note, f.logoUrl);
     this.log(`manual market ${input.publish ? 'published' : 'drafted'} ${id}`);
-    if (input.publish) this.onEvent('market', { marketId: id });
+    if (input.publish) {
+      this.onEvent('market', { marketId: id });
+      this.announce('live', id);
+    }
     return id;
   }
 
@@ -980,6 +995,7 @@ export class FirstprintService {
     if (m.listing_at <= now) throw new AppError(409, 'bad_close_time', 'The prediction close time has passed. Edit it before publishing.');
     this.db.prepare('UPDATE markets SET published = 1, opened_at = ? WHERE id = ?').run(now, marketId);
     this.onEvent('market', { marketId });
+    this.announce('live', marketId);
     this.log(`manual market published ${marketId}`);
   }
 
@@ -1381,6 +1397,7 @@ export class FirstprintService {
     });
     this.livePrices.delete(m.id);
     this.onEvent('market', { marketId: m.id });
+    if (status === 'resolved' && m.published === 1) this.announce('result', m.id);
     this.log(`market ${status} ${m.id}${result.voidReason ? ` (${result.voidReason})` : ` → ${result.winningBucket}`}`);
     return notes;
   }
