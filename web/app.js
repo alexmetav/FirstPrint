@@ -223,6 +223,8 @@ function parseRoute() {
   if (h === '/radar') return { name: 'radar' };
   if (h === '/earn') return { name: 'earn' };
   if (h === '/admin') return { name: 'admin' };
+  const st = h.match(/^\/stats\/([A-Za-z0-9_-]{10,64})$/);
+  if (st) return { name: 'stats', key: st[1] };
   return { name: 'home' };
 }
 
@@ -289,6 +291,16 @@ async function loadRoute() {
       view.innerHTML = profileView(S.profile);
     } else if (S.route.name === 'admin') {
       await renderAdmin();
+    } else if (S.route.name === 'stats') {
+      if (!S.api.publicAnalytics) {
+        view.innerHTML = '<div class="empty"><p>Stats aren’t available in practice mode.</p></div>';
+      } else {
+        try {
+          view.innerHTML = analyticsView(await S.api.publicAnalytics(S.route.key, S.vizDays ?? 30), { shared: true });
+        } catch (err) {
+          view.innerHTML = `<div class="empty"><div class="empty-art">${ico('chart')}</div><p><strong>This stats link isn’t active.</strong><br />${esc(err.message)}</p></div>`;
+        }
+      }
     } else if (S.route.name === 'radar' && S.cfg?.manualOnly) {
       location.replace('#/');
       return;
@@ -325,6 +337,7 @@ function titleFor() {
   if (S.route.name === 'admin') return 'Admin: Firstprint';
   if (S.route.name === 'portfolio') return 'Your dashboard: Firstprint';
   if (S.route.name === 'earn') return 'Earn points: Firstprint';
+  if (S.route.name === 'stats') return 'Live stats: Firstprint';
   return 'Firstprint: predict new exchange listings';
 }
 
@@ -502,6 +515,210 @@ function streakCard(compact = false) {
       }
     </section>`;
 }
+
+// --- Analytics (admin, and the read-only partner link) --------------------------------------
+const VIZ = { W: 640, H: 210, L: 40, R: 14, T: 14, B: 26 };
+const fmtShortDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+
+function niceMax(v) {
+  if (v <= 4) return 4;
+  const p = 10 ** Math.floor(Math.log10(v));
+  // Steps whose half is still a round number, so the middle gridline reads cleanly.
+  for (const m of [1, 2, 3, 4, 5, 6, 8, 10]) if (m * p >= v && (m * p) % 2 === 0) return m * p;
+  return 10 * p;
+}
+
+/** Axis, gridlines and date labels shared by the time charts. */
+function vizFrame(days, max, W = VIZ.W) {
+  const { H, L, R, T, B } = VIZ;
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  const ticks = [0, max / 2, max]
+    .map((v) => `<line class="viz-grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/><text class="viz-axis" x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${fmtCompact(Math.round(v))}</text>`)
+    .join('');
+  const slot = (W - L - R) / days.length;
+  const at = [0, Math.floor((days.length - 1) / 2), days.length - 1];
+  const xl = [...new Set(at)]
+    .map((i, k) => `<text class="viz-axis" x="${L + slot * (i + 0.5)}" y="${H - 6}" text-anchor="${k === 0 ? 'start' : k === at.length - 1 ? 'end' : 'middle'}">${fmtShortDay(days[i])}</text>`)
+    .join('');
+  return { y, slot, axes: ticks + xl };
+}
+
+/** Columns sit in half-width cards, so they draw on a narrower canvas to keep the text a readable size. */
+function columnChart(days, values, label, W = 380) {
+  const { H, L, B } = VIZ;
+  const max = niceMax(Math.max(...values));
+  const { y, slot, axes } = vizFrame(days, max, W);
+  const bw = Math.max(2, Math.min(24, slot * 0.7));
+  const base = H - B;
+  const cols = values
+    .map((v, i) => {
+      const x = L + slot * i + (slot - bw) / 2;
+      const top = y(v);
+      const h = base - top;
+      const r = Math.min(4, bw / 2, h);
+      const bar = v > 0 ? `<path class="viz-bar" d="M${x},${base}V${top + r}Q${x},${top} ${x + r},${top}H${x + bw - r}Q${x + bw},${top} ${x + bw},${top + r}V${base}Z"/>` : '';
+      return `<g class="viz-slot" data-tip="${esc(fmtShortDay(days[i]))}|${fmtNum(v)} ${esc(label)}"><rect class="viz-hit" x="${L + slot * i}" y="0" width="${slot}" height="${H}"/>${bar}</g>`;
+    })
+    .join('');
+  return `<svg class="viz" viewBox="0 0 ${W} ${VIZ.H}" role="img" aria-label="${esc(label)} per day">${axes}${cols}</svg>`;
+}
+
+/** Drawn twice: a wide canvas for desktop and a narrow one for phones, so the text stays readable on both. */
+function lineChart(days, values, label) {
+  return lineSvg(days, values, label, VIZ.W, 'viz-wide') + lineSvg(days, values, label, 380, 'viz-narrow');
+}
+
+function lineSvg(days, values, label, W, cls) {
+  const { H, L, B, T } = VIZ;
+  const max = niceMax(Math.max(...values));
+  const { y, slot, axes } = vizFrame(days, max, W);
+  const pts = values.map((v, i) => [L + slot * (i + 0.5), y(v)]);
+  const line = pts.map(([x, py], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${py.toFixed(1)}`).join('');
+  const area = `${line}L${pts[pts.length - 1][0].toFixed(1)},${H - B}L${pts[0][0].toFixed(1)},${H - B}Z`;
+  const [ex, ey] = pts[pts.length - 1];
+  const hits = values
+    .map((v, i) => `<g class="viz-slot" data-tip="${esc(fmtShortDay(days[i]))}|${fmtNum(v)} ${esc(label)}"><rect class="viz-hit" x="${L + slot * i}" y="0" width="${slot}" height="${H}"/><line class="viz-guide" x1="${pts[i][0]}" x2="${pts[i][0]}" y1="${T}" y2="${H - B}"/><circle class="viz-pt" cx="${pts[i][0]}" cy="${pts[i][1]}" r="4.5"/></g>`)
+    .join('');
+  return `<svg class="viz ${cls}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)} per day">${axes}<path class="viz-area" d="${area}"/><path class="viz-line" d="${line}"/><circle class="viz-end" cx="${ex}" cy="${ey}" r="4.5"/><text class="viz-end-label" x="${Math.min(ex, W - 4)}" y="${Math.max(ey - 12, 12)}" text-anchor="end">${fmtNum(values[values.length - 1])}</text>${hits}</svg>`;
+}
+
+/** Change against the previous period of the same length. */
+function vizDelta(cur, prev) {
+  if (!prev) return cur ? '<span class="viz-delta up">New</span>' : '';
+  const ch = (cur - prev) / prev;
+  if (Math.abs(ch) < 0.005) return '<span class="viz-delta">0%</span>';
+  return `<span class="viz-delta ${ch > 0 ? 'up' : 'down'}">${ch > 0 ? '▲' : '▼'} ${Math.abs(Math.round(ch * 100))}%</span>`;
+}
+
+function hbars(rows, unit = '') {
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  return `<div class="hbars">${rows
+    .map(
+      (r) => `<div class="hbar" data-tip="${esc(r.label)}|${fmtNum(r.value)}${unit ? ` ${unit}` : ''}"><span class="hbar-label">${r.html ?? esc(r.label)}</span><span class="hbar-track"><i style="width:${Math.max(r.value ? 2 : 0, (r.value / max) * 100)}%"></i></span><b>${fmtNum(r.value)}</b></div>`,
+    )
+    .join('')}</div>`;
+}
+
+function analyticsView(d, { shared = false } = {}) {
+  const P = d.period;
+  const T = d.totals;
+  const days = d.series.map((x) => x.day);
+  const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '–');
+  const tile = (label, value, sub, delta = '') => `<div class="viz-tile"><span class="viz-tile-label">${label}</span><b class="viz-tile-value">${value}</b><span class="viz-tile-sub">${delta}${sub}</span></div>`;
+  const card = (title, sub, body, wide = false) => `<section class="panel viz-card${wide ? ' wide' : ''}"><div class="viz-card-head"><h3>${title}</h3><p class="muted">${sub}</p></div>${body}</section>`;
+  const signIn = [
+    ['Google or email', d.signIn.emailOnly, 1],
+    ['Wallet', d.signIn.walletOnly, 2],
+    ['Both', d.signIn.both, 3],
+  ];
+  const signTotal = signIn.reduce((n, [, v]) => n + v, 0);
+  const seg = (action) => `<div class="tabs viz-days" role="group" aria-label="Period">${[7, 30, 90].map((n) => `<button data-action="${action}" data-days="${n}" aria-pressed="${d.days === n}" aria-selected="${d.days === n}">${n} days</button>`).join('')}</div>`;
+  const range = `${fmtShortDay(d.from)} – ${fmtShortDay(d.to)}, UTC`;
+  return `
+    <div class="viz-page${shared ? ' shared' : ''}">
+      ${
+        shared
+          ? `<header class="viz-head"><div><span class="eyebrow">Firstprint · live stats</span><h1 class="page-title">How Firstprint is growing</h1><p class="page-lede">A free prediction game on new crypto exchange listings, on Solana testnet. Updated ${fmtAgo(d.generatedAt)}.</p></div></header>`
+          : ''
+      }
+      <div class="viz-filters">${seg(shared ? 'viz-days' : 'admin-viz-days')}<span class="muted">${range}</span></div>
+      <div class="viz-tiles">
+        ${tile('Players', fmtNum(T.players), `+${fmtNum(P.newPlayers)} in ${d.days} days`, vizDelta(P.newPlayers, P.newPlayersPrev))}
+        ${tile('Active players', fmtNum(P.active), `${pct(P.returning, P.active)} came back`, vizDelta(P.active, P.activePrev))}
+        ${tile('Predictions', fmtNum(P.predictions), `on ${fmtNum(P.marketsPlayed)} market${P.marketsPlayed === 1 ? '' : 's'}`, vizDelta(P.predictions, P.predictionsPrev))}
+        ${tile('Points staked', fmtCompact(P.staked), 'free points, no cash value', vizDelta(P.staked, P.stakedPrev))}
+        ${tile('Wallets linked', fmtNum(T.walletsLinked), `${pct(T.walletsLinked, T.players)} of players`)}
+        ${tile('Markets', fmtNum(T.marketsTotal), `${fmtNum(T.marketsOpen)} open · ${fmtNum(T.marketsSettled)} settled`)}
+      </div>
+      <div class="viz-grid">
+        ${card('Daily active players', 'Players who made a prediction or claimed daily points', lineChart(days, d.series.map((x) => x.active), 'active players'), true)}
+        ${card('New players', 'Sign-ups per day', columnChart(days, d.series.map((x) => x.newPlayers), 'new players'))}
+        ${card('Predictions', 'Predictions per day', columnChart(days, d.series.map((x) => x.predictions), 'predictions'))}
+        ${card(
+          'How players sign in',
+          `${fmtNum(signTotal)} players`,
+          `<div class="viz-stack" role="img" aria-label="Sign-in methods">${signIn
+            .filter(([, v]) => v)
+            .map(([label, v, c]) => `<i style="flex:${v};background:var(--viz-${c})" data-tip="${label}|${fmtNum(v)} players (${pct(v, signTotal)})"></i>`)
+            .join('')}</div>
+           <ul class="viz-legend">${signIn.map(([label, v, c]) => `<li><span class="viz-key" style="background:var(--viz-${c})"></span>${label}<b>${fmtNum(v)}</b><span class="muted">${pct(v, signTotal)}</span></li>`).join('')}</ul>`,
+        )}
+        ${card(
+          'Daily streaks',
+          'Players with a live daily streak, by length',
+          hbars(d.streaks.map((x) => ({ label: x.label, value: x.count })), 'players'),
+        )}
+        ${card(
+          'Most played markets',
+          `By points staked, last ${d.days} days`,
+          d.topMarkets.length
+            ? hbars(
+                d.topMarkets.map((m) => ({ label: `${m.symbol} on ${m.exchange}`, html: `<b>${esc(m.symbol)}</b> <span class="muted">${esc(m.exchange)} · ${fmtNum(m.predictors)} player${m.predictors === 1 ? '' : 's'}</span>`, value: m.staked })),
+                'points',
+              )
+            : '<p class="muted">No predictions in this period yet.</p>',
+          true,
+        )}
+      </div>
+      <div class="viz-extra">
+        <div><b>${fmtNum(T.predictions)}</b><span>predictions all time</span></div>
+        <div><b>${fmtCompact(T.staked)}</b><span>points staked all time</span></div>
+        <div><b>${fmtNum(T.referred)}</b><span>players invited by friends</span></div>
+        <div><b>${fmtNum(T.tasksDone)}</b><span>tasks completed on X</span></div>
+        <div><b>${fmtNum(T.testfptClaimers)}</b><span>players claimed TestFPT (${fmtCompact(T.testfptClaimed)} total)</span></div>
+      </div>
+      <details class="viz-table"><summary>Daily numbers as a table</summary>
+        <div class="table-wrap"><table class="table"><thead><tr><th>Day (UTC)</th><th class="right">Active</th><th class="right">New</th><th class="right">Predictions</th><th class="right">Points staked</th></tr></thead>
+        <tbody>${[...d.series].reverse().map((x) => `<tr><td>${fmtShortDay(x.day)}</td><td class="right">${fmtNum(x.active)}</td><td class="right">${fmtNum(x.newPlayers)}</td><td class="right">${fmtNum(x.predictions)}</td><td class="right">${fmtNum(x.staked)}</td></tr>`).join('')}</tbody></table></div>
+      </details>
+      <p class="fine">Totals only: no names, emails or wallets are shown. Test accounts are left out. Points have no cash value.</p>
+    </div>`;
+}
+
+/** Admin: create, copy or turn off the read-only link partners use. */
+function analyticsSharePanel(key) {
+  const url = key ? `${location.origin}${location.pathname}#/stats/${key}` : '';
+  return `
+    <section class="panel viz-share">
+      <div class="section-head"><span class="section-ico">${ico('share')}</span><div><h2>Share with partners</h2><p class="muted">A read-only link to this page with totals only. No names, emails or wallets. Anyone with the link can see it, so share it only with partners.</p></div></div>
+      ${
+        key
+          ? `<div class="tg-channel-form"><input id="viz-share-url" value="${esc(url)}" readonly /><button class="btn btn-solid btn-sm" data-action="admin-copy-share">${ico('copy')}Copy link</button><button class="btn btn-sm" data-action="admin-analytics-share">New link</button><button class="btn btn-sm" data-action="admin-analytics-off">Turn off</button></div>
+             <small class="muted">“New link” stops the old one working.</small>`
+          : `<div class="admin-actions"><button class="btn btn-solid btn-sm" data-action="admin-analytics-share">${ico('share')}Create a share link</button></div>`
+      }
+    </section>`;
+}
+
+// One tooltip for every chart: marks carry data-tip="label|value".
+document.addEventListener('pointerover', (e) => {
+  const el = e.target.closest?.('[data-tip]');
+  let tip = document.getElementById('viz-tip');
+  if (!el) {
+    if (tip) tip.hidden = true;
+    return;
+  }
+  if (!tip) {
+    tip = document.createElement('div');
+    tip.id = 'viz-tip';
+    tip.setAttribute('role', 'status');
+    document.body.append(tip);
+  }
+  const [label, value] = el.dataset.tip.split('|');
+  const v = document.createElement('b');
+  v.textContent = value ?? '';
+  const l = document.createElement('span');
+  l.textContent = label;
+  tip.replaceChildren(v, l);
+  tip.hidden = false;
+});
+document.addEventListener('pointermove', (e) => {
+  const tip = document.getElementById('viz-tip');
+  if (!tip || tip.hidden) return;
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
+  const y = e.clientY - tip.offsetHeight - 12 < 8 ? e.clientY + 18 : e.clientY - tip.offsetHeight - 12;
+  tip.style.transform = `translate(${x}px, ${y}px)`;
+});
 
 /** The public Telegram channel where new markets and results are posted, if the admin set one. */
 function telegramUrl() {
@@ -2946,6 +3163,7 @@ function saveAdminKey(key) {
 const ADMIN_TABS = [
   ['overview', 'grid', 'Overview', 'What needs your attention and how Firstprint is doing.'],
   ['markets', 'list', 'Markets', 'Post results, publish drafts, edit or cancel markets.'],
+  ['analytics', 'chart', 'Analytics', 'Players, activity and markets. Share a read-only link with partners.'],
   ['create', 'plusCircle', 'Create market', 'Save a draft, check it, then publish. Users only see published markets.'],
   ['token', 'token', 'TestFPT token', 'The on-chain token players claim their points as.'],
   ['tasks', 'sparkles', 'Tasks', 'Tasks players complete on X for points.'],
@@ -3011,6 +3229,14 @@ async function renderAdmin() {
   let body;
   if (tab === 'overview') body = listingsPanel(pending) + adminOverview({ markets, waiting, drafts, token, tasks, log });
   else if (tab === 'markets') body = listingsPanel(pending) + adminMarketsTab(markets, waiting);
+  else if (tab === 'analytics') {
+    try {
+      const data = await A.api.analytics(S.vizDays ?? 30);
+      body = analyticsSharePanel(data.shareKey) + analyticsView(data);
+    } catch (err) {
+      body = `<div class="empty"><p>${esc(err.message)}</p></div>`;
+    }
+  }
   else if (tab === 'create') body = `<section class="panel" id="admin-market-section">
       <div class="section-head"><span class="section-ico">${ico(editing ? 'edit' : 'plusCircle')}</span><div><h2>${editing ? `Edit ${esc(editing.symbol)} market` : review ? `Review ${esc(review.symbol)} from ${esc(review.exchangeName)}` : 'New market'}</h2><p class="muted">${review ? 'Check the start price and times, add the logo and a description, then publish.' : 'When the close time passes, the market waits in Markets for your result.'}</p></div></div>
       ${marketForm(editing, review ? reviewPrefill(review) : null)}
@@ -3926,6 +4152,32 @@ async function onAdminAction(action, el) {
       }
       return;
     }
+    case 'admin-viz-days':
+      S.vizDays = Number(el.dataset.days);
+      return renderAdmin();
+    case 'admin-analytics-share':
+    case 'admin-analytics-off': {
+      const on = action === 'admin-analytics-share';
+      if (!confirm(on ? 'Create a new share link? Any old link stops working.' : 'Turn off the share link? Partners will no longer see the stats.')) return;
+      try {
+        await A.api.analyticsShare(on);
+        toast(on ? 'Share link ready. Copy it below.' : 'Share link turned off.');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
+    }
+    case 'admin-copy-share': {
+      const input = $('#viz-share-url');
+      try {
+        await navigator.clipboard.writeText(input.value);
+        toast('Link copied');
+      } catch {
+        input.select();
+        toast('Press Ctrl+C (or ⌘C) to copy');
+      }
+      return;
+    }
     case 'admin-tg-disconnect':
       if (!confirm('Stop sending alerts to this Telegram chat?')) return;
       await A.api.telegramDisconnect().catch((err) => toast(err.message, true));
@@ -4207,6 +4459,9 @@ document.addEventListener('click', async (e) => {
       S.me = null;
       renderTop();
       toast('Logged out');
+      return loadRoute();
+    case 'viz-days':
+      S.vizDays = Number(t.closest('[data-action]').dataset.days);
       return loadRoute();
     case 'claim':
       try {
