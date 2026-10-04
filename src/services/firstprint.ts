@@ -820,37 +820,47 @@ export class FirstprintService {
     );
   }
 
+  /**
+   * Calls every exchange from this server (live price, recent candles, pair list, announcements)
+   * and says whether new listings could be tracked from here. Exchanges are checked side by side
+   * so the whole check stays under about 15 seconds.
+   */
   async checkExchanges() {
-    const results = [];
-    for (const venue of this.venues.values()) {
-      if (venue.id === 'sim') continue;
-      const pair = venue.pair('BTC');
-      const run = async <T>(fn: () => Promise<T>) => {
-        const t0 = Date.now();
-        try {
-          const value = await Promise.race([fn(), new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timed out after 15s')), 15_000))]);
-          return { ok: true, ms: Date.now() - t0, value, error: null as string | null };
-        } catch (err) {
-          return { ok: false, ms: Date.now() - t0, value: null, error: (err as Error).message };
-        }
-      };
-      const now = Date.now();
-      const ticker = await run(() => venue.fetchTicker(pair));
-      const candles = await run(() => venue.fetchCandles(pair, now - 15 * MIN_MS, now));
-      const pairs = await run(() => venue.listPairs());
-      const anns = venue.fetchAnnouncements ? await run(() => venue.fetchAnnouncements!()) : null;
-      results.push({
-        id: venue.id,
-        name: venue.name,
-        ticker: { ok: ticker.ok && Boolean(ticker.value), ms: ticker.ms, detail: ticker.value ? `BTC ${ticker.value.price}` : ticker.error ?? 'no price' },
-        candles: { ok: candles.ok && (candles.value?.length ?? 0) >= 5, ms: candles.ms, detail: candles.ok ? `${candles.value!.length} candles in last 15 min` : candles.error },
-        pairs: { ok: pairs.ok && (pairs.value?.length ?? 0) > 10, ms: pairs.ms, detail: pairs.ok ? `${pairs.value!.length} USDT pairs` : pairs.error },
-        announcements: anns
-          ? { ok: anns.ok && (anns.value?.length ?? 0) > 0, ms: anns.ms, detail: anns.ok ? `${anns.value!.length} items, latest: ${anns.value![0]?.title ?? 'none'}` : anns.error }
-          : { ok: null, ms: 0, detail: 'Not offered by this exchange' },
-      });
-    }
-    return results;
+    const run = async <T>(fn: () => Promise<T>) => {
+      const t0 = Date.now();
+      try {
+        const value = await Promise.race([fn(), new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timed out after 15s')), 15_000))]);
+        return { ok: true, ms: Date.now() - t0, value, error: null as string | null };
+      } catch (err) {
+        return { ok: false, ms: Date.now() - t0, value: null, error: (err as Error).message };
+      }
+    };
+    const venues = [...this.venues.values()].filter((v) => v.id !== 'sim');
+    return Promise.all(
+      venues.map(async (venue) => {
+        const pair = venue.pair('BTC');
+        const now = Date.now();
+        const [ticker, candles, pairs, anns] = await Promise.all([
+          run(() => venue.fetchTicker(pair)),
+          run(() => venue.fetchCandles(pair, now - 15 * MIN_MS, now)),
+          run(() => venue.listPairs()),
+          venue.fetchAnnouncements ? run(() => venue.fetchAnnouncements!()) : Promise.resolve(null),
+        ]);
+        const cells = {
+          ticker: { ok: ticker.ok && Boolean(ticker.value), ms: ticker.ms, detail: ticker.value ? `BTC ${ticker.value.price}` : ticker.error ?? 'no price' },
+          candles: { ok: candles.ok && (candles.value?.length ?? 0) >= 5, ms: candles.ms, detail: candles.ok ? `${candles.value!.length} candles in last 15 min` : candles.error },
+          pairs: { ok: pairs.ok && (pairs.value?.length ?? 0) > 10, ms: pairs.ms, detail: pairs.ok ? `${pairs.value!.length} USDT pairs` : pairs.error },
+          announcements: anns
+            ? { ok: anns.ok && (anns.value?.length ?? 0) > 0, ms: anns.ms, detail: anns.ok ? `${anns.value!.length} items, latest: ${anns.value![0]?.title ?? 'none'}` : anns.error }
+            : { ok: null, ms: 0, detail: 'Not offered by this exchange' },
+        };
+        // 451 and 403 are how exchanges refuse servers in countries they don't serve.
+        const blocked = [ticker, candles, pairs].some((r) => /\b(451|403)\b|restricted location|forbidden/i.test(r.error ?? ''));
+        const works = cells.ticker.ok && cells.candles.ok && cells.pairs.ok;
+        const verdict: 'works' | 'blocked' | 'partial' | 'down' = works ? 'works' : blocked ? 'blocked' : cells.ticker.ok || cells.pairs.ok ? 'partial' : 'down';
+        return { id: venue.id, name: venue.name, verdict, ...cells };
+      }),
+    );
   }
 
   adminMarkets() {
