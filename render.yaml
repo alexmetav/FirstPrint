@@ -53,3 +53,6 @@ services:
         sync: false
       - key: MAIL_FROM
         sync: false
+      # Admin alerts on Telegram: the bot token from @BotFather. Secret, enter in Render only.
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false

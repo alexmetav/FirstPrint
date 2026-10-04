@@ -219,6 +219,17 @@ export class FirstprintService {
   livePrices = new Map<string, { price: number; ts: number }>();
   /** Event hook for live updates (SSE). */
   onEvent: (type: 'market' | 'price' | 'listing', data: Record<string, unknown>) => void = () => {};
+  /** A market just went live for players, or just got its result (for the public Telegram channel). */
+  onAnnounce: (kind: 'live' | 'result', marketId: string) => void = () => {};
+  private announce(kind: 'live' | 'result', marketId: string) {
+    queueMicrotask(() => {
+      try {
+        this.onAnnounce(kind, marketId);
+      } catch (err) {
+        this.log(`announce failed ${marketId}: ${(err as Error).message}`);
+      }
+    });
+  }
   /**
    * True when points are claimed to wallets as TestFPT. New accounts then get their welcome
    * points as a reward to claim instead of straight into their balance.
@@ -605,6 +616,7 @@ export class FirstprintService {
         now,
       );
     this.log(`market created ${id}`);
+    if ((input.kind ?? 'listing') === 'listing') this.announce('live', id);
     return id;
   }
 
@@ -904,7 +916,10 @@ export class FirstprintService {
       )
       .run(id, f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, now, JSON.stringify(f.cfg), now, input.publish ? 1 : 0, f.basePrice, f.note, f.logoUrl);
     this.log(`manual market ${input.publish ? 'published' : 'drafted'} ${id}`);
-    if (input.publish) this.onEvent('market', { marketId: id });
+    if (input.publish) {
+      this.onEvent('market', { marketId: id });
+      this.announce('live', id);
+    }
     return id;
   }
 
@@ -980,6 +995,7 @@ export class FirstprintService {
     if (m.listing_at <= now) throw new AppError(409, 'bad_close_time', 'The prediction close time has passed. Edit it before publishing.');
     this.db.prepare('UPDATE markets SET published = 1, opened_at = ? WHERE id = ?').run(now, marketId);
     this.onEvent('market', { marketId });
+    this.announce('live', marketId);
     this.log(`manual market published ${marketId}`);
   }
 
@@ -1381,6 +1397,7 @@ export class FirstprintService {
     });
     this.livePrices.delete(m.id);
     this.onEvent('market', { marketId: m.id });
+    if (status === 'resolved' && m.published === 1) this.announce('result', m.id);
     this.log(`market ${status} ${m.id}${result.voidReason ? ` (${result.voidReason})` : ` → ${result.winningBucket}`}`);
     return notes;
   }
@@ -1398,13 +1415,14 @@ export class FirstprintService {
     listingAt: number | null;
     publishedAt: number | null;
     dedupeKey: string;
+    name?: string | null;
   }): number | null {
     const res = this.db
       .prepare(
-        `INSERT OR IGNORE INTO detected_listings (exchange, symbol, pair, source, title, url, listing_at, published_at, detected_at, dedupe_key)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO detected_listings (exchange, symbol, pair, source, title, url, listing_at, published_at, detected_at, dedupe_key, name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(d.exchange, d.symbol, d.pair, d.source, d.title, d.url, d.listingAt, d.publishedAt, this.clock.now(), d.dedupeKey);
+      .run(d.exchange, d.symbol, d.pair, d.source, d.title, d.url, d.listingAt, d.publishedAt, this.clock.now(), d.dedupeKey, d.name ?? null);
     if (res.changes !== 1) return null;
     const id = Number(res.lastInsertRowid);
     this.onEvent('listing', { id, exchange: d.exchange, symbol: d.symbol });
@@ -1438,6 +1456,7 @@ export class FirstprintService {
       exchange: r.exchange as string,
       exchangeName: this.venues.get(r.exchange as string)?.name ?? (r.exchange as string),
       symbol: r.symbol as string | null,
+      name: (r.name as string | null) ?? null,
       pair: r.pair as string | null,
       source: r.source as string,
       title: r.title as string | null,
@@ -1496,6 +1515,25 @@ export class FirstprintService {
   setAutoListings(enabled: boolean) {
     this.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('auto_listings', enabled ? '1' : '0');
     return this.autoListingsEnabled();
+  }
+
+  /** Listings left in the review queue for days are no longer worth a market. */
+  expireDetections(listedBefore: number) {
+    this.db.prepare("UPDATE detected_listings SET status = 'ignored' WHERE status = 'pending' AND listing_at IS NOT NULL AND listing_at < ?").run(listedBefore);
+  }
+
+  /** Marks a detected listing as done once the admin has made a market for it from the review queue. */
+  linkDetection(id: number, marketId: string) {
+    this.db.prepare("UPDATE detected_listings SET status = 'approved', market_id = ? WHERE id = ? AND status = 'pending'").run(marketId, id);
+  }
+
+  getSetting(key: string): string | null {
+    return as<{ value: string } | undefined>(this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key))?.value ?? null;
+  }
+
+  setSetting(key: string, value: string | null) {
+    if (value === null) this.db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+    else this.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
   }
 
   ignoreDetection(id: number) {

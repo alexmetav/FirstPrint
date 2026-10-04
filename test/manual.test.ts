@@ -374,3 +374,28 @@ test('admin market checks: already trading, start price off, long windows', asyn
   const prices = await service.exchangePrices('fold', ['exa', 'exb', 'nope']);
   assert.deepEqual(prices.map((p) => [p.id, p.price]), [['exa', 0.07], ['exb', null]]);
 });
+
+test('channel announcements: on publish (not drafts) and when a result is posted', async () => {
+  const { service, clock, scheduler } = setup();
+  const seen: string[] = [];
+  service.onAnnounce = (kind, id) => void seen.push(`${kind}:${service.getMarket(id, undefined, true).symbol}`);
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  const a = await service.createUser({ username: 'alice' });
+  const b = await service.createUser({ username: 'bob' });
+  const live = service.createManualMarket({ ...draft(), publish: true });
+  const later = service.createManualMarket(draft({ symbol: 'abc' }));
+  await flush();
+  assert.deepEqual(seen, ['live:XYZ'], 'drafts are not announced');
+  service.publishMarket(later);
+  await flush();
+  assert.deepEqual(seen, ['live:XYZ', 'live:ABC']);
+
+  service.placePrediction(live, a.id, 'up', 50);
+  service.placePrediction(live, b.id, 'down', 50);
+  goto(clock, T0 + 3 * HOUR);
+  await scheduler.tick();
+  service.resolveManualMarket(live, { finalPrice: 2.5 });
+  await flush();
+  assert.deepEqual(seen, ['live:XYZ', 'live:ABC', 'result:XYZ']);
+});

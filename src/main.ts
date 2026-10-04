@@ -16,6 +16,7 @@ import type { Venue } from './exchanges/types.ts';
 import { ConsoleMailer, ResendMailer, type Mailer } from './auth/mailer.ts';
 import { resultEmail } from './services/notify.ts';
 import { RewardsService } from './services/rewards.ts';
+import { Telegram, marketLiveText, marketResultText, newListingText, resultDueText } from './services/telegram.ts';
 import { rpcChain, rpcUrlFor, type Cluster } from './solana/testfpt.ts';
 
 const log = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
@@ -63,24 +64,56 @@ const rewards = new RewardsService(
 );
 await rewards.init();
 const live = new LiveFeed(service);  // still serves the browser event stream; prices are only polled when not manual-only
-// Manual-only servers still open markets for new MEXC listings by themselves (AUTO_LISTINGS=0 turns
-// this off for good; admins can pause it in Settings). Otherwise the full scanner runs as before.
-const autoListings = cfg.manualOnly && cfg.autoListings;
-const tracked = cfg.manualOnly ? (autoListings ? venues.filter((v) => v.id === 'mexc') : []) : venues.filter((v) => cfg.trackVenues.includes(v.id));
-const tracker = !tracked.length
-  ? null
-  : autoListings
-    ? new ListingTracker(service, tracked, {
-        autoCreate: true,
-        maxPerDay: cfg.autoMarketsPerDay,
-        durationMs: cfg.autoMarketHours * 3_600_000,
-        enabled: () => service.autoListingsEnabled(),
-      })
-    : new ListingTracker(service, tracked, { autoCreate: cfg.autoCreateMarkets });
-
 // Results are stored for the in-app bell by the service. Here they are logged and, where the player
 // signed in with email and a real mailer is set up, sent as a short email.
 const appUrl = `${(cfg.publicUrl ?? 'https://www.firstprint.fun').replace(/\/+$/, '')}/app/`;
+const adminUrl = `${appUrl}#/admin`;
+
+// Admin alerts on Telegram (TELEGRAM_BOT_TOKEN); the chat is linked from Admin → Settings.
+const telegram = cfg.telegramBotToken
+  ? new Telegram(cfg.telegramBotToken, { get: () => service.getSetting('telegram_chat_id'), set: (id) => service.setSetting('telegram_chat_id', id) })
+  : null;
+const alert = (text: string) => {
+  telegram?.send(text).catch((err: Error) => log(`telegram failed: ${err.message}`));
+};
+
+// New markets and results go to the public channel players join (set in Admin → Settings).
+service.onAnnounce = (kind, id) => {
+  const channel = service.getSetting('telegram_channel');
+  if (!telegram || !channel) return;
+  const m = service.getMarket(id);
+  if (!m.published) return;
+  const text = kind === 'live' ? marketLiveText(m) : marketResultText(m);
+  if (!text) return;
+  const button = { text: kind === 'live' ? 'Predict now' : 'See the result', url: `${appUrl}#/market/${encodeURIComponent(id)}` };
+  telegram.sendTo(`@${channel}`, text, button).catch((err: Error) => log(`telegram channel post failed: ${err.message}`));
+};
+
+// Manual-only servers still watch MEXC for new listings. By default each one waits in the admin's
+// review queue (with a Telegram alert); AUTO_LISTINGS=publish opens self-settling markets instead,
+// and AUTO_LISTINGS=0 turns it off. Admins can pause it in Settings. Otherwise the full scanner runs.
+const autoListings = cfg.manualOnly ? cfg.autoListings : 'off';
+const tracked = cfg.manualOnly ? (autoListings !== 'off' ? venues.filter((v) => v.id === 'mexc') : []) : venues.filter((v) => cfg.trackVenues.includes(v.id));
+const tracker = !tracked.length
+  ? null
+  : autoListings === 'review'
+    ? new ListingTracker(service, tracked, {
+        autoCreate: false,
+        review: true,
+        enabled: () => service.autoListingsEnabled(),
+        onNew: (found) => {
+          for (const d of found) alert(newListingText(d, adminUrl, systemClock.now()));
+        },
+      })
+    : autoListings === 'publish'
+      ? new ListingTracker(service, tracked, {
+          autoCreate: true,
+          maxPerDay: cfg.autoMarketsPerDay,
+          durationMs: cfg.autoMarketHours * 3_600_000,
+          enabled: () => service.autoListingsEnabled(),
+        })
+      : new ListingTracker(service, tracked, { autoCreate: cfg.autoCreateMarkets });
+
 const scheduler = new Scheduler(
   service,
   async (notes) => {
@@ -92,7 +125,16 @@ const scheduler = new Scheduler(
       mailer!.send(email, mail.subject, mail.text).catch((err: Error) => log(`result email failed for ${n.userId}: ${err.message}`));
     }
   },
-  { tickMs: cfg.tickMs, liveMs: cfg.liveMs, trackEveryMs: cfg.trackEveryMs, tracker, live: cfg.manualOnly && !autoListings ? null : live },
+  { tickMs: cfg.tickMs, liveMs: cfg.liveMs, trackEveryMs: cfg.trackEveryMs, tracker,
+    live: cfg.manualOnly && autoListings !== 'publish' ? null : live,
+    // Admin-run markets whose predictions just closed need a result (and maybe an opening price).
+    onClosed: (ids) => {
+      for (const id of ids) {
+        const m = service.getMarket(id);
+        if (m.mode === 'manual') alert(resultDueText(m, adminUrl));
+      }
+    },
+  },
 );
 
 const server = createApiServer({
@@ -102,7 +144,8 @@ const server = createApiServer({
   rewards,
   adminKey: cfg.adminKey,
   manualOnly: cfg.manualOnly,
-  autoListings: autoListings ? { perDay: cfg.autoMarketsPerDay, hours: cfg.autoMarketHours } : null,
+  autoListings: autoListings === 'off' ? null : { mode: autoListings, perDay: cfg.autoMarketsPerDay, hours: cfg.autoMarketHours },
+  telegram,
   trustProxyHops: cfg.trustProxyHops,
   backupStatus: () => backup?.status() ?? { enabled: false, lastOkAt: null, lastError: null },
   googleClientId: cfg.googleClientId,

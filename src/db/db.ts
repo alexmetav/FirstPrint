@@ -27,6 +27,7 @@ function migrate(db: DB) {
   ensure('markets', 'base_price', 'base_price REAL');
   ensure('markets', 'note', 'note TEXT');
   ensure('markets', 'logo_url', 'logo_url TEXT');
+  ensure('detected_listings', 'name', 'name TEXT');
   ensure('users', 'x_username', 'x_username TEXT');
   ensure('users', 'referral_code', 'referral_code TEXT');
   ensure('users', 'referred_by', 'referred_by TEXT');

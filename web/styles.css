@@ -9633,3 +9633,101 @@ a.wallet-option {
     justify-self: start;
   }
 }
+
+/* Admin: new listings queue, live price fill, Telegram setup */
+.todo-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.live-fill {
+  margin-top: 6px;
+  justify-self: start;
+  width: fit-content;
+}
+.tg-steps {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  color: var(--text-2, var(--muted));
+}
+.tg-steps code,
+.tg-code {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--surface-2, var(--surface));
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+.tg-code {
+  font-size: 15px;
+  font-weight: 600;
+  user-select: all;
+}
+@media (max-width: 640px) {
+  .todo li .todo-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+/* Telegram channel: market page button, dashboard card */
+.m-head-actions {
+  margin-left: auto;
+  align-self: flex-start;
+  display: flex;
+  gap: 8px;
+  flex: none;
+}
+.m-head-actions .share-btn {
+  margin-left: 0;
+}
+.tg-join svg {
+  color: #229ed9;
+}
+.tg-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px 14px;
+  align-items: start;
+}
+.tg-card b {
+  display: block;
+  margin-bottom: 2px;
+}
+.tg-card p {
+  margin: 0;
+  font-size: 13px;
+}
+.tg-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, #229ed9 16%, transparent);
+  color: #229ed9;
+}
+.tg-logo svg {
+  width: 22px;
+  height: 22px;
+}
+.tg-card .tg-join {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+.tg-channel-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 12px;
+}
+.tg-channel-form input {
+  flex: 1 1 220px;
+  max-width: 320px;
+}

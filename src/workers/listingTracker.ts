@@ -1,4 +1,6 @@
 import type { FirstprintService } from '../services/firstprint.ts';
+
+export type Detection = ReturnType<FirstprintService['detections']>[number];
 import type { Venue } from '../exchanges/types.ts';
 
 const MINUTE = 60_000;
@@ -16,6 +18,10 @@ const LATEST_START_MS = 40 * MINUTE;
  * detection has a symbol and a trading start time that is still ahead, or
  * started so recently that the start-price hour is mostly still to come.
  * Automatic markets are published straight away, up to maxPerDay in any 24 hours.
+ *
+ * With review on, new listings wait in the admin's review queue instead, and onNew
+ * is told about each one (for a Telegram alert). Tokens that already have a market,
+ * and pairs that opened more than a day ago (an old pair switched back on), are skipped.
  */
 export class ListingTracker {
   service: FirstprintService;
@@ -25,11 +31,20 @@ export class ListingTracker {
   durationMs: number | undefined;
   /** Checked on every run, so an admin can switch automatic markets off without a restart. */
   enabled: () => boolean;
+  review: boolean;
+  onNew: (detections: Detection[]) => void | Promise<void>;
 
   constructor(
     service: FirstprintService,
     venues: Venue[],
-    opts: { autoCreate: boolean; maxPerDay?: number; durationMs?: number; enabled?: () => boolean },
+    opts: {
+      autoCreate: boolean;
+      maxPerDay?: number;
+      durationMs?: number;
+      enabled?: () => boolean;
+      review?: boolean;
+      onNew?: (detections: Detection[]) => void | Promise<void>;
+    },
   ) {
     this.service = service;
     this.venues = venues;
@@ -37,6 +52,8 @@ export class ListingTracker {
     this.maxPerDay = opts.maxPerDay ?? Infinity;
     this.durationMs = opts.durationMs;
     this.enabled = opts.enabled ?? (() => true);
+    this.review = opts.review ?? false;
+    this.onNew = opts.onNew ?? (() => {});
   }
 
   async run() {
@@ -88,6 +105,7 @@ export class ListingTracker {
             listingAt: p.listingAt,
             publishedAt: null,
             dedupeKey: `pair:${venue.id}:${p.pair}`,
+            name: p.name ?? null,
           });
           if (id) {
             created.push(id);
@@ -97,6 +115,25 @@ export class ListingTracker {
         this.service.rememberPairs(venue.id, pairs.filter((p) => p.listingAt === null || p.listingAt <= now).map((p) => p.pair));
       } catch (err) {
         this.service.log(`pairs failed ${venue.id}: ${(err as Error).message}`);
+      }
+    }
+
+    if (this.review) this.service.expireDetections(this.service.clock.now() - 3 * DAY);
+    if (this.review && created.length) {
+      const now = this.service.clock.now();
+      const fresh: Detection[] = [];
+      for (const d of this.service.detections({ status: 'pending', limit: 200 })) {
+        if (!created.includes(d.id)) continue;
+        const stale = d.listingAt !== null && d.listingAt < now - DAY;
+        if (!d.symbol || stale || this.service.hasActiveMarket(d.symbol)) this.service.ignoreDetection(d.id);
+        else fresh.push(d);
+      }
+      if (fresh.length) {
+        try {
+          await this.onNew(fresh);
+        } catch (err) {
+          this.service.log(`new listing alert failed: ${(err as Error).message}`);
+        }
       }
     }
 
