@@ -198,7 +198,8 @@ async function loadMarket(id) {
 }
 
 async function refresh() {
-  if (S.refreshing || S.modal || S.route.name === 'admin') return;
+  // Admin and the partner stats page load their own data; redrawing them would close open tables and tooltips.
+  if (S.refreshing || S.modal || S.route.name === 'admin' || S.route.name === 'stats') return;
   S.refreshing = true;
   try {
     if (S.me) await refreshMe();
@@ -223,7 +224,7 @@ function parseRoute() {
   if (h === '/radar') return { name: 'radar' };
   if (h === '/earn') return { name: 'earn' };
   if (h === '/admin') return { name: 'admin' };
-  const st = h.match(/^\/stats\/([A-Za-z0-9_-]{10,64})$/);
+  const st = h.match(/^\/stats\/(.*)$/);
   if (st) return { name: 'stats', key: st[1] };
   return { name: 'home' };
 }
@@ -295,10 +296,18 @@ async function loadRoute() {
       if (!S.api.publicAnalytics) {
         view.innerHTML = '<div class="empty"><p>Stats aren’t available in practice mode.</p></div>';
       } else {
-        try {
-          view.innerHTML = analyticsView(await S.api.publicAnalytics(S.route.key, S.vizDays ?? 30), { shared: true });
-        } catch (err) {
-          view.innerHTML = `<div class="empty"><div class="empty-art">${ico('chart')}</div><p><strong>This stats link isn’t active.</strong><br />${esc(err.message)}</p></div>`;
+        const dead = (msg) => `<div class="empty"><div class="empty-art">${ico('chart')}</div><p><strong>${msg}</strong><br />Ask Firstprint for a new link.</p></div>`;
+        if (!/^[A-Za-z0-9_-]{10,64}$/.test(S.route.key)) {
+          view.innerHTML = dead('This stats link isn’t complete.');
+        } else {
+          try {
+            view.innerHTML = analyticsView(await S.api.publicAnalytics(S.route.key, S.vizDays ?? 30), { shared: true });
+          } catch (err) {
+            view.innerHTML =
+              err.status === 404
+                ? dead('This stats link is no longer active.')
+                : `<div class="empty"><div class="empty-art">${ico('chart')}</div><p><strong>Couldn’t load the stats.</strong><br />${esc(err.message)}</p><button class="btn btn-solid" data-action="viz-retry">${ico('refresh')}Try again</button></div>`;
+          }
         }
       }
     } else if (S.route.name === 'radar' && S.cfg?.manualOnly) {
@@ -2358,7 +2367,7 @@ function earnView() {
     return `
       <header class="page-head"><span class="page-ico">${ico('gift')}</span><div><h1 class="page-title">Earn points</h1></div></header>
       <div class="empty"><div class="empty-art">${ico('gift')}</div>
-        <p><strong>Log in to earn points.</strong><br />Complete tasks on X, invite friends and claim your points.</p>
+        <p><strong>Log in to earn points.</strong><br />Claim free points every day (50 on day 1, up to 200 a day with a streak), complete tasks on X, invite friends and claim your points.</p>
         <button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button></div>`;
   }
   const r = S.rewards;
@@ -3208,13 +3217,21 @@ async function renderAdmin() {
   }
 
   const manualOnly = Boolean(A.info.manualOnly);
-  const [{ markets }, detected, { log }, token, { tasks }] = await Promise.all([
-    A.api.markets(),
-    manualOnly && !A.info.autoListings ? Promise.resolve([]) : A.api.detected().then((d) => d.detected).catch(() => []),
-    A.api.log().catch(() => ({ log: [] })),
-    A.api.token().catch(() => ({ enabled: false })),
-    A.api.tasks().catch(() => ({ tasks: [] })),
-  ]);
+  let loaded;
+  try {
+    loaded = await Promise.all([
+      A.api.markets(),
+      manualOnly && !A.info.autoListings ? Promise.resolve([]) : A.api.detected().then((d) => d.detected).catch(() => []),
+      A.api.log().catch(() => ({ log: [] })),
+      A.api.token().catch(() => ({ enabled: false })),
+      A.api.tasks().catch(() => ({ tasks: [] })),
+    ]);
+  } catch (err) {
+    // The server may be waking up or busy: say so instead of leaving the old tab on screen.
+    view.innerHTML = `<div class="empty"><div class="empty-art">${ico('alert')}</div><p><strong>Couldn’t load the admin panel.</strong><br />${esc(err.message)}</p><button class="btn btn-solid" data-action="admin-token-refresh">${ico('refresh')}Try again</button></div>`;
+    return;
+  }
+  const [{ markets }, detected, { log }, token, { tasks }] = loaded;
   A.detected = detected;
   const venues = A.info.venues;
   const editing = markets.find((m) => m.id === A.edit && m.mode === 'manual' && m.status === 'open') ?? null;
@@ -3330,6 +3347,10 @@ async function runPriceCheck() {
 /** Runs after the admin page is drawn: UTC hints, live price checks, and copying a linked logo. */
 function afterAdminRender() {
   updateUtcHints();
+  // On phones the tab strip scrolls sideways; keep the open tab in view.
+  const nav = $('.admin-nav');
+  const cur = nav?.querySelector('[aria-current]');
+  if (nav && cur && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = cur.offsetLeft - (nav.clientWidth - cur.offsetWidth) / 2;
   const box = $('#admin-checks');
   if (box) loadMarketChecks(box);
   const form = $('#admin-market');
@@ -3750,7 +3771,8 @@ function marketForm(m, pre = null) {
                ${m.published ? '' : '<button class="btn btn-solid" type="submit" name="intent" value="publish">Save and publish</button>'}
                <button class="btn" type="button" data-action="admin-edit-cancel">Stop editing</button>`
             : `<button class="btn btn-solid" type="submit" name="intent" value="publish">${ico('send')}Publish market</button>
-               <button class="btn" type="submit" name="intent" value="draft">${ico('edit')}Save as draft</button>`
+               <button class="btn" type="submit" name="intent" value="draft">${ico('edit')}Save as draft</button>
+               ${pre ? '<button class="btn" type="button" data-action="admin-edit-cancel">Back to the list</button>' : ''}`
         }
       </div>
     </form>`;
@@ -3981,7 +4003,10 @@ async function onAdminAction(action, el) {
   switch (action) {
     case 'admin-tab':
       A.tab = el.dataset.tab;
-      if (A.tab !== 'create') A.edit = null;
+      if (A.tab !== 'create') {
+        A.edit = null;
+        A.review = null;
+      }
       await renderAdmin();
       return window.scrollTo({ top: 0 });
     case 'admin-token-refresh':
@@ -4144,7 +4169,7 @@ async function onAdminAction(action, el) {
           return;
         }
         const { count } = await A.api.telegramPostOpen(again);
-        toast(count ? `Posting ${count} market${count === 1 ? '' : 's'}, a few seconds apart. Check the channel.` : 'Everything is posted already.');
+        toast(count ? `Queued ${count} post${count === 1 ? '' : 's'}, a few seconds apart. If any fail, the count here stays up.` : 'Everything is posted already.');
         setTimeout(async () => {
           A.info = await A.api.ping().catch(() => A.info);
           if (A.tab === 'settings') renderAdmin();
@@ -4463,10 +4488,14 @@ document.addEventListener('click', async (e) => {
       renderTop();
       toast('Logged out');
       return loadRoute();
+    case 'viz-retry':
+      return loadRoute();
     case 'viz-days':
       S.vizDays = Number(t.closest('[data-action]').dataset.days);
       return loadRoute();
     case 'claim':
+      if (S.claimingDaily) return;
+      S.claimingDaily = true;
       try {
         const from = t.closest('[data-action]').getBoundingClientRect();
         const me = await S.api.claimDaily();
@@ -4480,6 +4509,8 @@ document.addEventListener('click', async (e) => {
         return loadRoute();
       } catch (err) {
         return toast(err.message, true);
+      } finally {
+        S.claimingDaily = false;
       }
     case 'testnet-hide':
       writePref('fp:testnet-hide', '1');

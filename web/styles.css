@@ -7347,8 +7347,8 @@ main:has(.home) {
     gap: 8px;
     overflow-x: auto;
     scrollbar-width: none;
-    margin: 0 -20px;
-    padding: 0 20px;
+    margin: 0 -14px;
+    padding: 0 14px;
   }
   .home-side .side-group {
     display: flex;
