@@ -500,6 +500,7 @@ function homeView() {
   const exBtn = (id, label, n) => `<button data-exchange="${esc(id)}" aria-current="${(S.exchange ?? 'all') === id}">${id === 'all' ? ico('landmark') : `<span class="ex-dot" aria-hidden="true">${esc(label.slice(0, 1))}</span>`}<span>${esc(label)}</span><span class="side-n">${n}</span></button>`;
   return `
     ${startChecklist()}
+    ${S.query ? '' : homeHero()}
     <div class="home">
       <aside class="home-side" aria-label="Filter markets">
         <div class="side-group">${HOME_TABS.map(filterBtn).join('')}</div>
@@ -516,6 +517,46 @@ function homeView() {
       <aside class="home-rail" aria-label="Highlights">${homeRail()}</aside>
     </div>
     ${howItWorks()}`;
+}
+
+/** Top banner: what Firstprint is, in one line, with live numbers from open markets. */
+function homeHero() {
+  const open = S.lists.open;
+  const inPlay = [...open, ...S.lists.live].reduce((sum, m) => sum + (m.pool || 0), 0);
+  const best = Math.max(0, ...open.flatMap((m) => bucketsOf(m).map((b) => poolMultiple(m, b) ?? 0)));
+  const venues = [...new Set(open.flatMap(venuesOf))].sort().slice(0, 4);
+  const list = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}` : xs[0]);
+  const word = (b) => `<b style="color:${oVar(b, false)}">${oName(b, false)}</b>`;
+  const stats = [
+    open.length ? ['Open markets', fmtNum(open.length)] : null,
+    inPlay ? ['In play', `${fmtNum(inPlay)} pts`] : null,
+    best >= 1 ? ['Top payout now', `${best.toFixed(1)}×`] : null,
+  ].filter(Boolean);
+  const next = [...open].filter((m) => m.phase !== 'awaiting_result').sort((a, b) => a.closeAt - b.closeAt)[0];
+  return `
+    <section class="home-hero" aria-labelledby="hero-title">
+      <svg class="hero-art" viewBox="0 0 1200 320" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="hero-line" x1="0" x2="1"><stop offset="0" stop-color="currentColor" stop-opacity="0" /><stop offset=".35" stop-color="currentColor" stop-opacity=".5" /><stop offset="1" stop-color="currentColor" stop-opacity=".9" /></linearGradient></defs>
+        <path d="M0 250 C 90 240 140 270 220 238 S 360 170 430 196 S 560 262 640 214 S 760 120 840 150 S 980 92 1040 70 S 1150 40 1200 34" fill="none" stroke="url(#hero-line)" stroke-width="2" />
+        <circle cx="1040" cy="70" r="4" fill="currentColor" />
+      </svg>
+      <div class="hero-copy">
+        <p class="hero-badge">${ico('sparkles')}Listing prediction markets<span class="hero-badge-more"> · Free to play</span></p>
+        <h1 id="hero-title">Predict where new listings land.<span class="soft"> Before the price settles.</span></h1>
+        <p class="hero-sub">Pick one of five outcomes (${LADDER.map(word).join(', ')}) on freshly listed tokens${venues.length ? ` across ${esc(list(venues))}` : ''}. Points only, no real money.</p>
+        ${stats.length ? `<dl class="hero-stats">${stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
+      </div>
+      ${
+        next
+          ? `<a class="hero-next" href="#/market/${encodeURIComponent(next.id)}">
+        <span class="hero-next-head"><span>Closing next</span><span class="st st-live"><i aria-hidden="true"></i>Open</span></span>
+        <span class="hero-next-id">${tokenAvatar(next, 'avatar-md')}<span><b>${esc(next.symbol)}</b>${next.name ? `<small>${esc(next.name)}</small>` : ''}</span></span>
+        <span class="hero-next-facts"><span><small>Closes in</small><b>${until(next.closeAt)}</b></span><span><small>Pool</small><b>${fmtNum(next.pool || 0)} pts</b></span></span>
+        <span class="btn btn-gold btn-sm">Predict ${ico('arrowRight')}</span>
+      </a>`
+          : ''
+      }
+    </section>`;
 }
 
 /** Right column: this week's best players, ways to earn, and the daily claim. */
@@ -640,7 +681,7 @@ function featuredView(m) {
         <div class="feat-kicker"><span class="st st-live"><i aria-hidden="true"></i>${pre ? 'Upcoming' : 'Open'}</span><span aria-hidden="true">·</span><span>Featured market</span></div>
         <div class="feat-id">
           ${tokenAvatar(m, 'avatar-lg')}
-          <div><h1 id="featured-title">${esc(m.symbol)}</h1>${m.name ? `<p>${esc(m.name)}</p>` : ''}</div>
+          <div><h2 id="featured-title">${esc(m.symbol)}</h2>${m.name ? `<p>${esc(m.name)}</p>` : ''}</div>
         </div>
         <p class="feat-q">${question}</p>
         <dl class="feat-facts">${facts}</dl>
