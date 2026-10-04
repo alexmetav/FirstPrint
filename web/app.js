@@ -3577,10 +3577,10 @@ function telegramPanel(t) {
         <li>Send it this code: <code class="tg-code">${A.tgCode}</code></li>
         <li>Then click Connect.</li>
       </ol>
-      <div class="admin-actions"><button class="btn btn-solid btn-sm" data-action="tg-connect">${ico('send')}Connect</button></div>`;
+      <div class="admin-actions"><button class="btn btn-solid btn-sm" data-action="admin-tg-connect">${ico('send')}Connect</button></div>`;
   } else
     body = `<p class="all-good">${ico('checkCircle')}Connected. New listings and markets that need a result are sent to your chat.</p>
-      <div class="admin-actions"><button class="btn btn-sm" data-action="tg-test">${ico('send')}Send a test alert</button><button class="btn btn-sm" data-action="tg-disconnect">Disconnect</button></div>`;
+      <div class="admin-actions"><button class="btn btn-sm" data-action="admin-tg-test">${ico('send')}Send a test alert</button><button class="btn btn-sm" data-action="admin-tg-disconnect">Disconnect</button></div>`;
   const channel = t.configured
     ? `
       <section class="panel">
@@ -3588,13 +3588,13 @@ function telegramPanel(t) {
         ${
           t.channel
             ? `<p class="all-good">${ico('checkCircle')}Posting to <a href="https://t.me/${esc(t.channel)}" target="_blank" rel="noopener noreferrer">@${esc(t.channel)}</a></p>
-               <div class="admin-actions"><button class="btn btn-sm" data-action="tg-channel-remove">Stop posting</button></div>`
+               <div class="admin-actions"><button class="btn btn-sm" data-action="admin-tg-channel-remove">Stop posting</button></div>`
             : `<ol class="tg-steps">
                 <li>In Telegram, create a <b>New Channel</b>, make it <b>Public</b> and give it a link, like <code>firstprint_markets</code>.</li>
                 <li>Open the channel → <b>Administrators</b> → <b>Add Admin</b>, pick your bot, and leave <b>Post Messages</b> on.</li>
                 <li>Enter the channel name here and save. A welcome message is posted to check it works.</li>
               </ol>
-              <div class="tg-channel-form"><input id="tg-channel" placeholder="@firstprint_markets" autocomplete="off" /><button class="btn btn-solid btn-sm" data-action="tg-channel-save">Save channel</button></div>`
+              <div class="tg-channel-form"><input id="tg-channel" placeholder="@firstprint_markets" autocomplete="off" /><button class="btn btn-solid btn-sm" data-action="admin-tg-channel-save">Save channel</button></div>`
         }
       </section>`
     : '';
@@ -3788,7 +3788,7 @@ async function onAdminAction(action, el) {
       return renderAdmin();
     case 'admin-live-fill':
       return fillLivePrice(el);
-    case 'tg-connect':
+    case 'admin-tg-connect':
       try {
         await A.api.telegramConnect(A.tgCode);
         A.info = await A.api.ping();
@@ -3797,7 +3797,7 @@ async function onAdminAction(action, el) {
         toast(err.message, true);
       }
       return renderAdmin();
-    case 'tg-test':
+    case 'admin-tg-test':
       try {
         await A.api.telegramTest();
         toast('Test alert sent. Check Telegram.');
@@ -3805,11 +3805,11 @@ async function onAdminAction(action, el) {
         toast(err.message, true);
       }
       return;
-    case 'tg-channel-save':
-    case 'tg-channel-remove': {
-      const value = action === 'tg-channel-save' ? $('#tg-channel')?.value.trim() : '';
-      if (action === 'tg-channel-save' && !value) return toast('Enter the channel name, like @firstprint_markets.', true);
-      if (action === 'tg-channel-remove' && !confirm('Stop posting new markets to the channel?')) return;
+    case 'admin-tg-channel-save':
+    case 'admin-tg-channel-remove': {
+      const value = action === 'admin-tg-channel-save' ? $('#tg-channel')?.value.trim() : '';
+      if (action === 'admin-tg-channel-save' && !value) return toast('Enter the channel name, like @firstprint_markets.', true);
+      if (action === 'admin-tg-channel-remove' && !confirm('Stop posting new markets to the channel?')) return;
       el.disabled = true;
       try {
         await A.api.telegramChannel(value);
@@ -3822,7 +3822,7 @@ async function onAdminAction(action, el) {
       }
       return renderAdmin();
     }
-    case 'tg-disconnect':
+    case 'admin-tg-disconnect':
       if (!confirm('Stop sending alerts to this Telegram chat?')) return;
       await A.api.telegramDisconnect().catch((err) => toast(err.message, true));
       A.info = await A.api.ping();
