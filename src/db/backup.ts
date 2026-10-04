@@ -10,7 +10,7 @@ import type { DB } from './db.ts';
  *
  * Copies are gzip-compressed (a SQLite file shrinks about 5×) and taken every 5 minutes when
  * something changed, plus one on shutdown, to stay well inside a free host's monthly bandwidth.
- * One dated copy is kept per day for the last 7 days.
+ * One dated copy is kept per day for the last 30 days.
  */
 export interface BackupConfig {
   /** https://<project>.supabase.co */
@@ -23,7 +23,7 @@ export interface BackupConfig {
 
 type Fetch = typeof fetch;
 const SQLITE_MAGIC = 'SQLite format 3\u0000';
-const KEEP_DAILY = 7;
+const KEEP_DAILY = 30;
 const isGzip = (b: Buffer) => b.length > 2 && b[0] === 0x1f && b[1] === 0x8b;
 
 export function backupConfigFromEnv(env: NodeJS.ProcessEnv = process.env): BackupConfig | null {

@@ -168,24 +168,24 @@ test('backup: stop() waits for a copy in progress, then copies what was written 
   restored.close();
 });
 
-test('backups are gzip-compressed, old uncompressed copies still restore, daily copies older than 7 days are removed', async () => {
+test('backups are gzip-compressed, old uncompressed copies still restore, daily copies older than 30 days are removed', async () => {
   const { gunzipSync } = await import('node:zlib');
   const storage = fakeStorage();
   const a = join(dir(), 'firstprint.db');
   const db = openDb(a);
   db.exec("INSERT INTO users (id, username, points, created_at) VALUES ('u1', 'alice', 77, 1)");
-  // Dated copies left from earlier days: 10 and 3 days old.
+  // Dated copies left from earlier days: 40 and 20 days old.
   const day = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
-  storage.objects.set(`firstprint-${day(10)}.db`, Buffer.from('old'));
-  storage.objects.set(`firstprint-${day(3)}.db`, Buffer.from('recent'));
+  storage.objects.set(`firstprint-${day(40)}.db`, Buffer.from('old'));
+  storage.objects.set(`firstprint-${day(20)}.db`, Buffer.from('recent'));
   storage.objects.set('other-file.txt', Buffer.from('keep'));
   const backup = new DbBackup(db, a, cfg, quiet, storage.fetchFn);
   assert.equal(await backup.runOnce(true), true);
   const live = storage.objects.get('firstprint.db')!;
   assert.equal(live[0], 0x1f, 'gzip');
   assert.equal(gunzipSync(live).subarray(0, 15).toString('latin1'), 'SQLite format 3');
-  assert.equal(storage.objects.has(`firstprint-${day(10)}.db`), false, 'older than 7 days: removed');
-  assert.ok(storage.objects.has(`firstprint-${day(3)}.db`));
+  assert.equal(storage.objects.has(`firstprint-${day(40)}.db`), false, 'older than 30 days: removed');
+  assert.ok(storage.objects.has(`firstprint-${day(20)}.db`));
   assert.ok(storage.objects.has(`firstprint-${day(0)}.db`));
   assert.ok(storage.objects.has('other-file.txt'));
   db.close();
