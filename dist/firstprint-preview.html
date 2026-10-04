@@ -11,9 +11,9 @@
     <link rel="apple-touch-icon" href="/icon-180.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- One UI font: Inter, variable weights 400-700. -->
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap" rel="stylesheet" />
+    <!-- Type: Geist for words, Geist Mono for numbers and labels. -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" rel="stylesheet" />
     <script>
 // Applies the saved light/dark choice before the page paints, so there is no flash of the wrong theme.
 // A separate file (not an inline script) so the Content-Security-Policy can keep forbidding inline scripts.
@@ -66,8 +66,9 @@
   --moon: #ffd60a;
 
   /* SF Pro on Apple devices (Display for large sizes is picked automatically), Inter elsewhere. */
-  --display: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --body: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --display: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --body: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 
   --r-sm: 10px;
   --r-md: 14px;
@@ -8476,6 +8477,120 @@ h2,
   display: flex;
   flex-wrap: wrap;
   gap: 12px 28px;
+}
+
+/* ===== Type system: Geist for words, Geist Mono for labels and numbers =====
+   Medium-weight headings with tight tracking, mono uppercase labels,
+   light body copy, and every number in mono so columns line up. */
+body {
+  font-family: var(--body);
+  font-weight: 400;
+}
+h1,
+h2,
+h3,
+.page-title,
+.dash-name,
+.feat-id h1,
+.m-title .sym {
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+.section-head h2,
+.dash-card-head h2,
+.card-head h2,
+.rail-head h3 {
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+.soft {
+  color: var(--muted);
+}
+
+.eyebrow,
+.dash-eyebrow,
+.side-label,
+.ladder-head,
+.table th,
+.mini-head,
+.feat-kicker,
+.feat-side-head,
+.sum-label,
+.record-grid dt,
+.m-facts dt,
+.feat-facts dt,
+.hero-facts dt.caps {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.eyebrow,
+.dash-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.eyebrow::before,
+.dash-eyebrow::before {
+  content: '';
+  flex: none;
+  width: 20px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+.tick,
+.num,
+.points,
+.count,
+.count-badge,
+.o-pct,
+.fo-val,
+.sum-value,
+.m-facts dd,
+.feat-facts dd,
+.record-grid dd,
+.gauge b,
+.qp b,
+.rail-list b,
+.dash-ledger b,
+.side-n,
+.featured h1 .countdown,
+.pill-pts {
+  font-family: var(--mono);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+p,
+.muted,
+.feat-q,
+.feat-hint,
+.home-note {
+  line-height: 1.6;
+}
+.muted {
+  font-weight: 400;
+}
+
+.btn,
+.card-title,
+.o-name,
+.fo-name {
+  font-weight: 500;
+}
+.rung .pool-col {
+  white-space: nowrap;
+}
+.rung .pool-col small {
+  margin-left: 4px;
+  font-family: var(--body);
+  font-weight: 400;
 }
 
 </style>
