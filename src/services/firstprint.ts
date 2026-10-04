@@ -705,6 +705,66 @@ export class FirstprintService {
   }
 
   /** Calls every real exchange adapter once and reports what works. */
+  /** Live price of a symbol on each chosen exchange; price is null where it doesn't trade or the exchange didn't answer. */
+  async exchangePrices(symbol: string, exchanges: string[], pairs: Record<string, string> = {}) {
+    const sym = String(symbol ?? '').trim().toUpperCase();
+    if (!/^[A-Z0-9]{2,15}$/.test(sym)) throw new AppError(400, 'bad_symbol', 'Token symbol must be 2–15 letters or digits.');
+    const ids = [...new Set((exchanges ?? []).map(String))].filter((id) => this.venues.has(id) && id !== 'sim').slice(0, 10);
+    return Promise.all(
+      ids.map(async (id) => {
+        const venue = this.venues.get(id)!;
+        const pair = pairs[id] || venue.pair(sym);
+        try {
+          const t = await Promise.race([venue.fetchTicker(pair), new Promise<never>((_, rej) => setTimeout(() => rej(new Error('no answer within 8s')), 8_000))]);
+          return { id, name: venue.name, pair, price: t && t.price > 0 ? t.price : null, error: null as string | null };
+        } catch (err) {
+          return { id, name: venue.name, pair, price: null, error: (err as Error).message.slice(0, 120) };
+        }
+      }),
+    );
+  }
+
+  /**
+   * Checks every open manual market against live exchange prices and returns plain-language warnings:
+   * an "upcoming" token that is already trading, a start price far from the live price, and
+   * predictions that stay open for days while the price is visible.
+   */
+  async marketChecks() {
+    const now = this.clock.now();
+    const rows = as<MarketRow[]>(this.db.prepare("SELECT * FROM markets WHERE mode = 'manual' AND status = 'open'").all());
+    const fmt = (n: number) => `$${Number(n.toPrecision(4))}`;
+    return Promise.all(
+      rows.map(async (m) => {
+        const venues = JSON.parse(m.venues) as VenueRef[];
+        const prices = await this.exchangePrices(m.symbol, venues.map((v) => v.venue), Object.fromEntries(venues.map((v) => [v.venue, v.symbol])));
+        const live = prices.filter((p) => p.price !== null);
+        const sorted = live.map((p) => p.price!).sort((a, b) => a - b);
+        const median = sorted.length ? sorted[Math.floor((sorted.length - 1) / 2)] : null;
+        const where = live.map((p) => p.name).join(', ');
+        const warnings: { level: 'high' | 'medium'; text: string }[] = [];
+        if (median !== null && m.base_price === null) {
+          warnings.push({ level: 'high', text: `${m.symbol} is already trading on ${where} at about ${fmt(median)}, but predictions are still open. Players can see the price before they pick. Close predictions now, or give the market a start price.` });
+        }
+        if (median !== null && m.base_price !== null) {
+          const diff = (median - m.base_price) / m.base_price;
+          if (Math.abs(diff) > 0.2) {
+            const pct = Math.round(Math.abs(diff) * 100);
+            warnings.push({ level: Math.abs(diff) > 0.5 ? 'high' : 'medium', text: `Start price ${fmt(m.base_price)} is ${pct}% ${diff > 0 ? 'below' : 'above'} the live price ${fmt(median)} on ${where}. Players can already see which outcome is winning.` });
+          }
+        }
+        if (median === null && m.base_price !== null) {
+          const names = prices.map((p) => p.name).join(', ');
+          warnings.push({ level: 'medium', text: `Couldn't get a live price for ${m.symbol} from ${names || 'its exchanges'}. If it already trades, check the start price yourself.` });
+        }
+        const left = m.listing_at - now;
+        if (median !== null && left > 48 * 3_600_000) {
+          warnings.push({ level: 'medium', text: `Predictions stay open ${Math.round(left / 86_400_000)} more days while ${m.symbol} is trading, so late players can see how the price moved. 1–2 days is fairer.` });
+        }
+        return { id: m.id, symbol: m.symbol, published: m.published === 1, startPrice: m.base_price, livePrice: median, prices, warnings };
+      }),
+    );
+  }
+
   async checkExchanges() {
     const results = [];
     for (const venue of this.venues.values()) {

@@ -9,6 +9,7 @@ import { cachedGoogleJwks, verifyGoogleIdToken, type JwksFetcher } from '../auth
 import type { Mailer } from '../auth/mailer.ts';
 import type { Bucket } from '../engine/engine.ts';
 import { linkSiteToApp } from '../site/links.ts';
+import { fetchImage } from './fetchImage.ts';
 import type { RewardsService, TaskInput } from '../services/rewards.ts';
 
 export interface ServerOptions {
@@ -650,6 +651,25 @@ export function createApiServer(opts: ServerOptions): Server {
     const out = service.cancelMarket(params.id);
     audit(req, 'market_cancelled', params.id, `${out.refunded} predictions refunded`);
     return out;
+  });
+
+  // Live prices for the market form ("Check live price") and warnings for every open market.
+  route('POST', '/api/admin/price-check', async ({ body, requireAdmin }) => {
+    requireAdmin();
+    const b = await body();
+    return { prices: await service.exchangePrices(String(b.symbol ?? ''), Array.isArray(b.exchanges) ? b.exchanges.map(String) : [], (b.pairs as Record<string, string>) ?? {}) };
+  });
+
+  route('GET', '/api/admin/market-checks', async ({ requireAdmin }) => {
+    requireAdmin();
+    return { checks: await service.marketChecks() };
+  });
+
+  // Copies a logo from a link so the market keeps its own copy (links break when sites change).
+  route('GET', '/api/admin/fetch-image', async ({ req, url, requireAdmin }) => {
+    requireAdmin();
+    rateLimit(`img:${visitor(req)}`, 30, 60_000);
+    return fetchImage(url.searchParams.get('url') ?? '');
   });
 
   route('GET', '/api/admin/exchanges/check', async ({ requireAdmin }) => {

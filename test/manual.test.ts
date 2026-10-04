@@ -345,3 +345,32 @@ test('upcoming token: the opening price can also be given with the result', asyn
   assert.equal(summary.winningBucket, 'down');
   assert.equal(summary.basePrice, 2);
 });
+
+test('admin market checks: already trading, start price off, long windows', async () => {
+  const db = openDb(':memory:');
+  const clock = new ManualClock(T0);
+  const priced = (id: string, price: number | null): Venue => ({
+    id,
+    name: id.toUpperCase(),
+    pair: (b) => `${b}USDT`,
+    fetchTicker: async () => (price === null ? null : { price, ts: T0 }),
+    fetchCandles: async () => [],
+    listPairs: async () => [],
+  });
+  const service = new FirstprintService(db, clock, [priced('exa', 0.07), priced('exb', null)]);
+  const fold = service.createManualMarket(draft({ symbol: 'FOLD', basePrice: 0.66, publish: true }));
+  const fine = service.createManualMarket(draft({ symbol: 'OK', basePrice: 0.071, publish: true }));
+  const upcoming = service.createManualMarket(draft({ symbol: 'PNT', basePrice: null, publish: true }));
+  const long = service.createManualMarket(draft({ symbol: 'LONG', basePrice: 0.07, closeAt: T0 + 5 * 24 * HOUR, resultAt: T0 + 6 * 24 * HOUR, publish: true }));
+
+  const checks = Object.fromEntries((await service.marketChecks()).map((c) => [c.id, c]));
+  assert.equal(checks[fold].livePrice, 0.07);
+  assert.match(checks[fold].warnings[0].text, /89% above the live price/);
+  assert.equal(checks[fold].warnings[0].level, 'high');
+  assert.deepEqual(checks[fine].warnings, []);
+  assert.match(checks[upcoming].warnings[0].text, /already trading on EXA/);
+  assert.match(checks[long].warnings[0].text, /stay open 5 more days/);
+
+  const prices = await service.exchangePrices('fold', ['exa', 'exb', 'nope']);
+  assert.deepEqual(prices.map((p) => [p.id, p.price]), [['exa', 0.07], ['exb', null]]);
+});

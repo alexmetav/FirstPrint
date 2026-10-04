@@ -41,6 +41,7 @@ test('with the website: landing page at /, its Launch app buttons open /app/, wh
     }
 
     assert.match(await (await fetch(`${s.base}/privacy.html`)).text(), /Privacy policy/);
+    assert.match(await (await fetch(`${s.base}/terms.html`)).text(), /Terms of use/);
     assert.equal((await fetch(`${s.base}/api/health`)).status, 200, 'the API is unchanged');
   } finally {
     s.close();

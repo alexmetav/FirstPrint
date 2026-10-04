@@ -447,6 +447,7 @@ function menuView(pages) {
       <button role="menuitemcheckbox" aria-checked="${!light}" data-action="theme" class="menu-switch">${ico('moon')}Dark mode<span class="switch-track" aria-hidden="true"><i></i></span></button>
       <hr />
       <a role="menuitem" class="menu-quiet" href="#/" data-action="how">How it works</a>
+      <a role="menuitem" class="menu-quiet" href="/terms.html">Terms</a>
       <a role="menuitem" class="menu-quiet" href="/privacy.html">Privacy</a>
       ${S.me ? `<button role="menuitem" class="menu-quiet" data-action="logout">${ico('logout')}Log out</button>` : `<button role="menuitem" class="menu-quiet" data-action="connect">${ico('wallet')}Log in</button>`}
     </div>`;
@@ -2925,7 +2926,7 @@ async function renderAdmin() {
   else if (tab === 'settings')
     body = `
       <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('landmark')}</span><div><h2>Reference exchanges</h2><p class="muted">Switch off an exchange to stop it being offered for new markets. Nothing is fetched from these exchanges; they are shown to users as the reference for the price you enter.</p></div></div>
+        <div class="section-head"><span class="section-ico">${ico('landmark')}</span><div><h2>Reference exchanges</h2><p class="muted">Switch off an exchange to stop it being offered for new markets. They are shown to users as the reference for the price you enter. Prices are only fetched when you check them here in Admin.</p></div></div>
         <div class="toggle-grid">${A.info.exchanges
           .map((e) => `<label class="toggle"><input type="checkbox" data-action="admin-exchange" data-id="${esc(e.id)}"${e.enabled ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>${esc(e.name)}</label>`)
           .join('')}</div>
@@ -2957,6 +2958,113 @@ async function renderAdmin() {
         ${body}
       </div>
     </div>`;
+  afterAdminRender();
+}
+
+/** "Check live price" in the market form: live prices plus warnings about the start price and timing. */
+async function runPriceCheck() {
+  const form = $('#admin-market');
+  const out = $('#price-check-out');
+  if (!form || !out) return;
+  const d = new FormData(form);
+  const symbol = String(form.querySelector('[name=symbol]').value || '').trim();
+  const exchanges = d.getAll('exchanges').map(String);
+  if (!symbol) return toast('Enter the token symbol first.', true);
+  if (!exchanges.length) return toast('Choose at least one exchange.', true);
+  out.innerHTML = `<p class="checks-note">${ico('clock')}Checking ${esc(symbol.toUpperCase())} on ${exchanges.length} exchange${exchanges.length === 1 ? '' : 's'}…</p>`;
+  let prices;
+  try {
+    ({ prices } = await A.api.priceCheck({ symbol, exchanges }));
+  } catch (err) {
+    out.innerHTML = `<p class="checks-note">${ico('info')}${esc(err.message)}</p>`;
+    return;
+  }
+  const live = prices.filter((p) => p.price !== null).map((p) => p.price).sort((a, b) => a - b);
+  const median = live.length ? live[Math.floor((live.length - 1) / 2)] : null;
+  const upcoming = form.querySelector('[data-upcoming]')?.checked;
+  const base = Number(form.querySelector('[name=basePrice]')?.value || 0);
+  const closeAt = new Date(form.querySelector('[name=closeAt]').value).getTime();
+  const notes = [];
+  const usePrice = median !== null ? `<button class="btn btn-sm" type="button" data-action="admin-use-price" data-price="${median}">Use ${fmtPrice(median)} as start price</button>` : '';
+  if (median === null) notes.push(['ok', upcoming ? 'Not trading on these exchanges yet. That’s right for an upcoming token.' : 'Not trading on these exchanges yet. If it lists later, tick “Upcoming token” instead of guessing a start price.']);
+  else {
+    if (upcoming) notes.push(['high', `${esc(symbol.toUpperCase())} is already trading, so it isn’t upcoming. Players could see the price before they pick. ${usePrice}`]);
+    if (!upcoming && base > 0) {
+      const diff = (median - base) / base;
+      if (Math.abs(diff) > 0.2) notes.push([Math.abs(diff) > 0.5 ? 'high' : 'medium', `Your start price ${fmtPrice(base)} is ${Math.round(Math.abs(diff) * 100)}% ${diff > 0 ? 'below' : 'above'} the live price. ${usePrice}`]);
+      else notes.push(['ok', `Start price is within ${Math.round(Math.abs(diff) * 100)}% of the live price.`]);
+    }
+    if (!upcoming && !(base > 0)) notes.push(['medium', `Enter a start price. ${usePrice}`]);
+    if (Number.isFinite(closeAt) && closeAt - Date.now() > 48 * 3_600_000) notes.push(['medium', `Predictions stay open ${Math.round((closeAt - Date.now()) / 86_400_000)} days while the price is visible. 1–2 days is fairer.`]);
+  }
+  out.innerHTML = `
+    <div class="pc-prices">${prices.map((p) => `<span class="pc-chip${p.price === null ? ' off' : ''}"><b>${esc(p.name)}</b> ${p.price === null ? 'not trading' : fmtPrice(p.price)}</span>`).join('')}</div>
+    <ul class="check-list compact">${notes.map(([lvl, html]) => `<li class="lvl-${lvl}"><span class="check-dot" aria-hidden="true"></span><p>${html}</p></li>`).join('')}</ul>`;
+}
+
+/** Runs after the admin page is drawn: UTC hints, live price checks, and copying a linked logo. */
+function afterAdminRender() {
+  updateUtcHints();
+  const box = $('#admin-checks');
+  if (box) loadMarketChecks(box);
+  const form = $('#admin-market');
+  const link = form?.querySelector('[data-logo-link]')?.value.trim();
+  if (form && link && /^https:\/\//i.test(link)) copyLogo(form, link);
+}
+
+/** Open markets compared with live exchange prices (cached for two minutes). */
+async function loadMarketChecks(box) {
+  if (!A.checks || Date.now() - A.checks.at > 120_000) {
+    box.innerHTML = `<p class="checks-note">${ico('clock')}Checking open markets against live exchange prices…</p>`;
+    try {
+      A.checks = { at: Date.now(), list: (await A.api.marketChecks()).checks };
+    } catch (err) {
+      if (box.isConnected) box.innerHTML = `<p class="checks-note">${ico('info')}Couldn’t check live prices: ${esc(err.message)}</p>`;
+      return;
+    }
+  }
+  if (box.isConnected) box.innerHTML = checksView(A.checks.list);
+}
+
+function checksView(list) {
+  if (!list.length) return '';
+  const items = list.flatMap((c) => c.warnings.map((w) => ({ ...w, c })));
+  if (!items.length) return `<p class="checks-note ok">${ico('checkCircle')}No problems found in ${list.length} open market${list.length === 1 ? '' : 's'} (checked against live exchange prices).</p>`;
+  return `
+    <section class="panel panel-alert checks">
+      <div class="section-head"><span class="section-ico">${ico('alert')}</span><div><h2>Check these markets <span class="count-badge">${items.length}</span></h2><p class="muted">Compared with live exchange prices ${fmtAgo(A.checks.at)}. Fix them before players notice.</p></div><button class="btn btn-sm head-action" data-action="admin-recheck">${ico('refresh')}Check again</button></div>
+      <ul class="check-list">${items
+        .map((i) => `<li class="lvl-${i.level}"><span class="check-dot" aria-hidden="true"></span><p><b>${esc(i.c.symbol)}</b> ${esc(i.text)}</p><button class="btn btn-sm" data-action="admin-edit" data-id="${esc(i.c.id)}">${ico('edit')}Edit</button></li>`)
+        .join('')}</ul>
+    </section>`;
+}
+
+/** Shows each date-time field in UTC, since exchanges announce listing times in UTC. */
+function updateUtcHints() {
+  document.querySelectorAll('[data-utc-for]').forEach((hint) => {
+    const input = hint.closest('form')?.querySelector(`[name="${hint.dataset.utcFor}"]`);
+    const d = input?.value ? new Date(input.value) : null;
+    hint.textContent = d && !Number.isNaN(d.getTime())
+      ? `= ${d.toLocaleString('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })} UTC`
+      : '';
+  });
+}
+
+/** Downloads a linked logo through the server and keeps a small copy, so the market never depends on the link. */
+async function copyLogo(form, url) {
+  const status = form.querySelector('[data-logo-status]');
+  const say = (text, cls = '') => status && ((status.textContent = text), (status.className = `logo-status ${cls}`));
+  say('Saving a copy of this logo…');
+  try {
+    const img = await A.api.fetchImage(url);
+    const bytes = Uint8Array.from(atob(img.data), (ch) => ch.charCodeAt(0));
+    const dataUrl = await shrinkImage(new Blob([bytes], { type: img.contentType }), 128);
+    if (!form.isConnected || form.querySelector('[data-logo-link]').value.trim() !== url) return;
+    setLogo(form, dataUrl, { keepLink: true });
+    say('Saved a copy. The logo no longer depends on that link.', 'ok');
+  } catch (err) {
+    if (form.isConnected) say(`Couldn’t copy it (${err.message}). The link will be used as it is.`, 'bad');
+  }
 }
 
 /** Small health chips for the admin header: TestFPT and backups. */
@@ -2987,6 +3095,7 @@ function adminOverview({ markets, waiting, drafts, token, tasks, log }) {
   if (!open.length) todo.push(['plusCircle', 'up', 'No open markets', 'Players have nothing to predict on right now.', 'create', 'Create one']);
   if (!activeTasks.length) todo.push(['sparkles', 'up', 'No active tasks', 'Tasks give players more ways to earn points.', 'tasks', 'Add a task']);
   return `
+    <div id="admin-checks"></div>
     <dl class="stat-tiles">
       ${kpi('target', 'up', 'Open markets', fmtNum(open.length), `${drafts.length} draft${drafts.length === 1 ? '' : 's'}`)}
       ${kpi('clock', 'crash', 'Awaiting result', fmtNum(waiting.length), waiting.length ? 'Post the final price' : 'All caught up')}
@@ -3011,6 +3120,7 @@ function adminOverview({ markets, waiting, drafts, token, tasks, log }) {
 
 function adminMarketsTab(markets, waiting) {
   return `
+    <div id="admin-checks"></div>
     ${
       waiting.length
         ? `<section class="panel panel-alert"><div class="section-head"><span class="section-ico">${ico('alert')}</span><div><h2>Waiting for your result <span class="count-badge">${waiting.length}</span></h2>
@@ -3245,7 +3355,8 @@ function marketForm(m) {
           <label class="btn btn-sm logo-upload">${ico('upload')}Upload<input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-logo-file hidden /></label>
           <button class="btn btn-sm" type="button" data-action="logo-clear"${m?.logoUrl ? '' : ' hidden'}>Remove</button>
         </div>
-        <small class="muted">Square images look best. Uploads are shrunk to 128 × 128. Tip: on CoinGecko, right-click the token's logo and choose “Copy image address”.</small>
+        <small class="logo-status" data-logo-status></small>
+        <small class="muted">Square images look best. Pasted links and uploads are saved as a 128 × 128 copy, so the logo keeps working even if the link changes. Tip: on CoinGecko, right-click the token's logo and choose “Copy image address”.</small>
       </div>
       <div class="price-field">
         <label><span class="field-label"><span class="ladder-only">Start price (USD)</span><span class="binary-only">Target price (USD)</span></span><input name="basePrice" type="number" step="any" min="0" placeholder="${upcoming ? 'Set when trading opens' : '0.25'}" value="${m?.basePrice ?? ''}"${upcoming ? ' disabled' : ' required'}${lock} /></label>
@@ -3254,8 +3365,13 @@ function marketForm(m) {
           <small class="muted">No price needed now: the start price becomes its opening price. Set predictions to close when trading starts, then add the opening price under Markets → Awaiting result.</small>
         </div>
       </div>
-      <label><span class="field-label">Predictions close (your time)</span><input name="closeAt" type="datetime-local" value="${toLocalInput(m?.closeAt ?? soon)}" required /></label>
-      <label><span class="field-label">Result expected by (your time)</span><input name="resultAt" type="datetime-local" value="${toLocalInput(m?.settleAt ?? soon + 24 * 3_600_000)}" required /></label>
+      <label><span class="field-label">Predictions close (your time)</span><input name="closeAt" type="datetime-local" value="${toLocalInput(m?.closeAt ?? soon)}" required /><small class="utc-hint" data-utc-for="closeAt"></small></label>
+      <label><span class="field-label">Result expected by (your time)</span><input name="resultAt" type="datetime-local" value="${toLocalInput(m?.settleAt ?? soon + 24 * 3_600_000)}" required /><small class="utc-hint" data-utc-for="resultAt"></small></label>
+      <div class="price-check" style="grid-column:1/-1">
+        <button class="btn btn-sm" type="button" data-action="admin-price-check">${ico('activity')}Check live price</button>
+        <span class="muted">Compares the start price and timing with what the chosen exchanges show right now.</span>
+        <div id="price-check-out" aria-live="polite"></div>
+      </div>
       <fieldset class="venues"><legend class="field-label">Reference exchanges</legend>
         ${A.info.exchanges
           .filter((e) => e.enabled || chosen.has(e.id))
@@ -3463,6 +3579,22 @@ async function onAdminAction(action, el) {
         toast(err.message, true);
       }
       return renderAdmin();
+    case 'admin-recheck':
+      A.checks = null;
+      return renderAdmin();
+    case 'admin-price-check':
+      return runPriceCheck();
+    case 'admin-use-price': {
+      const form = $('#admin-market');
+      const up = form?.querySelector('[data-upcoming]');
+      if (up?.checked) {
+        up.checked = false;
+        up.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      const input = form?.querySelector('[name=basePrice]');
+      if (input && !input.disabled) input.value = el.dataset.price;
+      return runPriceCheck();
+    }
     case 'admin-edit':
       A.edit = el.dataset.id;
       A.tab = 'create';
@@ -3857,9 +3989,13 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('input', (e) => {
+  if (e.target.matches?.('#admin-market [type=datetime-local]')) return updateUtcHints();
   if (!e.target.matches?.('[data-logo-link]')) return;
   const v = e.target.value.trim();
   if (!v || /^https:\/\/\S+$/i.test(v)) setLogo(e.target.form, v, { keepLink: true });
+  // Keep our own copy of a pasted logo once the admin stops typing.
+  clearTimeout(copyLogo.timer);
+  if (A.api && /^https:\/\/\S+$/i.test(v)) copyLogo.timer = setTimeout(() => copyLogo(e.target.form, v), 600);
 });
 
 document.addEventListener('change', async (e) => {

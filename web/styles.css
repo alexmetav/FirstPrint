@@ -9498,3 +9498,138 @@ a.wallet-option {
 .dash-wallets .wallet-logo + .dw-main {
   flex: 1;
 }
+
+/* ===== Admin: live price checks, UTC hints, logo copy status ===== */
+.checks-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.checks-note .i {
+  width: 16px;
+  height: 16px;
+}
+.checks-note.ok {
+  color: var(--up);
+}
+.checks .section-head {
+  margin-bottom: 12px;
+}
+.check-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.check-list li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.check-list.compact li {
+  grid-template-columns: 10px minmax(0, 1fr);
+  padding: 10px 12px;
+}
+.check-list p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+.check-list p .btn {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.check-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--flat);
+}
+.check-list .lvl-high {
+  border-color: color-mix(in srgb, var(--crash) 45%, var(--line));
+  background: color-mix(in srgb, var(--crash) 7%, var(--surface));
+}
+.check-list .lvl-high .check-dot {
+  background: var(--crash);
+}
+.check-list .lvl-medium .check-dot {
+  background: var(--down);
+}
+.check-list .lvl-ok .check-dot {
+  background: var(--up);
+}
+.price-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.price-check > .muted {
+  font-size: var(--fs-meta);
+}
+#price-check-out {
+  flex-basis: 100%;
+  display: grid;
+  gap: 10px;
+}
+#price-check-out:empty {
+  display: none;
+}
+.pc-prices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pc-chip {
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: var(--fs-meta);
+}
+.pc-chip b {
+  font-family: var(--body);
+  font-weight: 500;
+  margin-right: 4px;
+}
+.pc-chip.off {
+  color: var(--muted);
+}
+.utc-hint {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.logo-status {
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+.logo-status:empty {
+  display: none;
+}
+.logo-status.ok {
+  color: var(--up);
+}
+.logo-status.bad {
+  color: var(--down);
+}
+@media (max-width: 640px) {
+  .check-list li {
+    grid-template-columns: 10px minmax(0, 1fr);
+  }
+  .check-list li > .btn {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
