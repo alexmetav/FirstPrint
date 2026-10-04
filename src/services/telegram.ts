@@ -68,7 +68,8 @@ export class Telegram {
 
   /** Links the chat that most recently sent the bot this code. */
   async connect(code: string) {
-    const updates = (await this.call('getUpdates', { limit: 100, allowed_updates: ['message'] })) as {
+    // offset -100: the latest 100 messages (without it Telegram returns the oldest ones still waiting).
+    const updates = (await this.call('getUpdates', { offset: -100, limit: 100, allowed_updates: ['message'] })) as {
       message?: { text?: string; chat?: { id: number | string } };
     }[];
     const hit = [...(updates ?? [])].reverse().find((u) => u.message?.text?.includes(code) && u.message.chat?.id !== undefined);

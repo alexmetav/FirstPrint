@@ -28,3 +28,9 @@ test('images come back as base64; redirects to private addresses and non-images 
     (e) => e instanceof AppError && e.code === 'not_image',
   );
 });
+
+test('IPv4 hidden inside IPv6 is refused', async () => {
+  const { isPrivateAddress } = await import('../src/api/fetchImage.ts');
+  for (const ip of ['::ffff:7f00:1', '::ffff:a9fe:a9fe', '64:ff9b::7f00:1', '::7f00:1', '2002:7f00:1::', '::ffff:127.0.0.1']) assert.equal(isPrivateAddress(ip), true, ip);
+  for (const ip of ['::ffff:8.8.8.8', '2606:4700::1111']) assert.equal(isPrivateAddress(ip), false, ip);
+});

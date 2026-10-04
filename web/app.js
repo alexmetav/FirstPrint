@@ -451,6 +451,9 @@ function drawTop() {
 }
 
 /** Everything secondary: pages, test SOL, the theme switch, help and the account. */
+/** With TestFPT on, the 1,000 starting points wait on the Earn page to be claimed to a wallet. */
+const startPoints = () => (S.cfg?.rewards?.onChain ? '1,000 free points to claim on the Earn page' : '1,000 free points');
+
 // --- Daily streak --------------------------------------------------------------------
 const DAILY_SCHEDULE = [50, 75, 100, 125, 150, 175, 200];
 const dailyReward = (day) => DAILY_SCHEDULE[Math.min(DAILY_SCHEDULE.length, Math.max(1, day)) - 1];
@@ -733,7 +736,7 @@ function telegramCard() {
   return `
     <section class="panel tg-card">
       <span class="tg-logo" aria-hidden="true">${ico('telegram')}</span>
-      <div><b>Never miss a new market</b><p class="muted">Join @${esc(S.cfg.telegramChannel)} on Telegram. Every new market is posted the moment it opens, and every result when it’s in.</p></div>
+      <div><b>Never miss a new market</b><p class="muted">Join @${esc(S.cfg.telegramChannel)} on Telegram. Every new market is posted the moment it opens, with a reminder in its last hour and the result when it’s in.</p></div>
       <a class="btn btn-sm tg-join" href="${url}" target="_blank" rel="noopener noreferrer">${ico('telegram')}Join on Telegram</a>
     </section>`;
 }
@@ -1137,8 +1140,8 @@ function howItWorks() {
   const steps = `
       <div class="section-head"><span class="section-ico">${ico('info')}</span><div><h2>How it works</h2><p class="muted">Free to play. Points only, no real money.</p></div><button class="btn btn-sm head-action" data-action="tour">${ico('sparkles')}Take the tour</button></div>
       <ol class="steps">
-        <li><span class="step-ico" style="--c:var(--up)">${ico('target')}</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}.</p></li>
-        <li><span class="step-ico" style="--c:var(--moon)">${ico('coins')}</span><b>Stake free points</b><p>Everyone starts with 1,000 points, plus up to 200 more every day with a daily streak. No real money.</p></li>
+        <li><span class="step-ico" style="--c:var(--up)">${ico('target')}</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}, or a simple Yes or No.</p></li>
+        <li><span class="step-ico" style="--c:var(--moon)">${ico('coins')}</span><b>Stake free points</b><p>Everyone gets ${startPoints()}, plus up to 200 more every day with a daily streak. No real money.</p></li>
         <li><span class="step-ico" style="--c:var(--brand)">${ico('trophy')}</span><b>Win the pool</b><p>If you’re right, you split the pool with the other winners. Earlier picks earn more.</p></li>
       </ol>
       <details class="full-rules"><summary>Full rules</summary>`;
@@ -1146,20 +1149,20 @@ function howItWorks() {
     return `
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
-        <li>Firstprint opens a market when a new token lists on MEXC, and adds others by hand for tokens on major exchanges. Log in with Google, email, or a Solana wallet to get 1,000 free points.</li>
+        <li>Firstprint opens markets on newly listed tokens on major exchanges, including new MEXC listings it spots automatically. Log in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
         <li>Pick one of five outcomes for where the price ends up compared with the start price, from Crash to Moon. Predictions close at the time shown, and earlier predictions earn a bigger share.</li>
         <li>When the result is due, the final price and the winners appear on the market page.</li>
-        <li>Everyone who picked the winning outcome splits the pool, minus a 4% fee. If nobody picked it, everyone gets their points back.</li>
+        <li>Everyone who picked the winning outcome splits the pool, minus the fee shown on the market (usually 4%). Everyone gets their points back if nobody picked the winner, everyone picked the same outcome, or the market is cancelled.</li>
       </ol></details>
     </section>`;
   }
   return `
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
-        <li>Firstprint watches seven exchanges for new listings and opens a market when one is confirmed. Sign in with Google, email, or a Solana wallet to get 1,000 free points.</li>
+        <li>Firstprint watches seven exchanges for new listings and opens a market when one is confirmed. Sign in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
         <li>Pick one of five outcomes for the price 72 hours after listing, from Crash to Moon. Predictions stay open until 1 hour after trading starts, and earlier predictions earn a bigger share.</li>
         <li>The starting price is the average over the first hour of trading. The final price is the average over the last hour, so a single spike can’t decide a market.</li>
-        <li>Everyone who picked the winning outcome splits the pool, minus a 4% fee. If nobody picked it, everyone gets their points back.</li>
+        <li>Everyone who picked the winning outcome splits the pool, minus the fee shown on the market (usually 4%). Everyone gets their points back if nobody picked the winner, everyone picked the same outcome, or the market is cancelled.</li>
       </ol></details>
     </section>`;
 }
@@ -1308,7 +1311,7 @@ function marketMain(m) {
         <li>Final price: the average over the last ${fmtSpan(m.closeAt - m.listingAt)} before ${fmtDate(m.settleAt)}. If the token trades on several exchanges, the volume-weighted median is used.</li>
         <li>Predictions close ${fmtSpan(m.closeAt - m.listingAt)} after trading starts. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
         <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
-        <li>The market is cancelled and refunded if the listing is delayed more than 24 hours, trading halts for too long, there isn’t enough trading data, or nobody picks the winning outcome.</li>
+        <li>The market is cancelled and refunded if the listing is delayed more than 24 hours, trading halts for too long, there isn’t enough trading data, nobody picks the winning outcome, or everyone picks the same outcome.</li>
       </ol>
     </details>
 
@@ -1666,7 +1669,7 @@ function updateSummary() {
 
   $('#trade-fine').textContent = S.me
     ? `You have ${fmtPts(S.me.points)}. Limit ${fmtPts(m.userCap)} per market. Minimum ${m.minStake} pts.`
-    : 'Log in to start with 1,000 free points.';
+    : `Log in to get ${startPoints()}.`;
 }
 
 let quoteTimer;
@@ -1897,7 +1900,7 @@ function portfolioView(preds, history = [], stats = null) {
     return `
       <header class="page-head"><span class="page-ico">${ico('dashboard')}</span><div><h1 class="page-title">Your dashboard</h1></div></header>
       <div class="empty"><div class="empty-art">${ico('dashboard')}</div>
-        <p><strong>Log in to see your dashboard.</strong><br />Your points, win rate and results live here. New accounts start with 1,000 free points.</p>
+        <p><strong>Log in to see your dashboard.</strong><br />Your points, win rate and results live here. New accounts get ${startPoints()}.</p>
         <button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button></div>`;
   }
   const active = preds.filter((p) => p.marketStatus === 'open' || p.marketStatus === 'locked');
@@ -2714,7 +2717,7 @@ function renderAuth() {
     const si = S.signIn ?? { google: null, email: true };
     html = modalShell(
       'Log in or sign up',
-      'New accounts start with 1,000 free points. Use any option below. They all lead to the same account.',
+      `New accounts get ${startPoints()}. Use any option below. They all lead to the same account.`,
       `${si.google ? '<div id="google-button" class="google-slot" aria-label="Continue with Google"></div>' : ''}
        ${
          si.email
@@ -2944,7 +2947,7 @@ const TOUR = [
   {
     icon: 'coins',
     title: 'Play with free points',
-    body: 'You start with 1,000 points and get up to 200 more every day: claim daily to grow your streak. Points have no cash value, so there’s nothing to lose. Earn more on the Earn page.',
+    body: 'You get 1,000 starting points (with TestFPT on, you claim them on the Earn page) and up to 200 more every day: claim daily to grow your streak. Points have no cash value, so there’s nothing to lose. Earn more on the Earn page.',
   },
   {
     icon: 'trophy',
@@ -3880,7 +3883,7 @@ function telegramPanel(t) {
   const channel = t.configured
     ? `
       <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('telegram')}</span><div><h2>Player channel</h2><p class="muted">A public Telegram channel players join. Every market you publish is posted there with a “Predict now” button, and every result when it’s in. Players see a Telegram button on market pages, their dashboard and the menu.</p></div></div>
+        <div class="section-head"><span class="section-ico">${ico('telegram')}</span><div><h2>Player channel</h2><p class="muted">A public Telegram channel players join. Every market you publish is posted there with a banner and a “Predict now” button, a reminder goes out in its last hour, and results with a winner are posted (cancelled markets are not). Players see a Telegram button on market pages, their dashboard and the menu.</p></div></div>
         ${
           t.channel
             ? `<p class="all-good">${ico('checkCircle')}Posting to <a href="https://t.me/${esc(t.channel)}" target="_blank" rel="noopener noreferrer">@${esc(t.channel)}</a></p>

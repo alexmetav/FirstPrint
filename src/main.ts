@@ -131,15 +131,16 @@ const scheduler = new Scheduler(
   },
   { tickMs: cfg.tickMs, liveMs: cfg.liveMs, trackEveryMs: cfg.trackEveryMs, tracker,
     live: cfg.manualOnly && autoListings !== 'publish' ? null : live,
-    // Admin-run markets whose predictions just closed need a result (and maybe an opening price).
-    onClosed: (ids) => {
-      for (const id of ids) {
-        const m = service.getMarket(id);
-        if (m.mode === 'manual') alert(resultDueText(m, adminUrl));
-      }
-    },
   },
 );
+
+// Admin-run markets whose predictions just closed need a result (and maybe an opening price).
+service.onClosed = (ids) => {
+  for (const id of ids) {
+    const m = service.getMarket(id);
+    if (m.mode === 'manual') alert(resultDueText(m, adminUrl));
+  }
+};
 
 const server = createApiServer({
   service,

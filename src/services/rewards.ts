@@ -562,11 +562,16 @@ export class RewardsService {
       await token.chain.send(wire);
     } catch (err) {
       const msg = (err as Error).message;
-      const reason = /insufficient|no record of a prior credit|0x1\b/i.test(msg)
-        ? 'Your wallet needs a little test SOL to pay the network fee. Get some from the faucet, then claim again.'
-        : `The network rejected the claim: ${msg.slice(0, 160)}`;
-      this.closeClaim(id, 'failed', reason);
-      throw new AppError(400, 'claim_rejected', reason);
+      // Only a clear rejection closes the claim. A timeout or lost connection may still have landed:
+      // the claim stays "submitted" and the status check below settles it either way.
+      const rejected = /insufficient|no record of a prior credit|0x1\b|simulation failed|custom program error|blockhash not found|invalid/i.test(msg);
+      if (rejected) {
+        const reason = /insufficient|no record of a prior credit|0x1\b/i.test(msg)
+          ? 'Your wallet needs a little test SOL to pay the network fee. Get some from the faucet, then claim again.'
+          : `The network rejected the claim: ${msg.slice(0, 160)}`;
+        this.closeClaim(id, 'failed', reason);
+        throw new AppError(400, 'claim_rejected', reason);
+      }
     }
     const until = Date.now() + this.confirmWaitMs;
     let current = await this.refreshClaim(userId, id);

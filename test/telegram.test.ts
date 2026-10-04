@@ -121,3 +121,48 @@ test('telegram: a banner post sends the image, caption and button as one photo',
   assert.ok(c.body.photo instanceof Blob);
   assert.deepEqual(JSON.parse(String(c.body.reply_markup)), { inline_keyboard: [[{ text: 'Predict now', url: 'https://x/m' }]] });
 });
+
+test('channel: a failed last-hour reminder is tried again; re-publishing does not post twice', async () => {
+  const { openDb } = await import('../src/db/db.ts');
+  const { ManualClock } = await import('../src/clock.ts');
+  const { FirstprintService } = await import('../src/services/firstprint.ts');
+  const { ChannelPoster } = await import('../src/services/channel.ts');
+  const HOUR = 3_600_000;
+  const T0 = Date.UTC(2026, 9, 5, 8);
+  const clock = new ManualClock(T0);
+  const boom = async () => {
+    throw new Error('no exchange calls');
+  };
+  const service = new FirstprintService(openDb(':memory:'), clock, [{ id: 'mexc', name: 'MEXC', pair: (b: string) => `${b}USDT`, fetchTicker: boom, fetchCandles: boom, listPairs: boom }]);
+  service.setSetting('telegram_channel', 'firstprintfun');
+  const sent: string[] = [];
+  let fail = true;
+  const { t } = fakeTelegram([]);
+  t.sendTo = async (_c: string, html: string) => {
+    if (fail) throw new Error('Telegram: Too Many Requests');
+    sent.push(html.split('\n')[0]);
+  };
+  t.sendPhotoTo = async (_c: string, _p: Uint8Array, html: string) => void sent.push(html.split('\n')[0]);
+  const channel = new ChannelPoster(service, t, 'https://x/app/', () => {}, 0);
+  const announced: string[] = [];
+  service.onAnnounce = (kind, id) => void announced.push(`${kind}:${id}`);
+
+  const id = service.createManualMarket({ symbol: 'LONG', exchanges: ['mexc'], basePrice: 1, closeAt: T0 + 5 * HOUR, resultAt: T0 + 30 * HOUR, publish: true });
+  await new Promise((r) => setTimeout(r, 0));
+  await channel.postLive(id);
+  service.unpublishMarket(id);
+  service.publishMarket(id);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(announced.length, 1, 'published again: no second "new market" post');
+
+  clock.advance(4 * HOUR + 10 * 60_000);
+  channel.remindClosing();
+  await channel.later(async () => {});
+  assert.deepEqual(sent.filter((s) => s.includes('Last hour')), [], 'first try failed');
+  fail = false;
+  channel.remindClosing();
+  await channel.later(async () => {});
+  channel.remindClosing();
+  await channel.later(async () => {});
+  assert.equal(sent.filter((s) => s.includes('Last hour')).length, 1, 'sent once on the retry');
+});

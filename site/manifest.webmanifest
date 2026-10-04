@@ -1,7 +1,7 @@
 {
   "name": "Firstprint",
   "short_name": "Firstprint",
-  "description": "Predict the first 72 hours of every new token listing.",
+  "description": "Predict how newly listed crypto tokens trade. Free points, no real money.",
   "start_url": "./?source=pwa",
   "scope": "./",
   "display": "standalone",

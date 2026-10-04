@@ -6,7 +6,7 @@ The public website source lives in `site/`, and the prediction app in `web/`. Th
 - A landing page: how it works, the five outcomes, the fairness rules, free points and the dashboard, the roadmap and an FAQ.
 - **Try it:** a quick practice round with a made-up token and a random result. The streak is kept in the visitor's browser.
 - **Launch app** buttons that open the markets at `/app/`.
-- A privacy policy at `/privacy.html`.
+- A privacy policy at `/privacy.html` and terms at `/terms.html`.
 
 The site has no frontend framework and installs as an app on phones.
 
@@ -43,25 +43,37 @@ The static site and the read-only demo above don't have accounts. The full app i
 
 **How the database survives.** Render's free plan wipes the disk whenever the server restarts or goes to sleep. So the server restores its database from Supabase when it starts, saves a copy every minute if anything changed, and saves once more when Render shuts it down. The admin page shows when the last copy was saved. If the saved copy exists but can't be downloaded, the server refuses to start rather than begin empty and overwrite it. It also keeps one dated copy per day. At most the last minute of activity can be lost if the server is killed without warning.
 
-**Free-plan limits to know about.** The server sleeps after 15 minutes without visits and takes about a minute to wake up. It must stay a single instance. When it wakes, markets whose timer ended close on the first tick. Both free Render services share 750 hours a month, so keeping this one awake around the clock would leave the demo API asleep.
+**Free-plan limits to know about.** The server sleeps after 15 minutes without visits and takes about a minute to wake up. While it sleeps, the MEXC new-listing check, Telegram alerts, channel posts and last-hour reminders don't run, so ping `/api/health` every 5 minutes (for example with UptimeRobot, free). It must stay a single instance. When it wakes, markets whose timer ended close on the first tick. Both free Render services share 750 hours a month, so keeping this one awake around the clock would leave the demo API asleep.
 
 ### Steps
 
 1. **Supabase (free):** at supabase.com create a project named `firstprint`. Then **Storage → New bucket**, name `firstprint-backups`, and leave **Public bucket off**. Under **Project Settings → API** copy the **Project URL** and the **service_role** key. That key is a secret: only ever paste it into Render, never into chat or the repo.
 2. **Render:** open the Blueprint for this repository and apply the update, which adds `firstprint-app`. Render asks for the values marked "sync: false":
-   - `PUBLIC_URL`: the address people will type, no trailing slash, e.g. `https://app.firstprint.fun`. It must match exactly, or wallet sign-in fails.
+   - `PUBLIC_URL`: the address people will type, no trailing slash, e.g. `https://firstprint.fun` when the domain points at this service (it serves both the website and `/app/`). It must match exactly, or wallet sign-in fails.
    - `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` from step 1.
    - `GOOGLE_CLIENT_ID`, `RESEND_API_KEY`, `MAIL_FROM`: optional. Leave one blank and that option stays hidden. See the README under "Signing in".
+   - `TELEGRAM_BOT_TOKEN`: optional, from @BotFather. Turns on admin alerts and the player channel (see *Telegram* below).
+   - New MEXC listings go to Admin → New listings by default. `AUTO_LISTINGS=0` turns the check off; `AUTO_LISTINGS=publish` opens self-settling markets instead (`AUTO_MARKETS_PER_DAY`, `AUTO_MARKET_HOURS`).
 3. Wait for the deploy to go green, then open `https://<service>.onrender.com/api/health`. It should return `{"ok":true,...}`.
 4. Read the generated admin key in Render → `firstprint-app` → Environment → `ADMIN_KEY`. Open `<your app address>/#/admin` and paste it. The page should say "Database backup: last saved ...". Keep the key private.
-5. Custom domain: in Render → Settings → Custom Domains add `app.firstprint.fun`, then add the DNS record Render shows you. Set `PUBLIC_URL` to that address and redeploy.
+5. Custom domain: in Render → Settings → Custom Domains add your domain (for example `firstprint.fun`), then add the DNS record Render shows you. Set `PUBLIC_URL` to that address and redeploy.
 6. **The app serves the website too.** `firstprint-app` shows the landing page at `/` and the app at `/app/`; the landing page's **Launch app** buttons open `/app/`. So pointing your domain straight at Render gives visitors the landing page first. Old links such as `/#/market/...` and `/#/admin` forward to the same page under `/app/`. Set `SITE=0` to serve only the app at `/`.
 7. If the website stays on Vercel instead:  in Vercel → Settings → Environment Variables add `APP_URL` = your app address plus `/app` (for example `https://firstprint-app.onrender.com/app`), then redeploy. The "practice" buttons on the site then open the full app. Without `APP_URL` the site keeps linking to the browser-only practice build at `/play/`.
 8. Google only: in Google Cloud Console add your `PUBLIC_URL` as an Authorized JavaScript origin on the OAuth client.
 
+### Telegram: admin alerts and the player channel
+
+1. In Telegram, open **@BotFather**, send `/newbot` and follow the steps. Put the token in Render as `TELEGRAM_BOT_TOKEN` (never in chat or the repo).
+2. **Your alerts:** Admin → Settings → Telegram alerts shows a code. Send it to your bot, then press **Connect**. You get a message for every new MEXC listing and every market that closes and needs a result.
+3. **Player channel:** create a public channel, add the bot as an admin with **Post Messages**, and enter the channel name under **Player channel**. Every market you publish is posted with a banner and a **Predict now** button, a "last hour" reminder goes out an hour before predictions close, and results with a winner are posted. **Post all now** posts open markets made before the channel was set up. Players see a Telegram button on market pages, their dashboard and the menu.
+
+### Analytics for partners
+
+Admin → **Analytics** shows players, active players, predictions, points staked, sign-in methods, daily streaks and the most played markets for 7, 30 or 90 days. **Create a share link** gives a read-only page (`/app/#/stats/<key>`) with totals only, no names, emails or wallets. **New link** stops the old one; **Turn off** ends sharing.
+
 ### TestFPT, tasks and invites
 
-Players' starting points (1,000) and rewards from tasks and invites are claimed to their own Solana wallet as **TestFPT**, a Token-2022 token on Solana **testnet** (set `TOKEN_CLUSTER=devnet` for devnet). The player signs the claim and pays the tiny network fee in free test SOL from https://faucet.solana.com; the app walks them through it.
+Players' starting points (1,000) and rewards from tasks and invites (not daily points or winnings, which stay in the Firstprint balance) are claimed to their own Solana wallet as **TestFPT**, a Token-2022 token on Solana **testnet** (set `TOKEN_CLUSTER=devnet` for devnet). The player signs the claim and pays the tiny network fee in free test SOL from https://faucet.solana.com; the app walks them through it.
 
 Set it up once in the admin panel (`/app/#/admin` → **TestFPT token**):
 1. **Create authority.** The server makes the key that mints TestFPT and stores it in its database (which is backed up privately). Copy its address.

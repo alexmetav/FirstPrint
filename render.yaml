@@ -35,7 +35,7 @@ services:
       # Render creates a random key. Read it in the dashboard (Environment) to open /#/admin.
       - key: ADMIN_KEY
         generateValue: true
-      # The address people type in the browser, e.g. https://app.firstprint.fun (no trailing slash).
+      # The address people type in the browser, e.g. https://firstprint.fun (no trailing slash).
       - key: PUBLIC_URL
         sync: false
       # Database backup (Supabase free plan): the project URL and its service_role key. Secret, enter in Render only.
@@ -53,6 +53,6 @@ services:
         sync: false
       - key: MAIL_FROM
         sync: false
-      # Admin alerts on Telegram: the bot token from @BotFather. Secret, enter in Render only.
+      # Telegram bot token from @BotFather: admin alerts and the public player channel. Secret, enter in Render only.
       - key: TELEGRAM_BOT_TOKEN
         sync: false

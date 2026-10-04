@@ -317,3 +317,29 @@ test('review queue: new listings wait for the admin, with an alert; old pairs an
   await tracker.run();
   assert.equal(service.detections({ status: 'pending' }).length, 0, 'listings left for days drop off the queue');
 });
+
+test('review queue: deleting a draft made from a listing returns it to the queue; stale drafts and time-less listings', async () => {
+  const clock = new ManualClock(T);
+  const state = { pairs: [] as { pair: string; base: string; listingAt: number | null }[], anns: [] };
+  const venue = fakeVenue('mexc', state);
+  delete venue.fetchAnnouncements;
+  const service = new FirstprintService(openDb(':memory:'), clock, [venue]);
+  const id = service.recordDetection({ exchange: 'mexc', symbol: 'NEWT', pair: 'NEWTUSDT', source: 'symbol_diff', title: null, url: null, listingAt: T + 60 * MIN, publishedAt: null, dedupeKey: 'k1' })!;
+  const draft = service.createManualMarket({ symbol: 'NEWT', exchanges: ['mexc'], basePrice: 1, closeAt: T + 2 * 60 * MIN, resultAt: T + 48 * 60 * MIN });
+  service.linkDetection(id, draft);
+  assert.equal(service.detections({ status: 'pending' }).length, 0);
+  assert.equal(service.hasActiveMarket('NEWT'), true);
+  service.deleteDraft(draft);
+  assert.deepEqual(service.detections({ status: 'pending' }).map((d) => d.symbol), ['NEWT'], 'back in the queue');
+
+  const stale = service.createManualMarket({ symbol: 'OLDD', exchanges: ['mexc'], basePrice: 1, closeAt: T + 10 * MIN, resultAt: T + 48 * 60 * MIN });
+  assert.equal(service.hasActiveMarket('OLDD'), true);
+  clock.advance(20 * MIN);
+  assert.equal(service.hasActiveMarket('OLDD'), false, 'an abandoned draft does not block the token');
+  assert.ok(stale);
+
+  service.recordDetection({ exchange: 'mexc', symbol: 'NOTIME', pair: 'NOTIMEUSDT', source: 'symbol_diff', title: null, url: null, listingAt: null, publishedAt: null, dedupeKey: 'k2' });
+  clock.advance(4 * 24 * 60 * MIN);
+  service.expireDetections(clock.now() - 3 * 24 * 60 * MIN);
+  assert.equal(service.detections({ status: 'pending' }).length, 0, 'listings without a start time drop off too');
+});

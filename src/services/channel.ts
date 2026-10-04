@@ -20,6 +20,8 @@ function loadBanner(): Uint8Array | null {
  */
 export class ChannelPoster {
   private queue: Promise<void> = Promise.resolve();
+  /** Reminders queued but not yet sent, so the minute timer doesn't queue them twice. */
+  private reminding = new Set<string>();
   private service: FirstprintService;
   private telegram: Telegram | null;
   private appUrl: string;
@@ -85,9 +87,18 @@ export class ChannelPoster {
     const channel = this.channel;
     if (!this.telegram || !channel) return;
     for (const id of this.service.marketsClosingSoon()) {
-      this.service.markReminded(id);
+      if (this.reminding.has(id)) continue;
+      this.reminding.add(id);
       const m = this.service.getMarket(id);
-      this.later(() => this.telegram!.sendTo(`@${channel}`, closingSoonText(m), { text: 'Predict now', url: this.link(id) }), this.gapMs);
+      // Marked only once Telegram accepts it, so a failed send is tried again on the next minute.
+      this.later(async () => {
+        try {
+          await this.telegram!.sendTo(`@${channel}`, closingSoonText(m), { text: 'Predict now', url: this.link(id) });
+          this.service.markReminded(id);
+        } finally {
+          this.reminding.delete(id);
+        }
+      }, this.gapMs);
     }
   }
 
