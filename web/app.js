@@ -1282,52 +1282,153 @@ function portfolioView(preds, history = [], stats = null) {
         <button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button></div>`;
   }
   const active = preds.filter((p) => p.marketStatus === 'open' || p.marketStatus === 'locked');
-  const activeTable = active.length
-    ? `<table class="table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right">Status</th></tr></thead><tbody>${active
-        .map((p) => {
-          const status = p.marketStatus === 'open' ? '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>' : `<span class="pill pill-wait">${p.mode === 'manual' ? 'Awaiting result' : 'In play'}</span>`;
-          return `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(p.marketId)}">${tokenAvatar(p, 'avatar-sm')}<span>${esc(p.symbol)}</span></a></td><td>${outcome(p.bucket, p.outcomes === 'binary')}</td><td class="right num-cell">${fmtNum(p.stake)}</td><td class="right">${status}</td></tr>`;
-        })
-        .join('')}</tbody></table>`
-    : `<p class="muted pad">Nothing in play right now. <a href="#/">Pick a market</a> to get started.</p>`;
+  const past = stats?.history ?? [];
+  // Open on the tab that has something in it; remember the choice while the page is open.
+  const tab = S.dashTab ?? (active.length || !past.length ? 'active' : 'past');
   const method = S.me.wallets.length ? `Wallet ${esc(shortAddress(S.me.wallets[0].address))}` : S.me.hasEmail ? 'Signed in with email' : 'Signed in';
 
   return `
-    <section class="profile-card">
-      ${avatar(S.me.username, 'avatar-xl')}
-      <div class="profile-main">
-        <span class="eyebrow">Your dashboard</span>
-        <h1 class="page-title">${esc(S.me.username)}</h1>
-        <p class="muted">${method}${S.me.xUsername ? ` · ${ico('x')} @${esc(S.me.xUsername)}` : ''}</p>
+    <div class="dash">
+      <header class="dash-head">
+        ${avatar(S.me.username, 'avatar-lg')}
+        <div class="dash-id">
+          <span class="dash-eyebrow">Dashboard</span>
+          <h1 class="dash-name">${esc(S.me.username)}</h1>
+          <p class="dash-meta">${method}${S.me.xUsername ? ` <span aria-hidden="true">·</span> ${ico('x')}@${esc(S.me.xUsername)}` : ''}</p>
+        </div>
+        <div class="dash-actions">
+          <a class="btn btn-sm" href="#/u/${encodeURIComponent(S.me.username)}">${ico('user')}Public profile</a>
+          <a class="btn btn-sm" href="#/earn">${ico('gift')}Earn points</a>
+          <button class="link-quiet" data-action="logout">${ico('logout')}Log out</button>
+        </div>
+      </header>
+      ${startChecklist()}
+      ${dashSummary(stats)}
+      ${stats && stats.history.length >= 2 ? `<div class="dash-insights">${profitChart(stats.history)}${outcomeRecord(stats.byOutcome)}</div>` : ''}
+      <div class="dash-layout">
+        <section class="dash-card dash-main" aria-label="Your predictions">
+          <div class="dash-tabs" role="tablist">
+            <button role="tab" id="dt-active" aria-controls="dp-active" aria-selected="${tab === 'active'}" tabindex="${tab === 'active' ? 0 : -1}" data-dash-tab="active">Active predictions${active.length ? `<span class="count">${active.length}</span>` : ''}</button>
+            <button role="tab" id="dt-past" aria-controls="dp-past" aria-selected="${tab === 'past'}" tabindex="${tab === 'past' ? 0 : -1}" data-dash-tab="past">Past markets${past.length ? `<span class="count">${past.length}</span>` : ''}</button>
+          </div>
+          <div role="tabpanel" id="dp-active" aria-labelledby="dt-active"${tab === 'active' ? '' : ' hidden'}>${activeTable(active)}</div>
+          <div role="tabpanel" id="dp-past" aria-labelledby="dt-past"${tab === 'past' ? '' : ' hidden'}>${pastTable(stats)}</div>
+        </section>
+        <aside class="dash-side">
+          ${walletsCard()}
+          ${historyView(history)}
+        </aside>
       </div>
-      <div class="profile-actions">
-        <a class="btn" href="#/u/${encodeURIComponent(S.me.username)}">${ico('user')}Public profile</a>
-        <a class="btn" href="#/earn">${ico('gift')}Earn points</a>
-        <button class="btn" data-action="logout">${ico('logout')}Log out</button>
-      </div>
-    </section>
-    ${startChecklist()}
-    ${statTiles(stats)}
-    ${stats ? `<div class="dash-grid">${profitChart(stats.history)}${outcomeRecord(stats.byOutcome)}</div>` : ''}
-    <section class="section panel panel-flush">
-      <div class="section-head"><span class="section-ico">${ico('target')}</span><h2>In play${active.length ? ` <span class="count-badge">${active.length}</span>` : ''}</h2></div>
-      ${activeTable}
-    </section>
-    ${stats ? pastMarkets(stats) : ''}
-    <div class="dash-grid">
-      <section class="section panel">
-        <div class="section-head"><span class="section-ico">${ico('wallet')}</span><h2>Wallets</h2></div>
-        ${
-          S.me.wallets.length
-            ? `<ul class="wallet-list">${S.me.wallets
-                .map((w) => `<li><span class="addr" title="${esc(w.address)}">${esc(shortAddress(w.address))}</span><span class="muted">${esc(w.walletName || 'Solana wallet')}</span><a class="muted" href="https://solscan.io/account/${encodeURIComponent(w.address)}" target="_blank" rel="noopener noreferrer">Solscan ${ico('external')}</a></li>`)
-                .join('')}</ul>`
-            : '<p class="muted">No wallet linked. Link one to sign in with it too and to claim TestFPT.</p>'
-        }
-        <button class="btn" data-action="link-wallet">${ico('plus')}Link ${S.me.wallets.length ? 'another' : 'a Solana'} wallet</button>
-      </section>
-      ${historyView(history)}
     </div>`;
+}
+
+/** Switches the dashboard between active predictions and past markets without reloading. */
+function showDashTab(tab, focus = false) {
+  S.dashTab = tab;
+  document.querySelectorAll('[data-dash-tab]').forEach((b) => {
+    const on = b.dataset.dashTab === tab;
+    b.setAttribute('aria-selected', String(on));
+    b.tabIndex = on ? 0 : -1;
+    if (on && focus) b.focus();
+  });
+  for (const id of ['active', 'past']) {
+    const panel = document.getElementById(`dp-${id}`);
+    if (panel) panel.hidden = id !== tab;
+  }
+}
+
+// Arrow keys move between the two dashboard tabs, as in any tab list.
+document.addEventListener('keydown', (e) => {
+  if (!e.target.matches?.('[data-dash-tab]') || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+  e.preventDefault();
+  showDashTab(e.target.dataset.dashTab === 'active' ? 'past' : 'active', true);
+});
+
+/** A small empty state: an icon, one sentence and at most one action. */
+const dashEmpty = (icon, text, action = '') => `<div class="dash-empty"><span class="dash-empty-ico">${ico(icon)}</span><p>${text}</p>${action}</div>`;
+
+/** Points and win rate side by side; a record card joins them once a market has settled. */
+function dashSummary(st) {
+  const points = `
+    <div class="sum-card sum-points">
+      <div class="sum-top"><span class="sum-label">${ico('coins')}Points</span>
+        ${S.me.canClaimDaily ? `<button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim 100</button>` : '<span class="sum-note">Daily claim used</span>'}</div>
+      <div class="sum-value">${fmtNum(S.me.points)}</div>
+      <p class="sum-sub">${st?.open.staked ? `${fmtNum(st.open.staked)} more in play` : 'Available to predict with'}</p>
+    </div>`;
+  const settled = Boolean(st?.settled);
+  const pct = settled ? Math.round(st.winRate * 100) : null;
+  const winRate = `
+    <div class="sum-card">
+      <div class="sum-top"><span class="sum-label">${ico('percent')}Win rate</span></div>
+      ${
+        settled
+          ? `<div class="sum-value">${pct}%</div>
+             <div class="meter" role="img" aria-label="${pct}% of markets won"><i style="width:${pct}%"></i></div>
+             <p class="sum-sub">${st.wins} of ${st.settled} market${st.settled === 1 ? '' : 's'} won</p>`
+          : `<div class="sum-value sum-na" aria-label="Not available yet">—</div>
+             <p class="sum-sub">${st?.marketsPlayed ? 'Shows once your first market settles' : 'Not available until your first market settles'}</p>`
+      }
+    </div>`;
+  if (!settled) return `<section class="dash-summary" aria-label="Summary">${points}${winRate}</section>`;
+  const fact = (label, value, sub) => `<div><dt>${label}</dt><dd>${value}</dd>${sub ? `<p>${sub}</p>` : ''}</div>`;
+  const record = `
+    <div class="sum-card sum-record">
+      <div class="sum-top"><span class="sum-label">${ico('award')}Your record</span></div>
+      <dl class="record-grid">
+        ${fact('Points won', `<span class="${st.netProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(st.netProfit)}</span>`, `from ${fmtNum(st.totalStaked)} staked`)}
+        ${fact('Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '<span class="sum-na">—</span>', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'No wins yet')}
+        ${fact('Streak', `${st.currentStreak}`, `best ${st.bestStreak}`)}
+        ${fact('Rank', st.rank ? `#${fmtNum(st.rank)}` : '<span class="sum-na">—</span>', st.rank ? `of ${fmtNum(st.players)}` : 'Not ranked yet')}
+      </dl>
+    </div>`;
+  return `<section class="dash-summary has-record" aria-label="Summary">${points}${winRate}${record}</section>`;
+}
+
+function activeTable(active) {
+  if (!active.length) return dashEmpty('target', 'No active predictions. Pick an outcome on any open market to start your record.', `<a class="btn btn-sm" href="#/">${ico('grid')}Explore markets</a>`);
+  return `<table class="table dash-table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right">Status</th></tr></thead><tbody>${active
+    .map((p) => {
+      const status = p.marketStatus === 'open' ? '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>' : `<span class="pill pill-wait">${p.mode === 'manual' ? 'Awaiting result' : 'In play'}</span>`;
+      return `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(p.marketId)}">${tokenAvatar(p, 'avatar-sm')}<span>${esc(p.symbol)}</span></a></td><td>${outcome(p.bucket, p.outcomes === 'binary')}</td><td class="right num-cell">${fmtNum(p.stake)}</td><td class="right">${status}</td></tr>`;
+    })
+    .join('')}</tbody></table>`;
+}
+
+function pastTable(st) {
+  const rows = st?.history ?? [];
+  const refunds = st?.refundedMarkets ? `<p class="fine">${st.refundedMarkets} cancelled market${st.refundedMarkets === 1 ? ' was' : 's were'} refunded and ${st.refundedMarkets === 1 ? 'doesn’t' : 'don’t'} count toward your record.</p>` : '';
+  if (!rows.length) return dashEmpty('history', 'No settled markets yet. Your results appear here when markets you predicted on are settled.') + refunds;
+  return `<table class="table dash-table"><thead><tr><th>Market</th><th>Your pick</th><th class="hide-sm">Result</th><th class="right">Staked</th><th class="right">Points</th></tr></thead><tbody>${rows
+    .map(
+      (m) => `<tr>
+        <td><a class="mkt-cell" href="#/market/${encodeURIComponent(m.marketId)}">${tokenAvatar(m, 'avatar-sm')}<span>${esc(m.symbol)}<small class="muted">${fmtAgo(m.settledAt)}</small></span></a></td>
+        <td>${m.buckets.map((b) => outcome(b, m.binary)).join(' ')}</td>
+        <td class="hide-sm">${m.winningBucket ? outcome(m.winningBucket, m.binary) : '–'}</td>
+        <td class="right num-cell">${fmtNum(m.staked)}</td>
+        <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b></td>
+      </tr>`,
+    )
+    .join('')}</tbody></table>${refunds}`;
+}
+
+function walletsCard() {
+  const ws = S.me.wallets;
+  return `
+    <section class="dash-card">
+      <div class="dash-card-head"><h2>${ico('wallet')}Wallets</h2>${ws.length ? `<span class="count">${ws.length}</span>` : ''}</div>
+      ${
+        ws.length
+          ? `<ul class="dash-wallets">${ws
+              .map(
+                (w) => `<li><span class="dw-main"><span class="addr" title="${esc(w.address)}">${esc(shortAddress(w.address))}</span><span class="muted">${esc(w.walletName || 'Solana wallet')}</span></span>
+                  <a class="dw-link" href="https://solscan.io/account/${encodeURIComponent(w.address)}" target="_blank" rel="noopener noreferrer" aria-label="View ${esc(shortAddress(w.address))} on Solscan">Solscan ${ico('external')}</a></li>`,
+              )
+              .join('')}</ul>`
+          : '<p class="dash-card-text">No wallet linked. Link one to sign in with it and to claim TestFPT.</p>'
+      }
+      <button class="btn btn-sm dash-card-btn" data-action="link-wallet">${ico('plus')}Link ${ws.length ? 'another' : 'a Solana'} wallet</button>
+    </section>`;
 }
 
 /** A player's public page: their record, what they're in now, and their past markets. */
@@ -1430,7 +1531,7 @@ function profitChart(history) {
           <div class="pchart-tip" role="status" hidden></div>
         </div>
       </div>
-      <p class="fine">Net points after each settled market (${pts.length} markets). The table below lists every one.</p>
+      <p class="fine">Net points after each settled market (${pts.length} markets). Past markets lists every one.</p>
     </section>`;
 }
 
@@ -1516,17 +1617,20 @@ const HISTORY_LABELS = {
 
 /** Every change to the balance, so points never seem to appear or vanish. */
 function historyView(entries) {
-  if (!entries.length) return '';
   return `
-    <section class="section panel">
-      <div class="section-head"><span class="section-ico">${ico('coins')}</span><h2>Points history</h2></div>
-      <ul class="activity ledger">${entries
-        .map((e) => {
-          const label = (HISTORY_LABELS[e.reason] ?? (() => e.reason))(e);
-          const name = e.marketId ? `<a href="#/market/${encodeURIComponent(e.marketId)}">${esc(label)}</a>` : esc(label);
-          return `<li><span>${name}</span><span><b class="${e.delta >= 0 ? 'profit-pos' : ''}">${e.delta >= 0 ? '+' : '−'}${fmtNum(Math.abs(e.delta))}</b> <span class="muted">${fmtAgo(e.at)}</span></span></li>`;
-        })
-        .join('')}</ul>
+    <section class="dash-card">
+      <div class="dash-card-head"><h2>${ico('coins')}Points history</h2></div>
+      ${
+        entries.length
+          ? `<ul class="dash-ledger">${entries
+              .map((e) => {
+                const label = (HISTORY_LABELS[e.reason] ?? (() => e.reason))(e);
+                const name = e.marketId ? `<a href="#/market/${encodeURIComponent(e.marketId)}">${esc(label)}</a>` : esc(label);
+                return `<li><span class="dl-main">${name}<small>${fmtAgo(e.at)}</small></span><b class="${e.delta >= 0 ? 'profit-pos' : 'dl-neg'}">${e.delta >= 0 ? '+' : '−'}${fmtNum(Math.abs(e.delta))}</b></li>`;
+              })
+              .join('')}</ul>`
+          : '<p class="dash-card-text">Every change to your balance will be listed here.</p>'
+      }
     </section>`;
 }
 
@@ -3151,6 +3255,8 @@ document.addEventListener('click', async (e) => {
   const action = t.closest('[data-action]')?.dataset.action;
   const filter = t.closest('[data-filter]')?.dataset.filter;
   const lbPeriod = t.closest('[data-lb-period]')?.dataset.lbPeriod;
+  const dashTab = t.closest('[data-dash-tab]')?.dataset.dashTab;
+  if (dashTab) return showDashTab(dashTab);
   if (lbPeriod) {
     S.lbPeriod = lbPeriod;
     return loadRoute();
