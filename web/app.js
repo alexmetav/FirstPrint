@@ -3591,7 +3591,7 @@ function telegramPanel(t) {
           t.channel
             ? `<p class="all-good">${ico('checkCircle')}Posting to <a href="https://t.me/${esc(t.channel)}" target="_blank" rel="noopener noreferrer">@${esc(t.channel)}</a></p>
                <p class="muted">New markets and results are posted by themselves, and a “last hour” reminder goes out an hour before predictions close.${t.unposted ? ` <b>${t.unposted} open market${t.unposted === 1 ? ' hasn’t' : 's haven’t'} been posted yet</b> (made before the channel was set up).` : ''}</p>
-               <div class="admin-actions">${t.unposted ? `<button class="btn btn-solid btn-sm" data-action="admin-tg-post-open">${ico('telegram')}Post ${t.unposted === 1 ? 'it' : `all ${t.unposted}`} now</button>` : ''}<button class="btn btn-sm" data-action="admin-tg-channel-remove">Stop posting</button></div>`
+               <div class="admin-actions">${t.unposted ? `<button class="btn btn-solid btn-sm" data-action="admin-tg-post-open">${ico('telegram')}Post ${t.unposted === 1 ? 'it' : `all ${t.unposted}`} now</button>` : ''}${t.open && t.open > t.unposted ? `<button class="btn btn-sm" data-action="admin-tg-post-open" data-again="1">${ico('telegram')}Post all ${t.open} open markets again</button>` : ''}<button class="btn btn-sm" data-action="admin-tg-channel-remove">Stop posting</button></div>`
             : `<ol class="tg-steps">
                 <li>In Telegram, create a <b>New Channel</b>, make it <b>Public</b> and give it a link, like <code>firstprint_markets</code>.</li>
                 <li>Open the channel → <b>Administrators</b> → <b>Add Admin</b>, pick your bot, and leave <b>Post Messages</b> on.</li>
@@ -3841,7 +3841,12 @@ async function onAdminAction(action, el) {
     case 'admin-tg-post-open': {
       el.disabled = true;
       try {
-        const { count } = await A.api.telegramPostOpen();
+        const again = el.dataset.again === '1';
+        if (again && !confirm('Post every open market to the channel again, even ones already posted?')) {
+          el.disabled = false;
+          return;
+        }
+        const { count } = await A.api.telegramPostOpen(again);
         toast(count ? `Posting ${count} market${count === 1 ? '' : 's'}, a few seconds apart. Check the channel.` : 'Everything is posted already.');
         setTimeout(async () => {
           A.info = await A.api.ping().catch(() => A.info);

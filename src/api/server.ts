@@ -562,9 +562,9 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   // Post every open market that hasn't been posted yet, a few seconds apart.
-  route('POST', '/api/admin/telegram/post-open', ({ req, requireAdmin }) => {
+  route('POST', '/api/admin/telegram/post-open', async ({ req, body, requireAdmin }) => {
     requireAdmin();
-    const count = channelOn().postAllOpen();
+    const count = channelOn().postAllOpen((await body()).again === true);
     audit(req, 'telegram_posted_open', null, String(count));
     return { count };
   });
@@ -692,6 +692,7 @@ export function createApiServer(opts: ServerOptions): Server {
         connected: Boolean(opts.telegram?.connected),
         channel: service.getSetting('telegram_channel'),
         unposted: service.unannouncedOpenMarkets().length,
+        open: service.channelMarkets().length,
       },
       backup: opts.backupStatus?.() ?? { enabled: false, lastOkAt: null, lastError: null },
       presets: Object.entries(LIVE_PRESETS).map(([id, p]) => ({ id, label: p.label })),

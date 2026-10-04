@@ -9,7 +9,7 @@ function fakeTelegram(updates: unknown[], ok = true) {
     'SECRET-TOKEN',
     { get: () => chat, set: (id) => (chat = id) },
     async (url, init) => {
-      const body = JSON.parse(String(init?.body ?? '{}'));
+      const body = init?.body instanceof FormData ? Object.fromEntries(init.body.entries()) : JSON.parse(String(init?.body ?? '{}'));
       calls.push({ url, body });
       if (!ok) return new Response(JSON.stringify({ ok: false, description: 'Unauthorized' }), { status: 401 });
       return new Response(JSON.stringify({ ok: true, result: url.endsWith('/getUpdates') ? updates : {} }));
@@ -83,6 +83,7 @@ test('channel: posts open markets not posted yet, then a single last-hour remind
   const posts: string[] = [];
   const { t } = fakeTelegram([]);
   t.sendTo = async (chat: string, html: string) => void posts.push(`${chat} ${html.split('\n')[0]}`);
+  t.sendPhotoTo = async (chat: string, png: Uint8Array, html: string) => void posts.push(`${chat} [banner ${png.length > 1000 ? 'ok' : 'empty'}] ${html.split('\n')[0]}`);
   const channel = new ChannelPoster(service, t, 'https://x/app/', () => {}, 0);
   const make = (symbol: string, closeIn: number) =>
     service.createManualMarket({ symbol, exchanges: ['mexc'], basePrice: 1, closeAt: T0 + closeIn, resultAt: T0 + closeIn + 24 * HOUR, publish: true });
@@ -95,8 +96,11 @@ test('channel: posts open markets not posted yet, then a single last-hour remind
   service.setSetting('telegram_channel', 'firstprintfun');
   assert.equal(channel.postAllOpen(), 2);
   await channel.later(async () => {});
-  assert.deepEqual(posts, ['@firstprintfun 🟢 <b>New market: SHORT</b>', '@firstprintfun 🟢 <b>New market: LONG</b>'], 'soonest to close first');
+  assert.deepEqual(posts, ['@firstprintfun [banner ok] 🟢 <b>New market: SHORT</b>', '@firstprintfun [banner ok] 🟢 <b>New market: LONG</b>'], 'soonest to close first, with the banner');
   assert.equal(channel.postAllOpen(), 0, 'already posted');
+  assert.equal(channel.postAllOpen(true), 2, 'posting again includes posted ones');
+  await channel.later(async () => {});
+  posts.splice(2);
 
   clock.advance(4 * HOUR + 10 * 60_000); // LONG closes in 50 minutes
   channel.remindClosing();
@@ -104,4 +108,16 @@ test('channel: posts open markets not posted yet, then a single last-hour remind
   await channel.later(async () => {});
   assert.deepEqual(posts.slice(2), ['@firstprintfun ⏳ <b>Last hour: LONG</b>']);
   assert.equal(service.getMarket(long).symbol, 'LONG');
+});
+
+test('telegram: a banner post sends the image, caption and button as one photo', async () => {
+  const { t, calls } = fakeTelegram([]);
+  await t.sendPhotoTo('@chan', new Uint8Array([137, 80, 78, 71]), '<b>New</b>', { text: 'Predict now', url: 'https://x/m' });
+  const c = calls[0];
+  assert.match(c.url, /\/sendPhoto$/);
+  assert.equal(c.body.chat_id, '@chan');
+  assert.equal(c.body.caption, '<b>New</b>');
+  assert.equal(c.body.parse_mode, 'HTML');
+  assert.ok(c.body.photo instanceof Blob);
+  assert.deepEqual(JSON.parse(String(c.body.reply_markup)), { inline_keyboard: [[{ text: 'Predict now', url: 'https://x/m' }]] });
 });

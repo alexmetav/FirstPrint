@@ -1525,8 +1525,15 @@ export class FirstprintService {
 
   /** Open, published markets that were never posted to the channel (e.g. made before it was set up). */
   unannouncedOpenMarkets(): string[] {
+    return this.channelMarkets(true);
+  }
+
+  /** Open, published markets for the channel, soonest to close first; only never-posted ones if asked. */
+  channelMarkets(unpostedOnly = false): string[] {
     return as<{ id: string }[]>(
-      this.db.prepare("SELECT id FROM markets WHERE status = 'open' AND published = 1 AND announced_at IS NULL AND kind = 'listing' ORDER BY listing_at").all(),
+      this.db
+        .prepare(`SELECT id FROM markets WHERE status = 'open' AND published = 1 AND kind = 'listing' ${unpostedOnly ? 'AND announced_at IS NULL' : ''} ORDER BY listing_at`)
+        .all(),
     ).map((r) => r.id);
   }
 
