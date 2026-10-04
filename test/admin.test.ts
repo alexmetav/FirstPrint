@@ -113,6 +113,8 @@ test('exchange check reports pass and fail per capability', async () => {
   assert.equal(g.announcements.ok, null);
   assert.equal(b.ticker.ok, false);
   assert.match(b.ticker.detail, /451/);
+  assert.equal(g.verdict, 'works');
+  assert.equal(b.verdict, 'blocked', 'a 451 means the exchange refuses this server\'s location');
 });
 
 test('migrations add new columns to an existing database', () => {

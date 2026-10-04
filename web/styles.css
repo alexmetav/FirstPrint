@@ -10252,3 +10252,35 @@ svg.viz.viz-narrow {
     grid-template-columns: minmax(0, 1fr) 90px auto;
   }
 }
+
+/* ===== Admin: exchange check (Settings) ===== */
+.ex-check {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.ex-check li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-width: 0;
+}
+.ex-check small {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+.ex-verdict {
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+.ex-verdict.pass {
+  color: var(--up);
+}
+.ex-verdict.fail {
+  color: var(--crash);
+}

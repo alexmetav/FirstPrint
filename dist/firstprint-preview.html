@@ -10283,6 +10283,38 @@ svg.viz.viz-narrow {
   }
 }
 
+/* ===== Admin: exchange check (Settings) ===== */
+.ex-check {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.ex-check li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-width: 0;
+}
+.ex-check small {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+.ex-verdict {
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+.ex-verdict.pass {
+  color: var(--up);
+}
+.ex-verdict.fail {
+  color: var(--crash);
+}
+
 </style>
   </head>
   <body>
@@ -15212,7 +15244,7 @@ function onLive(type, data) {
 // ------------------------------------------------------------------ Admin
 
 const ADMIN_KEY_STORE = 'fp_admin_key';
-const A = { api: null, info: null, checks: null, busy: '', edit: null, preview: null, tab: 'overview' };
+const A = { api: null, info: null, checks: null, exCheck: null, busy: '', edit: null, preview: null, tab: 'overview' };
 
 function readAdminKey() {
   try {
@@ -15333,6 +15365,7 @@ async function renderAdmin() {
           .map((e) => `<label class="toggle"><input type="checkbox" data-action="admin-exchange" data-id="${esc(e.id)}"${e.enabled ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>${esc(e.name)}</label>`)
           .join('')}</div>
       </section>
+      ${exchangeCheckPanel()}
       <section class="panel">
         <div class="section-head"><span class="section-ico">${ico('database')}</span><div><h2>Database backup</h2><p class="muted">Copies of the database in Supabase, restored automatically when the server restarts.</p></div></div>
         ${backupLine(A.info.backup) || '<p class="muted">Backups are off. Set SUPABASE_URL and SUPABASE_SERVICE_KEY on the server to turn them on.</p>'}
@@ -15734,7 +15767,7 @@ function legacyAdminSections(venues, detected) {
 
     <section class="section">
       <div class="admin-head"><h2>Exchange connections</h2><button class="btn" data-action="admin-check">${A.busy === 'check' ? 'Checking…' : 'Run check'}</button></div>
-      ${A.checks ? checksTable(A.checks) : '<p class="muted">Calls each exchange once for a BTC price, recent candles, the pair list, and announcements.</p>'}
+      ${A.exCheck ? checksTable(A.exCheck.results) : '<p class="muted">Calls each exchange once for a BTC price, recent candles, the pair list, and announcements.</p>'}
     </section>
 
     <section class="section">
@@ -16017,11 +16050,50 @@ function adminPhase(m) {
   return { pre_listing: `Starts in ${fmtDur(m.listingAt - now())}`, baseline: 'Open, trading', running: `Running, ${fmtDur(m.settleAt - now())} left`, resolved: `Settled: ${NAMES[m.result?.winningBucket] ?? ''}`, void: 'Cancelled' }[m.phase] ?? m.phase;
 }
 
+const VERDICTS = {
+  works: ['pass', 'Works'],
+  blocked: ['fail', 'Blocked here'],
+  partial: ['fail', 'Partly works'],
+  down: ['fail', 'Not reachable'],
+};
+
 function checksTable(results) {
   const cell = (c) => `<td class="${c.ok === null ? 'muted' : c.ok ? 'pass' : 'fail'}" title="${esc(c.detail)}">${c.ok === null ? '–' : c.ok ? 'Pass' : 'Fail'}<small>${esc(String(c.detail).slice(0, 60))}</small></td>`;
-  return `<div class="table-scroll"><table class="table checks"><thead><tr><th>Exchange</th><th>Live price</th><th>Candles</th><th>Pairs</th><th>Announcements</th></tr></thead><tbody>${results
-    .map((r) => `<tr><td><b>${esc(r.name)}</b></td>${cell(r.ticker)}${cell(r.candles)}${cell(r.pairs)}${cell(r.announcements)}</tr>`)
+  const verdict = (r) => {
+    const [cls, label] = VERDICTS[r.verdict] ?? ['muted', '–'];
+    return `<td class="${cls}"><b>${label}</b></td>`;
+  };
+  return `<div class="table-scroll"><table class="table checks"><thead><tr><th>Exchange</th><th>Result</th><th>Live price</th><th>Candles</th><th>Pairs</th><th>Announcements</th></tr></thead><tbody>${results
+    .map((r) => `<tr><td><b>${esc(r.name)}</b></td>${verdict(r)}${cell(r.ticker)}${cell(r.candles)}${cell(r.pairs)}${cell(r.announcements)}</tr>`)
     .join('')}</tbody></table></div>`;
+}
+
+/** One exchange: the verdict, and what failed if anything did. */
+function exCheckRow(r) {
+  const [cls, label] = VERDICTS[r.verdict] ?? ['muted', '–'];
+  const parts = [['Live price', r.ticker], ['Candles', r.candles], ['New pairs', r.pairs], ['Announcements', r.announcements]];
+  const failed = parts.filter(([, c]) => c.ok === false);
+  const why = r.verdict === 'works'
+    ? parts.filter(([, c]) => c.ok).map(([n]) => n).join(' · ')
+    : failed.map(([n, c]) => `${n}: ${String(c.detail).slice(0, 70)}`).join(' · ');
+  return `<li><b>${esc(r.name)}</b><span class="ex-verdict ${cls}">${label}</span><small class="muted">${esc(why)}</small></li>`;
+}
+
+/** Settings → Exchange check: which exchanges answer this server, before turning more of them on. */
+function exchangeCheckPanel() {
+  const c = A.exCheck;
+  const blocked = c ? c.results.filter((r) => r.verdict === 'blocked').map((r) => r.name) : [];
+  const works = c ? c.results.filter((r) => r.verdict === 'works').map((r) => r.name) : [];
+  const summary = !c
+    ? '<p class="muted">Calls every exchange once from this server (a BTC price, recent candles, the pair list and announcements) to see which ones new listings could come from. Takes up to 15 seconds.</p>'
+    : `<p class="checks-note ok">${ico('checkCircle')}Works from this server: ${works.length ? esc(works.join(', ')) : 'none'}.</p>
+       ${blocked.length ? `<p class="checks-note">${ico('alert')}Blocked from this server's location: ${esc(blocked.join(', '))}. These exchanges refuse servers in some countries (such as the US). A server in another region, such as Singapore or Frankfurt, can reach them.</p>` : ''}
+       <ul class="ex-check">${c.results.map(exCheckRow).join('')}</ul>
+       <p class="muted">Checked ${fmtAgo(c.at)}.</p>`;
+  return `<section class="panel">
+        <div class="section-head"><span class="section-ico">${ico('activity')}</span><div><h2>Exchange check</h2><p class="muted">Which exchanges this server can reach.</p></div><button class="btn btn-sm head-action" data-action="admin-check"${A.busy === 'check' ? ' disabled' : ''}>${ico('refresh')}${A.busy === 'check' ? 'Checking…' : 'Run check'}</button></div>
+        ${summary}
+      </section>`;
 }
 
 function toLocalInput(ts) {
@@ -16082,6 +16154,7 @@ async function onAdminAction(action, el) {
       A.api = null;
       A.info = null;
       A.checks = null;
+      A.exCheck = null;
       A.edit = null;
       A.preview = null;
       saveAdminKey('');
@@ -16090,7 +16163,7 @@ async function onAdminAction(action, el) {
       A.busy = 'check';
       await renderAdmin();
       try {
-        A.checks = (await A.api.checkExchanges()).results;
+        A.exCheck = { at: Date.now(), results: (await A.api.checkExchanges()).results };
       } catch (err) {
         toast(err.message, true);
       }
