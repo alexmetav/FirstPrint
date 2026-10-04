@@ -1,11 +1,16 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import type { DB } from './db.ts';
 
 /**
  * Keeps the SQLite database alive on hosts without a persistent disk (for example
  * Render's free plan) by copying it to a private Supabase Storage bucket and
  * restoring it at start-up. Works with any project on Supabase's free plan.
+ *
+ * Copies are gzip-compressed (a SQLite file shrinks about 5×) and taken every 5 minutes when
+ * something changed, plus one on shutdown, to stay well inside a free host's monthly bandwidth.
+ * One dated copy is kept per day for the last 30 days.
  */
 export interface BackupConfig {
   /** https://<project>.supabase.co */
@@ -18,6 +23,8 @@ export interface BackupConfig {
 
 type Fetch = typeof fetch;
 const SQLITE_MAGIC = 'SQLite format 3\u0000';
+const KEEP_DAILY = 30;
+const isGzip = (b: Buffer) => b.length > 2 && b[0] === 0x1f && b[1] === 0x8b;
 
 export function backupConfigFromEnv(env: NodeJS.ProcessEnv = process.env): BackupConfig | null {
   const url = (env.SUPABASE_URL ?? '').trim().replace(/\/+$/, '');
@@ -56,7 +63,14 @@ export async function restoreIfMissing(
     throw new Error(`backup restore refused: ${res.status} ${text.slice(0, 200)}`);
   }
   if (!res.ok) throw new Error(`backup restore failed: HTTP ${res.status}. Not starting, to avoid replacing good data with an empty database.`);
-  const bytes = Buffer.from(await res.arrayBuffer());
+  const raw = Buffer.from(await res.arrayBuffer());
+  // Older copies were stored uncompressed; both are accepted.
+  let bytes: Buffer;
+  try {
+    bytes = isGzip(raw) ? gunzipSync(raw) : raw;
+  } catch {
+    throw new Error('backup restore failed: the downloaded copy is damaged (could not decompress).');
+  }
   if (bytes.length < 100 || bytes.subarray(0, 16).toString('latin1') !== SQLITE_MAGIC) {
     throw new Error('backup restore failed: the downloaded file is not a SQLite database.');
   }
@@ -87,7 +101,7 @@ export class DbBackup {
     this.fetchFn = fetchFn;
   }
 
-  start(everyMs = 60_000) {
+  start(everyMs = 5 * 60_000) {
     this.timer = setInterval(() => void this.runOnce(), everyMs);
     this.timer.unref();
   }
@@ -112,14 +126,15 @@ export class DbBackup {
       if (!force && changes === this.lastChanges) return false;
       rmSync(tmp, { force: true });
       this.db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
-      const bytes = readFileSync(tmp);
+      const bytes = gzipSync(readFileSync(tmp), { level: 6 });
       await this.upload(this.cfg.object, bytes);
       const day = new Date().toISOString().slice(0, 10);
       if (day !== this.lastDaily) {
         // One dated copy per day, in case of a bad write. Never overwritten: after a restart the
         // first copy of the day may already exist, and it must keep that day's earliest good state.
-        await this.upload(this.cfg.object.replace(/(\.db)?$/, `-${day}$1`), bytes, { overwrite: false });
+        await this.upload(this.dailyName(day), bytes, { overwrite: false });
         this.lastDaily = day;
+        await this.pruneDaily(day).catch((err: Error) => this.log(`backup: removing old daily copies failed: ${err.message}`));
       }
       this.lastChanges = changes;
       this.lastOkAt = Date.now();
@@ -140,6 +155,38 @@ export class DbBackup {
     this.timer = null;
     if (this.inFlight) await this.inFlight;
     await this.runOnce();
+  }
+
+  private dailyName(day: string) {
+    return this.cfg.object.replace(/(\.db)?$/, `-${day}$1`);
+  }
+
+  /** Deletes dated copies older than KEEP_DAILY days, so the free storage doesn't fill up. */
+  private async pruneDaily(today: string) {
+    const stem = this.cfg.object.replace(/\.db$/, '');
+    const res = await this.fetchFn(`${this.cfg.url}/storage/v1/object/list/${encodeURIComponent(this.cfg.bucket)}`, {
+      method: 'POST',
+      headers: { ...headers(this.cfg), 'content-type': 'application/json' },
+      body: JSON.stringify({ prefix: '', search: `${stem}-`, limit: 1000 }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) throw new Error(`list failed: HTTP ${res.status}`);
+    const cutoff = new Date(Date.parse(`${today}T00:00:00Z`) - KEEP_DAILY * 86_400_000).toISOString().slice(0, 10);
+    const old = ((await res.json()) as { name?: string }[])
+      .map((o) => String(o.name ?? ''))
+      .filter((name) => {
+        const m = name.match(/-(\d{4}-\d{2}-\d{2})(\.db)?$/);
+        return name.startsWith(`${stem}-`) && m && m[1] < cutoff;
+      });
+    if (!old.length) return;
+    const del = await this.fetchFn(`${this.cfg.url}/storage/v1/object/${encodeURIComponent(this.cfg.bucket)}`, {
+      method: 'DELETE',
+      headers: { ...headers(this.cfg), 'content-type': 'application/json' },
+      body: JSON.stringify({ prefixes: old }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!del.ok) throw new Error(`delete failed: HTTP ${del.status}`);
+    this.log(`backup: removed ${old.length} daily cop${old.length === 1 ? 'y' : 'ies'} older than ${KEEP_DAILY} days`);
   }
 
   private async upload(name: string, bytes: Buffer, { overwrite = true } = {}) {

@@ -620,6 +620,8 @@ export function createApiServer(opts: ServerOptions): Server {
     requireAdmin();
     const b = await body();
     const id = service.createManualMarket({ ...manualBody(b), publish: b.publish === true });
+    // The banner logo is stored before the channel post (queued for after this request) reads it.
+    if (typeof b.logoPng === 'string' && b.logoPng) service.setLogoPng(id, b.logoPng);
     // Made from a listing in the review queue: take it off the queue.
     if (Number.isInteger(b.detectionId)) service.linkDetection(b.detectionId as number, id);
     audit(req, b.publish === true ? 'market_published' : 'market_drafted', id, `${String(b.symbol ?? '').toUpperCase()} start price ${b.basePrice}`);
@@ -631,8 +633,16 @@ export function createApiServer(opts: ServerOptions): Server {
     const b = await body();
     const patch = Object.fromEntries(Object.entries(manualBody(b)).filter(([, v]) => v !== undefined));
     service.updateManualMarket(params.id, patch);
+    if (typeof b.logoPng === 'string' && b.logoPng) service.setLogoPng(params.id, b.logoPng);
     audit(req, 'market_edited', params.id, Object.keys(patch).join(', '));
     return service.getMarket(params.id, undefined, true);
+  });
+
+  // PNG copy of a market's logo for its Telegram banners (the admin page makes it in the browser).
+  route('POST', '/api/admin/markets/:id/logo-png', async ({ params, body, requireAdmin }) => {
+    requireAdmin();
+    service.setLogoPng(params.id, String((await body()).logoPng ?? ''));
+    return { ok: true };
   });
 
   route('POST', '/api/admin/manual-markets/:id/start-price', async ({ req, params, body, requireAdmin }) => {
@@ -1035,7 +1045,8 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > 64_000) throw new AppError(413, 'body_too_large', 'Request body is too large.');
+    // Room for a market's logo plus its PNG copy for banners.
+    if (size > 256_000) throw new AppError(413, 'body_too_large', 'Request body is too large.');
     chunks.push(chunk as Buffer);
   }
   if (size === 0) return {};

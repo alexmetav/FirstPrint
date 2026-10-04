@@ -30,6 +30,7 @@ function migrate(db: DB) {
   ensure('detected_listings', 'name', 'name TEXT');
   ensure('users', 'streak', 'streak INTEGER NOT NULL DEFAULT 0');
   ensure('markets', 'announced_at', 'announced_at INTEGER');
+  ensure('markets', 'logo_png', 'logo_png TEXT');
   ensure('markets', 'reminded_at', 'reminded_at INTEGER');
   ensure('users', 'x_username', 'x_username TEXT');
   ensure('users', 'referral_code', 'referral_code TEXT');

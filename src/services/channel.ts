@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
 import type { FirstprintService } from './firstprint.ts';
 import { closingSoonText, marketLiveText, marketResultText, type Telegram } from './telegram.ts';
+import { renderBanner, type BannerKind } from './banner.ts';
 
 /** Telegram allows about 20 posts a minute to one channel; stay well under it. */
 const GAP_MS = 3_500;
 
-/** The one banner shown on every "new market" post. */
+/** The fixed banner, used for a new market only if its own banner can't be drawn. */
 function loadBanner(): Uint8Array | null {
   try {
     return readFileSync(new URL('../../assets/telegram/new-market.png', import.meta.url));
@@ -46,32 +47,49 @@ export class ChannelPoster {
     return `${this.appUrl}#/market/${encodeURIComponent(id)}`;
   }
 
+  /**
+   * The fixed banner for a new market and plain text otherwise. Each token's own banner
+   * (logo, ticker, details) is off for now; setting `telegram_token_banners` to '1' turns it on.
+   */
+  private bannerFor(kind: BannerKind, id: string, m: Parameters<typeof renderBanner>[1]): Uint8Array | null {
+    if (this.service.getSetting('telegram_token_banners') !== '1') return kind === 'live' ? this.banner : null;
+    try {
+      return renderBanner(kind, m, this.service.logoPng(id));
+    } catch (err) {
+      this.log(`banner for ${id} could not be drawn: ${(err as Error).message}`);
+      return kind === 'live' ? this.banner : null;
+    }
+  }
+
+  /** Sends with the banner when there is one; if Telegram refuses the photo, sends the text alone. */
+  private async post(channel: string, banner: Uint8Array | null, text: string, button: { text: string; url: string }) {
+    if (banner) {
+      try {
+        await this.telegram!.sendPhotoTo(`@${channel}`, banner, text, button);
+        return;
+      } catch (err) {
+        this.log(`banner post failed, sending text only: ${(err as Error).message}`);
+      }
+    }
+    await this.telegram!.sendTo(`@${channel}`, text, button);
+  }
+
   /** Posts one market as live now. Throws if Telegram refuses. */
   async postLive(id: string) {
     const channel = this.channel;
     if (!this.telegram || !channel) throw new Error('No player channel is set.');
     const m = this.service.getMarket(id, undefined, true);
     if (!m.published || m.status !== 'open') throw new Error('Only open, published markets can be posted.');
-    const text = marketLiveText(m);
-    const button = { text: 'Predict now', url: this.link(id) };
-    if (this.banner) {
-      try {
-        await this.telegram.sendPhotoTo(`@${channel}`, this.banner, text, button);
-        this.service.markAnnounced(id);
-        return;
-      } catch (err) {
-        this.log(`banner post failed, sending text only: ${(err as Error).message}`);
-      }
-    }
-    await this.telegram.sendTo(`@${channel}`, text, button);
+    await this.post(channel, this.bannerFor('live', id, m), marketLiveText(m), { text: 'Predict now', url: this.link(id) });
     this.service.markAnnounced(id);
   }
 
   async postResult(id: string) {
     const channel = this.channel;
     if (!this.telegram || !channel) return;
-    const text = marketResultText(this.service.getMarket(id));
-    if (text) await this.telegram.sendTo(`@${channel}`, text, { text: 'See the result', url: this.link(id) });
+    const m = this.service.getMarket(id);
+    const text = marketResultText(m);
+    if (text) await this.post(channel, this.bannerFor('result', id, m), text, { text: 'See the result', url: this.link(id) });
   }
 
   /** Posts open markets (only never-posted ones unless `again`), a few seconds apart, in the background. */
@@ -93,7 +111,7 @@ export class ChannelPoster {
       // Marked only once Telegram accepts it, so a failed send is tried again on the next minute.
       this.later(async () => {
         try {
-          await this.telegram!.sendTo(`@${channel}`, closingSoonText(m), { text: 'Predict now', url: this.link(id) });
+          await this.post(channel, this.bannerFor('closing', id, m), closingSoonText(m), { text: 'Predict now', url: this.link(id) });
           this.service.markReminded(id);
         } finally {
           this.reminding.delete(id);
