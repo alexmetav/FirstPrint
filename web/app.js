@@ -490,6 +490,8 @@ function homeView() {
   const featured = [...S.lists.open].sort(byTrending)[0];
   const count = (id) => (id === 'live' ? S.lists.live.length : id === 'settled' ? S.lists.settled.length : S.lists.open.length);
   const base = tabList(S.filter);
+  const shown = base.filter((m) => S.exchange === 'all' || !S.exchange || venuesOf(m).includes(S.exchange));
+  const onlyFeatured = !S.query && featured && ['trending', 'ending', 'new'].includes(S.filter) && shown.length === 1 && shown[0].id === featured.id;
   const exchanges = [...new Set([...S.lists.open, ...S.lists.live, ...S.lists.settled].flatMap(venuesOf))].sort();
   const filterBtn = ([id, icon, label]) =>
     `<button data-filter="${id}" aria-current="${S.filter === id && !S.query}">${ico(icon)}<span>${label}</span><span class="side-n">${count(id)}</span></button>`;
@@ -504,10 +506,10 @@ function homeView() {
       <div class="home-main">
         ${featured && !S.query ? featuredView(featured) : ''}
         <div class="home-head">
-          <h2>${S.query ? 'Search results' : (HOME_TABS.find(([id]) => id === S.filter)?.[2] ?? 'Markets')}</h2>
+          ${onlyFeatured ? '' : `<h2>${S.query ? 'Search results' : (HOME_TABS.find(([id]) => id === S.filter)?.[2] ?? 'Markets')}</h2>`}
           ${S.exchange && S.exchange !== 'all' ? `<button class="chip chip-sm" data-exchange="all">${esc(S.exchange)} ${ico('cross')}</button>` : ''}
         </div>
-        <div id="market-results">${marketResults()}</div>
+        <div id="market-results">${onlyFeatured ? '<p class="home-note">This is the only open market right now. New markets show up here as soon as they open.</p>' : marketResults()}</div>
       </div>
       <aside class="home-rail" aria-label="Highlights">${homeRail()}</aside>
     </div>
@@ -544,6 +546,14 @@ function emptyText() {
 
 /** The pool split as five bars, Moon on top, used by the featured market. */
 function miniLadder(m) {
+  if (!m.pool) {
+    const yn = isYesNo(m);
+    return `
+    <div class="mini-ladder quiet" aria-label="Outcomes">
+      <div class="mini-head"><span>Outcomes</span><span>No predictions yet</span></div>
+      ${bucketsOf(m).map((b) => `<div class="mini-rung" style="--c:${oVar(b, yn)};--share:0%"><b>${icon(b, yn)}${oName(b, yn)}</b><span class="muted">${rangeOf(m, b)}</span><span></span></div>`).join('')}
+    </div>`;
+  }
   return `
     <div class="mini-ladder" aria-label="Pool split by outcome">
       <div class="mini-head"><span>Where the crowd is</span><span>${fmtPts(m.pool)}</span></div>
@@ -559,8 +569,14 @@ function miniLadder(m) {
 function heroFacts(m, whenLabel, whenValue) {
   return `
     <dl class="hero-facts">
-      <div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:hero:${m.id}`, m.pool)} pts</dd></div>
-      <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
+      ${
+        m.pool
+          ? `<div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:hero:${m.id}`, m.pool)} pts</dd></div>
+             <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>`
+          : isManual(m)
+          ? `<div>${ico('dollar')}<dt>${isYesNo(m) ? 'Target' : 'Start price'}</dt><dd>${fmtPrice(m.basePrice)}</dd></div>`
+          : ''
+      }
       <div>${ico('clock')}<dt>${whenLabel}</dt><dd>${whenValue}</dd></div>
     </dl>`;
 }
@@ -571,8 +587,8 @@ function quickPicks(m, cls = '') {
   const open = m.status === 'open' && m.phase !== 'awaiting_result';
   return `<div class="qp-row${yn ? ' qp-yn' : ''} ${cls}">${bucketsOf(m)
     .map((b) => {
-      const pct = m.pool ? `${Math.round(share(m, b) * 100)}%` : '–';
-      return `<button class="qp" style="--c:${oVar(b, yn)}" data-action="quick-pick" data-id="${esc(m.id)}" data-bucket="${b}"${open ? '' : ' disabled'}><span>${oName(b, yn)}</span><b>${pct}</b></button>`;
+      const pct = m.pool ? `<b>${Math.round(share(m, b) * 100)}%</b>` : '';
+      return `<button class="qp" style="--c:${oVar(b, yn)}" data-action="quick-pick" data-id="${esc(m.id)}" data-bucket="${b}"${open ? '' : ' disabled'}><span>${oName(b, yn)}</span>${pct}</button>`;
     })
     .join('')}</div>`;
 }
@@ -607,7 +623,7 @@ function featuredView(m) {
     <section class="featured" aria-labelledby="featured-title">
       <div class="featured-main">
         <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Featured market · open for predictions</span>
-        <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">is open</span></h1><p class="hero-name">${esc(m.name || m.symbol)} · start price ${fmtPrice(m.basePrice)}</p></div></div>
+        <div class="hero-token">${tokenAvatar(m, 'avatar-xl')}<div><h1 id="featured-title">${esc(m.symbol)} <span class="h1-soft">is open</span></h1><p class="hero-name">${esc(m.name || m.symbol)}${m.pool ? ` · start price ${fmtPrice(m.basePrice)}` : ''}</p></div></div>
         <p class="lede">Predict where ${esc(m.name || m.symbol)} is priced at the result, compared with the start price. ${m.pool ? '' : 'Nobody has predicted yet, so early picks get the biggest bonus.'}</p>
         ${heroFacts(m, 'Closes in', until(m.closeAt))}
         ${quickPicks(m)}
@@ -661,7 +677,9 @@ function cardView(m) {
   const soon = m.status === 'open' && m.closeAt - now() < 15 * 60_000 && m.closeAt > now();
 
   // Gauge: Yes chance on Yes/No markets, the leading outcome on five-outcome markets.
-  const g = yn
+  const g = !m.pool
+    ? '<span class="card-new">New</span>'
+    : yn
     ? gauge(m.pool ? Math.round(share(m, 'up') * 100) : null, 'var(--up)', 'Yes')
     : gauge(lead ? Math.round(share(m, lead) * 100) : null, lead ? oVar(lead, false) : 'var(--flat)', lead ? oName(lead, false) : 'No picks');
 
@@ -672,6 +690,8 @@ function cardView(m) {
     body = '<p class="card-result muted">Cancelled. Points were returned.</p>';
   } else if (yn) {
     body = quickPicks(m, 'qp-card');
+  } else if (!m.pool) {
+    body = `<p class="card-quiet">No predictions yet. Early picks get the biggest bonus.</p>${quickPicks(m, 'qp-mini')}`;
   } else {
     // The two outcomes the crowd backs most (Up and Down before anyone predicts).
     const top = m.pool ? [...bucketsOf(m)].sort((a, b) => m.totals[b] - m.totals[a]).slice(0, 2) : ['up', 'down'];
@@ -711,7 +731,7 @@ function cardView(m) {
       ${body}
       ${myPickLine(m)}
       <div class="card-foot">
-        ${state}<span class="dot-sep" aria-hidden="true">·</span><span>${tick(`pool:card:${m.id}`, m.pool)} pts</span><span class="dot-sep" aria-hidden="true">·</span><span class="card-ex">${esc(venueNames(m))}</span>
+        ${state}${m.pool ? `<span class="dot-sep" aria-hidden="true">·</span><span>${tick(`pool:card:${m.id}`, m.pool)} pts</span>` : ''}<span class="dot-sep" aria-hidden="true">·</span><span class="card-ex">${esc(venueNames(m))}</span>
         <span class="when">${when}</span>
       </div>
     </article>`;
@@ -814,74 +834,86 @@ function marketMain(m) {
   for (const p of m.mine) mineBy[p.bucket] = (mineBy[p.bucket] ?? 0) + p.stake;
   const nowBucket = m.live?.projectedBucket;
   const net = m.result ? m.result.pool - m.result.fee : 0;
-
   const yn = isYesNo(m);
+  // No predictions yet: hide crowd %, payouts and pool sizes instead of showing rows of zeros.
+  const quiet = !m.pool;
+
   const rungs = bucketsOf(m).map((b) => {
     const pct = share(m, b) * 100;
     const won = m.status === 'resolved' && m.result.winningBucket === b;
     let pays = '–';
-    if (canPick) pays = `${estMultiple(m, b).toFixed(1)}×`;
+    if (canPick && m.totals[b]) pays = `${estMultiple(m, b).toFixed(1)}×`;
+    else if (canPick) pays = 'Be first';
     else if (won && m.totals[b]) pays = `${(net / m.totals[b]).toFixed(2)}×`;
     else if (!settled && m.totals[b]) pays = `${(m.pool * (1 - m.feeBps / 10_000) / m.totals[b]).toFixed(1)}×`;
     return `
       <button class="rung${won ? ' won' : ''}${yn ? ' rung-yn' : ''}" style="--c:${oVar(b, yn)};--share:${pct}%" data-bucket="${b}"
         aria-pressed="${S.trade.bucket === b}" ${canPick ? '' : 'disabled'}
-        aria-label="${oName(b, yn)}, ${rangeOf(m, b)}, ${Math.round(pct)}% of pool">
+        aria-label="${oName(b, yn)}, ${rangeOf(m, b)}${quiet ? '' : `, ${Math.round(pct)}% of pool`}">
         <span class="rung-name">
           <b>${icon(b, yn)}${oName(b, yn)}${mineBy[b] ? `<span class="tag tag-you">You ${fmtNum(mineBy[b])}</span>` : ''}${
             nowBucket === b ? `<span class="tag tag-now">Now ${fmtPct(m.live.returnPct)}</span>` : ''
           }${won ? '<span class="tag tag-now">Winner</span>' : ''}</b>
           <small>${rangeOf(m, b)}</small>
         </span>
-        <span class="num">${Math.round(pct)}%</span>
-        <span class="num">${pays}</span>
-        <span class="num pool-col">${fmtNum(m.totals[b])}<small>pts</small></span>
+        ${
+          quiet
+            ? `<span class="rung-cta">${canPick ? `Pick ${ico('chevronRight')}` : ''}</span>`
+            : `<span class="num">${Math.round(pct)}%</span>
+        <span class="num${pays === 'Be first' ? ' num-soft' : ''}">${pays}</span>
+        <span class="num pool-col">${fmtNum(m.totals[b])}<small>pts</small></span>`
+        }
       </button>`;
   }).join('');
 
+  const question = yn
+    ? `Will ${esc(m.name || m.symbol)} be at or above ${fmtPrice(m.basePrice)} at the result?`
+    : isManual(m)
+    ? `Where will ${esc(m.name || m.symbol)} be priced at the result, compared with the start price of ${fmtPrice(m.basePrice)}?`
+    : m.kind === 'live_test'
+    ? `Where will ${esc(m.name || m.symbol)} trade ${span} after this market starts?`
+    : `Where will ${esc(m.name || m.symbol)} trade ${span} after listing on ${esc(m.exchange)}?`;
+
+  // One line of facts: price, timing, where the price comes from, and the pool once it exists.
+  const fact = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
+  const facts = [
+    isManual(m) ? fact(yn ? 'Target price' : 'Start price', fmtPrice(m.basePrice)) : fact(m.kind === 'live_test' ? 'Starts' : 'Listing', fmtDate(m.listingAt)),
+    m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running'
+      ? fact('Closes', `${fmtDate(m.closeAt)} <span class="muted">· in ${until(m.closeAt)}</span>`)
+      : fact('Result', fmtDate(m.settleAt)),
+    settled || m.phase === 'awaiting_result' ? '' : fact('Result expected', fmtDate(m.settleAt)),
+    m.pool ? fact('Pool', `${tick(`pool:page:${m.id}`, m.pool)} pts <span class="muted">· ${fmtNum(m.predictors)} predictor${m.predictors === 1 ? '' : 's'}</span>`) : '',
+  ].join('');
+
   return `
     <a class="back" href="#/">${ico('arrowLeft')}All markets</a>
-    <header class="m-head">
+    <header class="m-head mh">
       <div class="m-title">${tokenAvatar(m, 'avatar-lg')}<div class="m-title-text"><div class="m-title-row"><h1 class="sym">${esc(m.symbol)}</h1>${cardStatus(m)}${
         (m.phase === 'baseline' || m.phase === 'running') && S.live && !isManual(m) ? '<span class="live-badge"><span class="live-dot" aria-hidden="true"></span>Live price</span>' : ''
-      }</div>${m.name ? `<span class="m-name">${esc(m.name)}</span>` : ''}</div><button class="btn share-btn" data-action="share" aria-label="Share this market">${ico('share')}<span class="hide-sm">Share</span></button></div>
-      <p class="m-question">${
-        yn
-          ? `Will ${esc(m.name || m.symbol)} be at or above ${fmtPrice(m.basePrice)} at the result?`
-          : isManual(m)
-          ? `Where will ${esc(m.name || m.symbol)} be priced at the result, compared with the start price of ${fmtPrice(m.basePrice)}?`
-          : m.kind === 'live_test'
-          ? `Where will ${esc(m.name || m.symbol)} trade ${span} after this market starts?`
-          : `Where will ${esc(m.name || m.symbol)} trade ${span} after listing on ${esc(m.exchange)}?`
-      }</p>
-      <p class="m-status">${statusLine(m)}</p>
-      <p class="m-venues">${m.kind === 'live_test' ? '<span class="tag tag-test">Live test</span> ' : ''}${ico('landmark')}${isManual(m) ? `Reference exchanges: ${esc(venueNames(m))}` : `Prices from ${esc(venueNames(m))}`}</p>
-      ${priceLinks(m)}
+      }${m.kind === 'live_test' ? '<span class="tag tag-test">Live test</span>' : ''}</div>${m.name ? `<span class="m-name">${esc(m.name)}</span>` : ''}</div><button class="btn btn-sm share-btn" data-action="share" aria-label="Share this market">${ico('share')}<span class="hide-sm">Share</span></button></div>
+      <p class="m-question">${question}</p>
+      ${m.status === 'resolved' || m.status === 'void' || m.phase === 'awaiting_result' ? `<p class="m-status">${statusLine(m)}</p>` : ''}
+      <dl class="m-facts">${facts}</dl>
+      <div class="m-refs">${ico('landmark')}<span>${isManual(m) ? 'Reference' : 'Prices from'} ${esc(venueNames(m))}</span>${priceLinks(m)}</div>
     </header>
-
-    <dl class="stats">
-      <div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:page:${m.id}`, m.pool)} pts</dd></div>
-      <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>
-      ${
-        isManual(m)
-          ? `<div>${ico(yn ? 'target' : 'dollar')}<dt>${yn ? 'Target price' : 'Start price'}</dt><dd>${fmtPrice(m.basePrice)}</dd></div><div>${ico('calendar')}<dt>Closes</dt><dd>${fmtDate(m.closeAt)}</dd></div>`
-          : `<div>${ico('calendar')}<dt>${m.kind === 'live_test' ? 'Starts' : 'Listing'}</dt><dd>${fmtDate(m.listingAt)}</dd></div><div>${ico('clock')}<dt>Result</dt><dd>${fmtDate(m.settleAt)}</dd></div>`
-      }
-    </dl>
 
     ${isManual(m) ? manualPanel(m) : chartView(m)}
 
-    <div class="ladder${settled ? ' settled' : ''}${yn ? ' ladder-yn' : ''}" role="group" aria-label="Outcomes">
-      <div class="ladder-head"><span>${yn ? 'Your answer' : isManual(m) ? 'Final price vs start' : `Price after ${span}`}</span><span>Crowd</span><span>Pays</span><span class="pool-col">Pool</span></div>
+    <section class="ladder${settled ? ' settled' : ''}${yn ? ' ladder-yn' : ''}${quiet ? ' ladder-quiet' : ''}" role="group" aria-label="Outcomes">
+      <div class="ladder-head"><span>${yn ? 'Your answer' : isManual(m) ? 'Final price vs start' : `Price after ${span}`}</span>${quiet ? '' : '<span>Crowd</span><span>Pays</span><span class="pool-col">Pool</span>'}</div>
       ${rungs}
-      ${canPick ? '<p class="fine" style="margin:2px 0 0">Pays shows the current payout per point before early bonuses. Your estimate in the prediction panel includes your bonus.</p>' : ''}
-    </div>
+    </section>
+    ${
+      canPick
+        ? `<p class="fine ladder-note">${quiet ? `No predictions yet. Early picks get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.` : 'Pays is the current payout per point before early bonuses. Your estimate in the prediction panel includes your bonus.'}</p>`
+        : ''
+    }
 
     ${oddsView(m)}
     ${holdersView(m)}
 
-    <section class="section panel">
-      <div class="section-head"><span class="section-ico">${ico('shield')}</span><h2>How this market settles</h2></div>
+    <details class="m-rules">
+      <summary>${ico('shield')}How this market settles${ico('chevronRight')}</summary>
       ${isManual(m) ? manualRules(m) : ''}
       <ol class="rules"${isManual(m) ? ' hidden' : ''}>
         <li>Starting price: the average price over the first ${fmtSpan(m.closeAt - m.listingAt)} ${m.kind === 'live_test' ? 'after the market starts' : 'of trading'}, from ${esc(venueNames(m))}.</li>
@@ -890,7 +922,7 @@ function marketMain(m) {
         <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
         <li>The market is cancelled and refunded if the listing is delayed more than 24 hours, trading halts for too long, there isn’t enough trading data, or nobody picks the winning outcome.</li>
       </ol>
-    </section>
+    </details>
 
     ${
       m.scorecard
@@ -906,17 +938,17 @@ function marketMain(m) {
         : ''
     }
 
-    <section class="section panel">
-      <div class="section-head"><span class="section-ico">${ico('activity')}</span><h2>Recent predictions</h2></div>
-      ${
-        S.activity.length
-          ? `<ul class="activity feed">${S.activity
+    ${
+      S.activity.length
+        ? `<section class="section panel">
+            <div class="section-head"><span class="section-ico">${ico('activity')}</span><h2>Recent predictions</h2></div>
+            <ul class="activity feed">${S.activity
               .slice(0, 12)
               .map((a) => `<li>${avatar(a.username, 'avatar-sm')}<span class="feed-main">${userLink(a.username, 'who')} picked ${outcome(a.bucket, yn)}</span><span class="muted">${fmtPts(a.stake)} · ${fmtAgo(a.placedAt)}</span></li>`)
-              .join('')}</ul>`
-          : '<p class="muted">No predictions yet.</p>'
-      }
-    </section>`;
+              .join('')}</ul>
+          </section>`
+        : ''
+    }`;
 }
 
 /** Where to see the live price of a token on each exchange (spot, against USDT). */
@@ -962,12 +994,13 @@ function manualPanel(m) {
   const r = m.result;
   if (!r || r.finalPrice == null) {
     const closed = m.phase === 'awaiting_result';
-    const step = (state, title, when) => `<li class="${state}"><span class="step-dot" aria-hidden="true">${state === 'done' ? ico('check') : ''}</span><b>${title}</b><span class="muted">${when}</span></li>`;
+    if (!closed) return ''; // open markets: the facts line already says when they close and settle
+    const step = (state, title, when) => `<li class="${state}"><span class="step-dot" aria-hidden="true"></span><b>${title}</b><span class="muted">${when}</span></li>`;
     return `
       <ol class="timeline" aria-label="Market timeline">
         ${step('done', 'Market opened', fmtDate(m.openedAt))}
-        ${step(closed ? 'done' : 'now', closed ? 'Predictions closed' : 'Predictions close', closed ? fmtDate(m.closeAt) : `${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`)}
-        ${step(closed ? 'now' : '', 'Result posted', `Expected around ${fmtDate(m.settleAt)}`)}
+        ${step(closed ? 'done' : 'now', closed ? 'Predictions closed' : 'Predictions close', fmtDate(m.closeAt))}
+        ${step(closed ? 'now' : '', 'Result', `~ ${fmtDate(m.settleAt)}`)}
       </ol>`;
   }
   const b = r.winningBucket ?? 'flat';
@@ -1179,7 +1212,7 @@ function renderTrade() {
     $('#picker').classList.toggle('picker-yn', yn);
     $('#picker').innerHTML = bucketsOf(m).map(
       (b) =>
-        `<button type="button" role="radio" aria-checked="${S.trade.bucket === b}" data-pick="${b}" style="--c:${oVar(b, yn)}"><span class="pick-ico">${icon(b, yn)}</span><b>${oName(b, yn)}</b><small>${Math.round(share(m, b) * 100)}%</small></button>`,
+        `<button type="button" role="radio" aria-checked="${S.trade.bucket === b}" data-pick="${b}" style="--c:${oVar(b, yn)}"><span class="pick-ico">${icon(b, yn)}</span><b>${oName(b, yn)}</b>${m.pool ? `<small>${Math.round(share(m, b) * 100)}%</small>` : ''}</button>`,
     ).join('');
     updateSummary();
   } else if (mode === 'closed') {

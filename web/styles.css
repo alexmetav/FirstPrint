@@ -7442,3 +7442,351 @@ main:has(.home) {
 .home-rail {
   align-items: start;
 }
+
+/* =====================================================================
+   Market page composition: compact header, one line of facts, slim
+   timeline, outcomes as one calm list, folded rules. Empty markets show
+   no zeros.
+   ===================================================================== */
+
+.mh {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.mh .m-title {
+  align-items: center;
+  gap: 14px;
+}
+.mh .m-title .sym {
+  font-size: clamp(26px, 3vw, 32px);
+}
+.mh .m-name {
+  font-size: 14px;
+  color: var(--muted);
+}
+.mh .m-question {
+  margin: 4px 0 0;
+  max-width: 62ch;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--text);
+}
+.mh .m-status {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+.m-facts {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 4px 0 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.m-facts > div {
+  display: grid;
+  gap: 2px;
+  padding: 0 20px;
+  border-left: 1px solid var(--line);
+}
+.m-facts > div:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+.m-facts dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.m-facts dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.m-facts dd .muted {
+  font-weight: 400;
+}
+.m-refs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.m-refs > .i {
+  width: 14px;
+  height: 14px;
+}
+.m-refs .price-links {
+  display: inline-flex;
+  gap: 6px;
+  margin: 0 0 0 4px;
+}
+.m-refs .price-links > .muted {
+  display: none;
+}
+.m-refs .price-links .btn {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+/* Slim timeline: three points on one line. */
+.market-layout .timeline {
+  position: relative;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0 0 24px;
+}
+.market-layout .timeline li {
+  padding: 18px 12px 0 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  border-top: 2px solid var(--line);
+  opacity: 1;
+}
+.market-layout .timeline li.done {
+  border-top-color: var(--up);
+}
+.market-layout .timeline li.now {
+  border-top-color: transparent;
+  background: linear-gradient(90deg, var(--up), var(--line)) top / 100% 2px no-repeat;
+  box-shadow: none;
+}
+.market-layout .timeline .step-dot {
+  position: absolute;
+  top: -6px;
+  margin: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  box-shadow: 0 0 0 3px var(--bg);
+}
+.market-layout .timeline li {
+  position: relative;
+}
+.market-layout .timeline .done .step-dot {
+  background: var(--up);
+}
+.market-layout .timeline .now .step-dot {
+  background: var(--up);
+  box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px color-mix(in srgb, var(--up) 25%, transparent);
+}
+.market-layout .timeline b {
+  font-size: 13px;
+  font-weight: 600;
+}
+.market-layout .timeline .muted {
+  font-size: 12px;
+}
+
+/* Outcomes: one list with hairline dividers. */
+.market-layout .ladder {
+  gap: 0;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.market-layout .ladder-head {
+  padding: 12px 16px;
+  font-size: 11px;
+  border-bottom: 1px solid var(--line);
+}
+.market-layout .rung {
+  min-height: 60px;
+  padding: 10px 16px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.market-layout .ladder-head + .rung {
+  border-top: 0;
+}
+.market-layout .rung::before {
+  background: color-mix(in srgb, var(--c) 12%, transparent);
+}
+.market-layout .rung:not(:disabled):hover {
+  transform: none;
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+}
+.market-layout .rung[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--c) 8%, transparent);
+  box-shadow: inset 3px 0 0 var(--c);
+}
+.market-layout .rung-name b {
+  font-size: 15px;
+  font-weight: 600;
+}
+.market-layout .rung .num {
+  font-size: 15px;
+  font-weight: 600;
+}
+.num-soft {
+  color: var(--muted);
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+.ladder-quiet .ladder-head,
+.ladder-quiet .rung {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.rung-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 140ms var(--ease-out);
+}
+.rung-cta .i {
+  width: 14px;
+  height: 14px;
+}
+.rung:hover .rung-cta,
+.rung:focus-visible .rung-cta,
+.rung[aria-pressed='true'] .rung-cta {
+  opacity: 1;
+  color: var(--c);
+}
+@media (hover: none) {
+  .rung-cta {
+    opacity: 1;
+  }
+}
+.ladder-note {
+  margin: 0 0 24px;
+}
+
+/* Rules folded away, calm. */
+.m-rules {
+  margin: 0 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.m-rules summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+}
+.m-rules summary::-webkit-details-marker {
+  display: none;
+}
+.m-rules summary .i {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+.m-rules summary .i:last-child {
+  margin-left: auto;
+  transition: transform 160ms var(--ease-out);
+}
+.m-rules[open] summary .i:last-child {
+  transform: rotate(90deg);
+}
+.m-rules > :not(summary) {
+  margin: 0 16px 16px;
+}
+.m-rules .m-note {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--raised);
+  font-size: 14px;
+}
+
+/* Calmer panels on the market page. */
+.market-layout .section.panel,
+.market-layout .trade-card {
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 var(--hairline-hi);
+}
+
+/* Cards and the featured market before anyone predicts. */
+.card-new {
+  align-self: start;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 14%, transparent);
+}
+.card-quiet {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.qp-row.qp-mini .qp {
+  min-height: 34px;
+  font-size: 12px;
+}
+.mini-ladder.quiet .mini-rung {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.mini-ladder.quiet .mini-rung > span:last-child {
+  display: none;
+}
+.home-note {
+  margin: 8px 0 0;
+  padding: 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  font-size: 14px;
+  color: var(--muted);
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .m-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 0;
+  }
+  .m-facts > div {
+    padding: 0 12px;
+  }
+  .m-facts > div:nth-child(odd) {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .mh .m-question {
+    font-size: 16px;
+  }
+  .market-layout .timeline b {
+    font-size: 12px;
+  }
+}
+.trade {
+  box-shadow: none;
+  top: 124px;
+}
+.mh .m-refs {
+  margin-bottom: 4px;
+}
+@media (max-width: 900px) {
+  .trade {
+    top: auto;
+  }
+}
+@media (max-width: 640px) {
+  .top-link {
+    display: none;
+  }
+}
