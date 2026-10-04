@@ -106,7 +106,7 @@ test('channel: posts open markets not posted yet, then a single last-hour remind
   channel.remindClosing();
   channel.remindClosing();
   await channel.later(async () => {});
-  assert.deepEqual(posts.slice(2), ['@firstprintfun ⏳ <b>Last hour: LONG</b>']);
+  assert.deepEqual(posts.slice(2), ['@firstprintfun [banner ok] ⏳ <b>Last hour: LONG</b>']);
   assert.equal(service.getMarket(long).symbol, 'LONG');
 });
 
@@ -136,13 +136,16 @@ test('channel: a failed last-hour reminder is tried again; re-publishing does no
   const service = new FirstprintService(openDb(':memory:'), clock, [{ id: 'mexc', name: 'MEXC', pair: (b: string) => `${b}USDT`, fetchTicker: boom, fetchCandles: boom, listPairs: boom }]);
   service.setSetting('telegram_channel', 'firstprintfun');
   const sent: string[] = [];
-  let fail = true;
+  let fail = false;
   const { t } = fakeTelegram([]);
   t.sendTo = async (_c: string, html: string) => {
     if (fail) throw new Error('Telegram: Too Many Requests');
     sent.push(html.split('\n')[0]);
   };
-  t.sendPhotoTo = async (_c: string, _p: Uint8Array, html: string) => void sent.push(html.split('\n')[0]);
+  t.sendPhotoTo = async (_c: string, _p: Uint8Array, html: string) => {
+    if (fail) throw new Error('Telegram: Too Many Requests');
+    sent.push(html.split('\n')[0]);
+  };
   const channel = new ChannelPoster(service, t, 'https://x/app/', () => {}, 0);
   const announced: string[] = [];
   service.onAnnounce = (kind, id) => void announced.push(`${kind}:${id}`);
@@ -156,6 +159,7 @@ test('channel: a failed last-hour reminder is tried again; re-publishing does no
   assert.equal(announced.length, 1, 'published again: no second "new market" post');
 
   clock.advance(4 * HOUR + 10 * 60_000);
+  fail = true;
   channel.remindClosing();
   await channel.later(async () => {});
   assert.deepEqual(sent.filter((s) => s.includes('Last hour')), [], 'first try failed');
@@ -165,4 +169,20 @@ test('channel: a failed last-hour reminder is tried again; re-publishing does no
   channel.remindClosing();
   await channel.later(async () => {});
   assert.equal(sent.filter((s) => s.includes('Last hour')).length, 1, 'sent once on the retry');
+});
+
+test('banners: each market gets its own PNG for new market, last hour and result, with or without a logo', async () => {
+  const { renderBanner, bannerSvg } = await import('../src/services/banner.ts');
+  const m = { symbol: 'AGENCY', name: 'Agency <x>', exchange: 'MEXC', outcomes: 'ladder', basePrice: 0.0421, closeAt: Date.UTC(2026, 9, 5, 12), settleAt: Date.UTC(2026, 9, 8, 12), pool: 1450, predictors: 3 };
+  const isPng = (b: Uint8Array) => b.length > 1000 && b[0] === 0x89 && b[1] === 0x50;
+  // A 1×1 PNG as the logo.
+  const logo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  assert.ok(isPng(renderBanner('live', m, logo)));
+  assert.ok(isPng(renderBanner('closing', m, null)));
+  assert.ok(isPng(renderBanner('result', { ...m, result: { winningBucket: 'up', returnPct: 0.2, basePrice: 1, finalPrice: 1.2, pool: 100 } })));
+  const svg = bannerSvg('live', m, null);
+  assert.match(svg, /\$AGENCY/);
+  assert.match(svg, /Agency &lt;x&gt;/, 'names are escaped');
+  assert.match(svg, /5 Oct, 12:00 UTC/);
+  assert.ok(isPng(renderBanner('live', { ...m, logoUrl: 'x' } as typeof m, 'data:image/webp;base64,AAAA')), 'a non-PNG logo falls back to the letter');
 });

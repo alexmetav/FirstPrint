@@ -3232,6 +3232,7 @@ async function renderAdmin() {
     return;
   }
   const [{ markets }, detected, { log }, token, { tasks }] = loaded;
+  void backfillLogoPngs(markets);
   A.detected = detected;
   const venues = A.info.venues;
   const editing = markets.find((m) => m.id === A.edit && m.mode === 'manual' && m.status === 'open') ?? null;
@@ -4312,6 +4313,9 @@ async function submitAdminMarket(form, intent) {
     note: String(d.get('note') || '').trim(),
     logoUrl: String(d.get('logoUrl') || '').trim(),
   };
+  // The server draws Telegram banners with this PNG copy of the logo.
+  const logoPng = await logoPngCopy(body.logoUrl);
+  if (logoPng) body.logoPng = logoPng;
   // Disabled (locked) fields are absent from FormData and stay unchanged on the server.
   if (d.has('symbol')) body.symbol = String(d.get('symbol') || '').trim();
   if (d.get('detectionId')) body.detectionId = Number(d.get('detectionId'));
@@ -4658,6 +4662,41 @@ function setLogo(form, value, { keepLink = false } = {}) {
   const preview = form.querySelector('[data-logo-preview]');
   preview.innerHTML = value ? `<img src="${esc(value)}" alt="" referrerpolicy="no-referrer" />` : ico('image');
   form.querySelector('[data-action=logo-clear]').hidden = !value;
+}
+
+/**
+ * A 128 × 128 PNG copy of a stored logo, for the Telegram banners the server draws (its image
+ * library reads PNG but not WebP). Only for logos already saved as data: images; null otherwise.
+ */
+async function logoPngCopy(dataUrl) {
+  if (!/^data:image\//.test(dataUrl || '')) return null;
+  if (dataUrl.startsWith('data:image/png')) return dataUrl.length < 290_000 ? dataUrl : null;
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = reject;
+      i.src = dataUrl;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 128;
+    canvas.getContext('2d').drawImage(img, 0, 0, 128, 128);
+    const png = canvas.toDataURL('image/png');
+    return png.length < 290_000 ? png : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Markets saved before banners existed get their PNG logo copy the next time an admin opens the panel. */
+async function backfillLogoPngs(markets) {
+  A.pngDone ??= new Set();
+  for (const m of markets) {
+    if (!m.logoUrl?.startsWith('data:') || m.hasLogoPng || A.pngDone.has(m.id)) continue;
+    A.pngDone.add(m.id);
+    const png = await logoPngCopy(m.logoUrl);
+    if (png) await A.api.setLogoPng(m.id, png).catch(() => {});
+  }
 }
 
 /** Draws an image into a size × size square (cropped to the centre) and returns a small data URL. */

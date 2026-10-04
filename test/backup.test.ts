@@ -17,8 +17,16 @@ function fakeStorage(opts: { failGet?: number; failPost?: boolean; slowPost?: Pr
     const url = new URL(String(input));
     const name = decodeURIComponent(url.pathname.split('/').pop()!);
     const h = new Headers(init.headers);
-    const method = init.method ?? 'GET';
+    const method = url.pathname.includes('/object/list/') ? 'LIST' : (init.method ?? 'GET');
     calls.push({ method, name, auth: h.get('authorization'), upsert: h.get('x-upsert') });
+    if (url.pathname.includes('/object/list/')) {
+      const { search } = JSON.parse(String(init.body ?? '{}')) as { search: string };
+      return Response.json([...objects.keys()].filter((k) => k.includes(search)).map((k) => ({ name: k })));
+    }
+    if (method === 'DELETE') {
+      for (const k of (JSON.parse(String(init.body ?? '{}')) as { prefixes: string[] }).prefixes) objects.delete(k);
+      return Response.json([]);
+    }
     if (method === 'POST') {
       if (opts.slowPost) await opts.slowPost;
       if (opts.failPost) return new Response('nope', { status: 500 });
@@ -158,4 +166,37 @@ test('backup: stop() waits for a copy in progress, then copies what was written 
   const restored = new DatabaseSync(restoredPath);
   assert.ok(restored.prepare("SELECT 1 FROM users WHERE id = 'late'").get(), 'the final copy includes the late write');
   restored.close();
+});
+
+test('backups are gzip-compressed, old uncompressed copies still restore, daily copies older than 7 days are removed', async () => {
+  const { gunzipSync } = await import('node:zlib');
+  const storage = fakeStorage();
+  const a = join(dir(), 'firstprint.db');
+  const db = openDb(a);
+  db.exec("INSERT INTO users (id, username, points, created_at) VALUES ('u1', 'alice', 77, 1)");
+  // Dated copies left from earlier days: 10 and 3 days old.
+  const day = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+  storage.objects.set(`firstprint-${day(10)}.db`, Buffer.from('old'));
+  storage.objects.set(`firstprint-${day(3)}.db`, Buffer.from('recent'));
+  storage.objects.set('other-file.txt', Buffer.from('keep'));
+  const backup = new DbBackup(db, a, cfg, quiet, storage.fetchFn);
+  assert.equal(await backup.runOnce(true), true);
+  const live = storage.objects.get('firstprint.db')!;
+  assert.equal(live[0], 0x1f, 'gzip');
+  assert.equal(gunzipSync(live).subarray(0, 15).toString('latin1'), 'SQLite format 3');
+  assert.equal(storage.objects.has(`firstprint-${day(10)}.db`), false, 'older than 7 days: removed');
+  assert.ok(storage.objects.has(`firstprint-${day(3)}.db`));
+  assert.ok(storage.objects.has(`firstprint-${day(0)}.db`));
+  assert.ok(storage.objects.has('other-file.txt'));
+  db.close();
+
+  const b = join(dir(), 'firstprint.db');
+  assert.equal(await restoreIfMissing(b, cfg, quiet, storage.fetchFn), 'restored');
+  assert.equal((new DatabaseSync(b).prepare("SELECT points FROM users WHERE id = 'u1'").get() as { points: number }).points, 77);
+
+  // A copy saved before compression existed.
+  storage.objects.set('firstprint.db', gunzipSync(live));
+  const c = join(dir(), 'firstprint.db');
+  assert.equal(await restoreIfMissing(c, cfg, quiet, storage.fetchFn), 'restored');
+  assert.equal((new DatabaseSync(c).prepare("SELECT points FROM users WHERE id = 'u1'").get() as { points: number }).points, 77);
 });

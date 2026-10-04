@@ -12,7 +12,7 @@ services:
 
   # The full app: accounts, points, admin panel, manual markets. Runs on Render's free plan, which has no
   # persistent disk, so the server keeps its SQLite database in a private Supabase Storage bucket: it
-  # restores it at start-up, copies it every minute when something changed, and once more on shutdown.
+  # restores it at start-up, copies it (compressed) every 5 minutes when something changed, and once more on shutdown.
   # One instance only. To use a persistent disk instead, set plan: starter, add
   #   disk: { name: firstprint-data, mountPath: /data, sizeGB: 1 }
   # set DB_PATH to /data/firstprint.db, and remove the two SUPABASE_ variables.

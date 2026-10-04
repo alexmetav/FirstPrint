@@ -97,6 +97,8 @@ interface MarketRow {
   venues: string;
   source_url: string | null;
   logo_url?: string | null;
+  /** A PNG copy of the logo for Telegram banners (the image library can't read WebP). */
+  logo_png?: string | null;
   announced_listing_at: number;
   listing_at: number;
   opened_at: number;
@@ -1002,9 +1004,10 @@ export class FirstprintService {
     this.db
       .prepare(
         `UPDATE markets SET symbol = ?, name = ?, exchange = ?, venues = ?, source_url = ?, announced_listing_at = ?,
-          listing_at = ?, config = ?, base_price = ?, note = ?, logo_url = ? WHERE id = ?`,
+          listing_at = ?, config = ?, base_price = ?, note = ?,
+          logo_png = CASE WHEN COALESCE(logo_url, '') = COALESCE(?, '') THEN logo_png ELSE NULL END, logo_url = ? WHERE id = ?`,
       )
-      .run(f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, JSON.stringify(f.cfg), f.basePrice, f.note, f.logoUrl, marketId);
+      .run(f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, JSON.stringify(f.cfg), f.basePrice, f.note, f.logoUrl, f.logoUrl, marketId);
     if (m.published === 1) this.onEvent('market', { marketId }); // drafts stay private
     return marketId;
   }
@@ -1576,6 +1579,19 @@ export class FirstprintService {
 
   // --- Public Telegram channel ------------------------------------------------------
 
+  /** Stores the PNG copy of a market's logo used on its Telegram banners. */
+  setLogoPng(marketId: string, png: string | null) {
+    if (png !== null && (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(png) || png.length > 300_000)) {
+      throw new AppError(400, 'bad_logo', 'The banner logo must be a PNG under 200 KB.');
+    }
+    const r = this.db.prepare('UPDATE markets SET logo_png = ? WHERE id = ?').run(png, marketId);
+    if (!r.changes) throw new AppError(404, 'market_not_found', 'Market not found.');
+  }
+
+  logoPng(marketId: string): string | null {
+    return as<{ logo_png: string | null } | undefined>(this.db.prepare('SELECT logo_png FROM markets WHERE id = ?').get(marketId))?.logo_png ?? null;
+  }
+
   markAnnounced(marketId: string) {
     this.db.prepare('UPDATE markets SET announced_at = ? WHERE id = ?').run(this.clock.now(), marketId);
   }
@@ -2063,6 +2079,7 @@ export class FirstprintService {
       venues: (JSON.parse(m.venues) as VenueRef[]).map((v) => ({ id: v.venue, name: this.venues.get(v.venue)?.name ?? v.venue, pair: v.symbol })),
       sourceUrl: m.source_url,
       logoUrl: m.logo_url ?? null,
+      hasLogoPng: Boolean(m.logo_png),
       status: m.status,
       phase,
       announcedListingAt: m.announced_listing_at,
