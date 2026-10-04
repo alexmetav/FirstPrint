@@ -7790,3 +7790,24 @@ main:has(.home) {
     display: none;
   }
 }
+/* Featured facts read label first: "Start price $0.02028 · Closes in 10d 23h". */
+.home .featured .hero-facts dt {
+  order: 1;
+}
+.home .featured .hero-facts dd {
+  order: 2;
+}
+.home .featured .hero-facts > div + div::before {
+  content: '·';
+  order: 0;
+  margin-right: 10px;
+  color: var(--muted);
+}
+.home .featured .hero-facts {
+  gap: 4px 10px;
+}
+@media (max-width: 900px) {
+  .home .featured .mini-ladder.quiet {
+    display: none;
+  }
+}
