@@ -66,18 +66,10 @@ function brand(x: number, y: number) {
   </g>`;
 }
 
-function pill(text: string, color: string) {
-  const w = 70 + text.length * 15.9;
-  return `<g transform="translate(${W - 72 - w},66)">
-    <rect width="${w}" height="54" rx="27" fill="${color}" fill-opacity="0.13" stroke="${color}" stroke-opacity="0.5" stroke-width="1.5"/>
-    <circle cx="27" cy="27" r="6" fill="${color}"/>
-    <text x="44" y="35" font-family="Geist Mono" font-size="21" font-weight="500" fill="${color}" letter-spacing="2.6">${esc(text)}</text>
-  </g>`;
-}
 
 function tokenBlock(m: BannerMarket, logoPng: string | null, y: number) {
   const size = 176;
-  const x = 72;
+  const x = 80;
   const sym = m.symbol.toUpperCase();
   const symSize = Math.max(64, Math.min(124, Math.floor(820 / (Math.max(sym.length + 1, 4) * 0.64))));
   const name = (m.name ?? '').trim();
@@ -94,98 +86,49 @@ function tokenBlock(m: BannerMarket, logoPng: string | null, y: number) {
     <text x="${tx + 4}" y="${y + 150}" font-size="34" fill="${C.muted}">${esc(shortName ? `${shortName} · ` : '')}on ${esc(m.exchange)}</text>`;
 }
 
-function statBoxes(items: [string, string][], y: number) {
-  const gap = 18;
-  const w = (W - 144 - gap * (items.length - 1)) / items.length;
-  return items
-    .map(([label, value], i) => {
-      const x = 72 + i * (w + gap);
-      return `<g transform="translate(${x},${y})">
-        <rect width="${w}" height="112" rx="22" fill="${C.card}" stroke="${C.line}" stroke-width="1.5"/>
-        <text x="26" y="40" font-family="Geist Mono" font-size="18" font-weight="500" fill="${C.muted}" letter-spacing="2">${esc(label)}</text>
-        <text x="26" y="86" font-size="${value.length > 18 ? 30 : 36}" font-weight="600" fill="${C.text}" letter-spacing="-0.5">${esc(value)}</text>
-      </g>`;
-    })
-    .join('');
-}
 
-function outcomeChips(m: BannerMarket, y: number, highlight: string | null = null) {
-  const keys = m.outcomes === 'binary' ? ['up', 'down'] : ['moon', 'up', 'flat', 'down', 'crash'];
-  const label = (k: string) => (m.outcomes === 'binary' ? (k === 'up' ? 'Yes' : 'No') : OUTCOME_NAMES[k]);
-  let x = 72;
-  return keys
-    .map((k) => {
-      const text = label(k);
-      const w = 70 + text.length * 17;
-      const on = highlight === null || highlight === k;
-      const g = `<g transform="translate(${x},${y})" opacity="${on ? 1 : 0.35}">
-        <rect width="${w}" height="58" rx="18" fill="${OUTCOME_COLORS[k]}" fill-opacity="${highlight === k ? 0.22 : 0.08}" stroke="${OUTCOME_COLORS[k]}" stroke-opacity="${highlight === k ? 0.9 : 0.35}" stroke-width="${highlight === k ? 2.5 : 1.5}"/>
-        <circle cx="30" cy="29" r="8" fill="${OUTCOME_COLORS[k]}"/>
-        <text x="50" y="39" font-size="28" font-weight="600" fill="${OUTCOME_COLORS[k]}">${esc(text)}</text>
-      </g>`;
-      x += w + 14;
-      return g;
-    })
-    .join('');
-}
 
-/** The SVG for a market's banner (exported for tests and previews). */
+/**
+ * The SVG for a market's banner (exported for tests and previews). Kept deliberately minimal:
+ * the brand, the token (logo and ticker), one headline and one line of detail. Nothing else.
+ */
 export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | null = null) {
   const accent = kind === 'live' ? '#30d158' : kind === 'closing' ? '#ff9f0a' : OUTCOME_COLORS[m.result?.winningBucket ?? 'flat'] ?? '#3987e5';
-  const tag = kind === 'live' ? 'NEW MARKET LIVE' : kind === 'closing' ? 'LAST HOUR' : 'RESULT';
-  let body = '';
+  const tag = kind === 'live' ? 'NEW MARKET' : kind === 'closing' ? 'LAST HOUR' : 'RESULT';
+  let headline = '';
+  let detail = '';
   if (kind === 'live') {
-    const q = m.outcomes === 'binary' && m.basePrice !== null ? `Will it be at or above ${price(m.basePrice)}?` : 'Where will it trade? Call its first move.';
-    body = `<text x="72" y="430" font-size="38" font-weight="500" fill="${C.text}" letter-spacing="-0.5">${esc(q)}</text>
-      ${outcomeChips(m, 458)}
-      ${statBoxes(
-        [
-          ['START PRICE', m.basePrice === null ? 'At listing' : price(m.basePrice)],
-          ['PREDICTIONS CLOSE', utc(m.closeAt)],
-          ['RESULT', utc(m.settleAt)],
-        ],
-        546,
-      )}`;
+    headline =
+      m.outcomes === 'binary' && m.basePrice !== null
+        ? `<tspan fill="${C.text}">Above ${esc(price(m.basePrice))}?</tspan> <tspan fill="${C.muted}">Yes or No.</tspan>`
+        : `<tspan fill="${C.text}">Moon or Crash?</tspan> <tspan fill="${C.muted}">Call it.</tspan>`;
+    detail = `${m.basePrice === null ? 'Starts at listing' : `Start ${price(m.basePrice)}`}   ·   Closes ${utc(m.closeAt)}`;
   } else if (kind === 'closing') {
-    body = `<text x="72" y="440" font-size="58" font-weight="700" fill="${accent}" letter-spacing="-1.5">Predictions close in 1 hour</text>
-      <text x="72" y="490" font-size="32" fill="${C.muted}">${m.predictors ? 'Get your pick in before the window shuts.' : 'Nobody has picked yet. Be the first: early picks earn more.'}</text>
-      ${statBoxes(
-        [
-          ['POOL', `${(m.pool ?? 0).toLocaleString('en-US')} pts`],
-          ['PREDICTORS', (m.predictors ?? 0).toLocaleString('en-US')],
-          ['CLOSES', utc(m.closeAt)],
-        ],
-        546,
-      )}`;
+    headline = `<tspan fill="${accent}">1 hour left</tspan> <tspan fill="${C.muted}">to predict.</tspan>`;
+    detail = m.predictors ? `${(m.predictors ?? 0).toLocaleString('en-US')} predictor${m.predictors === 1 ? '' : 's'}   ·   ${(m.pool ?? 0).toLocaleString('en-US')} pts in the pool` : 'No picks yet. Early picks earn more.';
   } else {
     const r = m.result;
     const won = r?.winningBucket ? (m.outcomes === 'binary' ? (r.winningBucket === 'up' ? 'Yes' : 'No') : OUTCOME_NAMES[r.winningBucket]) : 'Settled';
     const pct = r?.returnPct != null ? `${r.returnPct >= 0 ? '+' : ''}${(r.returnPct * 100).toFixed(1)}%` : '';
-    const move = r?.basePrice != null && r?.finalPrice != null ? `${price(r.basePrice)} → ${price(r.finalPrice)}` : '';
-    body = `<text x="72" y="452" font-size="96" font-weight="700" fill="${accent}" letter-spacing="-3">${esc(won)}</text>
-      ${pct ? `<text x="${92 + won.length * 58}" y="452" font-size="56" font-weight="600" fill="${C.text}" letter-spacing="-1">${esc(pct)}</text>` : ''}
-      ${outcomeChips(m, 474, r?.winningBucket ?? null)}
-      ${statBoxes(
-        [
-          ['PRICE MOVE', move || '–'],
-          ['POOL PAID OUT', `${(r?.pool ?? 0).toLocaleString('en-US')} pts`],
-        ],
-        552,
-      )}`;
+    headline = `<tspan fill="${accent}">${esc(won)}</tspan>${pct ? ` <tspan fill="${C.muted}">${esc(pct)}</tspan>` : ''}`;
+    const move = r?.basePrice != null && r?.finalPrice != null ? `${price(r.basePrice)} → ${price(r.finalPrice)}   ·   ` : '';
+    detail = `${move}${(r?.pool ?? 0).toLocaleString('en-US')} pts paid out`;
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Geist">
     <defs>
-      <radialGradient id="g1" cx="0.9" cy="0.12" r="0.55"><stop offset="0" stop-color="${accent}" stop-opacity="0.28"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></radialGradient>
-      <radialGradient id="g2" cx="0.05" cy="1" r="0.5"><stop offset="0" stop-color="#0a84ff" stop-opacity="0.18"/><stop offset="1" stop-color="#0a84ff" stop-opacity="0"/></radialGradient>
+      <radialGradient id="glow" cx="0.85" cy="0" r="0.7"><stop offset="0" stop-color="${accent}" stop-opacity="0.16"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></radialGradient>
     </defs>
     <rect width="${W}" height="${H}" fill="${C.bg}"/>
-    <rect width="${W}" height="${H}" fill="url(#g1)"/>
-    <rect width="${W}" height="${H}" fill="url(#g2)"/>
-    ${brand(72, 63)}
-    ${pill(tag, accent)}
-    ${tokenBlock(m, logoPng, 166)}
-    ${body}
-    <text x="72" y="${H - 20}" font-family="Geist Mono" font-size="17" fill="${C.muted}" letter-spacing="1">firstprint.fun · free to play · points have no cash value</text>
+    <rect width="${W}" height="${H}" fill="url(#glow)"/>
+    ${brand(80, 70)}
+    <g transform="translate(${W - 80},108)">
+      <circle cx="-${tag.length * 15.4 + 22}" cy="-7" r="6" fill="${accent}"/>
+      <text text-anchor="end" font-family="Geist Mono" font-size="21" font-weight="500" fill="${accent}" letter-spacing="2.6">${esc(tag)}</text>
+    </g>
+    ${tokenBlock(m, logoPng, 214)}
+    <text x="80" y="540" font-size="60" font-weight="600" letter-spacing="-1.8">${headline}</text>
+    <text x="82" y="598" font-size="28" fill="${C.muted}">${esc(detail)}</text>
+    <text x="${W - 80}" y="${H - 52}" text-anchor="end" font-family="Geist Mono" font-size="18" fill="${C.muted}" letter-spacing="1">firstprint.fun</text>
   </svg>`;
 }
 
