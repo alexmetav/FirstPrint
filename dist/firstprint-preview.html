@@ -8834,6 +8834,39 @@ p,
   color: color-mix(in srgb, var(--gold) 62%, var(--text));
 }
 
+/* Featured market: details get the room, outcomes become a slim pick list. */
+@media (min-width: 1241px) {
+  .feat {
+    grid-template-columns: minmax(0, 1fr) 232px;
+  }
+  .feat-main {
+    padding: 32px 36px;
+    gap: 18px;
+  }
+  .feat-q {
+    max-width: 34em;
+  }
+  .feat-facts {
+    flex-wrap: nowrap;
+    gap: 12px 40px;
+  }
+  .feat-side .fo-range {
+    display: none;
+  }
+  .feat-side .fo-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 0 20px;
+  }
+  .feat-side-head {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .feat-side .fo-val {
+    min-width: 0;
+  }
+}
+
 </style>
   </head>
   <body>
