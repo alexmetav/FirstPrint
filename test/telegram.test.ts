@@ -106,7 +106,12 @@ test('channel: posts open markets not posted yet, then a single last-hour remind
   channel.remindClosing();
   channel.remindClosing();
   await channel.later(async () => {});
-  assert.deepEqual(posts.slice(2), ['@firstprintfun [banner ok] ⏳ <b>Last hour: LONG</b>']);
+  assert.deepEqual(posts.slice(2), ['@firstprintfun ⏳ <b>Last hour: LONG</b>'], 'token banners off: plain text');
+
+  // Each token's own banner, once switched on.
+  service.setSetting('telegram_token_banners', '1');
+  await channel.postLive(long);
+  assert.equal(posts.at(-1), '@firstprintfun [banner ok] 🟢 <b>New market: LONG</b>');
   assert.equal(service.getMarket(long).symbol, 'LONG');
 });
 

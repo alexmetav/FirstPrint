@@ -47,8 +47,12 @@ export class ChannelPoster {
     return `${this.appUrl}#/market/${encodeURIComponent(id)}`;
   }
 
-  /** The market's own banner (logo, ticker, details), or the fixed one for a new market, or nothing. */
+  /**
+   * The fixed banner for a new market and plain text otherwise. Each token's own banner
+   * (logo, ticker, details) is off for now; setting `telegram_token_banners` to '1' turns it on.
+   */
   private bannerFor(kind: BannerKind, id: string, m: Parameters<typeof renderBanner>[1]): Uint8Array | null {
+    if (this.service.getSetting('telegram_token_banners') !== '1') return kind === 'live' ? this.banner : null;
     try {
       return renderBanner(kind, m, this.service.logoPng(id));
     } catch (err) {
