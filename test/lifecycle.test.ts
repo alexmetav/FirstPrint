@@ -279,3 +279,23 @@ test('HTTP API: login, cookie session, predict, quote, admin', async () => {
     server.close();
   }
 });
+
+test('streak backfill: consecutive daily claims from before streaks existed carry over once', async () => {
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { openDb } = await import('../src/db/db.ts');
+  const file = join(mkdtempSync(join(tmpdir(), 'fp-streak-')), 'db.sqlite');
+  const db = openDb(file);
+  db.prepare("INSERT INTO users (id, username, points, last_claim_day, streak, created_at) VALUES ('u1', 'a', 0, '2026-10-04', 0, 0), ('u2', 'b', 0, '2026-10-04', 0, 0)").run();
+  const add = db.prepare("INSERT INTO ledger (user_id, delta, reason, ref, created_at) VALUES (?, 100, 'daily', ?, 0)");
+  for (const d of ['2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04']) add.run('u1', d);
+  for (const d of ['2026-09-28', '2026-10-03', '2026-10-04']) add.run('u2', d);
+  db.prepare("DELETE FROM settings WHERE key = 'streaks_backfilled'").run();
+  db.close();
+  const again = openDb(file);
+  const streak = (id: string) => (again.prepare('SELECT streak FROM users WHERE id = ?').get(id) as { streak: number }).streak;
+  assert.equal(streak('u1'), 4);
+  assert.equal(streak('u2'), 2, 'a gap ends the run');
+  again.close();
+});

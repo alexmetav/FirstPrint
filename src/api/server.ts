@@ -350,8 +350,9 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('GET', '/api/markets/:id/holders', ({ params }) => service.holders(params.id));
 
+  // The public Listing radar. With admin-run markets the queue is the admin's to-do list, so nothing is shown.
   route('GET', '/api/listings/detected', ({ url }) => ({
-    listings: service.detections({ status: 'all', limit: boundedLimit(url.searchParams.get('limit')) }).filter((d) => d.status !== 'ignored'),
+    listings: opts.manualOnly ? [] : service.detections({ status: 'all', limit: boundedLimit(url.searchParams.get('limit')) }).filter((d) => d.status !== 'ignored'),
   }));
 
   route('GET', '/api/leaderboard', ({ url, optionalUser }) => {
@@ -598,13 +599,21 @@ export function createApiServer(opts: ServerOptions): Server {
     return { shareKey: key };
   });
 
+  // Partners see numbers at most a minute old; computing them for every page view isn't needed.
+  const statsCache = new Map<number, { at: number; data: ReturnType<typeof analytics> }>();
   route('GET', '/api/public/analytics', ({ req, url }) => {
     rateLimit(`stats:${visitor(req)}`, 30, 60_000);
     const key = service.getSetting('analytics_share_key');
     const given = url.searchParams.get('key') ?? '';
     const digest = (s: string) => createHash('sha256').update(s).digest();
     if (!key || !timingSafeEqual(digest(key), digest(given))) throw new AppError(404, 'not_found', 'This stats link is no longer active. Ask Firstprint for a new one.');
-    return analytics(service.db, service.clock.now(), Number(url.searchParams.get('days') ?? 30));
+    const days = [7, 30, 90].includes(Number(url.searchParams.get('days'))) ? Number(url.searchParams.get('days')) : 30;
+    const now = service.clock.now();
+    const hit = statsCache.get(days);
+    if (hit && now - hit.at < 60_000) return hit.data;
+    const data = analytics(service.db, now, days);
+    statsCache.set(days, { at: now, data });
+    return data;
   });
 
   route('POST', '/api/admin/manual-markets', async ({ req, body, requireAdmin }) => {
@@ -631,7 +640,7 @@ export function createApiServer(opts: ServerOptions): Server {
     const price = Number((await body()).basePrice);
     service.setStartPrice(params.id, price);
     audit(req, 'market_start_price', params.id, String(price));
-    return service.getMarket(params.id);
+    return service.getMarket(params.id, undefined, true);
   });
 
   route('POST', '/api/admin/manual-markets/:id/publish', ({ req, params, requireAdmin }) => {
@@ -952,13 +961,17 @@ export function createApiServer(opts: ServerOptions): Server {
         return u;
       },
       requireAdmin: () => {
-        rateLimit(`admin:${visitor(req)}`, 30, 60_000);
+        // Wrong keys are limited tightly (guessing); the right key gets room for the panel's own traffic.
         const given = String(req.headers['x-admin-key'] ?? '');
         const ok =
           opts.adminKey &&
           Buffer.byteLength(given) === Buffer.byteLength(opts.adminKey) &&
           timingSafeEqual(Buffer.from(given), Buffer.from(opts.adminKey));
-        if (!ok) throw new AppError(403, 'forbidden', 'Admin key required.');
+        if (!ok) {
+          rateLimit(`admin-bad:${visitor(req)}`, 20, 60_000);
+          throw new AppError(403, 'forbidden', 'Admin key required.');
+        }
+        rateLimit(`admin:${visitor(req)}`, 600, 60_000);
       },
     };
 

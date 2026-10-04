@@ -60,7 +60,7 @@
         <li><strong>When you sign in with Google:</strong> your email address and name. We use the name only to suggest a username. We never see your Google password.</li>
         <li><strong>When you sign in with an email code:</strong> your email address, so we can send you the code and recognise your account.</li>
         <li><strong>When you sign in with a Solana wallet:</strong> your wallet’s public address. Signing in only signs a message. It never sends a transaction or touches your funds.</li>
-        <li><strong>Your activity:</strong> your username, points balance, predictions and point history, so the game works and the leaderboard is accurate. Your username and predictions are shown publicly on market pages, the leaderboard and your public profile page, which also shows your win rate and points won. Your email address, wallet and X username are never shown there.</li>
+        <li><strong>Your activity:</strong> your username, points balance, daily streak, predictions and point history, so the game works and the leaderboard is accurate. Your username and predictions are shown publicly on market pages, the leaderboard and your public profile page, which also shows your win rate and points won. Your email address, wallet and X username are never shown there.</li>
         <li><strong>Your X username, if you link it:</strong> so tasks on X can be credited to you. We don’t log in to X or read anything from your X account. One X username can be linked to one Firstprint account.</li>
         <li><strong>Invites:</strong> if you sign up through a friend’s invite link, we record who invited you so they can get their reward.</li>
         <li><strong>TestFPT claims:</strong> when you claim, we record the wallet you claimed to and the transaction. Transactions on Solana’s public test network, including your wallet address and the TestFPT you receive, are visible to anyone on that network.</li>
@@ -74,13 +74,20 @@
       <h2>Who helps us run Firstprint</h2>
       <p>These companies process data for us only to provide their service:</p>
       <ul>
-        <li><strong>Render</strong> hosts the app and its database.</li>
+        <li><strong>Render</strong> hosts this website, the app and its database.</li>
+        <li><strong>Cloudflare</strong> sits in front of our domain to keep it fast and protect it from attacks. It sees your IP address and the pages you request.</li>
         <li><strong>Supabase</strong> stores private backup copies of the database.</li>
-        <li><strong>Vercel</strong> hosts this website.</li>
-        <li><strong>Google</strong> provides “Continue with Google” sign-in.</li>
-        <li><strong>Resend</strong> sends sign-in code emails.</li>
+        <li><strong>Google</strong> provides “Continue with Google” sign-in, and serves the fonts on our pages (your browser requests them from Google, which sees your IP address).</li>
+        <li><strong>Resend</strong> sends sign-in codes and, if you signed in with email, a short email when a market you played settles.</li>
+        <li><strong>Vercel</strong> may host a copy of this website.</li>
       </ul>
-      <p>Exchange market data comes from CoinGecko and the exchanges themselves. No personal data is sent to them.</p>
+      <p>Market data comes from the exchanges named on each market, for example MEXC’s public list of trading pairs and prices. Logos an admin adds are downloaded and stored by us. No personal data is sent to these sources.</p>
+
+      <h2>Telegram</h2>
+      <p>We post new markets, reminders and results to our public Telegram channel. These posts contain no player data. If you join the channel or open it from the app, that is between you and Telegram, under Telegram’s own privacy policy.</p>
+
+      <h2>Statistics we share</h2>
+      <p>We may share totals with partners, such as the number of players, predictions and points staked. These are counts and sums only: they never include names, usernames, email addresses or wallets.</p>
 
       <h2>How long we keep it</h2>
       <p>We keep your account and activity while your account exists. Sign-in codes expire after 10 minutes and are deleted. We also keep private daily backup copies of the database. If you delete your account, older backups may still contain your data until those copies are deleted.</p>

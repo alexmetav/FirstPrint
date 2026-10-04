@@ -1,7 +1,7 @@
 {
   "name": "TestFPT",
   "symbol": "TestFPT",
-  "description": "Firstprint points on the Solana test network. Earned by playing Firstprint's free prediction markets. No monetary value.",
+  "description": "Firstprint points on the Solana test network. Starting points and rewards from Firstprint's free prediction game. No monetary value.",
   "image": "https://www.firstprint.fun/icon-512.png",
   "external_url": "https://www.firstprint.fun"
 }

@@ -36,6 +36,44 @@ function migrate(db: DB) {
   ensure('users', 'referred_by', 'referred_by TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_x ON users(x_username COLLATE NOCASE) WHERE x_username IS NOT NULL');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_ref ON users(referral_code) WHERE referral_code IS NOT NULL');
+  // Analytics groups predictions and daily claims by time.
+  db.exec('CREATE INDEX IF NOT EXISTS predictions_time ON predictions(placed_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS ledger_reason_time ON ledger(reason, created_at)');
+  backfillStreaks(db);
+}
+
+/**
+ * Streaks started counting after players had already claimed for days. Once, rebuild each player's
+ * streak from their daily claims in the ledger, so a run of consecutive days carries over.
+ */
+function backfillStreaks(db: DB) {
+  if (db.prepare("SELECT 1 FROM settings WHERE key = 'streaks_backfilled'").get()) return;
+  const rows = db.prepare("SELECT user_id, ref FROM ledger WHERE reason = 'daily' ORDER BY user_id, ref DESC").all() as { user_id: string; ref: string }[];
+  const last = new Map(
+    (db.prepare('SELECT id, last_claim_day, streak FROM users WHERE last_claim_day IS NOT NULL').all() as { id: string; last_claim_day: string; streak: number }[]).map((u) => [u.id, u]),
+  );
+  const byUser = new Map<string, string[]>();
+  for (const r of rows) (byUser.get(r.user_id) ?? byUser.set(r.user_id, []).get(r.user_id)!).push(r.ref);
+  const update = db.prepare('UPDATE users SET streak = ? WHERE id = ?');
+  db.exec('BEGIN');
+  try {
+    for (const [id, days] of byUser) {
+      const u = last.get(id);
+      if (!u || days[0] !== u.last_claim_day) continue;
+      let run = 1;
+      for (let i = 1; i < days.length; i++) {
+        const gap = (Date.parse(`${days[i - 1]}T00:00:00Z`) - Date.parse(`${days[i]}T00:00:00Z`)) / 86_400_000;
+        if (gap !== 1) break;
+        run++;
+      }
+      if (run > (u.streak ?? 0)) update.run(run, id);
+    }
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('streaks_backfilled', '1')").run();
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
 }
 
 /** Runs fn inside a transaction; rolls back if it throws. */

@@ -7377,8 +7377,8 @@ main:has(.home) {
     gap: 8px;
     overflow-x: auto;
     scrollbar-width: none;
-    margin: 0 -20px;
-    padding: 0 20px;
+    margin: 0 -14px;
+    padding: 0 14px;
   }
   .home-side .side-group {
     display: flex;
@@ -12256,7 +12256,8 @@ async function loadMarket(id) {
 }
 
 async function refresh() {
-  if (S.refreshing || S.modal || S.route.name === 'admin') return;
+  // Admin and the partner stats page load their own data; redrawing them would close open tables and tooltips.
+  if (S.refreshing || S.modal || S.route.name === 'admin' || S.route.name === 'stats') return;
   S.refreshing = true;
   try {
     if (S.me) await refreshMe();
@@ -12281,7 +12282,7 @@ function parseRoute() {
   if (h === '/radar') return { name: 'radar' };
   if (h === '/earn') return { name: 'earn' };
   if (h === '/admin') return { name: 'admin' };
-  const st = h.match(/^\/stats\/([A-Za-z0-9_-]{10,64})$/);
+  const st = h.match(/^\/stats\/(.*)$/);
   if (st) return { name: 'stats', key: st[1] };
   return { name: 'home' };
 }
@@ -12353,10 +12354,18 @@ async function loadRoute() {
       if (!S.api.publicAnalytics) {
         view.innerHTML = '<div class="empty"><p>Stats aren’t available in practice mode.</p></div>';
       } else {
-        try {
-          view.innerHTML = analyticsView(await S.api.publicAnalytics(S.route.key, S.vizDays ?? 30), { shared: true });
-        } catch (err) {
-          view.innerHTML = `<div class="empty"><div class="empty-art">${ico('chart')}</div><p><strong>This stats link isn’t active.</strong><br />${esc(err.message)}</p></div>`;
+        const dead = (msg) => `<div class="empty"><div class="empty-art">${ico('chart')}</div><p><strong>${msg}</strong><br />Ask Firstprint for a new link.</p></div>`;
+        if (!/^[A-Za-z0-9_-]{10,64}$/.test(S.route.key)) {
+          view.innerHTML = dead('This stats link isn’t complete.');
+        } else {
+          try {
+            view.innerHTML = analyticsView(await S.api.publicAnalytics(S.route.key, S.vizDays ?? 30), { shared: true });
+          } catch (err) {
+            view.innerHTML =
+              err.status === 404
+                ? dead('This stats link is no longer active.')
+                : `<div class="empty"><div class="empty-art">${ico('chart')}</div><p><strong>Couldn’t load the stats.</strong><br />${esc(err.message)}</p><button class="btn btn-solid" data-action="viz-retry">${ico('refresh')}Try again</button></div>`;
+          }
         }
       }
     } else if (S.route.name === 'radar' && S.cfg?.manualOnly) {
@@ -12509,6 +12518,9 @@ function drawTop() {
 }
 
 /** Everything secondary: pages, test SOL, the theme switch, help and the account. */
+/** With TestFPT on, the 1,000 starting points wait on the Earn page to be claimed to a wallet. */
+const startPoints = () => (S.cfg?.rewards?.onChain ? '1,000 free points to claim on the Earn page' : '1,000 free points');
+
 // --- Daily streak --------------------------------------------------------------------
 const DAILY_SCHEDULE = [50, 75, 100, 125, 150, 175, 200];
 const dailyReward = (day) => DAILY_SCHEDULE[Math.min(DAILY_SCHEDULE.length, Math.max(1, day)) - 1];
@@ -12791,7 +12803,7 @@ function telegramCard() {
   return `
     <section class="panel tg-card">
       <span class="tg-logo" aria-hidden="true">${ico('telegram')}</span>
-      <div><b>Never miss a new market</b><p class="muted">Join @${esc(S.cfg.telegramChannel)} on Telegram. Every new market is posted the moment it opens, and every result when it’s in.</p></div>
+      <div><b>Never miss a new market</b><p class="muted">Join @${esc(S.cfg.telegramChannel)} on Telegram. Every new market is posted the moment it opens, with a reminder in its last hour and the result when it’s in.</p></div>
       <a class="btn btn-sm tg-join" href="${url}" target="_blank" rel="noopener noreferrer">${ico('telegram')}Join on Telegram</a>
     </section>`;
 }
@@ -13195,8 +13207,8 @@ function howItWorks() {
   const steps = `
       <div class="section-head"><span class="section-ico">${ico('info')}</span><div><h2>How it works</h2><p class="muted">Free to play. Points only, no real money.</p></div><button class="btn btn-sm head-action" data-action="tour">${ico('sparkles')}Take the tour</button></div>
       <ol class="steps">
-        <li><span class="step-ico" style="--c:var(--up)">${ico('target')}</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}.</p></li>
-        <li><span class="step-ico" style="--c:var(--moon)">${ico('coins')}</span><b>Stake free points</b><p>Everyone starts with 1,000 points, plus up to 200 more every day with a daily streak. No real money.</p></li>
+        <li><span class="step-ico" style="--c:var(--up)">${ico('target')}</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}, or a simple Yes or No.</p></li>
+        <li><span class="step-ico" style="--c:var(--moon)">${ico('coins')}</span><b>Stake free points</b><p>Everyone gets ${startPoints()}, plus up to 200 more every day with a daily streak. No real money.</p></li>
         <li><span class="step-ico" style="--c:var(--brand)">${ico('trophy')}</span><b>Win the pool</b><p>If you’re right, you split the pool with the other winners. Earlier picks earn more.</p></li>
       </ol>
       <details class="full-rules"><summary>Full rules</summary>`;
@@ -13204,20 +13216,20 @@ function howItWorks() {
     return `
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
-        <li>Firstprint opens a market when a new token lists on MEXC, and adds others by hand for tokens on major exchanges. Log in with Google, email, or a Solana wallet to get 1,000 free points.</li>
+        <li>Firstprint opens markets on newly listed tokens on major exchanges, including new MEXC listings it spots automatically. Log in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
         <li>Pick one of five outcomes for where the price ends up compared with the start price, from Crash to Moon. Predictions close at the time shown, and earlier predictions earn a bigger share.</li>
         <li>When the result is due, the final price and the winners appear on the market page.</li>
-        <li>Everyone who picked the winning outcome splits the pool, minus a 4% fee. If nobody picked it, everyone gets their points back.</li>
+        <li>Everyone who picked the winning outcome splits the pool, minus the fee shown on the market (usually 4%). Everyone gets their points back if nobody picked the winner, everyone picked the same outcome, or the market is cancelled.</li>
       </ol></details>
     </section>`;
   }
   return `
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
-        <li>Firstprint watches seven exchanges for new listings and opens a market when one is confirmed. Sign in with Google, email, or a Solana wallet to get 1,000 free points.</li>
+        <li>Firstprint watches seven exchanges for new listings and opens a market when one is confirmed. Sign in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
         <li>Pick one of five outcomes for the price 72 hours after listing, from Crash to Moon. Predictions stay open until 1 hour after trading starts, and earlier predictions earn a bigger share.</li>
         <li>The starting price is the average over the first hour of trading. The final price is the average over the last hour, so a single spike can’t decide a market.</li>
-        <li>Everyone who picked the winning outcome splits the pool, minus a 4% fee. If nobody picked it, everyone gets their points back.</li>
+        <li>Everyone who picked the winning outcome splits the pool, minus the fee shown on the market (usually 4%). Everyone gets their points back if nobody picked the winner, everyone picked the same outcome, or the market is cancelled.</li>
       </ol></details>
     </section>`;
 }
@@ -13366,7 +13378,7 @@ function marketMain(m) {
         <li>Final price: the average over the last ${fmtSpan(m.closeAt - m.listingAt)} before ${fmtDate(m.settleAt)}. If the token trades on several exchanges, the volume-weighted median is used.</li>
         <li>Predictions close ${fmtSpan(m.closeAt - m.listingAt)} after trading starts. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
         <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
-        <li>The market is cancelled and refunded if the listing is delayed more than 24 hours, trading halts for too long, there isn’t enough trading data, or nobody picks the winning outcome.</li>
+        <li>The market is cancelled and refunded if the listing is delayed more than 24 hours, trading halts for too long, there isn’t enough trading data, nobody picks the winning outcome, or everyone picks the same outcome.</li>
       </ol>
     </details>
 
@@ -13724,7 +13736,7 @@ function updateSummary() {
 
   $('#trade-fine').textContent = S.me
     ? `You have ${fmtPts(S.me.points)}. Limit ${fmtPts(m.userCap)} per market. Minimum ${m.minStake} pts.`
-    : 'Log in to start with 1,000 free points.';
+    : `Log in to get ${startPoints()}.`;
 }
 
 let quoteTimer;
@@ -13955,7 +13967,7 @@ function portfolioView(preds, history = [], stats = null) {
     return `
       <header class="page-head"><span class="page-ico">${ico('dashboard')}</span><div><h1 class="page-title">Your dashboard</h1></div></header>
       <div class="empty"><div class="empty-art">${ico('dashboard')}</div>
-        <p><strong>Log in to see your dashboard.</strong><br />Your points, win rate and results live here. New accounts start with 1,000 free points.</p>
+        <p><strong>Log in to see your dashboard.</strong><br />Your points, win rate and results live here. New accounts get ${startPoints()}.</p>
         <button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button></div>`;
   }
   const active = preds.filter((p) => p.marketStatus === 'open' || p.marketStatus === 'locked');
@@ -14413,7 +14425,7 @@ function earnView() {
     return `
       <header class="page-head"><span class="page-ico">${ico('gift')}</span><div><h1 class="page-title">Earn points</h1></div></header>
       <div class="empty"><div class="empty-art">${ico('gift')}</div>
-        <p><strong>Log in to earn points.</strong><br />Complete tasks on X, invite friends and claim your points.</p>
+        <p><strong>Log in to earn points.</strong><br />Claim free points every day (50 on day 1, up to 200 a day with a streak), complete tasks on X, invite friends and claim your points.</p>
         <button class="btn btn-solid" data-action="connect">${ico('wallet')}Log in</button></div>`;
   }
   const r = S.rewards;
@@ -14772,7 +14784,7 @@ function renderAuth() {
     const si = S.signIn ?? { google: null, email: true };
     html = modalShell(
       'Log in or sign up',
-      'New accounts start with 1,000 free points. Use any option below. They all lead to the same account.',
+      `New accounts get ${startPoints()}. Use any option below. They all lead to the same account.`,
       `${si.google ? '<div id="google-button" class="google-slot" aria-label="Continue with Google"></div>' : ''}
        ${
          si.email
@@ -15002,7 +15014,7 @@ const TOUR = [
   {
     icon: 'coins',
     title: 'Play with free points',
-    body: 'You start with 1,000 points and get up to 200 more every day: claim daily to grow your streak. Points have no cash value, so there’s nothing to lose. Earn more on the Earn page.',
+    body: 'You get 1,000 starting points (with TestFPT on, you claim them on the Earn page) and up to 200 more every day: claim daily to grow your streak. Points have no cash value, so there’s nothing to lose. Earn more on the Earn page.',
   },
   {
     icon: 'trophy',
@@ -15263,13 +15275,21 @@ async function renderAdmin() {
   }
 
   const manualOnly = Boolean(A.info.manualOnly);
-  const [{ markets }, detected, { log }, token, { tasks }] = await Promise.all([
-    A.api.markets(),
-    manualOnly && !A.info.autoListings ? Promise.resolve([]) : A.api.detected().then((d) => d.detected).catch(() => []),
-    A.api.log().catch(() => ({ log: [] })),
-    A.api.token().catch(() => ({ enabled: false })),
-    A.api.tasks().catch(() => ({ tasks: [] })),
-  ]);
+  let loaded;
+  try {
+    loaded = await Promise.all([
+      A.api.markets(),
+      manualOnly && !A.info.autoListings ? Promise.resolve([]) : A.api.detected().then((d) => d.detected).catch(() => []),
+      A.api.log().catch(() => ({ log: [] })),
+      A.api.token().catch(() => ({ enabled: false })),
+      A.api.tasks().catch(() => ({ tasks: [] })),
+    ]);
+  } catch (err) {
+    // The server may be waking up or busy: say so instead of leaving the old tab on screen.
+    view.innerHTML = `<div class="empty"><div class="empty-art">${ico('alert')}</div><p><strong>Couldn’t load the admin panel.</strong><br />${esc(err.message)}</p><button class="btn btn-solid" data-action="admin-token-refresh">${ico('refresh')}Try again</button></div>`;
+    return;
+  }
+  const [{ markets }, detected, { log }, token, { tasks }] = loaded;
   A.detected = detected;
   const venues = A.info.venues;
   const editing = markets.find((m) => m.id === A.edit && m.mode === 'manual' && m.status === 'open') ?? null;
@@ -15385,6 +15405,10 @@ async function runPriceCheck() {
 /** Runs after the admin page is drawn: UTC hints, live price checks, and copying a linked logo. */
 function afterAdminRender() {
   updateUtcHints();
+  // On phones the tab strip scrolls sideways; keep the open tab in view.
+  const nav = $('.admin-nav');
+  const cur = nav?.querySelector('[aria-current]');
+  if (nav && cur && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = cur.offsetLeft - (nav.clientWidth - cur.offsetWidth) / 2;
   const box = $('#admin-checks');
   if (box) loadMarketChecks(box);
   const form = $('#admin-market');
@@ -15805,7 +15829,8 @@ function marketForm(m, pre = null) {
                ${m.published ? '' : '<button class="btn btn-solid" type="submit" name="intent" value="publish">Save and publish</button>'}
                <button class="btn" type="button" data-action="admin-edit-cancel">Stop editing</button>`
             : `<button class="btn btn-solid" type="submit" name="intent" value="publish">${ico('send')}Publish market</button>
-               <button class="btn" type="submit" name="intent" value="draft">${ico('edit')}Save as draft</button>`
+               <button class="btn" type="submit" name="intent" value="draft">${ico('edit')}Save as draft</button>
+               ${pre ? '<button class="btn" type="button" data-action="admin-edit-cancel">Back to the list</button>' : ''}`
         }
       </div>
     </form>`;
@@ -15938,7 +15963,7 @@ function telegramPanel(t) {
   const channel = t.configured
     ? `
       <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('telegram')}</span><div><h2>Player channel</h2><p class="muted">A public Telegram channel players join. Every market you publish is posted there with a “Predict now” button, and every result when it’s in. Players see a Telegram button on market pages, their dashboard and the menu.</p></div></div>
+        <div class="section-head"><span class="section-ico">${ico('telegram')}</span><div><h2>Player channel</h2><p class="muted">A public Telegram channel players join. Every market you publish is posted there with a banner and a “Predict now” button, a reminder goes out in its last hour, and results with a winner are posted (cancelled markets are not). Players see a Telegram button on market pages, their dashboard and the menu.</p></div></div>
         ${
           t.channel
             ? `<p class="all-good">${ico('checkCircle')}Posting to <a href="https://t.me/${esc(t.channel)}" target="_blank" rel="noopener noreferrer">@${esc(t.channel)}</a></p>
@@ -16036,7 +16061,10 @@ async function onAdminAction(action, el) {
   switch (action) {
     case 'admin-tab':
       A.tab = el.dataset.tab;
-      if (A.tab !== 'create') A.edit = null;
+      if (A.tab !== 'create') {
+        A.edit = null;
+        A.review = null;
+      }
       await renderAdmin();
       return window.scrollTo({ top: 0 });
     case 'admin-token-refresh':
@@ -16199,7 +16227,7 @@ async function onAdminAction(action, el) {
           return;
         }
         const { count } = await A.api.telegramPostOpen(again);
-        toast(count ? `Posting ${count} market${count === 1 ? '' : 's'}, a few seconds apart. Check the channel.` : 'Everything is posted already.');
+        toast(count ? `Queued ${count} post${count === 1 ? '' : 's'}, a few seconds apart. If any fail, the count here stays up.` : 'Everything is posted already.');
         setTimeout(async () => {
           A.info = await A.api.ping().catch(() => A.info);
           if (A.tab === 'settings') renderAdmin();
@@ -16518,10 +16546,14 @@ document.addEventListener('click', async (e) => {
       renderTop();
       toast('Logged out');
       return loadRoute();
+    case 'viz-retry':
+      return loadRoute();
     case 'viz-days':
       S.vizDays = Number(t.closest('[data-action]').dataset.days);
       return loadRoute();
     case 'claim':
+      if (S.claimingDaily) return;
+      S.claimingDaily = true;
       try {
         const from = t.closest('[data-action]').getBoundingClientRect();
         const me = await S.api.claimDaily();
@@ -16535,6 +16567,8 @@ document.addEventListener('click', async (e) => {
         return loadRoute();
       } catch (err) {
         return toast(err.message, true);
+      } finally {
+        S.claimingDaily = false;
       }
     case 'testnet-hide':
       writePref('fp:testnet-hide', '1');

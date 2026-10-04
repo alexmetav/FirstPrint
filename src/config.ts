@@ -18,7 +18,7 @@ export interface AppConfig {
   autoMarketsPerDay: number;
   autoMarketHours: number;
   sim: boolean;
-  /** Admin-run markets only: no exchange scanning or live price feeds. */
+  /** Admin-run markets. Only the MEXC new-listing check runs (see autoListings); no full scanner or live feeds. */
   manualOnly: boolean;
   trustProxyHops: number;
   googleClientId: string | null;

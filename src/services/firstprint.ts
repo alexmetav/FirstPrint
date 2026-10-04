@@ -243,6 +243,8 @@ export class FirstprintService {
   onEvent: (type: 'market' | 'price' | 'listing', data: Record<string, unknown>) => void = () => {};
   /** A market just went live for players, or just got its result (for the public Telegram channel). */
   onAnnounce: (kind: 'live' | 'result', marketId: string) => void = () => {};
+  /** Markets whose predictions just closed, however the close happened (timer tick or an admin preview). */
+  onClosed: (marketIds: string[]) => void = () => {};
   private announce(kind: 'live' | 'result', marketId: string) {
     queueMicrotask(() => {
       try {
@@ -1031,7 +1033,8 @@ export class FirstprintService {
     if (m.listing_at <= now) throw new AppError(409, 'bad_close_time', 'The prediction close time has passed. Edit it before publishing.');
     this.db.prepare('UPDATE markets SET published = 1, opened_at = ? WHERE id = ?').run(now, marketId);
     this.onEvent('market', { marketId });
-    this.announce('live', marketId);
+    // Unpublished and published again: it was already posted to the channel.
+    if (!(m as MarketRow & { announced_at?: number | null }).announced_at) this.announce('live', marketId);
     this.log(`manual market published ${marketId}`);
   }
 
@@ -1051,7 +1054,11 @@ export class FirstprintService {
     if (m.published === 1 || this.predictions(marketId).length > 0) {
       throw new AppError(409, 'not_a_draft', 'Only unpublished drafts can be deleted. Cancel a published market to refund it.');
     }
-    this.db.prepare('DELETE FROM markets WHERE id = ?').run(marketId);
+    tx(this.db, () => {
+      // A draft made from the New listings queue goes back to the queue.
+      this.db.prepare("UPDATE detected_listings SET status = 'pending', market_id = NULL WHERE market_id = ?").run(marketId);
+      this.db.prepare('DELETE FROM markets WHERE id = ?').run(marketId);
+    });
   }
 
   /** Shows what resolving would do (winning bucket, winners, payouts) without paying anything. */
@@ -1352,6 +1359,15 @@ export class FirstprintService {
       this.onEvent('market', { marketId: m.id });
       this.log(`market closed ${m.id}`);
     }
+    if (closed.length) {
+      queueMicrotask(() => {
+        try {
+          this.onClosed(closed);
+        } catch (err) {
+          this.log(`close alert failed: ${(err as Error).message}`);
+        }
+      });
+    }
     return closed;
   }
 
@@ -1539,7 +1555,12 @@ export class FirstprintService {
 
   /** Whether a market for this token is open or waiting for its result (any kind, including drafts). */
   hasActiveMarket(symbol: string): boolean {
-    return Boolean(this.db.prepare("SELECT 1 FROM markets WHERE symbol = ? AND status IN ('open', 'locked') LIMIT 1").get(symbol.toUpperCase()));
+    // A draft whose close time has passed was abandoned: it doesn't block a new listing of the same token.
+    return Boolean(
+      this.db
+        .prepare("SELECT 1 FROM markets WHERE symbol = ? AND status IN ('open', 'locked') AND NOT (published = 0 AND listing_at < ?) LIMIT 1")
+        .get(symbol.toUpperCase(), this.clock.now()),
+    );
   }
 
   /** Automatic markets for new listings: on unless an admin switched them off. */
@@ -1593,8 +1614,10 @@ export class FirstprintService {
   }
 
   /** Listings left in the review queue for days are no longer worth a market. */
-  expireDetections(listedBefore: number) {
-    this.db.prepare("UPDATE detected_listings SET status = 'ignored' WHERE status = 'pending' AND listing_at IS NOT NULL AND listing_at < ?").run(listedBefore);
+  expireDetections(before: number) {
+    this.db
+      .prepare("UPDATE detected_listings SET status = 'ignored' WHERE status = 'pending' AND ((listing_at IS NOT NULL AND listing_at < ?) OR (listing_at IS NULL AND detected_at < ?))")
+      .run(before, before);
   }
 
   /** Marks a detected listing as done once the admin has made a market for it from the review queue. */

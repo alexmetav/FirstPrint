@@ -1,8 +1,10 @@
 # Firstprint
 
-Predict where newly listed crypto tokens trade 72 hours after they list.
+Predict where newly listed crypto tokens trade after they list.
 
-In trading, the *first print* is a token's very first trade. Firstprint watches seven centralized exchanges for new listings, opens a prediction market for each one, and settles it on real exchange prices. Users sign in with a Solana wallet and stake points on one of five outcomes: Crash, Down, Flat, Up, or Moon.
+In trading, the *first print* is a token's very first trade. Firstprint runs prediction markets on newly listed tokens. Admins open the markets (new MEXC listings are detected automatically and queued for review) and post the result. Players sign in with Google, an email code or a Solana wallet and stake free points on a five-outcome ladder (Crash, Down, Flat, Up, Moon) or a Yes/No question. Points have no cash value; the 1,000 starting points and Earn rewards can be claimed as TestFPT on Solana's test network.
+
+The full seven-exchange scanner with self-settling markets also exists (`MANUAL_ONLY=0`), but production runs admin-run markets (`MANUAL_ONLY=1`).
 
 **Launching the public demo?** The static source is in `site/`, the isolated read-only API starts with `npm run start:demo`, and [LAUNCH.md](LAUNCH.md) covers the Render and Vercel deployment.
 
@@ -10,12 +12,13 @@ In trading, the *first print* is a token's very first trade. Firstprint watches 
 
 | Area | What it does |
 |---|---|
-| **Listing tracker** | Reads new-listing announcements (Binance, Bybit, OKX, Bitget, KuCoin) and detects new USDT trading pairs on all seven exchanges (adds MEXC and Gate). Detections appear on the public Listing radar page and wait for admin approval, or open markets automatically. |
+| **Listing tracker** | Reads new-listing announcements (Binance, Bybit, OKX, Bitget, KuCoin) and detects new USDT trading pairs on all seven exchanges (adds MEXC and Gate). With `MANUAL_ONLY=0`, detections appear on the public Listing radar page and wait for admin approval, or open markets automatically. With `MANUAL_ONLY=1` (production) only MEXC is checked, and new pairs wait in Admin → New listings. |
 | **Live data** | Pulls 1-minute candles for settlement and live tickers every few seconds, then streams prices to browsers over Server-Sent Events. |
 | **Market engine** | Outcome buckets, 1-hour average prices at start and end, volume-weighted median across exchanges, pool caps, early-bird weights, payouts, and cancellation rules. |
 | **Accounts** | Continue with Google, a one-time email code, or Sign-In With Solana (Phantom, Solflare, Backpack, or any Wallet Standard wallet). Users, wallets, points, predictions, and settlements are stored in the database. |
 | **Public website** | `site/`: the landing page (how it works, outcomes, rules, FAQ, a practice round) and the privacy policy. The app server serves it at `/` and the app at `/app/`. |
-| **Prediction app** | Markets, market page with live chart and outcome ladder, Listing radar, leaderboard, a personal dashboard (win rate, points won, best win, history), and linked wallets. Works on desktop and mobile. |
+| **Prediction app** | Markets, market page with chart and outcome ladder, leaderboard, a personal dashboard (win rate, points won, best win, history), daily streak (50 points on day 1, +25 a day, 200 a day from day 7; a missed UTC day starts again), linked wallets, and a Telegram button for the player channel. Works on desktop and mobile. |
+| **Admin** | Create and settle markets, New listings review queue, live price checks, Telegram alerts and the player channel, TestFPT and tasks, and **Analytics** with a read-only share link for partners (`#/stats/<key>`, totals only, can be rotated or turned off). |
 | **Earn** | Tasks on X (honour-based, verified by linked username), invite links, and claiming points to your wallet as **TestFPT**, a Token-2022 token on Solana testnet that the server mints and the player pays the fee for. Admins set up the token and tasks in the admin panel. |
 | **Solana program** | `solana/`: an Anchor program for on-chain USDC prediction pools with oracle settlement, plus tests and an oracle script. Unaudited, devnet only. |
 
@@ -43,7 +46,7 @@ By default (`MANUAL_ONLY=1`) admins run markets at `/#/admin`, and the only thin
 
 Every 2 minutes the server checks MEXC's public pair list (`/api/v3/exchangeInfo`, no API key) for new USDT pairs. Each new one appears under **New listings** in Admin (Overview and Markets) and, if connected, as a Telegram message. **Review** opens the market form already filled in: symbol, name, MEXC, close time (when trading starts for an upcoming token, otherwise an hour from now), a result 72 hours after listing, a description, and the live MEXC price with a one-click "Use as start price". Add the logo link (a copy is saved), check everything, and publish. **Skip** removes it. Tokens that already have a market, pairs that opened more than a day ago, and listings left for 3 days are dropped. Admins can pause the check in Settings; `AUTO_LISTINGS=0` turns it off, and `AUTO_LISTINGS=publish` instead opens self-settling markets straight away (at most `AUTO_MARKETS_PER_DAY`, default 5, a day, with results after `AUTO_MARKET_HOURS`, default 72). Results for admin-run markets have a "Use live price" button too.
 
-Telegram alerts: create a bot with @BotFather, set `TELEGRAM_BOT_TOKEN` on the server, then in Admin → Settings send the shown code to the bot and click Connect. Alerts go out for new listings and for markets that close and need a result. For players, add the same bot as an admin (with Post Messages) of a public channel and enter its name under **Player channel** in Settings: every published market is posted there with a *Predict now* button, and every result when it's in. Players then see a Telegram button on market pages, on their dashboard and profile, and in the menu. The server must stay awake for any of this (Render's free plan sleeps, so ping `/api/health` every few minutes).
+Telegram alerts: create a bot with @BotFather, set `TELEGRAM_BOT_TOKEN` on the server, then in Admin → Settings send the shown code to the bot and click Connect. Alerts go out for new listings and for markets that close and need a result. For players, add the same bot as an admin (with Post Messages) of a public channel and enter its name under **Player channel** in Settings: every published market is posted there with a banner and a *Predict now* button, a "last hour" reminder goes out an hour before predictions close, and every result with a winner is posted (cancelled markets are not). Settings → Player channel can also post open markets that were never posted, or all of them again. Players then see a Telegram button on market pages, on their dashboard and profile, and in the menu. The server must stay awake for any of this (Render's free plan sleeps, so ping `/api/health` every few minutes).
 
 Set `MANUAL_ONLY=0` to bring back the exchange scanner, live prices and live test markets.
 
@@ -51,7 +54,7 @@ Set `MANUAL_ONLY=0` to bring back the exchange scanner, live prices and live tes
 
 **New here? Follow [START-HERE.md](START-HERE.md)** to run the site with live tokens and real exchange prices before hosting.
 
-Requires **Node.js 22.18 or newer**. The website and backend have no npm packages to install.
+Requires **Node.js 22.18 or newer**. Run `npm install` first (three Solana libraries used for TestFPT).
 
 ```bash
 npm run setup       # creates .env and an admin key
@@ -74,7 +77,16 @@ Live test markets use real exchange prices for tokens that already trade. Create
 ```
 src/
   engine/engine.ts          Market math shared with the browser
-  services/firstprint.ts    Accounts, wallets, points ledger, markets, detections, settlement
+  services/firstprint.ts    Accounts, wallets, points ledger, daily streak, markets, detections, settlement
+  services/rewards.ts       Tasks, invites, welcome reward and TestFPT claims
+  services/telegram.ts      Telegram bot: admin alerts and channel post texts
+  services/channel.ts       Player channel posts (banner, results, last-hour reminders)
+  services/analytics.ts     Aggregate stats for Admin → Analytics and the partner link
+  services/notify.ts        Result emails
+  auth/google.ts, mailer.ts Google sign-in, email codes (Resend)
+  db/backup.ts              Supabase Storage backup and restore
+  solana/testfpt.ts         TestFPT mint and claims
+  api/fetchImage.ts         Safe download of admin logo links
   api/server.ts             HTTP API, sessions, SSE stream, admin routes, static site
   demo.ts / demoServer.ts   Isolated read-only public demo service
   exchanges/venues.ts       Binance, MEXC, Bybit, OKX, Gate, Bitget, KuCoin adapters
@@ -84,7 +96,7 @@ src/
   workers/scheduler.ts      Lifecycle, live, and tracker loops
   solana/siws.ts            Sign-In With Solana message and ed25519 verification
   solana/base58.ts
-  auth/passwords.ts         scrypt hashing for email accounts
+  auth/passwords.ts         scrypt hashing for old password accounts
   db/schema.sql
 web/
   app.js                    Website UI
@@ -98,7 +110,7 @@ test/                       engine, lifecycle, solana, exchanges
 
 1. The browser requests `GET /api/auth/wallet/challenge?address=…`. The server stores a one-time nonce and the exact message.
 2. The wallet signs the message with `solana:signMessage`. Signing is free and sends no transaction.
-3. `POST /api/auth/wallet/verify` checks the ed25519 signature, the stored message, expiry (5 minutes), and single use. On first sign-in it creates the account with 1,000 points, then sets an HttpOnly session cookie.
+3. `POST /api/auth/wallet/verify` checks the ed25519 signature, the stored message, expiry (5 minutes), and single use. On first sign-in it creates the account (with TestFPT set up, the 1,000 starting points wait as a welcome reward to claim on the Earn page), then sets an HttpOnly session cookie.
 4. New wallet accounts are asked to choose a username. Email accounts can link wallets from the portfolio page.
 
 Messages follow the Sign-In With Solana layout and include the domain from `PUBLIC_URL`, so wallets can show where a request comes from.
@@ -125,18 +137,25 @@ Signed-in requests use the `fp_session` HttpOnly cookie (or `Authorization: Bear
 |---|---|---|
 | GET | `/api/auth/wallet/challenge?address=` | Sign-in message for a Solana address |
 | POST | `/api/auth/wallet/verify` | `{ address, message, signature, walletName }`; signature in base58 or base64 |
-| POST | `/api/auth/signup`, `/api/auth/login`, `/api/auth/logout` | Email fallback |
+| POST | `/api/auth/email/start`, `/api/auth/email/verify` | `{ email }`, then `{ email, code }` |
+| POST | `/api/auth/google` | `{ credential }` from Google Identity Services |
+| POST | `/api/auth/login`, `/api/auth/logout` | Old password accounts; sign out |
 | GET | `/api/me` | Points, username, linked wallets |
 | POST | `/api/me/profile` | `{ username }` |
 | GET, POST | `/api/me/wallets` | List wallets, or link one (same signed-message body) |
-| POST | `/api/me/claim-daily` | +100 points per UTC day |
+| POST | `/api/me/claim-daily` | Streak reward: 50 on day 1, +25 a day, 200 a day from day 7; a missed UTC day resets |
+| GET | `/api/me/daily` | Streak, next reward and the last 42 days of claims |
+| GET | `/api/me/stats`, `/api/me/ledger`, `/api/me/notifications` | Dashboard numbers, points history, result notifications |
+| GET, POST | `/api/me/rewards`, `/api/me/x`, `/api/tasks/:id/start`, `/verify`, `/api/me/claims` | Earn page: rewards, X username, tasks, TestFPT claims |
+| GET | `/api/users/:username` | Public profile |
+| GET | `/api/public/analytics?key=&days=` | Partner stats (totals only), only with the current share key |
 | GET | `/api/me/predictions` | |
 | GET | `/api/markets?filter=open\|live\|settled\|all` | |
 | GET | `/api/markets/:id` | Includes live price and your predictions |
 | GET | `/api/markets/:id/quote?bucket=&stake=` | Estimated payout |
 | POST | `/api/markets/:id/predictions` | `{ bucket, stake }` |
 | GET | `/api/markets/:id/chart`, `/activity`, `/settlement` | Settlement includes the data hash |
-| GET | `/api/listings/detected` | Listing radar |
+| GET | `/api/listings/detected` | Listing radar (only with `MANUAL_ONLY=0`) |
 | GET | `/api/stream` | Server-Sent Events: `price`, `market`, `listing` |
 | GET | `/api/leaderboard` | |
 
@@ -155,6 +174,12 @@ Signed-in requests use the `fp_session` HttpOnly cookie (or `Authorization: Bear
 | GET | `/api/admin/exchanges/check` | Calls every exchange and reports what works |
 | POST | `/api/admin/markets` | Creates a market manually |
 | POST | `/api/admin/markets/:id/listing-time`, `/retract`, `/halt` | Corrections |
+| GET, POST | `/api/admin/manual-markets`, `/:id`, `/:id/publish`, `/unpublish`, `/delete`, `/preview`, `/resolve`, `/start-price` | Admin-run markets (`detectionId` links a New listings entry) |
+| POST | `/api/admin/price-check`; GET `/api/admin/market-checks`, `/api/admin/fetch-image?url=` | Live prices, warnings, logo copies |
+| POST | `/api/admin/auto-listings` | `{ enabled }` pauses or resumes the MEXC check |
+| POST | `/api/admin/telegram/connect`, `/test`, `/channel`, `/post-open`, `/disconnect`; `/api/admin/markets/:id/telegram` | Telegram alerts and the player channel |
+| GET, POST | `/api/admin/analytics?days=`, `/api/admin/analytics/share` | Analytics; `{ enabled }` creates a new share link or turns it off |
+| GET, POST | `/api/admin/token`, `/api/admin/tasks`, `/api/admin/log` | TestFPT setup, tasks, admin activity |
 
 Example approval:
 
@@ -180,7 +205,7 @@ See `solana/README.md` for build, test, deploy, and oracle instructions.
 
 - [ ] Test every exchange adapter against the live APIs on staging.
 - [ ] Set `NODE_ENV=production`, `PUBLIC_URL`, and a long `ADMIN_KEY`, and serve over HTTPS.
-- [ ] Move to PostgreSQL with backups once traffic grows (`schema.sql` maps directly).
+- [ ] Move to PostgreSQL once traffic grows (`schema.sql` maps directly). Backups already go to Supabase Storage.
 - [ ] Add monitoring and alerts for failed tracking, ingestion, or settlement.
 - [ ] Get legal advice before points gain any value or real-money pools launch.
 - [ ] Check the name "Firstprint" for trademarks and domain availability.

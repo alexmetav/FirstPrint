@@ -6,13 +6,13 @@ This guide runs the full site on your computer with **real exchange prices**, so
 
 - A computer (Windows, Mac, or Linux) with internet access.
 - **Node.js 22.18 or newer.** Download the LTS version from [nodejs.org](https://nodejs.org). Check it by running `node -v` in a terminal.
-- A Solana wallet browser extension, such as [Phantom](https://phantom.com/download), [Solflare](https://solflare.com/download), or [Backpack](https://backpack.app/download). You don't need any SOL or tokens, because sign-in only signs a message.
+- A way to sign in. Locally, **Continue with email** works without any setup: the code shows in the popup. You can also use a Solana wallet extension, such as [Phantom](https://phantom.com/download), [Solflare](https://solflare.com/download), or [Backpack](https://backpack.app/download). You don't need any SOL, because sign-in only signs a message.
 
 ## Steps
 
-**1. Unzip and open a terminal in the folder**
+**1. Get the code and open a terminal in the folder**
 
-Unzip `firstprint.zip`, then open a terminal inside the `firstprint` folder.
+Clone the repository (or download it as a ZIP from GitHub and unzip it), open a terminal inside the folder, and run `npm install`.
 - Windows: open the folder, click the address bar, type `cmd`, and press Enter.
 - Mac: right-click the folder and choose "New Terminal at Folder".
 
@@ -24,7 +24,7 @@ npm run setup
 
 This creates your `.env` settings file and prints an **admin key**. Copy the key somewhere safe.
 
-This guide uses live exchange markets, which are **off by default**: out of the box, admins create and settle every market by hand. Open `.env` and change `MANUAL_ONLY=1` to `MANUAL_ONLY=0`. Without this, steps 3, 5 and 7 have nothing to show: the exchange tracker doesn't run, and Admin hides **Create all** and **Scan exchanges now**.
+This guide uses live exchange markets, which are **off by default**: out of the box, admins create and settle every market by hand. Open `.env` and change `MANUAL_ONLY=1` to `MANUAL_ONLY=0`. Without this, steps 3, 5 and 7 have nothing to show: only the MEXC new-listing check runs (into Admin → New listings), and Admin hides **Create all** and **Scan exchanges now**.
 
 **3. Check the exchange connections**
 
@@ -33,7 +33,7 @@ npm run check
 ```
 
 Every exchange should show `PASS`. If one fails:
-- Binance blocks some countries, including the US. Remove `binance` from `TRACK_VENUES` in `.env`.
+- Binance blocks some countries, including the US. The check still tests it; to stop the tracker using it, set `TRACK_VENUES` in `.env` to the other exchanges (for example `mexc,bybit,okx,gate,bitget,kucoin`).
 - A VPN, firewall, or office network can block exchange APIs. Try another network.
 
 **4. Start the site**

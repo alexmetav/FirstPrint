@@ -26,13 +26,35 @@ export function isPrivateAddress(ip: string): boolean {
     );
   }
   if (v === 6) {
-    const s = ip.toLowerCase();
-    if (s === '::' || s === '::1') return true;
-    const mapped = s.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    if (mapped) return isPrivateAddress(mapped[1]);
-    return s.startsWith('fc') || s.startsWith('fd') || s.startsWith('fe8') || s.startsWith('fe9') || s.startsWith('fea') || s.startsWith('feb') || s.startsWith('ff');
+    const h = ipv6Hextets(ip);
+    if (!h) return true;
+    const v4 = (hi: number, lo: number) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+    const zero = (n: number) => h.slice(0, n).every((x) => x === 0);
+    if (h.every((x) => x === 0) || (zero(7) && h[7] === 1)) return true; // :: and ::1
+    // IPv4 inside IPv6 (mapped ::ffff:a.b.c.d, the old ::a.b.c.d form, NAT64 64:ff9b::, 6to4 2002::): check the IPv4.
+    if (zero(5) && (h[5] === 0xffff || h[5] === 0)) return isPrivateAddress(v4(h[6], h[7]));
+    if (h[0] === 0x64 && h[1] === 0xff9b && h.slice(2, 6).every((x) => x === 0)) return isPrivateAddress(v4(h[6], h[7]));
+    if (h[0] === 0x2002) return isPrivateAddress(v4(h[1], h[2]));
+    return (h[0] & 0xfe00) === 0xfc00 || (h[0] & 0xffc0) === 0xfe80 || (h[0] & 0xff00) === 0xff00;
   }
   return true;
+}
+
+/** The eight 16-bit groups of an IPv6 address (handles :: and a trailing dotted IPv4), or null. */
+function ipv6Hextets(ip: string): number[] | null {
+  let s = ip.toLowerCase().split('%')[0];
+  const dotted = s.match(/(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (dotted) {
+    const [a, b, c, d] = dotted.slice(1).map(Number);
+    s = s.slice(0, dotted.index) + `${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const [head, tail] = s.split('::');
+  const part = (x: string | undefined) => (x ? x.split(':').map((g) => parseInt(g, 16)) : []);
+  const a = part(head);
+  const b = part(tail);
+  const fill = s.includes('::') ? 8 - a.length - b.length : 0;
+  const out = [...a, ...Array(Math.max(0, fill)).fill(0), ...b];
+  return out.length === 8 && out.every((x) => Number.isInteger(x) && x >= 0 && x <= 0xffff) ? out : null;
 }
 
 async function assertPublicUrl(raw: string): Promise<URL> {
