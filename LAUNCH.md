@@ -43,7 +43,7 @@ The static site and the read-only demo above don't have accounts. The full app i
 
 **How the database survives.** Render's free plan wipes the disk whenever the server restarts or goes to sleep. So the server restores its database from Supabase when it starts, saves a compressed copy every 5 minutes if anything changed, and saves once more when Render shuts it down. The admin page shows when the last copy was saved. If the saved copy exists but can't be downloaded, the server refuses to start rather than begin empty and overwrite it. It also keeps one dated copy per day for the last 30 days. At most the last 5 minutes of activity can be lost if the server is killed without warning. During a deploy Render briefly runs the old and new server side by side, so deploy at a quiet time: predictions made in that minute or two can be lost.
 
-**Free-plan limits to know about.** The server sleeps after 15 minutes without visits and takes about a minute to wake up. While it sleeps, the MEXC new-listing check, Telegram alerts, channel posts and last-hour reminders don't run, so ping `/api/health` every 5 minutes (for example with UptimeRobot, free). It must stay a single instance. When it wakes, markets whose timer ended close on the first tick. Both free Render services share 750 hours a month, so keeping this one awake around the clock would leave the demo API asleep.
+**Free-plan limits to know about.** The server sleeps after 15 minutes without visits and takes about a minute to wake up. While it sleeps, the new-listing check, Telegram alerts, channel posts and last-hour reminders don't run, so ping `/api/health` every 5 minutes (for example with UptimeRobot, free). It must stay a single instance. When it wakes, markets whose timer ended close on the first tick. Both free Render services share 750 hours a month, so keeping this one awake around the clock would leave the demo API asleep.
 
 ### Steps
 
@@ -53,7 +53,7 @@ The static site and the read-only demo above don't have accounts. The full app i
    - `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` from step 1.
    - `GOOGLE_CLIENT_ID`, `RESEND_API_KEY`, `MAIL_FROM`: optional. Leave one blank and that option stays hidden. See the README under "Signing in".
    - `TELEGRAM_BOT_TOKEN`: optional, from @BotFather. Turns on admin alerts and the player channel (see *Telegram* below).
-   - New MEXC listings go to Admin → New listings by default. `AUTO_LISTINGS=0` turns the check off; `AUTO_LISTINGS=publish` opens self-settling markets instead (`AUTO_MARKETS_PER_DAY`, `AUTO_MARKET_HOURS`).
+   - New listings on MEXC, OKX, Gate, Bitget and KuCoin go to Admin → New listings by default (`LISTING_VENUES` changes the list; Binance and Bybit block US servers, see Settings → Exchange check). `AUTO_LISTINGS=0` turns the check off; `AUTO_LISTINGS=publish` opens self-settling markets instead (`AUTO_MARKETS_PER_DAY`, `AUTO_MARKET_HOURS`).
 3. Wait for the deploy to go green, then open `https://<service>.onrender.com/api/health`. It should return `{"ok":true,...}`.
 4. Read the generated admin key in Render → `firstprint-app` → Environment → `ADMIN_KEY`. Open `<your app address>/#/admin` and paste it. The page should say "Database backup: last saved ...". Keep the key private.
 5. Custom domain: in Render → Settings → Custom Domains add your domain (for example `firstprint.fun`), then add the DNS record Render shows you. Set `PUBLIC_URL` to that address and redeploy.
@@ -64,7 +64,7 @@ The static site and the read-only demo above don't have accounts. The full app i
 ### Telegram: admin alerts and the player channel
 
 1. In Telegram, open **@BotFather**, send `/newbot` and follow the steps. Put the token in Render as `TELEGRAM_BOT_TOKEN` (never in chat or the repo).
-2. **Your alerts:** Admin → Settings → Telegram alerts shows a code. Send it to your bot, then press **Connect**. You get a message for every new MEXC listing and every market that closes and needs a result.
+2. **Your alerts:** Admin → Settings → Telegram alerts shows a code. Send it to your bot, then press **Connect**. You get a message for every new listing on the exchanges we watch and every market that closes and needs a result.
 3. **Player channel:** create a public channel, add the bot as an admin with **Post Messages**, and enter the channel name under **Player channel**. Every market you publish is posted with the new-market banner and a **Predict now** button, a "last hour" reminder goes out an hour before predictions close, and results with a winner are posted. **Post all now** posts open markets made before the channel was set up. Players see a Telegram button on market pages, their dashboard and the menu.
 
 ### Analytics for partners

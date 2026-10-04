@@ -11,14 +11,19 @@ export interface AppConfig {
   trackEveryMs: number;
   autoCreateMarkets: boolean;
   /**
-   * New MEXC listings when MANUAL_ONLY is on: 'review' puts them in the admin's review queue
+   * Exchanges watched for new listings when MANUAL_ONLY is on. Binance and Bybit refuse servers
+   * in the US (Render's default region), so they are left out unless LISTING_VENUES names them.
+   */
+  listingVenues: string[];
+  /**
+   * New listings when MANUAL_ONLY is on: 'review' puts them in the admin's review queue
    * (default), 'publish' opens a self-settling market straight away, 'off' does nothing.
    */
   autoListings: 'review' | 'publish' | 'off';
   autoMarketsPerDay: number;
   autoMarketHours: number;
   sim: boolean;
-  /** Admin-run markets. Only the MEXC new-listing check runs (see autoListings); no full scanner or live feeds. */
+  /** Admin-run markets. Only the new-listing check runs (see listingVenues, autoListings); no full scanner or live feeds. */
   manualOnly: boolean;
   trustProxyHops: number;
   googleClientId: string | null;
@@ -29,6 +34,8 @@ export interface AppConfig {
 }
 
 const ALL_VENUES = ['binance', 'mexc', 'bybit', 'okx', 'gate', 'bitget', 'kucoin'];
+const LISTING_VENUES = ['mexc', 'okx', 'gate', 'bitget', 'kucoin'];
+const list = (v: string) => v.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const production = env.NODE_ENV === 'production';
@@ -42,7 +49,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     solanaChain: ['mainnet', 'devnet', 'testnet'].includes(chain) ? chain : 'mainnet',
     tickMs: Number(env.TICK_MS ?? 5_000),
     liveMs: Number(env.LIVE_MS ?? 5_000),
-    trackVenues: env.TRACK_VENUES === undefined ? ALL_VENUES : env.TRACK_VENUES.split(',').map((s) => s.trim()).filter(Boolean),
+    trackVenues: env.TRACK_VENUES === undefined ? ALL_VENUES : list(env.TRACK_VENUES),
+    listingVenues: env.LISTING_VENUES === undefined ? LISTING_VENUES : list(env.LISTING_VENUES),
     trackEveryMs: Number(env.TRACK_EVERY_MS ?? 120_000),
     autoCreateMarkets: env.AUTO_CREATE_MARKETS === '1',
     autoListings: env.AUTO_LISTINGS === '0' || env.AUTO_LISTINGS === 'off' ? 'off' : env.AUTO_LISTINGS === 'publish' ? 'publish' : 'review',

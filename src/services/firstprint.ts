@@ -912,6 +912,10 @@ export class FirstprintService {
     return this.exchangeSettings();
   }
 
+  exchangeEnabled(id: string) {
+    return !this.disabledExchanges().has(id);
+  }
+
   private disabledExchanges(): Set<string> {
     const r = as<{ value: string } | undefined>(this.db.prepare("SELECT value FROM settings WHERE key = 'exchanges_disabled'").get());
     return new Set(r ? (JSON.parse(r.value) as string[]) : []);

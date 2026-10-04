@@ -7,6 +7,8 @@ const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 /** A pair found after trading began still gets a market if it opened less than this long ago. */
 const LATEST_START_MS = 40 * MINUTE;
+/** Announcements older than this are skipped, so a newly watched exchange doesn't alert its whole back catalogue. */
+const OLDEST_ANNOUNCEMENT_MS = 2 * DAY;
 
 /**
  * Finds new exchange listings two ways:
@@ -20,8 +22,9 @@ const LATEST_START_MS = 40 * MINUTE;
  * Automatic markets are published straight away, up to maxPerDay in any 24 hours.
  *
  * With review on, new listings wait in the admin's review queue instead, and onNew
- * is told about each one (for a Telegram alert). Tokens that already have a market,
- * and pairs that opened more than a day ago (an old pair switched back on), are skipped.
+ * is told about each one (for a Telegram alert). Tokens that already have a market or are
+ * already waiting for review (found on another exchange, or announced first), and pairs
+ * that opened more than a day ago (an old pair switched back on), are skipped.
  */
 export class ListingTracker {
   service: FirstprintService;
@@ -31,6 +34,8 @@ export class ListingTracker {
   durationMs: number | undefined;
   /** Checked on every run, so an admin can switch automatic markets off without a restart. */
   enabled: () => boolean;
+  /** Checked on every run, so an admin can stop watching one exchange without a restart. */
+  venueEnabled: (id: string) => boolean;
   review: boolean;
   onNew: (detections: Detection[]) => void | Promise<void>;
 
@@ -42,6 +47,7 @@ export class ListingTracker {
       maxPerDay?: number;
       durationMs?: number;
       enabled?: () => boolean;
+      venueEnabled?: (id: string) => boolean;
       review?: boolean;
       onNew?: (detections: Detection[]) => void | Promise<void>;
     },
@@ -52,6 +58,7 @@ export class ListingTracker {
     this.maxPerDay = opts.maxPerDay ?? Infinity;
     this.durationMs = opts.durationMs;
     this.enabled = opts.enabled ?? (() => true);
+    this.venueEnabled = opts.venueEnabled ?? (() => true);
     this.review = opts.review ?? false;
     this.onNew = opts.onNew ?? (() => {});
   }
@@ -61,9 +68,12 @@ export class ListingTracker {
     const created: number[] = [];
     const names = new Map<number, string>();
     for (const venue of this.venues) {
+      if (!this.venueEnabled(venue.id)) continue;
       if (venue.fetchAnnouncements) {
         try {
+          const oldest = this.service.clock.now() - OLDEST_ANNOUNCEMENT_MS;
           for (const a of await venue.fetchAnnouncements()) {
+            if (a.publishedAt !== null && a.publishedAt < oldest) continue;
             const symbols = a.symbols.length ? a.symbols : [null];
             for (const symbol of symbols) {
               const id = this.service.recordDetection({
@@ -122,11 +132,19 @@ export class ListingTracker {
     if (this.review && created.length) {
       const now = this.service.clock.now();
       const fresh: Detection[] = [];
-      for (const d of this.service.detections({ status: 'pending', limit: 200 })) {
+      const pending = this.service.detections({ status: 'pending', limit: 200 });
+      // Symbols already waiting for review from earlier runs: the same token on another exchange is a repeat.
+      const waiting = new Set(pending.filter((d) => !created.includes(d.id) && d.symbol).map((d) => d.symbol!.toUpperCase()));
+      // Oldest first, so the first exchange to show a token is the one kept.
+      for (const d of [...pending].sort((a, b) => a.id - b.id)) {
         if (!created.includes(d.id)) continue;
         const stale = d.listingAt !== null && d.listingAt < now - DAY;
-        if (!d.symbol || stale || this.service.hasActiveMarket(d.symbol)) this.service.ignoreDetection(d.id);
-        else fresh.push(d);
+        const repeat = d.symbol !== null && waiting.has(d.symbol.toUpperCase());
+        if (!d.symbol || stale || repeat || this.service.hasActiveMarket(d.symbol)) this.service.ignoreDetection(d.id);
+        else {
+          waiting.add(d.symbol.toUpperCase());
+          fresh.push(d);
+        }
       }
       if (fresh.length) {
         try {
