@@ -988,7 +988,7 @@ function homeHero(showLive = true) {
             ? `<a class="hero-badge hero-badge-live" href="#/earn"><span class="dot-live" aria-hidden="true"></span>Testnet live<span class="hero-badge-more"> · Claim 1,000 TestFPT</span> ${ico('arrowRight')}</a>`
             : `<p class="hero-badge">${ico('sparkles')}Listing prediction markets<span class="hero-badge-more"> · Free to play</span></p>`
         }
-        <h1 id="hero-title">Predict where new listings land.<span class="soft"> Before the price settles.</span></h1>
+        <h1 id="hero-title">Predict where new listings land<span class="soft"> before the price settles</span></h1>
         <p class="hero-sub">Pick one of five outcomes (${LADDER.map(word).join(', ')}) on freshly listed tokens${venues.length ? ` across ${esc(list(venues))}` : ''}. Points only, no real money.</p>
         ${stats.length ? `<dl class="hero-stats">${stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
       </div>
@@ -1247,7 +1247,7 @@ function cardView(m) {
       .map((b) => {
         const x = poolMultiple(m, b);
         const pct = m.pool ? Math.round(share(m, b) * 100) : 0;
-        return `<div class="o-row" style="--c:var(--${b});--share:${pct}%">
+        return `<div class="o-row" style="--c:var(--${b});--sf:${pct / 100}">
           <span class="o-name">${icon(b)}${oName(b)}</span>
           <b class="o-pct">${m.pool ? `${tick(`pct:${m.id}:${b}`, pct)}%` : '–'}</b>
           <button class="qp qp-sm" style="--c:var(--${b})" data-action="quick-pick" data-id="${esc(m.id)}" data-bucket="${b}"${open ? '' : ' disabled'} aria-label="Pick ${oName(b)} on ${esc(m.symbol)}">${x ? `${x.toFixed(1)}×` : 'Pick'}</button>
@@ -1274,6 +1274,13 @@ function cardView(m) {
     ? '<span class="card-act quiet">Be the first to predict</span>'
     : '';
 
+  // A countdown to when predictions close (or, for an upcoming token, to its listing), so the
+  // markets running out of time stand out.
+  const left = m.closeAt - now();
+  const timer = open && left > 0
+    ? `<span class="card-timer${left < 3_600_000 ? ' urgent' : left < 86_400_000 ? ' today' : ''}" title="${upcoming ? 'Lists' : 'Predictions close'} ${esc(fmtDate(m.closeAt))}">${ico('clock')}<span data-until="${m.closeAt}">${fmtDur(left)}</span></span>`
+    : '';
+
   return `
     <article class="card mcard${soon ? ' soon' : ''}${joined > 0 ? ' has-new' : ''}">
       ${joined > 0 ? `<span class="card-bump" aria-hidden="true">+${joined}</span>` : ''}
@@ -1283,7 +1290,7 @@ function cardView(m) {
         ${g}
       </div>
       ${body}
-      <div class="card-foot">${state}${activity}</div>
+      <div class="card-foot"><span class="foot-l">${state}${timer}</span>${activity}</div>
     </article>`;
 }
 
@@ -2632,7 +2639,7 @@ function startChecklist() {
       <div class="tn-coins" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="tn-copy">
         <p class="tn-kicker"><span class="dot-live" aria-hidden="true"></span>Testnet is live</p>
-        <h2 id="testnet-title">Claim 1,000 free TestFPT<span class="soft"> on Solana ${clusterName()}.</span></h2>
+        <h2 id="testnet-title">Claim 1,000 free TestFPT<span class="soft"> on Solana ${clusterName()}</span></h2>
         <p class="tn-sub">Your Firstprint points, as a token in your own wallet. Takes about two minutes. Test network only, no real money.</p>
       </div>
       <ol class="tn-steps">${steps

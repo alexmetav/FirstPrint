@@ -1966,7 +1966,7 @@ body[data-view='landing'] .app {
 }
 
 /* ===== Type system: Geist for words, Geist Mono for labels and numbers =====
-   Medium-weight two-tone headlines, mono eyebrows with a leading rule,
+   Medium-weight two-tone headlines, small mono eyebrows,
    light body copy with room to breathe. */
 body {
   font-family: var(--body);
@@ -2014,14 +2014,6 @@ h3 {
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
-}
-.eyebrow:not(:has(.dot-live))::before {
-  content: '';
-  flex: none;
-  width: 24px;
-  height: 1px;
-  background: currentColor;
-  opacity: 0.7;
 }
 
 .lede,
@@ -2306,7 +2298,7 @@ window.FIRSTPRINT_CONFIG = {
               <h1 class="hero-title">
                 <span class="line"><span>Call where</span></span>
                 <span class="line"><span>new <em>listings</em></span></span>
-                <span class="line"><span class="soft">land.</span></span>
+                <span class="line"><span class="soft">land</span></span>
               </h1>
               <p class="lede reveal" data-delay="220">Firstprint runs prediction markets on newly listed crypto tokens. Pick one of five outcomes, from Crash to Moon, with free points. Call it right and you split the pool.</p>
               <div class="hero-actions reveal" data-delay="320">
@@ -2342,7 +2334,7 @@ window.FIRSTPRINT_CONFIG = {
           <div class="wrap testnet-inner">
             <div class="testnet-copy">
               <p class="eyebrow reveal"><span class="dot-live" aria-hidden="true"></span>Testnet is live</p>
-              <h2 class="reveal" data-delay="60">Your points are now<br /><span class="soft">a token in your wallet.</span></h2>
+              <h2 class="reveal" data-delay="60">Your points are now<br /><span class="soft">a token in your wallet</span></h2>
               <p class="sub reveal" data-delay="120">Firstprint points now live on Solana Testnet as <b>TestFPT</b>. Sign in and claim your 1,000 starting points in about two minutes: Google and email players get a wallet made for them, and Firstprint pays every fee. It’s a test network: free to use, no real money.</p>
               <div class="testnet-actions reveal" data-delay="180">
                 <a class="btn btn-solid btn-gold magnetic" data-app-link="#/earn" href="#faq">Claim 1,000 TestFPT</a>
@@ -2370,7 +2362,7 @@ window.FIRSTPRINT_CONFIG = {
           <div class="wrap">
             <div class="section-head">
               <p class="eyebrow reveal">How it works</p>
-              <h2 class="reveal" data-delay="60">Four steps,<br /><span class="soft">one question.</span></h2>
+              <h2 class="reveal" data-delay="60">Four steps,<br /><span class="soft">one question</span></h2>
             </div>
             <ol class="steps">
               <li class="reveal"><span class="step-n">01</span><h3>A market opens</h3><p>Firstprint opens a market on a newly listed token, with its start price, the exchanges it trades on, and when predictions close.</p></li>
@@ -2386,7 +2378,7 @@ window.FIRSTPRINT_CONFIG = {
           <div class="wrap">
             <div class="section-head center">
               <p class="eyebrow reveal">The scale</p>
-              <h2 class="reveal" data-delay="60">Five outcomes.<br /><span class="soft">Or just Yes or No.</span></h2>
+              <h2 class="reveal" data-delay="60">Five outcomes<br /><span class="soft">or just Yes or No</span></h2>
               <p class="sub reveal" data-delay="120">How far does the final price move from the start price? Some markets ask a simple Yes/No question instead. These are the usual ranges. Every market shows its own before you predict.</p>
             </div>
             <div class="scale" role="list">
@@ -2404,7 +2396,7 @@ window.FIRSTPRINT_CONFIG = {
           <div class="wrap">
             <div class="section-head center">
               <p class="eyebrow reveal">Try it</p>
-              <h2 class="reveal" data-delay="60">Make a call.<br /><span class="soft">See how it feels.</span></h2>
+              <h2 class="reveal" data-delay="60">Make a call<br /><span class="soft">and see how it feels</span></h2>
               <p class="sub reveal" data-delay="120">A quick practice round with a made-up token and a random result. Pick an outcome and watch it play out.</p>
             </div>
 
@@ -2452,7 +2444,7 @@ window.FIRSTPRINT_CONFIG = {
           <div class="wrap">
             <div class="section-head">
               <p class="eyebrow reveal">Fair by design</p>
-              <h2 class="reveal" data-delay="60">New listings are wild.<br /><span class="soft">The rules aren’t.</span></h2>
+              <h2 class="reveal" data-delay="60">New listings are wild,<br /><span class="soft">the rules aren’t</span></h2>
               <p class="sub reveal" data-delay="120">Every market shows its rules before you predict, and they can’t be changed to anyone’s advantage afterwards.</p>
             </div>
             <div class="fair-grid">
@@ -2471,7 +2463,7 @@ window.FIRSTPRINT_CONFIG = {
           <div class="wrap">
             <div class="section-head">
               <p class="eyebrow reveal">Your points</p>
-              <h2 class="reveal" data-delay="60">Free to start.<br /><span class="soft">Free every day.</span></h2>
+              <h2 class="reveal" data-delay="60">Free to start,<br /><span class="soft">free every day</span></h2>
               <p class="sub reveal" data-delay="120">Points have no cash value. You can’t buy them or cash them out, so it’s all skill and bragging rights. Your 1,000 starting points and Earn rewards arrive as <b>TestFPT</b>, a token on the Solana test network, when you claim them to your wallet.</p>
             </div>
             <dl class="big-stats">
@@ -2493,7 +2485,7 @@ window.FIRSTPRINT_CONFIG = {
           <div class="wrap">
             <div class="section-head">
               <p class="eyebrow reveal">Roadmap</p>
-              <h2 class="reveal" data-delay="60">Shipping in the open.</h2>
+              <h2 class="reveal" data-delay="60">Shipping in the open</h2>
             </div>
             <ol class="roadmap">
               <li class="is-live reveal"><span class="status">Live now</span><h3>Prediction markets</h3><p>Markets on newly listed tokens, free points, a leaderboard and a personal stats dashboard.</p></li>
@@ -2509,7 +2501,7 @@ window.FIRSTPRINT_CONFIG = {
         <!-- FAQ -->
         <section class="section faq" id="faq">
           <div class="wrap">
-            <div class="section-head"><p class="eyebrow reveal">Questions</p><h2 class="reveal" data-delay="60">Good to know.</h2></div>
+            <div class="section-head"><p class="eyebrow reveal">Questions</p><h2 class="reveal" data-delay="60">Good to know</h2></div>
             <div class="faq-list reveal" data-delay="100">
               <details><summary>How do I start?</summary><p>Open the app and sign in with Google, an email code or a Solana wallet. Link a Solana wallet (or let Firstprint make one for you) and claim your 1,000 starting points as TestFPT, free. The app walks you through it. You can also claim free points every day: 50 on the first day, growing to 200 a day with a streak.</p></details>
               <details><summary>What is TestFPT?</summary><p>TestFPT is your Firstprint points as a token on Solana’s test network: your 1,000 starting points, Earn rewards (tasks and invites) and daily streak points are minted to your wallet. With a Firstprint wallet, every prediction, win and refund moves as TestFPT too. It’s a test network, so TestFPT has no monetary value. Firstprint pays every network fee, so you never need test SOL.</p></details>
