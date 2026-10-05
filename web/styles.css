@@ -10355,3 +10355,26 @@ svg.viz.viz-narrow {
 .inbox li:has(.pnl-mini) {
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
+
+/* ===== Admin: markets that open by themselves ===== */
+.auto-open {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.auto-open[hidden],
+.auto-open-at[hidden] {
+  display: none;
+}
+.auto-open-at {
+  display: grid;
+  gap: 4px;
+}
+.auto-note {
+  display: block;
+  margin-top: 4px;
+  max-width: 280px;
+}

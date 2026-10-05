@@ -3416,6 +3416,7 @@ function afterAdminRender() {
   // A listing from the review queue: show its live price straight away.
   if (form?.querySelector('[name=detectionId]')) runPriceCheck();
   if (form && form.querySelector('[name=symbol]')?.value.trim()) runBannerPreview();
+  if (form?.querySelector('[data-auto-open]')) syncAutoOpen(form);
 }
 
 /** Draws the market's Telegram banner from the form as it is now (nothing is saved). */
@@ -3807,7 +3808,7 @@ function marketForm(m, pre = null) {
   const pct = (n) => String(Math.round(n * 1000) / 10);
   const upcoming = Boolean(v) && v.basePrice == null;
   return `
-    <form id="admin-market" class="admin-form admin-grid" data-id="${m ? esc(m.id) : ''}" data-outcomes="${m?.outcomes === 'binary' ? 'binary' : 'ladder'}">
+    <form id="admin-market" class="admin-form admin-grid" data-id="${m ? esc(m.id) : ''}" data-published="${m?.published ? '1' : '0'}" data-outcomes="${m?.outcomes === 'binary' ? 'binary' : 'ladder'}">
       ${pre?.detectionId ? `<input type="hidden" name="detectionId" value="${pre.detectionId}" />` : ''}
       <fieldset class="type-pick" style="grid-column:1/-1"${lock}><legend class="field-label">Market type</legend>
         <label class="type-card"><input type="radio" name="outcomes" value="ladder"${m?.outcomes === 'binary' ? '' : ' checked'} /><span>${ico('trendUp')}<b>Five outcomes</b><small>Crash, Down, Flat, Up or Moon: how far the price moves from the start price.</small></span></label>
@@ -3833,6 +3834,11 @@ function marketForm(m, pre = null) {
         <div class="upcoming-opt">
           <label class="check upcoming-check"><input type="checkbox" name="upcoming" data-upcoming${upcoming ? ' checked' : ''}${lock} /> Upcoming token: not trading yet</label>
           <small class="muted">No price needed now: the start price becomes its opening price. Set predictions to close when trading starts, then add the opening price under Markets → Awaiting result.</small>
+          <div class="auto-open"${upcoming && !(m && m.published) ? '' : ' hidden'}>
+            <label class="check"><input type="checkbox" name="autoOpen" data-auto-open${v?.autoOpenAt ? ' checked' : ''} /> <b>Open by itself when trading starts</b></label>
+            <label class="auto-open-at"${v?.autoOpenAt ? '' : ' hidden'}><span class="field-label">Trading starts (your time)</span><input name="autoOpenAt" type="datetime-local" value="${toLocalInput(v?.autoOpenAt ?? v?.listingStart ?? soon)}" /><small class="utc-hint" data-utc-for="autoOpenAt"></small></label>
+            <small class="muted">Instead of opening now, the market waits as a draft. Once the token has traded for 3 minutes, its live exchange price (checked against those minutes, so an opening spike is skipped) becomes the start price and predictions open, with the channel post. You get a Telegram message either way. Needs the logo, and predictions must stay open at least 30 minutes after trading starts.</small>
+          </div>
         </div>
       </div>
       <label><span class="field-label">Predictions close (your time)</span><input name="closeAt" type="datetime-local" value="${toLocalInput(v?.closeAt ?? soon)}" required /><small class="utc-hint" data-utc-for="closeAt"></small></label>
@@ -3966,6 +3972,7 @@ function reviewPrefill(d) {
     basePrice: upcoming ? null : '',
     closeAt,
     settleAt,
+    listingStart: upcoming ? d.listingAt : null,
     note: `New on ${d.exchangeName}. The start price is the ${d.exchangeName} ${pair} price when ${upcoming ? 'trading opens' : 'predictions open'}, and the result is the ${d.exchangeName} ${pair} price at the result time.`,
   };
 }
@@ -4049,7 +4056,11 @@ function marketActions(m) {
 
 function adminPhasePill(m) {
   const text = esc(adminPhase(m));
-  if (m.phase === 'draft') return `<span class="pill pill-off">${text}</span>`;
+  if (m.phase === 'draft' && m.autoOpenAt) {
+    const due = m.autoOpenAt > now();
+    return `<span class="pill pill-hot">${ico('clock')}${due ? `Opens by itself in <span data-until="${m.autoOpenAt}">${fmtDur(m.autoOpenAt - now())}</span>` : 'Opening: checking prices'}</span>${m.autoOpenNote ? `<small class="muted auto-note">${esc(m.autoOpenNote)}</small>` : ''}`;
+  }
+  if (m.phase === 'draft') return `<span class="pill pill-off">${text}</span>${m.autoOpenNote ? `<small class="muted auto-note">${esc(m.autoOpenNote)}</small>` : ''}`;
   if (m.phase === 'awaiting_result') return `<span class="pill pill-hot">${text}</span>`;
   if (m.status === 'resolved') return `<span class="pill pill-done">${isYesNo(m) ? `Settled: ${oName(m.result?.winningBucket, true)}` : text}</span>`;
   if (m.status === 'void') return `<span class="pill pill-off">${text}</span>`;
@@ -4480,6 +4491,13 @@ async function submitAdminMarket(form, intent) {
   // "Upcoming token": no start price yet; the opening price is added once trading starts.
   if (d.has('upcoming')) body.basePrice = null;
   else if (d.has('basePrice')) body.basePrice = Number(d.get('basePrice'));
+  // Opens by itself when trading starts: saved as a scheduled draft, never published from here.
+  const autoOpen = d.has('upcoming') && d.has('autoOpen');
+  if (autoOpen) {
+    body.autoOpenAt = inputMs(d.get('autoOpenAt'));
+    if (!Number.isFinite(body.autoOpenAt)) return toast('Choose when trading starts.', true);
+    if (!body.logoUrl) return toast('Add the token’s logo first: markets that open by themselves need one.', true);
+  } else if (form.dataset.id) body.autoOpenAt = null;
   if (d.has('crash')) {
     body.config = {
       thresholds: { crash: pct('crash'), down: pct('down'), up: pct('up'), moon: pct('moon') },
@@ -4489,7 +4507,10 @@ async function submitAdminMarket(form, intent) {
     };
   }
   if (!Number.isFinite(body.closeAt) || !Number.isFinite(body.resultAt)) return toast('Choose the close time and the expected result time.', true);
-  if (intent === 'publish' && !confirm('Publish this market? Users will be able to predict straight away.')) return;
+  if (autoOpen && intent === 'publish') {
+    if (!confirm(`Schedule this market? It stays a draft, then opens by itself about 3 minutes after trading starts (${new Date(body.autoOpenAt).toLocaleString()}), with the live price as its start price.`)) return;
+    intent = 'save';
+  } else if (intent === 'publish' && !confirm('Publish this market? Users will be able to predict straight away.')) return;
   const buttons = form.querySelectorAll('button');
   buttons.forEach((b) => (b.disabled = true));
   try {
@@ -4501,7 +4522,7 @@ async function submitAdminMarket(form, intent) {
     A.edit = null;
     A.review = null;
     A.tab = 'markets';
-    toast(m.published ? `${m.symbol} market is live` : `${m.symbol} saved as a draft`);
+    toast(m.published ? `${m.symbol} market is live` : m.autoOpenAt ? `${m.symbol} scheduled: it opens by itself when trading starts` : `${m.symbol} saved as a draft`);
   } catch (err) {
     toast(err.message, true);
     buttons.forEach((b) => (b.disabled = false));
@@ -4828,6 +4849,29 @@ document.addEventListener(
   true,
 );
 
+/**
+ * "Open by itself when trading starts": shows the trading start time, keeps predictions open at
+ * least a day after it, and names the main button for what it will do.
+ */
+function syncAutoOpen(form, timeChanged = false) {
+  if (!form) return;
+  const on = Boolean(form.querySelector('[data-auto-open]')?.checked);
+  const at = form.querySelector('.auto-open-at');
+  if (at) at.hidden = !on;
+  if (on) {
+    const open = inputMs(form.querySelector('[name=autoOpenAt]').value);
+    const close = form.querySelector('[name=closeAt]');
+    const result = form.querySelector('[name=resultAt]');
+    if (Number.isFinite(open) && (timeChanged || !(inputMs(close.value) >= open + 30 * 60_000))) {
+      close.value = toLocalInput(open + 24 * 3_600_000);
+      if (!(inputMs(result.value) > open + 24 * 3_600_000)) result.value = toLocalInput(open + 72 * 3_600_000);
+    }
+  }
+  const main = form.querySelector('button[name=intent][value=publish]');
+  if (main) main.innerHTML = on ? `${ico('clock')}Schedule: opens by itself` : form.dataset.id ? 'Save and publish' : `${ico('send')}Publish market`;
+  updateUtcHints();
+}
+
 /** Puts a logo (link or data URL, '' for none) into the market form and its preview. */
 function setLogo(form, value, { keepLink = false } = {}) {
   if (!form) return;
@@ -4906,12 +4950,21 @@ document.addEventListener('input', (e) => {
 
 document.addEventListener('change', (e) => {
   if (e.target.matches?.('[data-upcoming]')) {
-    const price = e.target.closest('form').querySelector('[name=basePrice]');
+    const form = e.target.closest('form');
+    const price = form.querySelector('[name=basePrice]');
     price.disabled = e.target.checked;
     price.required = !e.target.checked;
     price.placeholder = e.target.checked ? 'Set when trading opens' : '0.25';
     if (e.target.checked) price.value = '';
+    const auto = form.querySelector('.auto-open');
+    if (auto && !(form.dataset.id && form.dataset.published === '1')) auto.hidden = !e.target.checked;
+    if (!e.target.checked && form.querySelector('[data-auto-open]')) {
+      form.querySelector('[data-auto-open]').checked = false;
+      syncAutoOpen(form);
+    }
   }
+  if (e.target.matches?.('[data-auto-open]')) syncAutoOpen(e.target.closest('form'));
+  if (e.target.name === 'autoOpenAt' && e.target.closest('#admin-market')) syncAutoOpen(e.target.closest('form'), true);
   if (e.target.name === 'outcomes' && e.target.closest('#admin-market')) {
     e.target.closest('form').dataset.outcomes = e.target.value;
   }

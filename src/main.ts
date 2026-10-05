@@ -8,6 +8,7 @@ import { systemClock } from './clock.ts';
 import { FirstprintService } from './services/firstprint.ts';
 import { Scheduler } from './workers/scheduler.ts';
 import { ListingTracker } from './workers/listingTracker.ts';
+import { AutoOpener } from './workers/autoOpen.ts';
 import { LiveFeed } from './workers/liveFeed.ts';
 import { createApiServer } from './api/server.ts';
 import { allVenues } from './exchanges/venues.ts';
@@ -92,6 +93,10 @@ setInterval(() => {
     log(`closing reminders failed: ${(err as Error).message}`);
   }
 }, 60_000).unref();
+
+// Upcoming tokens the admin scheduled: opened by themselves once trading has really started.
+const autoOpener = new AutoOpener(service, venues, alert);
+setInterval(() => void autoOpener.run(), 30_000).unref();
 
 // Manual-only servers still watch some exchanges for new listings (LISTING_VENUES: MEXC, OKX, Gate,
 // Bitget and KuCoin by default). By default each one waits in the admin's review queue (with a Telegram

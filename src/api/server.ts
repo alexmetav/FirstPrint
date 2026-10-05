@@ -470,6 +470,8 @@ export function createApiServer(opts: ServerOptions): Server {
     note: b.note as string | undefined,
     sourceUrl: b.sourceUrl as string | undefined,
     logoUrl: b.logoUrl as string | undefined,
+    // When an upcoming token starts trading: the market then opens by itself (null stops that).
+    autoOpenAt: b.autoOpenAt === undefined ? undefined : b.autoOpenAt === null || b.autoOpenAt === '' ? null : toMs(b.autoOpenAt),
   });
 
   route('GET', '/api/admin/exchanges', ({ requireAdmin }) => {
@@ -625,7 +627,7 @@ export function createApiServer(opts: ServerOptions): Server {
     if (typeof b.logoPng === 'string' && b.logoPng) service.setLogoPng(id, b.logoPng);
     // Made from a listing in the review queue: take it off the queue.
     if (Number.isInteger(b.detectionId)) service.linkDetection(b.detectionId as number, id);
-    audit(req, b.publish === true ? 'market_published' : 'market_drafted', id, `${String(b.symbol ?? '').toUpperCase()} start price ${b.basePrice}`);
+    audit(req, b.publish === true ? 'market_published' : b.autoOpenAt ? 'market_scheduled' : 'market_drafted', id, `${String(b.symbol ?? '').toUpperCase()} start price ${b.basePrice}`);
     return service.getMarket(id, undefined, true);
   });
 
@@ -639,7 +641,6 @@ export function createApiServer(opts: ServerOptions): Server {
     return service.getMarket(params.id, undefined, true);
   });
 
-  // PNG copy of a market's logo for its Telegram banners (the admin page makes it in the browser).
   // The Telegram banner a market would get, drawn from the form before it is saved, so the admin
   // sees exactly what players will see (right logo, right ticker) before publishing.
   route('POST', '/api/admin/banner-preview', async ({ req, body, requireAdmin }) => {
@@ -677,6 +678,7 @@ export function createApiServer(opts: ServerOptions): Server {
     return { enabled };
   });
 
+  // PNG copy of a market's logo for its Telegram banners (the admin page makes it in the browser).
   route('POST', '/api/admin/markets/:id/logo-png', async ({ params, body, requireAdmin }) => {
     requireAdmin();
     service.setLogoPng(params.id, String((await body()).logoPng ?? ''));

@@ -89,7 +89,7 @@ export interface UserRow {
   referred_by?: string | null;
 }
 
-interface MarketRow {
+export interface MarketRow {
   id: string;
   symbol: string;
   name: string | null;
@@ -99,6 +99,10 @@ interface MarketRow {
   logo_url?: string | null;
   /** A PNG copy of the logo for Telegram banners (the image library can't read WebP). */
   logo_png?: string | null;
+  /** Upcoming token scheduled to open by itself: when trading is due to start (ms). */
+  auto_open_at?: number | null;
+  /** The last thing the auto-open check found (shown to the admin). */
+  auto_open_note?: string | null;
   announced_listing_at: number;
   listing_at: number;
   opened_at: number;
@@ -179,6 +183,11 @@ export interface ManualMarketInput {
   /** Token logo: an https image URL or a small data:image (png, jpeg, webp, gif) the admin uploaded. Empty string removes it. */
   logoUrl?: string;
   publish?: boolean;
+  /**
+   * An upcoming token the admin has checked: the market stays a draft and opens by itself once
+   * trading starts (ms), with the live exchange price as its start price. Null to stop it.
+   */
+  autoOpenAt?: number | null;
 }
 
 export interface ResolveInput {
@@ -972,6 +981,11 @@ export class FirstprintService {
     const now = this.clock.now();
     const f = this.manualFields(input, now);
     if (f.closeAt <= now) throw new AppError(400, 'bad_close_time', 'Prediction close time must be in the future.');
+    const autoOpenAt = this.checkAutoOpen(input.autoOpenAt, f, now);
+    if (autoOpenAt !== null) {
+      input = { ...input, publish: false };
+      f.basePrice = null;
+    }
     const id = `${idSlug(f.symbol)}-m-${randomUUID().slice(0, 6)}`;
     this.db
       .prepare(
@@ -980,7 +994,8 @@ export class FirstprintService {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', 'listing', ?, 'manual', ?, ?, ?, ?)`,
       )
       .run(id, f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, now, JSON.stringify(f.cfg), now, input.publish ? 1 : 0, f.basePrice, f.note, f.logoUrl);
-    this.log(`manual market ${input.publish ? 'published' : 'drafted'} ${id}`);
+    if (autoOpenAt !== null) this.db.prepare('UPDATE markets SET auto_open_at = ?, auto_open_note = NULL WHERE id = ?').run(autoOpenAt, id);
+    this.log(`manual market ${input.publish ? 'published' : autoOpenAt !== null ? 'scheduled to open by itself' : 'drafted'} ${id}`);
     if (input.publish) {
       this.onEvent('market', { marketId: id });
       this.announce('live', id);
@@ -1026,6 +1041,9 @@ export class FirstprintService {
     if (patch.exchanges && !patch.pairs) merged.pairs = {};
     const f = this.manualFields(merged, now);
     if (f.closeAt <= now) throw new AppError(400, 'bad_close_time', 'Prediction close time must be in the future.');
+    const autoOpenAt = this.checkAutoOpen(patch.autoOpenAt === undefined ? (m.published === 1 ? null : (m.auto_open_at ?? null)) : patch.autoOpenAt, f, now, m.published === 1);
+    if (autoOpenAt !== null) f.basePrice = null;
+    this.db.prepare('UPDATE markets SET auto_open_at = ?, auto_open_note = CASE WHEN ? IS NULL THEN NULL ELSE auto_open_note END WHERE id = ?').run(autoOpenAt, autoOpenAt, marketId);
     this.db
       .prepare(
         `UPDATE markets SET symbol = ?, name = ?, exchange = ?, venues = ?, source_url = ?, announced_listing_at = ?,
@@ -1035,6 +1053,48 @@ export class FirstprintService {
       .run(f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, JSON.stringify(f.cfg), f.basePrice, f.note, f.logoUrl, f.logoUrl, marketId);
     if (m.published === 1) this.onEvent('market', { marketId }); // drafts stay private
     return marketId;
+  }
+
+  /**
+   * Checks an auto-open schedule. The admin has already checked the market, so it only needs to
+   * be complete: a logo, a trading start ahead, and predictions open for at least 30 minutes
+   * after it. Returns the time, or null when the market is not scheduled.
+   */
+  private checkAutoOpen(at: number | null | undefined, f: { closeAt: number; logoUrl: string | null }, now: number, published = false): number | null {
+    if (at === undefined || at === null || (at as unknown) === '') return null;
+    const t = Number(at);
+    if (published) throw new AppError(409, 'already_published', 'This market is already open, so it can’t be scheduled.');
+    if (!Number.isFinite(t) || t <= now) throw new AppError(400, 'bad_open_time', 'Trading start must be in the future to open the market by itself.');
+    if (!f.logoUrl) throw new AppError(400, 'logo_required', 'Add the token’s logo first: markets that open by themselves need one.');
+    if (f.closeAt < t + 30 * MINUTE) throw new AppError(400, 'bad_close_time', 'Predictions must stay open at least 30 minutes after trading starts.');
+    return t;
+  }
+
+  /** Drafts scheduled to open by themselves whose trading start has come. */
+  autoOpenDue(now = this.clock.now()) {
+    return as<MarketRow[]>(
+      this.db.prepare("SELECT * FROM markets WHERE mode = 'manual' AND status = 'open' AND published = 0 AND auto_open_at IS NOT NULL AND auto_open_at <= ? ORDER BY auto_open_at").all(now),
+    );
+  }
+
+  /** Records what the auto-open check found; with giveUp, the schedule is cleared and the market stays a draft. */
+  noteAutoOpen(marketId: string, note: string, giveUp = false) {
+    this.db.prepare(`UPDATE markets SET auto_open_note = ?${giveUp ? ', auto_open_at = NULL' : ''} WHERE id = ?`).run(note.slice(0, 300), marketId);
+  }
+
+  /** Opens a scheduled market with the start price read from the exchange at that moment. */
+  autoOpen(marketId: string, startPrice: number, note: string) {
+    const m = this.manualRow(marketId);
+    const now = this.clock.now();
+    if (m.status !== 'open' || m.published === 1 || !m.auto_open_at) throw new AppError(409, 'not_scheduled', 'This market is not waiting to open.');
+    if (!(startPrice > 0) || !Number.isFinite(startPrice)) throw new AppError(400, 'bad_price', 'Start price must be a number above 0.');
+    if (m.listing_at < now + 15 * MINUTE) throw new AppError(409, 'too_late', 'Predictions would close in under 15 minutes.');
+    this.db
+      .prepare('UPDATE markets SET base_price = ?, published = 1, opened_at = ?, auto_open_at = NULL, auto_open_note = ? WHERE id = ?')
+      .run(startPrice, now, note.slice(0, 300), marketId);
+    this.onEvent('market', { marketId });
+    this.announce('live', marketId);
+    this.log(`market opened by itself ${marketId} at ${startPrice}`);
   }
 
   /**
@@ -1059,7 +1119,7 @@ export class FirstprintService {
     if (m.status !== 'open') throw new AppError(409, 'not_editable', 'This market is no longer open.');
     if (m.published === 1) return;
     if (m.listing_at <= now) throw new AppError(409, 'bad_close_time', 'The prediction close time has passed. Edit it before publishing.');
-    this.db.prepare('UPDATE markets SET published = 1, opened_at = ? WHERE id = ?').run(now, marketId);
+    this.db.prepare('UPDATE markets SET published = 1, opened_at = ?, auto_open_at = NULL WHERE id = ?').run(now, marketId);
     this.onEvent('market', { marketId });
     // Unpublished and published again: it was already posted to the channel.
     if (!(m as MarketRow & { announced_at?: number | null }).announced_at) this.announce('live', marketId);
@@ -2146,6 +2206,8 @@ export class FirstprintService {
       sourceUrl: m.source_url,
       logoUrl: m.logo_url ?? null,
       hasLogoPng: Boolean(m.logo_png),
+      autoOpenAt: m.auto_open_at ?? null,
+      autoOpenNote: m.auto_open_note ?? null,
       status: m.status,
       phase,
       announcedListingAt: m.announced_listing_at,
