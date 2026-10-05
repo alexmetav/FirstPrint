@@ -1,49 +1,98 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 500" width="1500" height="500" role="img" aria-label="Firstprint: predict where new crypto listings land">
-  <title>Firstprint</title>
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="500" viewBox="0 0 1500 500" font-family="Geist">
   <defs>
-    <radialGradient id="g1" cx="18%" cy="20%" r="60%">
-      <stop offset="0%" stop-color="#35E0A1" stop-opacity="0.30"/>
-      <stop offset="100%" stop-color="#35E0A1" stop-opacity="0"/>
+    <radialGradient id="glow" cx="0.75" cy="0.35" r="0.5">
+      <stop offset="0" stop-color="#7dff3a" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#7dff3a" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="g2" cx="88%" cy="10%" r="55%">
-      <stop offset="0%" stop-color="#7dff3a" stop-opacity="0.26"/>
-      <stop offset="100%" stop-color="#7dff3a" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="g3" cx="70%" cy="95%" r="50%">
-      <stop offset="0%" stop-color="#FF4D6A" stop-opacity="0.18"/>
-      <stop offset="100%" stop-color="#FF4D6A" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="scale" x1="0" x2="1">
-      <stop offset="0%" stop-color="#FF4D6A"/>
-      <stop offset="25%" stop-color="#FF8A5C"/>
-      <stop offset="50%" stop-color="#A6B0C4"/>
-      <stop offset="75%" stop-color="#35E0A1"/>
-      <stop offset="100%" stop-color="#7dff3a"/>
+    <pattern id="dots" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#ffffff" fill-opacity="0.06"/>
+    </pattern>
+    <linearGradient id="fade" x1="0" x2="1">
+      <stop offset="0" stop-color="#07080c" stop-opacity="1"/>
+      <stop offset="0.45" stop-color="#07080c" stop-opacity="0"/>
     </linearGradient>
+    <clipPath id="card"><rect x="880" y="62" width="500" height="376" rx="22"/></clipPath>
   </defs>
+  <rect width="1500" height="500" fill="#07080c"/>
+  <rect width="1500" height="500" fill="url(#dots)"/>
+  <rect width="1500" height="500" fill="url(#fade)"/>
+  <rect width="1500" height="500" fill="url(#glow)"/>
 
-  <rect width="1500" height="500" fill="#07090F"/>
-  <rect width="1500" height="500" fill="url(#g1)"/>
-  <rect width="1500" height="500" fill="url(#g2)"/>
-  <rect width="1500" height="500" fill="url(#g3)"/>
-  <rect width="1500" height="5" fill="url(#scale)"/>
-
-  <g>
-    <rect x="225.0" y="174.0" width="150.0" height="20" rx="10.0" fill="#7dff3a"/>
-    <rect x="241.5" y="207.0" width="117.0" height="20" rx="10.0" fill="#35E0A1"/>
-    <rect x="258.0" y="240.0" width="84.0" height="20" rx="10.0" fill="#A6B0C4"/>
-    <rect x="241.5" y="273.0" width="117.0" height="20" rx="10.0" fill="#FF8A5C"/>
-    <rect x="225.0" y="306.0" width="150.0" height="20" rx="10.0" fill="#FF4D6A"/>
+  <!-- Brand -->
+  <g transform="translate(120,92)">
+    <rect width="48" height="48" rx="12" fill="#0b0f2a" stroke="#313b80" stroke-width="1.5"/>
+    <rect x="8" y="8" width="32" height="5.2" rx="2.6" fill="#7dff3a"/>
+    <rect x="12" y="15.8" width="24" height="5.2" rx="2.6" fill="#3fd69a"/>
+    <rect x="16" y="23.6" width="16" height="5.2" rx="2.6" fill="#9faac0"/>
+    <rect x="12" y="31.4" width="24" height="5.2" rx="2.6" fill="#ff8a5c"/>
+    <rect x="8" y="39.2" width="32" height="5.2" rx="2.6" fill="#ff4d6a"/>
+    <text x="64" y="34" font-size="28" font-weight="600" fill="#f5f5f7" letter-spacing="-0.5">Firstprint</text>
   </g>
 
-  <text x="430" y="228" font-family="Bricolage Grotesque, Poppins, DejaVu Sans, sans-serif" font-size="96" font-weight="700" letter-spacing="-4" fill="#F2F5FA">Firstprint</text>
-  <text x="436" y="292" font-family="Poppins, DejaVu Sans, sans-serif" font-size="34" font-weight="400" fill="#8D95A6">Predict where new crypto listings land.</text>
+  <!-- Headline -->
+  <text x="116" y="226" font-size="62" font-weight="700" fill="#f5f5f7" letter-spacing="-2">Call the first move</text>
+  <text x="116" y="296" font-size="62" font-weight="700" fill="#8e8e93" letter-spacing="-2">of every new listing</text>
+  <text x="120" y="344" font-size="22" fill="#9a9aa3">Free prediction markets on new and trending tokens</text>
 
-  <g font-family="Poppins, DejaVu Sans, sans-serif" font-size="24" font-weight="600" transform="translate(436 340)">
-    <rect width="122" height="44" rx="22" fill="#FF4D6A" fill-opacity="0.16"/><text x="61" y="29" text-anchor="middle" fill="#FF4D6A">Crash</text>
-    <rect x="134" width="122" height="44" rx="22" fill="#FF8A5C" fill-opacity="0.16"/><text x="195" y="29" text-anchor="middle" fill="#FF8A5C">Down</text>
-    <rect x="268" width="122" height="44" rx="22" fill="#A6B0C4" fill-opacity="0.16"/><text x="329" y="29" text-anchor="middle" fill="#A6B0C4">Flat</text>
-    <rect x="402" width="122" height="44" rx="22" fill="#35E0A1" fill-opacity="0.16"/><text x="463" y="29" text-anchor="middle" fill="#35E0A1">Up</text>
-    <rect x="536" width="122" height="44" rx="22" fill="#7dff3a" fill-opacity="0.16"/><text x="597" y="29" text-anchor="middle" fill="#7dff3a">Moon</text>
+  <!-- Market card (UI) -->
+  <rect x="880" y="62" width="500" height="376" rx="22" fill="#111217" stroke="#ffffff" stroke-opacity="0.09"/>
+  <g clip-path="url(#card)">
+    <!-- header -->
+    <circle cx="930" cy="114" r="24" fill="#5b5bd6"/>
+    <text x="930" y="123" text-anchor="middle" font-size="24" font-weight="700" fill="#ffffff">K</text>
+    <text x="968" y="110" font-size="22" font-weight="600" fill="#f5f5f7">KORA</text>
+    <text x="968" y="133" font-size="15" fill="#8e8e93">Kora Network</text>
+    <rect x="1220" y="96" width="132" height="32" rx="16" fill="#30d158" fill-opacity="0.12" stroke="#30d158" stroke-opacity="0.45"/>
+    <circle cx="1240" cy="112" r="4.5" fill="#30d158"/>
+    <text x="1252" y="118" font-family="Geist Mono" font-size="14" font-weight="500" fill="#30d158" letter-spacing="1">2h 14m</text>
+    <text x="906" y="176" font-size="17" fill="#c7c7cc">Where will KORA land after listing?</text>
+
+    <!-- outcomes: label, share bar, %, multiplier -->
+    <g font-size="17" font-weight="600">
+      <g transform="translate(906,196)">
+        <rect width="448" height="38" rx="10" fill="#ffffff" fill-opacity="0.035"/>
+        <rect width="81" height="38" rx="10" fill="#7dff3a" fill-opacity="0.20"/>
+        <text x="16" y="25" fill="#7dff3a">Moon</text>
+        <text x="330" y="25" text-anchor="end" font-family="Geist Mono" font-size="15" fill="#f5f5f7">18%</text>
+        <rect x="350" y="6" width="86" height="26" rx="8" fill="#7dff3a" fill-opacity="0.14"/>
+        <text x="393" y="24" text-anchor="middle" font-family="Geist Mono" font-size="14" fill="#7dff3a">4.9×</text>
+      </g>
+      <g transform="translate(906,242)">
+        <rect width="448" height="38" rx="10" fill="#ffffff" fill-opacity="0.035"/>
+        <rect width="139" height="38" rx="10" fill="#30d158" fill-opacity="0.20"/>
+        <rect width="448" height="38" rx="10" fill="none" stroke="#30d158" stroke-opacity="0.7" stroke-width="1.5"/>
+        <text x="16" y="25" fill="#30d158">Up</text>
+        <text x="64" y="25" font-size="12" font-weight="500" fill="#30d158" fill-opacity="0.8" letter-spacing="1">YOUR PICK</text>
+        <text x="330" y="25" text-anchor="end" font-family="Geist Mono" font-size="15" fill="#f5f5f7">31%</text>
+        <rect x="350" y="6" width="86" height="26" rx="8" fill="#30d158" fill-opacity="0.14"/>
+        <text x="393" y="24" text-anchor="middle" font-family="Geist Mono" font-size="14" fill="#30d158">2.8×</text>
+      </g>
+      <g transform="translate(906,288)">
+        <rect width="448" height="38" rx="10" fill="#ffffff" fill-opacity="0.035"/>
+        <rect width="99" height="38" rx="10" fill="#a1a1aa" fill-opacity="0.18"/>
+        <text x="16" y="25" fill="#c7c7cc">Flat</text>
+        <text x="330" y="25" text-anchor="end" font-family="Geist Mono" font-size="15" fill="#f5f5f7">22%</text>
+        <rect x="350" y="6" width="86" height="26" rx="8" fill="#a1a1aa" fill-opacity="0.12"/>
+        <text x="393" y="24" text-anchor="middle" font-family="Geist Mono" font-size="14" fill="#c7c7cc">3.9×</text>
+      </g>
+      <g transform="translate(906,334)">
+        <rect width="448" height="38" rx="10" fill="#ffffff" fill-opacity="0.035"/>
+        <rect width="85" height="38" rx="10" fill="#ff9f0a" fill-opacity="0.20"/>
+        <text x="16" y="25" fill="#ff9f0a">Down</text>
+        <text x="330" y="25" text-anchor="end" font-family="Geist Mono" font-size="15" fill="#f5f5f7">19%</text>
+        <rect x="350" y="6" width="86" height="26" rx="8" fill="#ff9f0a" fill-opacity="0.14"/>
+        <text x="393" y="24" text-anchor="middle" font-family="Geist Mono" font-size="14" fill="#ff9f0a">4.5×</text>
+      </g>
+      <g transform="translate(906,380)">
+        <rect width="448" height="38" rx="10" fill="#ffffff" fill-opacity="0.035"/>
+        <rect width="45" height="38" rx="10" fill="#ff453a" fill-opacity="0.22"/>
+        <text x="16" y="25" fill="#ff453a">Crash</text>
+        <text x="330" y="25" text-anchor="end" font-family="Geist Mono" font-size="15" fill="#f5f5f7">10%</text>
+        <rect x="350" y="6" width="86" height="26" rx="8" fill="#ff453a" fill-opacity="0.14"/>
+        <text x="393" y="24" text-anchor="middle" font-family="Geist Mono" font-size="14" fill="#ff453a">8.6×</text>
+      </g>
+    </g>
   </g>
+
+  <text x="1380" y="474" text-anchor="end" font-family="Geist Mono" font-size="16" fill="#8e8e93" letter-spacing="1">firstprint.fun</text>
 </svg>
