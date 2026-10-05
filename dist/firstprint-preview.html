@@ -11079,6 +11079,119 @@ svg.viz.viz-narrow {
   }
 }
 
+/* ===== Market cards: clean, and visibly live =====
+   Motion only ever reflects what is real: the pulse and sheen are decoration, numbers tick only
+   when they actually change, and "+N" appears only when new players join. */
+.mcard {
+  position: relative;
+}
+.mcard .o-row {
+  position: relative;
+  isolation: isolate;
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: 9px;
+  overflow: hidden;
+}
+/* The crowd's share as a bar behind each outcome, like depth in an order book. */
+.mcard .o-row::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: -1;
+  width: var(--share, 0%);
+  background: color-mix(in srgb, var(--c) 13%, transparent);
+  border-radius: inherit;
+  transition: width 0.8s var(--ease-out, ease);
+}
+/* A slow sheen runs along the bars, staggered so the grid never moves in step. */
+.mcard .o-row::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: -1;
+  width: var(--share, 0%);
+  background: linear-gradient(100deg, transparent 0%, color-mix(in srgb, var(--c) 22%, transparent) 50%, transparent 100%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: oSheen 4.8s ease-in-out infinite;
+  opacity: 0.9;
+}
+.mcard:nth-child(3n + 2) .o-row::after { animation-delay: 1.6s; }
+.mcard:nth-child(3n + 3) .o-row::after { animation-delay: 3.2s; }
+.mcard .o-row + .o-row::after { animation-delay: 0.4s; }
+@keyframes oSheen {
+  0%, 55% { background-position: 200% 0; }
+  100% { background-position: -100% 0; }
+}
+.mcard .card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+}
+.card-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.card-act .i {
+  width: 13px;
+  height: 13px;
+}
+.card-act .tick {
+  color: var(--text);
+  font-weight: 500;
+}
+.card-act.quiet {
+  font-style: normal;
+}
+/* The live dot breathes. */
+.st-live i,
+.st-soon i {
+  animation: livePulse 1.8s ease-in-out infinite;
+}
+@keyframes livePulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 45%, transparent); }
+  50% { opacity: 0.55; box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 0%, transparent); }
+}
+/* "+N" when new players join, floating up from the corner. */
+.card-bump {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 3;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--up) 18%, var(--surface));
+  color: var(--up);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  animation: bumpUp 2.4s ease-out forwards;
+}
+@keyframes bumpUp {
+  0% { opacity: 0; transform: translateY(8px) scale(0.9); }
+  15% { opacity: 1; transform: translateY(0) scale(1); }
+  70% { opacity: 1; transform: translateY(-10px); }
+  100% { opacity: 0; transform: translateY(-22px); }
+}
+.mcard.has-new {
+  animation: cardGlow 1.6s ease-out;
+}
+@keyframes cardGlow {
+  0% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--up) 55%, transparent), 0 0 24px -6px color-mix(in srgb, var(--up) 45%, transparent); }
+  100% { box-shadow: 0 0 0 1px transparent, 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mcard .o-row::after {
+    display: none;
+  }
+}
+
 </style>
   </head>
   <body>
@@ -12906,6 +13019,8 @@ const S = {
   query: '',
   exchange: 'all',
   lists: { open: [], live: [], settled: [] },
+  /** Predictor counts as last drawn on each card, to float "+N" when more people join. */
+  cardSeen: new Map(),
   market: null,
   chart: null,
   activity: [],
@@ -14070,22 +14185,15 @@ function cardView(m) {
     body = `<div class="o-rows">${top
       .map((b) => {
         const x = poolMultiple(m, b);
-        return `<div class="o-row" style="--c:var(--${b})">
-          <span class="o-name">${icon(b)}${oName(b)}<small>${rangeOf(m, b)}</small></span>
-          <b class="o-pct">${m.pool ? `${Math.round(share(m, b) * 100)}%` : '–'}</b>
+        const pct = m.pool ? Math.round(share(m, b) * 100) : 0;
+        return `<div class="o-row" style="--c:var(--${b});--share:${pct}%">
+          <span class="o-name">${icon(b)}${oName(b)}</span>
+          <b class="o-pct">${m.pool ? `${tick(`pct:${m.id}:${b}`, pct)}%` : '–'}</b>
           <button class="qp qp-sm" style="--c:var(--${b})" data-action="quick-pick" data-id="${esc(m.id)}" data-bucket="${b}"${open ? '' : ' disabled'} aria-label="Pick ${oName(b)} on ${esc(m.symbol)}">${x ? `${x.toFixed(1)}×` : 'Pick'}</button>
         </div>`;
       })
       .join('')}</div>`;
   }
-
-  let when;
-  if (m.phase === 'pre_listing') when = `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}`;
-  else if (upcoming) when = `Lists ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
-  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Closes ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
-  else if (m.phase === 'running') when = `Result in ${until(m.settleAt)}`;
-  else if (m.phase === 'awaiting_result') when = 'Awaiting result';
-  else when = fmtDate(m.settleAt);
 
   const state =
     m.status === 'resolved' ? '<span class="st st-done">Settled</span>'
@@ -14095,19 +14203,26 @@ function cardView(m) {
     : upcoming ? '<span class="st st-soon"><i aria-hidden="true"></i>Upcoming</span>'
     : '<span class="st st-live"><i aria-hidden="true"></i>Open</span>';
 
+  // New predictors since this card was last drawn float up as "+N": real activity, never made up.
+  const seen = S.cardSeen.get(m.id);
+  const joined = seen === undefined ? 0 : m.predictors - seen;
+  S.cardSeen.set(m.id, m.predictors);
+  const activity = m.predictors
+    ? `<span class="card-act">${ico('users')}${tick(`pred:${m.id}`, m.predictors)}<span>${open ? 'predicting' : 'predicted'}</span></span>`
+    : open
+    ? '<span class="card-act quiet">Be the first to predict</span>'
+    : '';
+
   return `
-    <article class="card mcard${soon ? ' soon' : ''}">
+    <article class="card mcard${soon ? ' soon' : ''}${joined > 0 ? ' has-new' : ''}">
+      ${joined > 0 ? `<span class="card-bump" aria-hidden="true">+${joined}</span>` : ''}
       <div class="card-top">
         ${tokenAvatar(m, 'avatar-md')}
         <a class="card-link" href="${href}"><span class="sym">${esc(m.symbol)}${yn ? ' <span class="tag tag-yn">Yes / No</span>' : ''}</span><span class="card-name">${esc(m.name || '')}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</span></a>
         ${g}
       </div>
       ${body}
-      ${myPickLine(m)}
-      <div class="card-foot">
-        ${state}${m.pool ? `<span class="dot-sep" aria-hidden="true">·</span><span>${tick(`pool:card:${m.id}`, m.pool)} pts</span>` : ''}<span class="dot-sep" aria-hidden="true">·</span><span class="card-ex">${esc(venueNames(m))}</span>
-        <span class="when">${when}</span>
-      </div>
+      <div class="card-foot">${state}${activity}</div>
     </article>`;
 }
 
@@ -14117,20 +14232,6 @@ function myResultRow(m) {
   if (m.status !== 'resolved' || !mine.length) return '';
   const profit = mine.reduce((s, p) => s + (p.payout ?? 0) - (p.stake - (p.refund ?? 0)), 0);
   return `<div class="my-result"><span>Your result <b class="${profit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(profit)} pts</b></span>${pnlButton(m.id, m.symbol, 'btn btn-sm')}</div>`;
-}
-
-/** "You: Up · 250" on a card, so players can see their picks without opening the market. */
-function myPickLine(m) {
-  if (!m.mine?.length) return '';
-  const yn = isYesNo(m);
-  const by = {};
-  for (const p of m.mine) by[p.bucket] = (by[p.bucket] ?? 0) + p.stake;
-  let state = '';
-  if (m.status === 'resolved') state = m.mine.some((p) => p.payout > 0) ? ` · <b class="profit-pos">won ${fmtNum(m.mine.reduce((s, p) => s + (p.payout ?? 0), 0))}</b>` : ' · didn’t win';
-  else if (m.status === 'void') state = ' · refunded';
-  return `<div class="card-mine">${ico('user')}<span>You: ${Object.entries(by)
-    .map(([b, pts]) => `${outcome(b, yn)} ${fmtNum(pts)}`)
-    .join(', ')}${state}</span></div>`;
 }
 
 /** Three friendly steps up front; the full rules stay one tap away. */
