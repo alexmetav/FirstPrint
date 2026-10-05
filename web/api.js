@@ -172,6 +172,9 @@ export function createAdminApi(key, baseUrl = '') {
     token: () => request('/api/admin/token'),
     tokenStep: (step) => post(`/api/admin/token/${encodeURIComponent(step)}`),
     tasks: () => request('/api/admin/tasks'),
+    team: () => request('/api/admin/team'),
+    teamAdd: (value, role) => post('/api/admin/team', { value, role }),
+    teamRemove: (id) => post(`/api/admin/team/${encodeURIComponent(id)}/remove`),
     createTask: (body) => post('/api/admin/tasks', body),
     updateTask: (id, body) => post(`/api/admin/tasks/${encodeURIComponent(id)}`, body),
   };

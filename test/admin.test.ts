@@ -203,3 +203,61 @@ test('admin by account: an ADMIN_EMAILS email signed in by code or Google, or a 
     server.close();
   }
 });
+
+test('team: the owner gives admin or tasks-only access by email or wallet from Settings, and can take it back', async () => {
+  const { createApiServer } = await import('../src/api/server.ts');
+  const db = openDb(':memory:');
+  const service = new FirstprintService(db, new ManualClock(Date.now()), []);
+  const KEY = 'k'.repeat(32);
+  const WALLET = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+  const server = createApiServer({ service, adminKey: KEY, secureCookies: false, webDir: new URL('../web', import.meta.url).pathname });
+  await new Promise<void>((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const call = (path: string, who: { token?: string; key?: string }, body?: unknown) =>
+    fetch(`${base}${path}`, {
+      method: body ? 'POST' : 'GET',
+      headers: { 'content-type': 'application/json', ...(who.token ? { cookie: `fp_session=${who.token}` } : {}), ...(who.key ? { 'x-admin-key': who.key } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  try {
+    const helper = await service.createUser({ username: 'helper', email: 'helper@example.com' });
+    const ops = await service.createUser({ username: 'ops' });
+    db.prepare('INSERT INTO wallets (address, user_id, verified_at) VALUES (?, ?, ?)').run(WALLET, ops.id, Date.now());
+    const h = { token: service.createSession(helper.id, 'email').token };
+    const o = { token: service.createSession(ops.id, 'wallet').token };
+    const owner = { key: KEY };
+
+    assert.equal((await call('/api/admin/ping', h)).status, 403, 'nobody yet');
+    assert.equal((await call('/api/admin/team', owner, { value: 'Helper@Example.com', role: 'tasks' })).status, 200);
+    assert.equal((await call('/api/admin/team', owner, { value: WALLET, role: 'admin' })).status, 200);
+    assert.equal((await call('/api/admin/team', owner, { value: 'not an address', role: 'tasks' })).status, 400);
+
+    // Tasks only: the Tasks page and nothing else.
+    const ping = await (await call('/api/admin/ping', h)).json();
+    assert.equal(ping.level, 'tasks');
+    assert.equal(ping.exchanges, undefined, 'no settings for tasks-only members');
+    assert.notEqual((await call('/api/admin/tasks', h)).status, 403, 'allowed (tasks are off in this test server, so 404)');
+    assert.equal((await call('/api/admin/markets', h)).status, 403);
+    assert.equal((await call('/api/admin/team', h)).status, 403);
+    assert.equal((await (await call('/api/me', h)).json()).adminLevel, 'tasks');
+    // A password sign-in never proves the email.
+    assert.equal((await call('/api/admin/ping', { token: service.createSession(helper.id, 'password').token })).status, 403);
+
+    // Admin by wallet: everything but the team.
+    assert.equal((await (await call('/api/admin/ping', o)).json()).level, 'admin');
+    assert.equal((await call('/api/admin/markets', o)).status, 200);
+    assert.equal((await call('/api/admin/team', o)).status, 403);
+    assert.equal((await call('/api/admin/team', o, { value: 'x@example.com', role: 'admin' })).status, 403, 'admins can’t add people');
+
+    // Adding again changes the role; removing takes access away.
+    await call('/api/admin/team', owner, { value: 'helper@example.com', role: 'admin' });
+    assert.equal((await call('/api/admin/markets', h)).status, 200);
+    const { team } = await (await call('/api/admin/team', owner)).json();
+    assert.equal(team.length, 2);
+    for (const m of team) await call(`/api/admin/team/${m.id}/remove`, owner, {});
+    assert.equal((await call('/api/admin/ping', h)).status, 403);
+    assert.equal((await call('/api/admin/ping', o)).status, 403);
+  } finally {
+    server.close();
+  }
+});

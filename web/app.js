@@ -3269,7 +3269,7 @@ async function renderAdmin() {
       <div class="admin-login">
         <span class="page-ico">${ico('lock')}</span>
         <h1 class="page-title">Admin console</h1>
-        <p class="muted">${S.me ? `Signed in as <b>${esc(S.me.username)}</b>, which isn’t an admin account.` : 'Log in with your admin email or wallet to open it straight away.'} An admin account is one whose email is in <code>ADMIN_EMAILS</code> (signed in with Google or an email code) or with a linked wallet in <code>ADMIN_WALLETS</code>, set in the server settings.</p>
+        <p class="muted">${S.me ? `Signed in as <b>${esc(S.me.username)}</b>, which isn’t an admin account.` : 'Log in with your admin email or wallet to open it straight away.'} Team members are added by the owner under Settings → Team; the owner’s own email or wallet is set as <code>ADMIN_EMAILS</code> / <code>ADMIN_WALLETS</code> on the server. Emails count when you sign in with Google or an email code.</p>
         ${S.me ? '' : `<button class="btn btn-solid btn-lg" data-action="connect">${ico('wallet')}Log in</button>`}
         <details class="admin-key-login"${S.me ? ' open' : ''}><summary>Use the admin key instead</summary>
         <form id="admin-login" class="admin-form">
@@ -3282,6 +3282,9 @@ async function renderAdmin() {
     return;
   }
 
+  // Team members who manage tasks only get the Tasks page and nothing else.
+  if (A.info.level === 'tasks') return renderTasksOnly(view);
+
   const manualOnly = Boolean(A.info.manualOnly);
   let loaded;
   try {
@@ -3291,13 +3294,14 @@ async function renderAdmin() {
       A.api.log().catch(() => ({ log: [] })),
       A.api.token().catch(() => ({ enabled: false })),
       A.api.tasks().catch(() => ({ tasks: [] })),
+      A.info.level === 'owner' ? A.api.team().catch(() => null) : Promise.resolve(null),
     ]);
   } catch (err) {
     // The server may be waking up or busy: say so instead of leaving the old tab on screen.
     view.innerHTML = `<div class="empty"><div class="empty-art">${ico('alert')}</div><p><strong>Couldn’t load the admin panel.</strong><br />${esc(err.message)}</p><button class="btn btn-solid" data-action="admin-token-refresh">${ico('refresh')}Try again</button></div>`;
     return;
   }
-  const [{ markets }, detected, { log }, token, { tasks }] = loaded;
+  const [{ markets }, detected, { log }, token, { tasks }, teamData] = loaded;
   void backfillLogoPngs(markets);
   A.detected = detected;
   const venues = A.info.venues;
@@ -3340,6 +3344,7 @@ async function renderAdmin() {
           .map((e) => `<label class="toggle"><input type="checkbox" data-action="admin-exchange" data-id="${esc(e.id)}"${e.enabled ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>${esc(e.name)}</label>`)
           .join('')}</div>
       </section>
+      ${teamData ? teamPanel(teamData.team) : ''}
       ${exchangeCheckPanel()}
       <section class="panel">
         <div class="section-head"><span class="section-ico">${ico('database')}</span><div><h2>Database backup</h2><p class="muted">Copies of the database in Supabase, restored automatically when the server restarts.</p></div></div>
@@ -3705,9 +3710,57 @@ const ADMIN_ACTIONS = {
   telegram_channel_off: 'Stopped posting to the Telegram channel',
   telegram_posted: 'Posted a market to the Telegram channel',
   telegram_posted_open: 'Posted open markets to the Telegram channel',
+  team_member_added: 'Gave someone console access',
+  team_member_removed: 'Removed someone’s console access',
   telegram_token_banners_on: 'Turned token banners on for the Telegram channel',
   telegram_token_banners_off: 'Turned token banners off for the Telegram channel',
 };
+
+/** The admin console for a team member who manages tasks only. */
+async function renderTasksOnly(view) {
+  let tasks = [];
+  try {
+    ({ tasks } = await A.api.tasks());
+  } catch (err) {
+    view.innerHTML = `<div class="empty"><p><strong>Couldn’t load tasks.</strong><br />${esc(err.message)}</p></div>`;
+    return;
+  }
+  view.innerHTML = `
+    <div class="admin-shell">
+      <aside class="admin-side" aria-label="Admin sections">
+        <div class="admin-brand">${ico('shield')}<span>Team console</span></div>
+        <nav class="admin-nav"><button type="button" aria-current="page">${ico('sparkles')}<span>Tasks</span></button></nav>
+        <button class="btn admin-lock" data-action="admin-logout">${ico('lock')}Lock</button>
+      </aside>
+      <div class="admin-main">
+        <header class="admin-top"><div><span class="eyebrow">Team · Tasks only</span><h1 class="page-title">Tasks</h1><p class="muted">Tasks players complete on X for points. Your role lets you add and edit tasks only.</p></div></header>
+        ${tasksAdminSection(tasks)}
+      </div>
+    </div>`;
+}
+
+/** Settings → Team (owner only): give people admin-console access by email or wallet. */
+function teamPanel(team) {
+  const roleName = { admin: 'Admin', tasks: 'Tasks only' };
+  return `
+      <section class="panel">
+        <div class="section-head"><span class="section-ico">${ico('user')}</span><div><h2>Team</h2><p class="muted">Give people access to this console. They log in on the site with this email (Google or an email code) or with this wallet linked, then open Admin from the menu. <b>Admin</b>: everything except this list. <b>Tasks only</b>: add and edit tasks.</p></div></div>
+        ${
+          team.length
+            ? `<ul class="team-list">${team
+                .map(
+                  (m) => `<li><span class="team-who">${ico(m.kind === 'email' ? 'mail' : 'wallet')}<span>${esc(m.kind === 'wallet' ? shortAddress(m.value) : m.value)}</span></span><span class="pill ${m.role === 'admin' ? 'pill-hot' : 'pill-off'}">${roleName[m.role]}</span><button class="btn btn-sm btn-danger" data-action="admin-team-remove" data-id="${m.id}" data-who="${esc(m.value)}">Remove</button></li>`,
+                )
+                .join('')}</ul>`
+            : '<p class="muted">Nobody yet. Only you can open the console.</p>'
+        }
+        <div class="team-form">
+          <input id="team-value" placeholder="Email or Solana wallet address" autocomplete="off" />
+          <select id="team-role"><option value="tasks">Tasks only</option><option value="admin">Admin</option></select>
+          <button class="btn btn-solid btn-sm" data-action="admin-team-add">${ico('plus')}Add</button>
+        </div>
+      </section>`;
+}
 
 /** "MEXC, OKX and Gate" */
 function listNames(names) {
@@ -4257,6 +4310,28 @@ async function onAdminAction(action, el) {
       return runPriceCheck();
     case 'admin-banner-preview':
       return runBannerPreview();
+    case 'admin-team-add': {
+      const value = $('#team-value')?.value.trim();
+      const role = $('#team-role')?.value;
+      if (!value) return toast('Enter an email or a wallet address.', true);
+      if (role === 'admin' && !confirm(`Give ${value} admin access? They can create, publish, settle and cancel markets and change settings.`)) return;
+      try {
+        await A.api.teamAdd(value, role);
+        toast(`${value} added`);
+      } catch (err) {
+        return toast(err.message, true);
+      }
+      return renderAdmin();
+    }
+    case 'admin-team-remove':
+      if (!confirm(`Remove ${el.dataset.who}'s access?`)) return;
+      try {
+        await A.api.teamRemove(el.dataset.id);
+        toast('Access removed');
+      } catch (err) {
+        return toast(err.message, true);
+      }
+      return renderAdmin();
     case 'admin-token-banners':
       try {
         await A.api.setTokenBanners(el.checked);

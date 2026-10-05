@@ -1708,6 +1708,49 @@ export class FirstprintService {
     return this.autoListingsEnabled();
   }
 
+  // --- Team: admin-console access given from Settings -------------------------------
+
+  teamList() {
+    return as<{ id: number; kind: 'email' | 'wallet'; value: string; role: 'admin' | 'tasks'; added_at: number }[]>(
+      this.db.prepare('SELECT id, kind, value, role, added_at FROM team_members ORDER BY added_at').all(),
+    ).map((r) => ({ id: r.id, kind: r.kind, value: r.value, role: r.role, addedAt: r.added_at }));
+  }
+
+  /** Gives an email or a Solana wallet admin ("admin") or tasks-only ("tasks") access; adding it again changes the role. */
+  teamAdd(input: { value: string; role: string }) {
+    const raw = String(input.value ?? '').trim();
+    const role = input.role === 'admin' ? 'admin' : input.role === 'tasks' ? 'tasks' : null;
+    if (!role) throw new AppError(400, 'bad_role', 'Choose a role: Admin or Tasks only.');
+    let kind: 'email' | 'wallet';
+    let value: string;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
+      kind = 'email';
+      value = raw.toLowerCase();
+    } else if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(raw)) {
+      kind = 'wallet';
+      value = raw;
+    } else throw new AppError(400, 'bad_member', 'Enter an email address or a Solana wallet address.');
+    this.db
+      .prepare('INSERT INTO team_members (kind, value, role, added_at) VALUES (?, ?, ?, ?) ON CONFLICT(value) DO UPDATE SET role = excluded.role')
+      .run(kind, value, role, this.clock.now());
+    return this.teamList();
+  }
+
+  teamRemove(id: number) {
+    this.db.prepare('DELETE FROM team_members WHERE id = ?').run(Number(id));
+    return this.teamList();
+  }
+
+  /** The strongest team role for an account: by email (when proved this session) or by a linked wallet. */
+  teamRoleFor(email: string | null, wallets: string[]): 'admin' | 'tasks' | null {
+    const values = [...(email ? [email.toLowerCase()] : []), ...wallets];
+    if (!values.length) return null;
+    const rows = as<{ role: string }[]>(
+      this.db.prepare(`SELECT role FROM team_members WHERE value IN (${values.map(() => '?').join(', ')})`).all(...values),
+    );
+    return rows.some((r) => r.role === 'admin') ? 'admin' : rows.length ? 'tasks' : null;
+  }
+
   // --- Public Telegram channel ------------------------------------------------------
 
   /** Each token's own banner on channel posts. On unless an admin switched it off in Settings. */

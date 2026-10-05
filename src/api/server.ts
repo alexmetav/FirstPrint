@@ -16,6 +16,13 @@ import type { ChannelPoster } from '../services/channel.ts';
 import { analytics } from '../services/analytics.ts';
 import type { RewardsService, TaskInput } from '../services/rewards.ts';
 
+/**
+ * Who may use the admin console: the owner (the ADMIN_KEY, or ADMIN_EMAILS / ADMIN_WALLETS),
+ * team admins (everything but the team), and team members who manage tasks only.
+ */
+export type AdminLevel = 'owner' | 'admin' | 'tasks';
+const LEVEL_RANK: Record<AdminLevel, number> = { tasks: 1, admin: 2, owner: 3 };
+
 export interface ServerOptions {
   service: FirstprintService;
   scheduler?: Scheduler;
@@ -69,7 +76,8 @@ interface Ctx {
   body: () => Promise<Record<string, unknown>>;
   user: () => UserRow;
   optionalUser: () => UserRow | null;
-  requireAdmin: () => void;
+  /** Throws unless the request may use the admin console at this level (default: admin); returns the level. */
+  requireAdmin: (min?: AdminLevel) => AdminLevel;
 }
 
 /**
@@ -371,7 +379,8 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('GET', '/api/me', ({ req, user }) => {
     const u = user();
-    return { ...publicUser(u, service.clock.now(), service.walletsFor(u.id)), unreadNotifications: service.unreadNotifications(u.id), isAdmin: sessionIsAdmin(req, u) };
+    const adminLevel = accountLevel(req, u);
+    return { ...publicUser(u, service.clock.now(), service.walletsFor(u.id)), unreadNotifications: service.unreadNotifications(u.id), isAdmin: adminLevel !== null, adminLevel };
   });
 
   route('GET', '/api/me/notifications', ({ user }) => service.notificationsFor(user().id));
@@ -773,9 +782,12 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('GET', '/api/admin/ping', ({ requireAdmin }) => {
-    requireAdmin();
+    const level = requireAdmin('tasks');
+    // Tasks-only team members get just what the Tasks page needs.
+    if (level === 'tasks') return { ok: true, level, manualOnly: opts.manualOnly ?? false };
     return {
       ok: true,
+      level,
       venues: service.venueList(),
       exchanges: service.exchangeSettings(),
       manualOnly: opts.manualOnly ?? false,
@@ -822,12 +834,12 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('GET', '/api/admin/tasks', ({ requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('tasks');
     return { tasks: rewardsOn().listTasksAdmin() };
   });
 
   route('POST', '/api/admin/tasks', async ({ req, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('tasks');
     const b = await body();
     const id = rewardsOn().createTask(taskInput(b) as TaskInput);
     audit(req, 'task_created', id, `${b.kind} ${b.points} pts`);
@@ -835,11 +847,33 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('POST', '/api/admin/tasks/:id', async ({ req, params, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('tasks');
     const b = await body();
     rewardsOn().updateTask(params.id, taskInput(b));
     audit(req, 'task_updated', params.id, JSON.stringify(b).slice(0, 200));
     return { ok: true };
+  });
+
+  // Settings → Team: the owner gives people admin or tasks-only access by email or wallet.
+  route('GET', '/api/admin/team', ({ requireAdmin }) => {
+    requireAdmin('owner');
+    return { team: service.teamList() };
+  });
+
+  route('POST', '/api/admin/team', async ({ req, body, requireAdmin }) => {
+    requireAdmin('owner');
+    const b = await body();
+    const team = service.teamAdd({ value: String(b.value ?? ''), role: String(b.role ?? '') });
+    audit(req, 'team_member_added', null, `${String(b.value ?? '').trim().slice(0, 80)} as ${b.role}`);
+    return { team };
+  });
+
+  route('POST', '/api/admin/team/:id/remove', async ({ req, params, requireAdmin }) => {
+    requireAdmin('owner');
+    const gone = service.teamList().find((m) => m.id === Number(params.id));
+    const team = service.teamRemove(Number(params.id));
+    audit(req, 'team_member_removed', null, gone ? gone.value : params.id);
+    return { team };
   });
 
   route('GET', '/api/admin/log', ({ requireAdmin }) => {
@@ -980,20 +1014,19 @@ export function createApiServer(opts: ServerOptions): Server {
   }
 
   /**
-   * An account listed in ADMIN_EMAILS (signed in this session with an email code or Google, which
-   * prove the address) or with a wallet in ADMIN_WALLETS linked (proved by signing). Password
-   * sign-ins never count by email: those addresses were never checked.
+   * The admin level of the signed-in account, or null. An email counts only when this session
+   * signed in with an email code or Google, which prove the address (password sign-ins never do);
+   * a wallet counts when linked to the account (proved by signing). ADMIN_EMAILS / ADMIN_WALLETS
+   * are the owner; Settings → Team gives others admin or tasks-only access.
    */
-  function sessionIsAdmin(req: IncomingMessage, u: UserRow | null): boolean {
-    if (!u) return false;
-    const emails = opts.adminEmails ?? [];
-    const wallets = opts.adminWallets ?? [];
-    if (!emails.length && !wallets.length) return false;
-    if (u.email && emails.includes(u.email.toLowerCase())) {
-      const via = service.sessionVia(sessionToken(req));
-      if (via === 'email' || via === 'google') return true;
-    }
-    return wallets.length > 0 && service.walletsFor(u.id).some((w) => wallets.includes(w.address));
+  function accountLevel(req: IncomingMessage, u: UserRow | null): AdminLevel | null {
+    if (!u) return null;
+    const via = service.sessionVia(sessionToken(req));
+    const email = u.email && (via === 'email' || via === 'google') ? u.email.toLowerCase() : null;
+    const wallets = service.walletsFor(u.id).map((w) => w.address);
+    if (email && (opts.adminEmails ?? []).includes(email)) return 'owner';
+    if (wallets.some((w) => (opts.adminWallets ?? []).includes(w))) return 'owner';
+    return service.teamRoleFor(email, wallets);
   }
 
   // --- Shareable PnL cards ----------------------------------------------------------
@@ -1110,7 +1143,7 @@ export function createApiServer(opts: ServerOptions): Server {
         if (!u) throw new AppError(401, 'auth_required', 'Log in to continue.');
         return u;
       },
-      requireAdmin: () => {
+      requireAdmin: (min: AdminLevel = 'admin') => {
         // Wrong keys are limited tightly (guessing); the right key gets room for the panel's own traffic.
         const given = String(req.headers['x-admin-key'] ?? '');
         const keyOk =
@@ -1118,13 +1151,15 @@ export function createApiServer(opts: ServerOptions): Server {
           opts.adminKey &&
           Buffer.byteLength(given) === Buffer.byteLength(opts.adminKey) &&
           timingSafeEqual(Buffer.from(given), Buffer.from(opts.adminKey));
-        // No key: an admin account signed in on this browser (ADMIN_EMAILS / ADMIN_WALLETS).
-        const ok = keyOk || (!given && sessionIsAdmin(req, ctx.optionalUser()));
-        if (!ok) {
+        // No key: an owner or team account signed in on this browser.
+        const level: AdminLevel | null = keyOk ? 'owner' : given ? null : accountLevel(req, ctx.optionalUser());
+        if (level && LEVEL_RANK[level] < LEVEL_RANK[min]) throw new AppError(403, 'not_allowed', 'Your team role can’t do this. Ask the owner for more access.');
+        if (!level) {
           rateLimit(`admin-bad:${visitor(req)}`, 20, 60_000);
           throw new AppError(403, 'forbidden', 'Admin key required.');
         }
         rateLimit(`admin:${visitor(req)}`, 600, 60_000);
+        return level;
       },
     };
 

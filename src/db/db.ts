@@ -42,6 +42,14 @@ function migrate(db: DB) {
     db.exec('ALTER TABLE markets ADD COLUMN result_alerted_at INTEGER');
     db.exec("UPDATE markets SET result_alerted_at = created_at WHERE status != 'open' AND base_price IS NOT NULL");
   }
+  // People the owner gave admin-console access from Settings → Team (by email or wallet).
+  db.exec(`CREATE TABLE IF NOT EXISTS team_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL CHECK (kind IN ('email', 'wallet')),
+    value TEXT NOT NULL UNIQUE,
+    role TEXT NOT NULL CHECK (role IN ('admin', 'tasks')),
+    added_at INTEGER NOT NULL
+  )`);
   ensure('markets', 'opening_price_failed', 'opening_price_failed INTEGER NOT NULL DEFAULT 0');
   ensure('markets', 'reminded_at', 'reminded_at INTEGER');
   ensure('users', 'x_username', 'x_username TEXT');
