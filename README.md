@@ -92,7 +92,7 @@ src/
   api/fetchImage.ts         Safe download of admin logo links
   api/server.ts             HTTP API, sessions, SSE stream, admin routes, static site
   demo.ts / demoServer.ts   Isolated read-only public demo service
-  exchanges/venues.ts       Binance, MEXC, Bybit, OKX, Gate, Bitget, KuCoin adapters
+  exchanges/venues.ts       Binance, MEXC, Bybit, OKX, Gate, Bitget, KuCoin adapters, plus CoinGecko as a price source for trending tokens
   exchanges/sim.ts          Simulated exchange for local development
   workers/listingTracker.ts Announcements and new-pair detection
   workers/liveFeed.ts       Live tickers to Server-Sent Events
@@ -208,6 +208,8 @@ See `solana/README.md` for build, test, deploy, and oracle instructions.
 
 - [ ] Test every exchange adapter against the live APIs on staging.
 - [ ] Set `NODE_ENV=production`, `PUBLIC_URL`, and a long `ADMIN_KEY`, and serve over HTTPS.
+- [ ] Behind Cloudflare, set `BEHIND_CLOUDFLARE=1` so rate limits count each visitor (from `CF-Connecting-IP`) rather than each Cloudflare server. Otherwise set `TRUST_PROXY_HOPS` to the number of proxies in front of the server.
+- [ ] Tasks-only team members can add tasks worth up to 500 points; the TestFPT setup and its key are for the owner only.
 - [ ] Move to PostgreSQL once traffic grows (`schema.sql` maps directly). Backups already go to Supabase Storage.
 - [ ] Add monitoring and alerts for failed tracking, ingestion, or settlement.
 - [ ] Get legal advice before points gain any value or real-money pools launch.

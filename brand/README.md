@@ -1,6 +1,6 @@
 # Firstprint brand assets
 
-The mark is the outcome ladder: five bars from **Moon** (gold, top) to **Crash** (red, bottom), tapering toward the middle. It's the same shape used in the site header and favicon.
+The mark is the outcome ladder: five bars from **Moon** (neon green, top) to **Crash** (red, bottom), tapering toward the middle. It's the same shape used in the site header and favicon.
 
 ## For X (Twitter)
 
@@ -31,7 +31,7 @@ SVGs stay sharp at any size, so use them wherever the platform allows.
 
 | Name | Hex | Meaning |
 |---|---|---|
-| Moon | `#FFC53D` | +50% or better |
+| Moon | `#7DFF3A` | +50% or better (neon green: a big pump) |
 | Up | `#35E0A1` | +10% to +50% |
 | Flat | `#A6B0C4` | −10% to +10% |
 | Down | `#FF8A5C` | −50% to −10% |

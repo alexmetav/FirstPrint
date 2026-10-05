@@ -14,6 +14,12 @@ export class ApiError extends Error {
  * page is told so it can say so instead of showing an error. Writes are never retried: they aren't safe to repeat.
  */
 export const wake = { onWaking: () => {}, onAwake: () => {} };
+
+/**
+ * The server's clock, from each response's Date header (fresh even when the body comes from the
+ * browser cache after a 304), so countdowns match the server. null until the first answer.
+ */
+export const serverClock = { skew: null };
 const WAKE_RETRIES = 16;
 const WAKE_WAIT_MS = 4_000;
 const GATEWAY = new Set([502, 503, 504, 520, 521, 522, 523, 524]);
@@ -52,6 +58,9 @@ export function createApi(baseUrl = '') {
   }
 
   async function finish(res) {
+    const date = Date.parse(res.headers.get('date') ?? '');
+    // The header has whole seconds: add half a second to land in the middle.
+    if (Number.isFinite(date)) serverClock.skew = date + 500 - Date.now();
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new ApiError(res.status, data.error ?? 'error', data.message ?? 'Request failed.');
     return data;
@@ -154,6 +163,7 @@ export function createAdminApi(key, baseUrl = '') {
     setLogoPng: (id, logoPng) => post(`/api/admin/markets/${encodeURIComponent(id)}/logo-png`, { logoPng }),
     telegramPost: (id) => post(`/api/admin/markets/${encodeURIComponent(id)}/telegram`),
     telegramPostOpen: (again = false) => post('/api/admin/telegram/post-open', { again }),
+    telegramPostSummary: () => post('/api/admin/telegram/post-summary'),
     telegramDisconnect: () => post('/api/admin/telegram/disconnect'),
     setAutoListings: (enabled) => post('/api/admin/auto-listings', { enabled }),
     setExchange: (id, enabled) => post(`/api/admin/exchanges/${encodeURIComponent(id)}`, { enabled }),

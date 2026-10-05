@@ -251,7 +251,7 @@ body[data-view='landing'] .app {
   transform-origin: center;
   animation: markIn 0.7s var(--spring) backwards;
 }
-.mark i:nth-child(1) { background: var(--warn); width: 20px; animation-delay: 0.05s; }
+.mark i:nth-child(1) { background: var(--moon); width: 20px; animation-delay: 0.05s; }
 .mark i:nth-child(2) { background: var(--up); width: 15px; animation-delay: 0.11s; }
 .mark i:nth-child(3) { background: var(--flat); width: 10px; animation-delay: 0.17s; }
 .mark i:nth-child(4) { background: var(--down); width: 15px; animation-delay: 0.23s; }
@@ -428,7 +428,7 @@ body[data-view='landing'] .app {
 .hero-title em {
   font-style: normal;
   white-space: nowrap;
-  background: linear-gradient(96deg, var(--warn), var(--up) 55%, var(--flat));
+  background: linear-gradient(96deg, var(--moon), var(--up) 55%, var(--flat));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;

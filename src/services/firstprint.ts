@@ -258,6 +258,13 @@ const as = <T>(v: unknown) => v as T;
 // Service
 // ---------------------------------------------------------------------------
 
+/** A short fingerprint of a logo, so its URL changes when the logo does. */
+function logoVersion(s: string) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i += 7) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return ((h >>> 0).toString(36) + s.length.toString(36)).slice(0, 12);
+}
+
 export class FirstprintService {
   db: DB;
   clock: Clock;
@@ -906,7 +913,7 @@ export class FirstprintService {
 
   adminMarkets() {
     const rows = as<MarketRow[]>(this.db.prepare('SELECT * FROM markets ORDER BY created_at DESC LIMIT 200').all());
-    return rows.map((r) => this.view(r));
+    return rows.map((r) => this.view(r, undefined, true));
   }
 
   venueList() {
@@ -985,7 +992,11 @@ export class FirstprintService {
       durationMs: resultAt - closeAt,
       settleWindowMs: 0,
     });
-    const pairs = input.pairs ?? {};
+    // Only plain ids are kept (a CoinGecko coin id like pudgy-penguins, or an exchange pair).
+    const pairs = Object.fromEntries(Object.entries(input.pairs ?? {}).filter(([, v]) => typeof v === 'string' && /^[a-z0-9_-]{1,100}$/i.test(v))) as Record<string, string>;
+    for (const id of exchanges) {
+      if (this.venues.get(id)!.priceOnly && !pairs[id]) throw new AppError(400, 'missing_coin', `${this.venues.get(id)!.name} needs the coin id: make the market from Find tokens.`);
+    }
     const venues: VenueRef[] = exchanges.map((id) => ({ venue: id, symbol: pairs[id] || this.venues.get(id)!.pair(symbol) }));
     const exchangeLabel = exchanges.map((id) => this.venues.get(id)!.name).join(', ');
     const name = input.name ? String(input.name).trim().slice(0, 80) : null;
@@ -1896,15 +1907,31 @@ export class FirstprintService {
   getMarket(id: string, userId?: string, asAdmin = false) {
     const m = this.row(id);
     if (m.published === 0 && !asAdmin) throw new AppError(404, 'market_not_found', 'Market not found.');
-    return this.view(m, userId);
+    return this.view(m, userId, asAdmin);
+  }
+
+  /**
+   * An uploaded logo (stored as a data: URL) as image bytes, for /api/logo/:id. Public lists link to
+   * it instead of carrying the image in every response, so browsers and the CDN cache it.
+   */
+  logoImage(id: string): { type: string; bytes: Buffer } | null {
+    const r = as<{ logo_url: string | null; published: number } | undefined>(this.db.prepare('SELECT logo_url, published FROM markets WHERE id = ?').get(id));
+    const m = r?.published === 1 ? /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/.exec(r.logo_url ?? '') : null;
+    return m ? { type: m[1], bytes: Buffer.from(m[2], 'base64') } : null;
   }
 
   settlement(id: string) {
+    this.publicRow(id);
+    return this.settlementOf(id);
+  }
+
+  private settlementOf(id: string) {
     const s = as<{ result: string; data_hash: string; settled_at: number } | undefined>(
       this.db.prepare('SELECT * FROM settlements WHERE market_id = ?').get(id),
     );
     if (!s) throw new AppError(404, 'not_settled', 'This market has not settled yet.');
-    return { marketId: id, settledAt: s.settled_at, dataHash: s.data_hash, result: JSON.parse(s.result) as SettlementResult };
+    // Public: players' internal ids are left out (the hash still proves the stored result).
+    return { marketId: id, settledAt: s.settled_at, dataHash: s.data_hash, result: JSON.parse(s.result, (k, v) => (k === 'userId' ? undefined : v)) as SettlementResult };
   }
 
   /** Downsampled price series for charts. */
@@ -2188,6 +2215,23 @@ export class FirstprintService {
     return m;
   }
 
+  /**
+   * Predictions for drawing a market, reused for up to 2 seconds while nothing has been written:
+   * every refresh of every visitor's list would otherwise re-read every prediction of every market.
+   * Any write on this connection (total_changes) makes it read afresh. Points logic never uses this.
+   */
+  private viewCache = new Map<string, { gen: number; at: number; rows: readonly PredictionRow[] }>();
+  private predictionsForView(marketId: string): readonly PredictionRow[] {
+    const gen = (this.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n;
+    const at = Date.now();
+    const hit = this.viewCache.get(marketId);
+    if (hit && hit.gen === gen && at - hit.at < 2_000) return hit.rows;
+    const rows = this.predictions(marketId);
+    if (this.viewCache.size > 1_000) this.viewCache.clear();
+    this.viewCache.set(marketId, { gen, at, rows });
+    return rows;
+  }
+
   private predictions(marketId: string): PredictionRow[] {
     return as<PredictionRow[]>(
       this.db.prepare('SELECT * FROM predictions WHERE market_id = ? ORDER BY placed_at, id').all(marketId),
@@ -2217,11 +2261,11 @@ export class FirstprintService {
     return { note: s.manual?.note ?? null, winners: winners.map((w) => ({ username: w.username, bucket: w.bucket, stake: w.accepted, payout: w.payout })) };
   }
 
-  private view(m: MarketRow, userId?: string) {
+  private view(m: MarketRow, userId?: string, rawLogo = false) {
     const cfg = parseConfig(m);
     const w = windows(cfg, m.listing_at);
     const now = this.clock.now();
-    const preds = this.predictions(m.id);
+    const preds = this.predictionsForView(m.id);
     const afterClose = m.status !== 'open';
 
     const totals = emptyTotals();
@@ -2283,7 +2327,7 @@ export class FirstprintService {
 
     let result = null;
     if (m.status === 'resolved' || m.status === 'void') {
-      const s = this.settlement(m.id).result;
+      const s = this.settlementOf(m.id).result;
       result = {
         winningBucket: s.winningBucket,
         returnPct: s.returnPct,
@@ -2323,7 +2367,8 @@ export class FirstprintService {
       exchange: m.exchange,
       venues: (JSON.parse(m.venues) as VenueRef[]).map((v) => ({ id: v.venue, name: this.venues.get(v.venue)?.name ?? v.venue, pair: v.symbol })),
       sourceUrl: m.source_url,
-      logoUrl: m.logo_url ?? null,
+      // Uploaded logos are served from /api/logo/:id (versioned, cached) instead of inline in every list.
+      logoUrl: m.logo_url && !rawLogo && /^data:image\/(png|jpeg|webp|gif);/.test(m.logo_url) ? `/api/logo/${encodeURIComponent(m.id)}?v=${logoVersion(m.logo_url)}` : (m.logo_url ?? null),
       hasLogoPng: Boolean(m.logo_png),
       autoOpenAt: m.auto_open_at ?? null,
       autoOpenNote: m.auto_open_note ?? null,

@@ -915,7 +915,9 @@ export class RewardsService {
     }
     const signature = transactionId(wire);
     // Record the signature before sending, so a crash after sending can still be reconciled.
-    this.db.prepare("UPDATE claims SET status = 'submitted', signature = ?, updated_at = ? WHERE id = ? AND status = 'pending'").run(signature, this.now(), id);
+    // The claim may have been replaced by a new one while it was being signed: never send it then.
+    const moved = this.db.prepare("UPDATE claims SET status = 'submitted', signature = ?, updated_at = ? WHERE id = ? AND status = 'pending'").run(signature, this.now(), id);
+    if (Number(moved.changes) !== 1) throw new AppError(409, 'claim_closed', 'This claim was replaced by a newer one. Use the latest claim.');
     try {
       await token.chain.send(wire);
     } catch (err) {

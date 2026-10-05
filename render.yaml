@@ -30,8 +30,13 @@ services:
         value: production
       - key: MANUAL_ONLY
         value: "1"
+      # The network wallets sign in on (TestFPT itself is on TOKEN_CLUSTER below).
       - key: SOLANA_CHAIN
         value: devnet
+      # firstprint.fun is served through Cloudflare: read each visitor's address from CF-Connecting-IP,
+      # so rate limits apply per visitor instead of per Cloudflare server. Set to 0 without Cloudflare.
+      - key: BEHIND_CLOUDFLARE
+        value: "1"
       # Render creates a random key. Read it in the dashboard (Environment) to open /#/admin.
       - key: ADMIN_KEY
         generateValue: true

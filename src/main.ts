@@ -174,6 +174,7 @@ const server = createApiServer({
   telegram,
   channel,
   trustProxyHops: cfg.trustProxyHops,
+  behindCloudflare: process.env.BEHIND_CLOUDFLARE === '1',
   backupStatus: () => backup?.status() ?? { enabled: false, lastOkAt: null, lastError: null },
   googleClientId: cfg.googleClientId,
   mailer,

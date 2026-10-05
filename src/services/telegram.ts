@@ -96,7 +96,7 @@ export function newListingText(d: { symbol: string | null; name: string | null; 
 
 export function resultDueText(m: { symbol: string; basePrice: number | null; pool: number; predictors: number }, adminUrl: string) {
   const what = m.basePrice === null ? 'Predictions closed and it has no start price yet. Add its opening price, then the result.' : 'Predictions closed. Post the final price to pay the winners.';
-  return `⏰ <b>${esc(m.symbol)} needs you</b>\n${what}\nPool: ${m.pool.toLocaleString('en-US')} pts from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'}.\n\n${esc(adminUrl)}`;
+  return `⏰ <b>${esc(m.symbol)} needs you</b>\n${what}\nPool: ${m.pool.toLocaleString('en-US')} pts from ${m.predictors} participant${m.predictors === 1 ? '' : 's'}.\n\n${esc(adminUrl)}`;
 }
 
 /** A public channel username: 5–32 letters, digits or underscores, given with or without @ or a t.me link. */
@@ -167,7 +167,7 @@ export function marketResultText(
   const won = m.outcomes === 'binary' ? (r.winningBucket === 'up' ? 'Yes' : 'No') : OUTCOME[r.winningBucket] ?? r.winningBucket;
   const pct = r.returnPct !== null ? ` · ${r.returnPct >= 0 ? '+' : ''}${(r.returnPct * 100).toFixed(1)}%` : '';
   const move = r.basePrice !== null && r.finalPrice !== null ? `\n📈 ${price(r.basePrice)} → ${price(r.finalPrice)}` : '';
-  const players = m.predictors ? `👥 ${m.predictors.toLocaleString('en-US')} predictor${m.predictors === 1 ? '' : 's'} · ` : '👥 ';
+  const players = m.predictors ? `👥 ${m.predictors.toLocaleString('en-US')} participant${m.predictors === 1 ? '' : 's'} · ` : '👥 ';
   return `${head(m, `🏁 <b>Result: ${won} wins${pct}</b>`)}
 ${move}
 ${players}${r.pool.toLocaleString('en-US')} pts paid to the winners${cta('See the result', link)}`;
@@ -176,10 +176,42 @@ ${players}${r.pool.toLocaleString('en-US')} pts paid to the winners${cta('See th
 /** "Closing in an hour" reminder for the public channel. */
 export function closingSoonText(m: ChannelMarket & { pool: number; predictors: number }, link?: string) {
   const what = m.basePrice === null ? 'Starts trading in about an hour; predictions close when it does.' : 'Predictions close in about an hour.';
-  const crowd = m.predictors ? `👥 ${m.predictors} predictor${m.predictors === 1 ? '' : 's'} · ${m.pool.toLocaleString('en-US')} pts in the pool` : '👥 No picks yet. Early picks earn more.';
+  const crowd = m.predictors ? `👥 ${m.predictors} participant${m.predictors === 1 ? '' : 's'} · ${m.pool.toLocaleString('en-US')} pts in the pool` : '👥 No picks yet. Early picks earn more.';
   return `${head(m, '⏳ <b>Last hour to predict</b>')}
 
 ${what}
 ⏰ Closes: ${utc(m.closeAt)}
 ${crowd}${cta('Predict now', link)}`;
+}
+
+/** "in 3h 20m" or "in 2d 4h": how long until a market closes, for the summary post. */
+function closesIn(ms: number) {
+  const min = Math.max(1, Math.round(ms / 60_000));
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h${min % 60 ? ` ${min % 60}m` : ''}`;
+  const d = Math.floor(h / 24);
+  return `${d}d${h % 24 ? ` ${h % 24}h` : ''}`;
+}
+
+/**
+ * "12 markets live" post for the public channel: how many are open, the ones closing soonest
+ * with the time left, and the link. Real numbers only, straight from the open markets.
+ */
+export function liveSummaryText(markets: { symbol: string; closeAt: number; participants: number }[], link: string, now = Date.now()) {
+  const n = markets.length;
+  if (!n) return null;
+  const soonest = [...markets].sort((a, b) => a.closeAt - b.closeAt);
+  const shown = soonest.slice(0, 10);
+  const people = markets.reduce((s, m) => s + m.participants, 0);
+  const lines = shown.map((m) => `• <b>$${esc(m.symbol)}</b> · closes in ${closesIn(m.closeAt - now)}`).join('\n');
+  const more = n > shown.length ? `\n…and ${n - shown.length} more` : '';
+  const crowd = people ? `👥 ${people.toLocaleString('en-US')} participant${people === 1 ? '' : 's'} so far. ` : '';
+  return `🟢 <b>${n} market${n === 1 ? '' : 's'} live on Firstprint</b>
+
+Pick where each token goes: Crash, Down, Flat, Up or Moon. Free to play with points.
+
+${lines}${more}
+
+${crowd}Early picks earn more.${cta('Predict now', link)}`;
 }
