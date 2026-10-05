@@ -1943,7 +1943,7 @@ body[data-view='landing'] .app {
 }
 
 /* ===== Type system: Geist for words, Geist Mono for labels and numbers =====
-   Medium-weight two-tone headlines, mono eyebrows with a leading rule,
+   Medium-weight two-tone headlines, small mono eyebrows,
    light body copy with room to breathe. */
 body {
   font-family: var(--body);
@@ -1991,14 +1991,6 @@ h3 {
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
-}
-.eyebrow:not(:has(.dot-live))::before {
-  content: '';
-  flex: none;
-  width: 24px;
-  height: 1px;
-  background: currentColor;
-  opacity: 0.7;
 }
 
 .lede,

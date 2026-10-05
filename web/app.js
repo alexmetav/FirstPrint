@@ -950,7 +950,7 @@ function homeHero(showLive = true) {
             ? `<a class="hero-badge hero-badge-live" href="#/earn"><span class="dot-live" aria-hidden="true"></span>Testnet live<span class="hero-badge-more"> · Claim 1,000 TestFPT</span> ${ico('arrowRight')}</a>`
             : `<p class="hero-badge">${ico('sparkles')}Listing prediction markets<span class="hero-badge-more"> · Free to play</span></p>`
         }
-        <h1 id="hero-title">Predict where new listings land.<span class="soft"> Before the price settles.</span></h1>
+        <h1 id="hero-title">Predict where new listings land<span class="soft"> before the price settles</span></h1>
         <p class="hero-sub">Pick one of five outcomes (${LADDER.map(word).join(', ')}) on freshly listed tokens${venues.length ? ` across ${esc(list(venues))}` : ''}. Points only, no real money.</p>
         ${stats.length ? `<dl class="hero-stats">${stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
       </div>
@@ -2542,7 +2542,7 @@ function startChecklist() {
       <div class="tn-coins" aria-hidden="true"><i></i><i></i><i></i></div>
       <div class="tn-copy">
         <p class="tn-kicker"><span class="dot-live" aria-hidden="true"></span>Testnet is live</p>
-        <h2 id="testnet-title">Claim 1,000 free TestFPT<span class="soft"> on Solana ${clusterName()}.</span></h2>
+        <h2 id="testnet-title">Claim 1,000 free TestFPT<span class="soft"> on Solana ${clusterName()}</span></h2>
         <p class="tn-sub">Your Firstprint points, as a token in your own wallet. Takes about two minutes. Test network only, no real money.</p>
       </div>
       <ol class="tn-steps">${steps

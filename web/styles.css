@@ -8505,15 +8505,6 @@ h3,
   align-items: center;
   gap: 10px;
 }
-.eyebrow::before,
-.dash-eyebrow::before {
-  content: '';
-  flex: none;
-  width: 20px;
-  height: 1px;
-  background: currentColor;
-  opacity: 0.7;
-}
 
 .tick,
 .num,

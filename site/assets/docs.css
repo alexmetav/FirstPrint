@@ -132,12 +132,6 @@ svg {
   text-transform: uppercase;
   color: var(--muted);
 }
-.eyebrow::before {
-  content: '';
-  width: 22px;
-  height: 1px;
-  background: currentColor;
-}
 .draft-note {
   display: flex;
   gap: 10px;
