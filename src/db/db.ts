@@ -47,7 +47,7 @@ function migrate(db: DB) {
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kind TEXT NOT NULL CHECK (kind IN ('email', 'wallet')),
     value TEXT NOT NULL UNIQUE,
-    role TEXT NOT NULL CHECK (role IN ('admin', 'tasks')),
+    role TEXT NOT NULL CHECK (role IN ('admin', 'listings', 'tasks')),
     added_at INTEGER NOT NULL
   )`);
   ensure('markets', 'opening_price_failed', 'opening_price_failed INTEGER NOT NULL DEFAULT 0');

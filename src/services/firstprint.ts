@@ -1711,16 +1711,16 @@ export class FirstprintService {
   // --- Team: admin-console access given from Settings -------------------------------
 
   teamList() {
-    return as<{ id: number; kind: 'email' | 'wallet'; value: string; role: 'admin' | 'tasks'; added_at: number }[]>(
+    return as<{ id: number; kind: 'email' | 'wallet'; value: string; role: 'admin' | 'listings' | 'tasks'; added_at: number }[]>(
       this.db.prepare('SELECT id, kind, value, role, added_at FROM team_members ORDER BY added_at').all(),
     ).map((r) => ({ id: r.id, kind: r.kind, value: r.value, role: r.role, addedAt: r.added_at }));
   }
 
-  /** Gives an email or a Solana wallet admin ("admin") or tasks-only ("tasks") access; adding it again changes the role. */
+  /** Gives an email or a Solana wallet admin, listings (markets and tasks) or tasks-only access; adding it again changes the role. */
   teamAdd(input: { value: string; role: string }) {
     const raw = String(input.value ?? '').trim();
-    const role = input.role === 'admin' ? 'admin' : input.role === 'tasks' ? 'tasks' : null;
-    if (!role) throw new AppError(400, 'bad_role', 'Choose a role: Admin or Tasks only.');
+    const role = (['admin', 'listings', 'tasks'] as const).find((r) => r === input.role) ?? null;
+    if (!role) throw new AppError(400, 'bad_role', 'Choose a role: Admin, Listings and tasks, or Tasks only.');
     let kind: 'email' | 'wallet';
     let value: string;
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
@@ -1742,13 +1742,14 @@ export class FirstprintService {
   }
 
   /** The strongest team role for an account: by email (when proved this session) or by a linked wallet. */
-  teamRoleFor(email: string | null, wallets: string[]): 'admin' | 'tasks' | null {
+  teamRoleFor(email: string | null, wallets: string[]): 'admin' | 'listings' | 'tasks' | null {
     const values = [...(email ? [email.toLowerCase()] : []), ...wallets];
     if (!values.length) return null;
     const rows = as<{ role: string }[]>(
       this.db.prepare(`SELECT role FROM team_members WHERE value IN (${values.map(() => '?').join(', ')})`).all(...values),
     );
-    return rows.some((r) => r.role === 'admin') ? 'admin' : rows.length ? 'tasks' : null;
+    for (const role of ['admin', 'listings', 'tasks'] as const) if (rows.some((r) => r.role === role)) return role;
+    return null;
   }
 
   // --- Public Telegram channel ------------------------------------------------------

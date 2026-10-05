@@ -3242,6 +3242,13 @@ const ADMIN_TABS = [
   ['activity', 'history', 'Activity', 'Everything done in this panel, newest first.'],
 ];
 
+/** Team roles, lowest first. A server without roles is treated as the owner's. */
+const ADMIN_RANK = { tasks: 1, listings: 2, admin: 3, owner: 4 };
+const canAdmin = (level) => (ADMIN_RANK[A.info?.level] ?? ADMIN_RANK.owner) >= ADMIN_RANK[level];
+/** The role each admin tab needs. Listing managers see markets, listings and tasks; not results, analytics, token or settings. */
+const TAB_LEVEL = { overview: 'listings', markets: 'listings', create: 'listings', tasks: 'tasks', activity: 'listings' };
+const adminTabs = () => ADMIN_TABS.filter(([id]) => canAdmin(TAB_LEVEL[id] ?? 'admin'));
+
 async function renderAdmin() {
   const view = $('#view');
   if (S.api.demo) {
@@ -3309,7 +3316,7 @@ async function renderAdmin() {
   if (A.edit && !editing) A.edit = null;
   const waiting = markets.filter((m) => m.mode === 'manual' && m.phase === 'awaiting_result');
   const drafts = markets.filter((m) => m.phase === 'draft');
-  const tab = ADMIN_TABS.some(([id]) => id === A.tab) ? A.tab : 'overview';
+  const tab = adminTabs().some(([id]) => id === A.tab) ? A.tab : 'overview';
   // New exchange listings waiting for review (manual-only servers); the old scanner shows its own list in Settings.
   const pending = manualOnly ? detected : [];
   if (A.review && !pending.some((d) => d.id === A.review.id)) A.review = null;
@@ -3358,7 +3365,7 @@ async function renderAdmin() {
       <aside class="admin-side" aria-label="Admin sections">
         <div class="admin-brand">${ico('shield')}<span>Admin console</span></div>
         <nav class="admin-nav">
-          ${ADMIN_TABS.map(
+          ${adminTabs().map(
             ([id, icon, label]) =>
               `<button type="button" data-action="admin-tab" data-tab="${id}"${id === tab ? ' aria-current="page"' : ''}>${ico(icon)}<span>${label}</span>${badges[id] ? `<span class="nav-badge">${badges[id]}</span>` : ''}</button>`,
           ).join('')}
@@ -3579,7 +3586,7 @@ function adminMarketsTab(markets, waiting) {
       waiting.length
         ? `<section class="panel panel-alert"><div class="section-head"><span class="section-ico">${ico('alert')}</span><div><h2>Waiting for your result <span class="count-badge">${waiting.length}</span></h2>
           <p class="muted">Predictions have closed. Enter the final price to pick the winners and pay out the pool.</p></div></div>
-          ${waiting.map(resultForm).join('')}</section>`
+          ${canAdmin('admin') ? waiting.map(resultForm).join('') : `<p class="muted pad">${waiting.map((m) => esc(m.symbol)).join(', ')}: an admin posts the result.</p>`}</section>`
         : ''
     }
     <section class="panel panel-flush">
@@ -3741,22 +3748,22 @@ async function renderTasksOnly(view) {
 
 /** Settings → Team (owner only): give people admin-console access by email or wallet. */
 function teamPanel(team) {
-  const roleName = { admin: 'Admin', tasks: 'Tasks only' };
+  const roleName = { admin: 'Admin', listings: 'Listings + tasks', tasks: 'Tasks only' };
   return `
       <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('user')}</span><div><h2>Team</h2><p class="muted">Give people access to this console. They log in on the site with this email (Google or an email code) or with this wallet linked, then open Admin from the menu. <b>Admin</b>: everything except this list. <b>Tasks only</b>: add and edit tasks.</p></div></div>
+        <div class="section-head"><span class="section-ico">${ico('user')}</span><div><h2>Team</h2><p class="muted">Give people access to this console. They log in on the site with this email (Google or an email code) or with this wallet linked, then open Admin from the menu. <b>Admin</b>: everything except this list. <b>Listings + tasks</b>: review new listings, create, edit, publish and unpublish markets, post them to Telegram, and manage tasks (not results, refunds or settings). <b>Tasks only</b>: add and edit tasks.</p></div></div>
         ${
           team.length
             ? `<ul class="team-list">${team
                 .map(
-                  (m) => `<li><span class="team-who">${ico(m.kind === 'email' ? 'mail' : 'wallet')}<span>${esc(m.kind === 'wallet' ? shortAddress(m.value) : m.value)}</span></span><span class="pill ${m.role === 'admin' ? 'pill-hot' : 'pill-off'}">${roleName[m.role]}</span><button class="btn btn-sm btn-danger" data-action="admin-team-remove" data-id="${m.id}" data-who="${esc(m.value)}">Remove</button></li>`,
+                  (m) => `<li><span class="team-who">${ico(m.kind === 'email' ? 'mail' : 'wallet')}<span>${esc(m.kind === 'wallet' ? shortAddress(m.value) : m.value)}</span></span><span class="pill ${m.role === 'admin' ? 'pill-hot' : m.role === 'listings' ? 'pill-live' : 'pill-off'}">${roleName[m.role]}</span><button class="btn btn-sm btn-danger" data-action="admin-team-remove" data-id="${m.id}" data-who="${esc(m.value)}">Remove</button></li>`,
                 )
                 .join('')}</ul>`
             : '<p class="muted">Nobody yet. Only you can open the console.</p>'
         }
         <div class="team-form">
           <input id="team-value" placeholder="Email or Solana wallet address" autocomplete="off" />
-          <select id="team-role"><option value="tasks">Tasks only</option><option value="admin">Admin</option></select>
+          <select id="team-role"><option value="listings">Listings + tasks</option><option value="tasks">Tasks only</option><option value="admin">Admin</option></select>
           <button class="btn btn-solid btn-sm" data-action="admin-team-add">${ico('plus')}Add</button>
         </div>
       </section>`;
@@ -4114,7 +4121,7 @@ function marketActions(m) {
   if (manualOpen && !m.published) out.push(btn('admin-publish', 'send', 'Publish', ' btn-solid'), btn('admin-delete', 'trash', 'Delete', ' btn-danger'));
   if (manualOpen && m.published && m.predictors === 0) out.push(btn('admin-unpublish', 'eye', 'Unpublish'));
   if (A.info.telegram?.channel && m.status === 'open' && m.published && m.kind !== 'live_test') out.push(btn('admin-tg-post', 'telegram', 'Post to Telegram'));
-  if ((m.status === 'open' || m.status === 'locked') && (m.published || m.mode !== 'manual')) out.push(btn('admin-cancel', 'undo', 'Cancel and refund', ' btn-danger'));
+  if (canAdmin('admin') && (m.status === 'open' || m.status === 'locked') && (m.published || m.mode !== 'manual')) out.push(btn('admin-cancel', 'undo', 'Cancel and refund', ' btn-danger'));
   return out.join(' ');
 }
 

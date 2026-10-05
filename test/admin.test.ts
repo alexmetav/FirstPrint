@@ -249,6 +249,20 @@ test('team: the owner gives admin or tasks-only access by email or wallet from S
     assert.equal((await call('/api/admin/team', o)).status, 403);
     assert.equal((await call('/api/admin/team', o, { value: 'x@example.com', role: 'admin' })).status, 403, 'admins can’t add people');
 
+    // Listings + tasks: review, create, edit and publish markets; not results, refunds or settings.
+    await call('/api/admin/team', owner, { value: 'helper@example.com', role: 'listings' });
+    assert.equal((await (await call('/api/admin/ping', h)).json()).level, 'listings');
+    assert.equal((await call('/api/admin/markets', h)).status, 200);
+    assert.equal((await call('/api/admin/detected', h)).status, 200);
+    const created = await call('/api/admin/manual-markets', h, { symbol: 'TEAM', exchanges: [], basePrice: 1, closeAt: Date.now() + 3_600_000 });
+    assert.notEqual(created.status, 403, 'may create markets (this one fails validation: no exchanges)');
+    assert.notEqual((await call('/api/admin/manual-markets/x/publish', h, {})).status, 403);
+    assert.notEqual((await call('/api/admin/manual-markets/x/unpublish', h, {})).status, 403);
+    assert.equal((await call('/api/admin/manual-markets/x/resolve', h, { finalPrice: 1 })).status, 403, 'results stay with admins');
+    assert.equal((await call('/api/admin/markets/x/cancel', h, {})).status, 403, 'refunds stay with admins');
+    assert.equal((await call('/api/admin/auto-listings', h, { enabled: false })).status, 403, 'settings stay with admins');
+    assert.equal((await call('/api/admin/analytics', h)).status, 403);
+
     // Adding again changes the role; removing takes access away.
     await call('/api/admin/team', owner, { value: 'helper@example.com', role: 'admin' });
     assert.equal((await call('/api/admin/markets', h)).status, 200);

@@ -18,10 +18,11 @@ import type { RewardsService, TaskInput } from '../services/rewards.ts';
 
 /**
  * Who may use the admin console: the owner (the ADMIN_KEY, or ADMIN_EMAILS / ADMIN_WALLETS),
- * team admins (everything but the team), and team members who manage tasks only.
+ * team admins (everything but the team), listing managers (tasks, plus reviewing, creating,
+ * editing and publishing markets, but not results, refunds or settings), and tasks only.
  */
-export type AdminLevel = 'owner' | 'admin' | 'tasks';
-const LEVEL_RANK: Record<AdminLevel, number> = { tasks: 1, admin: 2, owner: 3 };
+export type AdminLevel = 'owner' | 'admin' | 'listings' | 'tasks';
+const LEVEL_RANK: Record<AdminLevel, number> = { tasks: 1, listings: 2, admin: 3, owner: 4 };
 
 export interface ServerOptions {
   service: FirstprintService;
@@ -570,7 +571,7 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // Post one open market to the channel now (e.g. one made before the channel was set up).
   route('POST', '/api/admin/markets/:id/telegram', async ({ req, params, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     try {
       await channelOn().postLive(params.id);
     } catch (err) {
@@ -632,7 +633,7 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('POST', '/api/admin/manual-markets', async ({ req, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     const b = await body();
     const id = service.createManualMarket({ ...manualBody(b), publish: b.publish === true });
     // The banner logo is stored before the channel post (queued for after this request) reads it.
@@ -644,7 +645,7 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('POST', '/api/admin/manual-markets/:id', async ({ req, params, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     const b = await body();
     const patch = Object.fromEntries(Object.entries(manualBody(b)).filter(([, v]) => v !== undefined));
     service.updateManualMarket(params.id, patch);
@@ -656,7 +657,7 @@ export function createApiServer(opts: ServerOptions): Server {
   // The Telegram banner a market would get, drawn from the form before it is saved, so the admin
   // sees exactly what players will see (right logo, right ticker) before publishing.
   route('POST', '/api/admin/banner-preview', async ({ req, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     rateLimit(`banner:${visitor(req)}`, 60, 60_000);
     const b = await body();
     const symbol = String(b.symbol ?? '').trim().toUpperCase();
@@ -692,7 +693,7 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // PNG copy of a market's logo for its Telegram banners (the admin page makes it in the browser).
   route('POST', '/api/admin/markets/:id/logo-png', async ({ params, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     service.setLogoPng(params.id, String((await body()).logoPng ?? ''));
     return { ok: true };
   });
@@ -706,21 +707,21 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('POST', '/api/admin/manual-markets/:id/publish', ({ req, params, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     service.publishMarket(params.id);
     audit(req, 'market_published', params.id);
     return service.getMarket(params.id, undefined, true);
   });
 
   route('POST', '/api/admin/manual-markets/:id/unpublish', ({ req, params, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     service.unpublishMarket(params.id);
     audit(req, 'market_unpublished', params.id);
     return service.getMarket(params.id, undefined, true);
   });
 
   route('POST', '/api/admin/manual-markets/:id/delete', ({ req, params, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     service.deleteDraft(params.id);
     audit(req, 'draft_deleted', params.id);
     return { ok: true };
@@ -752,13 +753,13 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('GET', '/api/admin/detected', ({ url, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     const status = (url.searchParams.get('status') ?? 'pending') as 'pending' | 'approved' | 'ignored' | 'all';
     return { detected: service.detections({ status, limit: 200 }) };
   });
 
   route('POST', '/api/admin/detected/:id/approve', async ({ params, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     const b = await body();
     const marketId = service.approveDetection(Number(params.id), {
       symbol: b.symbol as string | undefined,
@@ -770,7 +771,7 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('POST', '/api/admin/detected/:id/ignore', ({ params, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     service.ignoreDetection(Number(params.id));
     return { ok: true };
   });
@@ -877,12 +878,12 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('GET', '/api/admin/log', ({ requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     return { log: service.adminLog(40) };
   });
 
   route('GET', '/api/admin/markets', ({ requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     return { markets: service.adminMarkets() };
   });
 
@@ -907,19 +908,19 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // Live prices for the market form ("Check live price") and warnings for every open market.
   route('POST', '/api/admin/price-check', async ({ body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     const b = await body();
     return { prices: await service.exchangePrices(String(b.symbol ?? ''), Array.isArray(b.exchanges) ? b.exchanges.map(String) : [], (b.pairs as Record<string, string>) ?? {}) };
   });
 
   route('GET', '/api/admin/market-checks', async ({ requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     return { checks: await service.marketChecks() };
   });
 
   // Copies a logo from a link so the market keeps its own copy (links break when sites change).
   route('GET', '/api/admin/fetch-image', async ({ req, url, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     rateLimit(`img:${visitor(req)}`, 30, 60_000);
     return fetchImage(url.searchParams.get('url') ?? '');
   });
