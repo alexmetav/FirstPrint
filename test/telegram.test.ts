@@ -55,16 +55,22 @@ test('telegram: channel names and channel posts', async () => {
   assert.equal(channelName('@bad name'), null);
 
   const base = { symbol: 'AGENCY', name: 'Agency', exchange: 'MEXC', outcomes: 'ladder', basePrice: 0.0421, closeAt: Date.UTC(2026, 9, 5, 12), settleAt: Date.UTC(2026, 9, 8, 12) };
-  const live = marketLiveText(base);
-  assert.match(live, /New market: AGENCY \(Agency\)/);
+  const link = 'https://firstprint.fun/app/#/market/agency-m-abc123';
+  const live = marketLiveText(base, link);
+  assert.ok(live.startsWith('<b>$AGENCY</b> · Agency\n🟢 <b>New market listed</b>'), 'the ticker comes first');
   assert.match(live, /Start price: \$0\.0421/);
   assert.match(live, /Predictions close: 5 Oct, 12:00 UTC/);
-  assert.match(marketLiveText({ ...base, basePrice: null }), /Lists on MEXC around 5 Oct, 12:00 UTC/);
-  assert.match(marketLiveText({ ...base, outcomes: 'binary' }), /Will AGENCY be at or above \$0\.0421 on MEXC\?/);
+  assert.ok(live.endsWith(`👉 <b>Predict now:</b> <a href="${link}">${link}</a>`), 'ends with the link to the market');
+  assert.match(marketLiveText({ ...base, basePrice: null }), /Upcoming[\s\S]*Start price: the opening price at listing/);
+  assert.match(marketLiveText({ ...base, outcomes: 'binary' }), /Will \$AGENCY be at or above \$0\.0421 on MEXC\?/);
+  assert.match(marketLiveText({ ...base, exchange: 'Binance, MEXC, Bybit, OKX, Gate, Bitget, and KuCoin' }), /on Binance \+6 more\?/);
+  assert.doesNotMatch(marketLiveText(base), /href/, 'no link given: no link line');
 
-  const res = marketResultText({ ...base, result: { winningBucket: 'up', returnPct: 0.234, basePrice: 0.0421, finalPrice: 0.052, pool: 1500 } });
-  assert.match(res!, /AGENCY result: Up/);
-  assert.match(res!, /\$0\.0421 → \$0\.052 \(\+23\.4%\)/);
+  const res = marketResultText({ ...base, predictors: 23, result: { winningBucket: 'up', returnPct: 0.234, basePrice: 0.0421, finalPrice: 0.052, pool: 1500 } }, link);
+  assert.match(res!, /^<b>\$AGENCY<\/b> · Agency\n🏁 <b>Result: Up wins · \+23\.4%<\/b>/);
+  assert.match(res!, /\$0\.0421 → \$0\.052/);
+  assert.match(res!, /23 predictors · 1,500 pts paid to the winners/);
+  assert.match(res!, /See the result:/);
   assert.equal(marketResultText({ ...base, result: null }), null);
 });
 
@@ -82,8 +88,9 @@ test('channel: posts open markets not posted yet, then a single last-hour remind
   const service = new FirstprintService(openDb(':memory:'), clock, [{ id: 'mexc', name: 'MEXC', pair: (b: string) => `${b}USDT`, fetchTicker: boom, fetchCandles: boom, listPairs: boom }]);
   const posts: string[] = [];
   const { t } = fakeTelegram([]);
-  t.sendTo = async (chat: string, html: string) => void posts.push(`${chat} ${html.split('\n')[0]}`);
-  t.sendPhotoTo = async (chat: string, png: Uint8Array, html: string) => void posts.push(`${chat} [banner ${png.length > 1000 ? 'ok' : 'empty'}] ${html.split('\n')[0]}`);
+  const lines = (html: string) => html.split('\n').slice(0, 2).join(' | ');
+  t.sendTo = async (chat: string, html: string) => void posts.push(`${chat} ${lines(html)}`);
+  t.sendPhotoTo = async (chat: string, png: Uint8Array, html: string) => void posts.push(`${chat} [banner ${png.length > 1000 ? 'ok' : 'empty'}] ${lines(html)}`);
   const channel = new ChannelPoster(service, t, 'https://x/app/', () => {}, 0);
   const make = (symbol: string, closeIn: number) =>
     service.createManualMarket({ symbol, exchanges: ['mexc'], basePrice: 1, closeAt: T0 + closeIn, resultAt: T0 + closeIn + 24 * HOUR, publish: true });
@@ -96,7 +103,7 @@ test('channel: posts open markets not posted yet, then a single last-hour remind
   service.setSetting('telegram_channel', 'firstprintfun');
   assert.equal(channel.postAllOpen(), 2);
   await channel.later(async () => {});
-  assert.deepEqual(posts, ['@firstprintfun [banner ok] 🟢 <b>New market: SHORT</b>', '@firstprintfun [banner ok] 🟢 <b>New market: LONG</b>'], 'soonest to close first, with the banner');
+  assert.deepEqual(posts, ['@firstprintfun [banner ok] <b>$SHORT</b> | 🟢 <b>New market listed</b>', '@firstprintfun [banner ok] <b>$LONG</b> | 🟢 <b>New market listed</b>'], 'soonest to close first, with the banner');
   assert.equal(channel.postAllOpen(), 0, 'already posted');
   assert.equal(channel.postAllOpen(true), 2, 'posting again includes posted ones');
   await channel.later(async () => {});
@@ -106,7 +113,7 @@ test('channel: posts open markets not posted yet, then a single last-hour remind
   channel.remindClosing();
   channel.remindClosing();
   await channel.later(async () => {});
-  assert.deepEqual(posts.slice(2), ['@firstprintfun [banner ok] ⏳ <b>Last hour: LONG</b>'], 'token banners are on by default');
+  assert.deepEqual(posts.slice(2), ['@firstprintfun [banner ok] <b>$LONG</b> | ⏳ <b>Last hour to predict</b>'], 'token banners are on by default');
 
   // A ticker the banner font can't draw: the fixed banner, never a broken image.
   const cn = service.createManualMarket({ symbol: '币安人生', exchanges: ['mexc'], basePrice: 1, closeAt: T0 + 30 * HOUR, resultAt: T0 + 80 * HOUR, publish: true });
@@ -158,11 +165,11 @@ test('channel: a failed last-hour reminder is tried again; re-publishing does no
   const { t } = fakeTelegram([]);
   t.sendTo = async (_c: string, html: string) => {
     if (fail) throw new Error('Telegram: Too Many Requests');
-    sent.push(html.split('\n')[0]);
+    sent.push(html.split('\n').slice(0, 2).join(' '));
   };
   t.sendPhotoTo = async (_c: string, _p: Uint8Array, html: string) => {
     if (fail) throw new Error('Telegram: Too Many Requests');
-    sent.push(html.split('\n')[0]);
+    sent.push(html.split('\n').slice(0, 2).join(' '));
   };
   const channel = new ChannelPoster(service, t, 'https://x/app/', () => {}, 0);
   const announced: string[] = [];
