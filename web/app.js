@@ -495,7 +495,7 @@ function drawTop() {
   $('#topbar').innerHTML = `
     <div class="topbar-inner">
       <a class="wordmark" href="#/" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="word">Firstprint</span></a>
-      <label class="top-search">${ico('search')}<input id="market-search" type="search" placeholder="Search markets" value="${esc(S.query ?? '')}" autocomplete="off" aria-label="Search markets" /><kbd aria-hidden="true">/</kbd></label>
+      <label class="top-search">${ico('search')}<input id="market-search" type="search" placeholder="Search a token or name" value="${esc(S.query ?? '')}" autocomplete="off" aria-label="Search markets by token or name" /><kbd aria-hidden="true">/</kbd></label>
       <div class="account">
         ${
           S.me
@@ -5466,9 +5466,17 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('input', (e) => {
   if (e.target.id === 'market-search') {
+    const was = Boolean((S.query ?? '').trim());
     S.query = e.target.value;
     if (S.route.name !== 'home') {
       location.hash = '#/';
+      return;
+    }
+    // Starting or clearing a search redraws the page: the hero and featured deck step aside, so
+    // the results show straight under the search bar instead of below the fold.
+    if (was !== Boolean(S.query.trim())) {
+      $('#view').innerHTML = homeView();
+      window.scrollTo({ top: 0 });
       return;
     }
     const out = $('#market-results');
