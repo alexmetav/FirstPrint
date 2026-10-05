@@ -23,7 +23,7 @@ The same avatar works for Telegram, Discord, GitHub, and Farcaster.
 | `logo-lockup-for-light.svg` / `.png` | Mark plus wordmark, dark text, transparent. Use on light backgrounds |
 | `logo-lockup-ink.svg` / `.png` | Mark plus wordmark on the Firstprint dark background. Drop in anywhere |
 | `x-avatar.svg` | Editable avatar source (Geist font) |
-| `x-banner.html` + `screens/` | Editable banner source: open in Chromium and screenshot at 1500 × 500 |
+| `x-banner.html` + `screens/` | Editable banner source: open in Chromium at 1500 × 500 and screenshot at scale 1 and 2.56 |
 | `../site/og.png` | Link preview image for the website |
 
 SVGs stay sharp at any size, so use them wherever the platform allows.
