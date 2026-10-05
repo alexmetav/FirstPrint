@@ -101,8 +101,12 @@ export interface MarketRow {
   logo_png?: string | null;
   /** Upcoming token scheduled to open by itself: when trading is due to start (ms). */
   auto_open_at?: number | null;
-  /** The last thing the auto-open check found (shown to the admin). */
+  /** The last thing the auto-open or opening-price check found (shown to the admin). */
   auto_open_note?: string | null;
+  /** When the admin was told the result is due (once per market). */
+  result_alerted_at?: number | null;
+  /** 1 when the opening price couldn't be read from the exchange and the admin was told to add it. */
+  opening_price_failed?: number;
   announced_listing_at: number;
   listing_at: number;
   opened_at: number;
@@ -1083,6 +1087,40 @@ export class FirstprintService {
     return as<MarketRow[]>(
       this.db.prepare("SELECT * FROM markets WHERE mode = 'manual' AND status = 'open' AND published = 0 AND auto_open_at IS NOT NULL AND auto_open_at <= ? ORDER BY auto_open_at").all(now),
     );
+  }
+
+  /**
+   * Published upcoming-token markets whose predictions have closed (trading is due) and that still
+   * have no start price: the server reads the opening price from the exchange.
+   */
+  awaitingOpeningPrice(now = this.clock.now()) {
+    return as<MarketRow[]>(
+      this.db
+        .prepare("SELECT * FROM markets WHERE mode = 'manual' AND published = 1 AND status = 'locked' AND base_price IS NULL AND opening_price_failed = 0 AND listing_at <= ? ORDER BY listing_at")
+        .all(now),
+    );
+  }
+
+  /** The opening price could not be read: stop trying, so the admin adds it. */
+  openingPriceFailed(marketId: string, note: string) {
+    this.db.prepare('UPDATE markets SET opening_price_failed = 1, auto_open_note = ? WHERE id = ?').run(note.slice(0, 300), marketId);
+  }
+
+  /**
+   * Upcoming-token markets whose opening price is in and whose result time has come, where the
+   * admin hasn't been asked for the result yet. (Markets with a start price from the start are
+   * announced as soon as predictions close.)
+   */
+  resultAlertsDue(now = this.clock.now()) {
+    return as<MarketRow[]>(
+      this.db
+        .prepare("SELECT * FROM markets WHERE mode = 'manual' AND published = 1 AND status = 'locked' AND result_alerted_at IS NULL AND base_price IS NOT NULL")
+        .all(),
+    ).filter((m) => m.listing_at + parseConfig(m).durationMs <= now);
+  }
+
+  markResultAlerted(marketId: string) {
+    this.db.prepare('UPDATE markets SET result_alerted_at = ? WHERE id = ?').run(this.clock.now(), marketId);
   }
 
   /** Records what the auto-open check found; with giveUp, the schedule is cleared and the market stays a draft. */

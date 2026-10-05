@@ -95,7 +95,7 @@ setInterval(() => {
 }, 60_000).unref();
 
 // Upcoming tokens the admin scheduled: opened by themselves once trading has really started.
-const autoOpener = new AutoOpener(service, venues, alert);
+const autoOpener = new AutoOpener(service, venues, alert, (id) => resultDueText(service.getMarket(id), adminUrl));
 setInterval(() => void autoOpener.run(), 30_000).unref();
 
 // Manual-only servers still watch some exchanges for new listings (LISTING_VENUES: MEXC, OKX, Gate,
@@ -144,10 +144,14 @@ const scheduler = new Scheduler(
 );
 
 // Admin-run markets whose predictions just closed need a result (and maybe an opening price).
+// Predictions closed: the admin is asked for the result. An upcoming token has no start price yet;
+// its opening price is read from the exchange (AutoOpener), and the result is asked for when due.
 service.onClosed = (ids) => {
   for (const id of ids) {
     const m = service.getMarket(id);
-    if (m.mode === 'manual') alert(resultDueText(m, adminUrl));
+    if (m.mode !== 'manual' || m.basePrice === null) continue;
+    alert(resultDueText(m, adminUrl));
+    service.markResultAlerted(id);
   }
 };
 

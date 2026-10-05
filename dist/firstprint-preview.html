@@ -16033,7 +16033,7 @@ function marketForm(m, pre = null) {
         <label><span class="field-label"><span class="ladder-only">Start price (USD)</span><span class="binary-only">Target price (USD)</span></span><input name="basePrice" type="number" step="any" min="0" placeholder="${upcoming ? 'Set when trading opens' : '0.25'}" value="${v?.basePrice ?? ''}"${upcoming ? ' disabled' : ' required'}${lock} /></label>
         <div class="upcoming-opt">
           <label class="check upcoming-check"><input type="checkbox" name="upcoming" data-upcoming${upcoming ? ' checked' : ''}${lock} /> Upcoming token: not trading yet</label>
-          <small class="muted">No price needed now: the start price becomes its opening price. Set predictions to close when trading starts, then add the opening price under Markets → Awaiting result.</small>
+          <small class="muted">No price needed now: set predictions to close when trading starts. Once the token trades, its opening price (from its first minutes of trading) is read from the exchange and becomes the start price by itself; you’re asked for the result only when it is due.</small>
           <div class="auto-open"${upcoming && !(m && m.published) ? '' : ' hidden'}>
             <label class="check"><input type="checkbox" name="autoOpen" data-auto-open${v?.autoOpenAt ? ' checked' : ''} /> <b>Open by itself when trading starts</b></label>
             <label class="auto-open-at"${v?.autoOpenAt ? '' : ' hidden'}><span class="field-label">Trading starts (your time)</span><input name="autoOpenAt" type="datetime-local" value="${toLocalInput(v?.autoOpenAt ?? v?.listingStart ?? soon)}" /><small class="utc-hint" data-utc-for="autoOpenAt"></small></label>
@@ -16261,7 +16261,7 @@ function adminPhasePill(m) {
     return `<span class="pill pill-hot">${ico('clock')}${due ? `Opens by itself in <span data-until="${m.autoOpenAt}">${fmtDur(m.autoOpenAt - now())}</span>` : 'Opening: checking prices'}</span>${m.autoOpenNote ? `<small class="muted auto-note">${esc(m.autoOpenNote)}</small>` : ''}`;
   }
   if (m.phase === 'draft') return `<span class="pill pill-off">${text}</span>${m.autoOpenNote ? `<small class="muted auto-note">${esc(m.autoOpenNote)}</small>` : ''}`;
-  if (m.phase === 'awaiting_result') return `<span class="pill pill-hot">${text}</span>`;
+  if (m.phase === 'awaiting_result') return `<span class="pill pill-hot">${text}</span>${m.autoOpenNote ? `<small class="muted auto-note">${esc(m.autoOpenNote)}</small>` : ''}`;
   if (m.status === 'resolved') return `<span class="pill pill-done">${isYesNo(m) ? `Settled: ${oName(m.result?.winningBucket, true)}` : text}</span>`;
   if (m.status === 'void') return `<span class="pill pill-off">${text}</span>`;
   return `<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>${text}</span>`;
@@ -16271,6 +16271,8 @@ function adminPhase(m) {
   if (m.mode === 'manual') {
     if (m.phase === 'draft') return 'Draft, not published';
     if (m.phase === 'baseline') return `Open, closes ${fmtDate(m.closeAt)} (in ${fmtDur(m.closeAt - now())})`;
+    if (m.phase === 'awaiting_result' && m.basePrice == null && !/not found/i.test(m.autoOpenNote ?? '')) return 'Reading the opening price';
+    if (m.phase === 'awaiting_result' && m.basePrice != null && m.settleAt > now()) return `Closed, result due ${fmtDate(m.settleAt)}`;
     if (m.phase === 'awaiting_result') return 'Awaiting your result';
   }
   return { pre_listing: `Starts in ${fmtDur(m.listingAt - now())}`, baseline: 'Open, trading', running: `Running, ${fmtDur(m.settleAt - now())} left`, resolved: `Settled: ${NAMES[m.result?.winningBucket] ?? ''}`, void: 'Cancelled' }[m.phase] ?? m.phase;

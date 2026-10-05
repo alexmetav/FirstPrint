@@ -16,9 +16,9 @@ export function openDb(path: string): DB {
 
 /** Adds columns introduced after a database was first created. */
 function migrate(db: DB) {
+  const cols = (table: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
   const ensure = (table: string, column: string, ddl: string) => {
-    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-    if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+    if (!cols(table).includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
   };
   ensure('users', 'needs_username', "needs_username INTEGER NOT NULL DEFAULT 0");
   ensure('markets', 'kind', "kind TEXT NOT NULL DEFAULT 'listing'");
@@ -36,6 +36,13 @@ function migrate(db: DB) {
   // Upcoming tokens the admin scheduled to open by themselves when trading starts.
   ensure('markets', 'auto_open_at', 'auto_open_at INTEGER');
   ensure('markets', 'auto_open_note', 'auto_open_note TEXT');
+  // Upcoming markets get their opening price from the exchange; the admin is asked for the result
+  // only when it is due. Markets already past their close were alerted then, so they count as done.
+  if (!cols('markets').includes('result_alerted_at')) {
+    db.exec('ALTER TABLE markets ADD COLUMN result_alerted_at INTEGER');
+    db.exec("UPDATE markets SET result_alerted_at = created_at WHERE status != 'open' AND base_price IS NOT NULL");
+  }
+  ensure('markets', 'opening_price_failed', 'opening_price_failed INTEGER NOT NULL DEFAULT 0');
   ensure('markets', 'reminded_at', 'reminded_at INTEGER');
   ensure('users', 'x_username', 'x_username TEXT');
   ensure('users', 'referral_code', 'referral_code TEXT');

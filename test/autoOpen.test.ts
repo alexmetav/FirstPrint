@@ -118,3 +118,60 @@ test('auto-open: hands the market back to the admin when it is no longer ready o
   service.publishMarket(manual);
   assert.equal(service.getMarket(manual, undefined, true).autoOpenAt, null);
 });
+
+test('upcoming markets: the opening price is read from the first minutes of trading, and the result is asked for only when due', async () => {
+  const { clock, state, service, alerts, opener } = setup();
+  const { Scheduler } = await import('../src/workers/scheduler.ts');
+  const closedAlerts: string[] = [];
+  service.onClosed = (ids) => {
+    for (const id of ids) if (service.getMarket(id).basePrice !== null) closedAlerts.push(id);
+  };
+  // Published before listing, no start price: predictions close when trading starts.
+  const id = service.createManualMarket({ symbol: 'EVAA', exchanges: ['mexc'], basePrice: null, closeAt: T0 + 2 * HOUR, resultAt: T0 + 50 * HOUR, logoUrl: LOGO, publish: true } as never);
+  const scheduler = new Scheduler(service, async () => {}, { tickMs: 1000 });
+  clock.advance(2 * HOUR + MIN);
+  await scheduler.tick();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(service.getMarket(id).phase, 'awaiting_result');
+  assert.deepEqual(closedAlerts, [], 'no "needs you" alert: nothing to do yet');
+
+  await opener.run();
+  assert.equal(service.getMarket(id).basePrice, null);
+  assert.match(service.getMarket(id, undefined, true).autoOpenNote ?? '', /no trades yet/);
+
+  // KuCoin's timer ran a little late: trading starts 20 minutes after the close, with a first-minute spike.
+  clock.advance(20 * MIN);
+  state.listedAt = clock.now();
+  state.closes = [0.5, 0.21, 0.2, 0.19, 0.18];
+  clock.advance(3 * MIN);
+  await opener.run();
+  assert.equal(service.getMarket(id).basePrice, null, '3 minutes: still waiting for 4');
+  clock.advance(2 * MIN);
+  await opener.run();
+  assert.equal(service.getMarket(id).basePrice, 0.2, 'the middle of minutes 2–4, not the 0.5 spike');
+  assert.match(service.getMarket(id, undefined, true).autoOpenNote ?? '', /Opening price \$0\.2 set by itself/);
+  assert.equal(alerts.length, 0, 'set quietly');
+
+  await opener.run();
+  assert.equal(alerts.length, 0, 'result not due yet');
+  clock.advance(48 * HOUR);
+  await opener.run();
+  await opener.run();
+  assert.equal(alerts.length, 1, 'asked for the result once, when it is due');
+});
+
+test('upcoming markets: no trades a day after the close, the admin is asked for the opening price', async () => {
+  const { clock, service, alerts, opener } = setup();
+  const { Scheduler } = await import('../src/workers/scheduler.ts');
+  const id = service.createManualMarket({ symbol: 'GONE', exchanges: ['mexc'], basePrice: null, closeAt: T0 + HOUR, resultAt: T0 + 50 * HOUR, logoUrl: LOGO, publish: true } as never);
+  clock.advance(HOUR + MIN);
+  await new Scheduler(service, async () => {}, { tickMs: 1000 }).tick();
+  await opener.run();
+  clock.advance(24 * HOUR);
+  await opener.run();
+  await opener.run();
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0], /GONE: add its opening price/);
+  assert.equal(service.awaitingOpeningPrice().length, 0, 'stops trying');
+  assert.match(service.getMarket(id, undefined, true).autoOpenNote ?? '', /Opening price not found/);
+});
