@@ -89,7 +89,7 @@ export interface UserRow {
   referred_by?: string | null;
 }
 
-interface MarketRow {
+export interface MarketRow {
   id: string;
   symbol: string;
   name: string | null;
@@ -99,6 +99,10 @@ interface MarketRow {
   logo_url?: string | null;
   /** A PNG copy of the logo for Telegram banners (the image library can't read WebP). */
   logo_png?: string | null;
+  /** Upcoming token scheduled to open by itself: when trading is due to start (ms). */
+  auto_open_at?: number | null;
+  /** The last thing the auto-open check found (shown to the admin). */
+  auto_open_note?: string | null;
   announced_listing_at: number;
   listing_at: number;
   opened_at: number;
@@ -179,6 +183,11 @@ export interface ManualMarketInput {
   /** Token logo: an https image URL or a small data:image (png, jpeg, webp, gif) the admin uploaded. Empty string removes it. */
   logoUrl?: string;
   publish?: boolean;
+  /**
+   * An upcoming token the admin has checked: the market stays a draft and opens by itself once
+   * trading starts (ms), with the live exchange price as its start price. Null to stop it.
+   */
+  autoOpenAt?: number | null;
 }
 
 export interface ResolveInput {
@@ -191,6 +200,17 @@ export interface ResolveInput {
 }
 
 const MIN_MS = 60_000;
+
+/**
+ * Token symbols: letters and digits in any script, so tickers like 币安人生 (listed on MEXC) work too.
+ * Latin-only symbols need at least 2 characters; a single Chinese character can be a whole ticker.
+ */
+export function validSymbol(symbol: string) {
+  return /^[\p{L}\p{N}]{1,15}$/u.test(symbol) && (symbol.length >= 2 || /[^\x00-\x7f]/.test(symbol));
+}
+const SYMBOL_RULE = 'Token symbol must be 1–15 letters or digits with no spaces, e.g. SOL or 币安人生.';
+/** Market ids stay plain ASCII so links never need decoding; a non-Latin symbol becomes "token". */
+const idSlug = (symbol: string) => symbol.toLowerCase().replace(/[^a-z0-9]/g, '') || 'token';
 
 /** Market lengths for live test markets on tokens that already trade. */
 export const LIVE_PRESETS: Record<string, { label: string; config: Partial<MarketConfig> }> = {
@@ -614,7 +634,7 @@ export class FirstprintService {
 
   createMarket(input: CreateMarketInput): string {
     const symbol = String(input.symbol ?? '').toUpperCase();
-    if (!/^[A-Z0-9]{2,15}$/.test(symbol)) throw new AppError(400, 'bad_symbol', 'Symbol must be 2–15 letters or digits.');
+    if (!validSymbol(symbol)) throw new AppError(400, 'bad_symbol', SYMBOL_RULE);
     if (!input.exchange) throw new AppError(400, 'bad_exchange', 'Exchange is required.');
     if (!Array.isArray(input.venues) || input.venues.length === 0) {
       throw new AppError(400, 'bad_venues', 'At least one price venue is required.');
@@ -633,7 +653,7 @@ export class FirstprintService {
       throw new AppError(400, 'bad_listing_time', 'Announced listing time is required.');
     }
 
-    const id = `${symbol.toLowerCase()}-${input.exchange.toLowerCase()}-${randomUUID().slice(0, 6)}`;
+    const id = `${idSlug(symbol)}-${input.exchange.toLowerCase()}-${randomUUID().slice(0, 6)}`;
     this.db
       .prepare(
         `INSERT INTO markets (id, symbol, name, exchange, venues, source_url, announced_listing_at, listing_at,
@@ -667,7 +687,7 @@ export class FirstprintService {
    */
   async createLiveMarket(input: { symbol: string; name?: string; exchanges?: string[]; startsInMs?: number; preset?: string }) {
     const symbol = String(input.symbol ?? '').trim().toUpperCase();
-    if (!/^[A-Z0-9]{2,15}$/.test(symbol)) throw new AppError(400, 'bad_symbol', 'Symbol must be 2–15 letters or digits, e.g. SOL.');
+    if (!validSymbol(symbol)) throw new AppError(400, 'bad_symbol', SYMBOL_RULE);
     const preset = LIVE_PRESETS[input.preset ?? 'quick'];
     if (!preset) throw new AppError(400, 'bad_preset', `Length must be one of: ${Object.keys(LIVE_PRESETS).join(', ')}.`);
     const startsInMs = Math.max(MIN_MS, Math.min(24 * 60 * MIN_MS, Number(input.startsInMs ?? 2 * MIN_MS)));
@@ -763,7 +783,7 @@ export class FirstprintService {
   /** Live price of a symbol on each chosen exchange; price is null where it doesn't trade or the exchange didn't answer. */
   async exchangePrices(symbol: string, exchanges: string[], pairs: Record<string, string> = {}) {
     const sym = String(symbol ?? '').trim().toUpperCase();
-    if (!/^[A-Z0-9]{2,15}$/.test(sym)) throw new AppError(400, 'bad_symbol', 'Token symbol must be 2–15 letters or digits.');
+    if (!validSymbol(sym)) throw new AppError(400, 'bad_symbol', SYMBOL_RULE);
     const ids = [...new Set((exchanges ?? []).map(String))].filter((id) => this.venues.has(id) && id !== 'sim').slice(0, 10);
     return Promise.all(
       ids.map(async (id) => {
@@ -923,7 +943,7 @@ export class FirstprintService {
 
   private manualFields(input: ManualMarketInput, now: number) {
     const symbol = String(input.symbol ?? '').trim().toUpperCase();
-    if (!/^[A-Z0-9]{2,15}$/.test(symbol)) throw new AppError(400, 'bad_symbol', 'Token symbol must be 2–15 letters or digits.');
+    if (!validSymbol(symbol)) throw new AppError(400, 'bad_symbol', SYMBOL_RULE);
     const exchanges = [...new Set((input.exchanges ?? []).map(String))];
     if (exchanges.length === 0) throw new AppError(400, 'bad_exchanges', 'Choose at least one exchange.');
     const off = this.disabledExchanges();
@@ -961,7 +981,12 @@ export class FirstprintService {
     const now = this.clock.now();
     const f = this.manualFields(input, now);
     if (f.closeAt <= now) throw new AppError(400, 'bad_close_time', 'Prediction close time must be in the future.');
-    const id = `${f.symbol.toLowerCase()}-m-${randomUUID().slice(0, 6)}`;
+    const autoOpenAt = this.checkAutoOpen(input.autoOpenAt, f, now);
+    if (autoOpenAt !== null) {
+      input = { ...input, publish: false };
+      f.basePrice = null;
+    }
+    const id = `${idSlug(f.symbol)}-m-${randomUUID().slice(0, 6)}`;
     this.db
       .prepare(
         `INSERT INTO markets (id, symbol, name, exchange, venues, source_url, announced_listing_at, listing_at,
@@ -969,7 +994,8 @@ export class FirstprintService {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', 'listing', ?, 'manual', ?, ?, ?, ?)`,
       )
       .run(id, f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, now, JSON.stringify(f.cfg), now, input.publish ? 1 : 0, f.basePrice, f.note, f.logoUrl);
-    this.log(`manual market ${input.publish ? 'published' : 'drafted'} ${id}`);
+    if (autoOpenAt !== null) this.db.prepare('UPDATE markets SET auto_open_at = ?, auto_open_note = NULL WHERE id = ?').run(autoOpenAt, id);
+    this.log(`manual market ${input.publish ? 'published' : autoOpenAt !== null ? 'scheduled to open by itself' : 'drafted'} ${id}`);
     if (input.publish) {
       this.onEvent('market', { marketId: id });
       this.announce('live', id);
@@ -1015,6 +1041,9 @@ export class FirstprintService {
     if (patch.exchanges && !patch.pairs) merged.pairs = {};
     const f = this.manualFields(merged, now);
     if (f.closeAt <= now) throw new AppError(400, 'bad_close_time', 'Prediction close time must be in the future.');
+    const autoOpenAt = this.checkAutoOpen(patch.autoOpenAt === undefined ? (m.published === 1 ? null : (m.auto_open_at ?? null)) : patch.autoOpenAt, f, now, m.published === 1);
+    if (autoOpenAt !== null) f.basePrice = null;
+    this.db.prepare('UPDATE markets SET auto_open_at = ?, auto_open_note = CASE WHEN ? IS NULL THEN NULL ELSE auto_open_note END WHERE id = ?').run(autoOpenAt, autoOpenAt, marketId);
     this.db
       .prepare(
         `UPDATE markets SET symbol = ?, name = ?, exchange = ?, venues = ?, source_url = ?, announced_listing_at = ?,
@@ -1024,6 +1053,48 @@ export class FirstprintService {
       .run(f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, JSON.stringify(f.cfg), f.basePrice, f.note, f.logoUrl, f.logoUrl, marketId);
     if (m.published === 1) this.onEvent('market', { marketId }); // drafts stay private
     return marketId;
+  }
+
+  /**
+   * Checks an auto-open schedule. The admin has already checked the market, so it only needs to
+   * be complete: a logo, a trading start ahead, and predictions open for at least 30 minutes
+   * after it. Returns the time, or null when the market is not scheduled.
+   */
+  private checkAutoOpen(at: number | null | undefined, f: { closeAt: number; logoUrl: string | null }, now: number, published = false): number | null {
+    if (at === undefined || at === null || (at as unknown) === '') return null;
+    const t = Number(at);
+    if (published) throw new AppError(409, 'already_published', 'This market is already open, so it can’t be scheduled.');
+    if (!Number.isFinite(t) || t <= now) throw new AppError(400, 'bad_open_time', 'Trading start must be in the future to open the market by itself.');
+    if (!f.logoUrl) throw new AppError(400, 'logo_required', 'Add the token’s logo first: markets that open by themselves need one.');
+    if (f.closeAt < t + 30 * MINUTE) throw new AppError(400, 'bad_close_time', 'Predictions must stay open at least 30 minutes after trading starts.');
+    return t;
+  }
+
+  /** Drafts scheduled to open by themselves whose trading start has come. */
+  autoOpenDue(now = this.clock.now()) {
+    return as<MarketRow[]>(
+      this.db.prepare("SELECT * FROM markets WHERE mode = 'manual' AND status = 'open' AND published = 0 AND auto_open_at IS NOT NULL AND auto_open_at <= ? ORDER BY auto_open_at").all(now),
+    );
+  }
+
+  /** Records what the auto-open check found; with giveUp, the schedule is cleared and the market stays a draft. */
+  noteAutoOpen(marketId: string, note: string, giveUp = false) {
+    this.db.prepare(`UPDATE markets SET auto_open_note = ?${giveUp ? ', auto_open_at = NULL' : ''} WHERE id = ?`).run(note.slice(0, 300), marketId);
+  }
+
+  /** Opens a scheduled market with the start price read from the exchange at that moment. */
+  autoOpen(marketId: string, startPrice: number, note: string) {
+    const m = this.manualRow(marketId);
+    const now = this.clock.now();
+    if (m.status !== 'open' || m.published === 1 || !m.auto_open_at) throw new AppError(409, 'not_scheduled', 'This market is not waiting to open.');
+    if (!(startPrice > 0) || !Number.isFinite(startPrice)) throw new AppError(400, 'bad_price', 'Start price must be a number above 0.');
+    if (m.listing_at < now + 15 * MINUTE) throw new AppError(409, 'too_late', 'Predictions would close in under 15 minutes.');
+    this.db
+      .prepare('UPDATE markets SET base_price = ?, published = 1, opened_at = ?, auto_open_at = NULL, auto_open_note = ? WHERE id = ?')
+      .run(startPrice, now, note.slice(0, 300), marketId);
+    this.onEvent('market', { marketId });
+    this.announce('live', marketId);
+    this.log(`market opened by itself ${marketId} at ${startPrice}`);
   }
 
   /**
@@ -1048,7 +1119,7 @@ export class FirstprintService {
     if (m.status !== 'open') throw new AppError(409, 'not_editable', 'This market is no longer open.');
     if (m.published === 1) return;
     if (m.listing_at <= now) throw new AppError(409, 'bad_close_time', 'The prediction close time has passed. Edit it before publishing.');
-    this.db.prepare('UPDATE markets SET published = 1, opened_at = ? WHERE id = ?').run(now, marketId);
+    this.db.prepare('UPDATE markets SET published = 1, opened_at = ?, auto_open_at = NULL WHERE id = ?').run(now, marketId);
     this.onEvent('market', { marketId });
     // Unpublished and published again: it was already posted to the channel.
     if (!(m as MarketRow & { announced_at?: number | null }).announced_at) this.announce('live', marketId);
@@ -1593,6 +1664,16 @@ export class FirstprintService {
 
   // --- Public Telegram channel ------------------------------------------------------
 
+  /** Each token's own banner on channel posts. On unless an admin switched it off in Settings. */
+  tokenBannersEnabled() {
+    return this.getSetting('telegram_token_banners') !== '0';
+  }
+
+  setTokenBanners(enabled: boolean) {
+    this.setSetting('telegram_token_banners', enabled ? '1' : '0');
+    return this.tokenBannersEnabled();
+  }
+
   /** Stores the PNG copy of a market's logo used on its Telegram banners. */
   setLogoPng(marketId: string, png: string | null) {
     if (png !== null && (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(png) || png.length > 300_000)) {
@@ -1822,6 +1903,37 @@ export class FirstprintService {
       history: record.history.slice(0, 100),
       rank: mine ? 1 + profits.filter((p) => p.profit > mine.profit).length : null,
       players: profits.length,
+    };
+  }
+
+  /**
+   * One player's result on one settled market, for the shareable PnL card. Only what is already
+   * public (the market, the username and their record on the public profile) is included.
+   */
+  pnlCard(marketId: string, username: string) {
+    const u = as<{ id: string; username: string } | undefined>(
+      this.db.prepare('SELECT id, username FROM users WHERE username = ? COLLATE NOCASE').get(String(username ?? '').trim()),
+    );
+    if (!u) throw new AppError(404, 'user_not_found', 'No player with that username.');
+    const h = this.statsFor(u.id).history.find((x) => x.marketId === marketId);
+    if (!h) throw new AppError(404, 'no_result', 'This player has no settled prediction on that market.');
+    const m = this.getMarket(marketId);
+    if (!m.published) throw new AppError(404, 'market_not_found', 'Market not found.');
+    return {
+      username: u.username,
+      marketId,
+      symbol: m.symbol,
+      name: m.name,
+      exchange: m.exchange,
+      outcomes: m.outcomes,
+      picks: h.buckets,
+      winningBucket: h.winningBucket,
+      returnPct: m.result?.returnPct ?? null,
+      staked: h.staked,
+      payout: h.payout,
+      profit: h.profit,
+      won: h.won,
+      settledAt: h.settledAt,
     };
   }
 
@@ -2094,6 +2206,8 @@ export class FirstprintService {
       sourceUrl: m.source_url,
       logoUrl: m.logo_url ?? null,
       hasLogoPng: Boolean(m.logo_png),
+      autoOpenAt: m.auto_open_at ?? null,
+      autoOpenNote: m.auto_open_note ?? null,
       status: m.status,
       phase,
       announcedListingAt: m.announced_listing_at,

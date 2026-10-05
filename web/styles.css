@@ -10284,3 +10284,97 @@ svg.viz.viz-narrow {
 .ex-verdict.fail {
   color: var(--crash);
 }
+
+/* ===== Admin: Telegram banner preview on the market form ===== */
+.banner-check {
+  display: grid;
+  gap: 8px;
+}
+.banner-check > .btn {
+  justify-self: start;
+}
+.banner-img {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+
+/* ===== Shareable PnL card ===== */
+.pnl-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #07080c;
+  aspect-ratio: 1200 / 630;
+}
+.pnl-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.pnl-actions .btn {
+  justify-content: center;
+}
+.my-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.pnl-mini {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-left: 8px;
+  vertical-align: middle;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pnl-mini:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+.pnl-mini .i {
+  width: 15px;
+  height: 15px;
+}
+.inbox li:has(.pnl-mini) {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+/* ===== Admin: markets that open by themselves ===== */
+.auto-open {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.auto-open[hidden],
+.auto-open-at[hidden] {
+  display: none;
+}
+.auto-open-at {
+  display: grid;
+  gap: 4px;
+}
+.auto-note {
+  display: block;
+  margin-top: 4px;
+  max-width: 280px;
+}

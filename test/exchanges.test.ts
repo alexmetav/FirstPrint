@@ -362,6 +362,35 @@ test('review queue across exchanges: one alert per token, old announcements skip
   assert.deepEqual(alerts.at(-1), 'OFF@gate', 'picked up once switched back on');
 });
 
+test('Chinese token symbols: detected, reviewed and opened as a market with a plain link id', async () => {
+  const { validSymbol } = await import('../src/services/firstprint.ts');
+  assert.ok(validSymbol('币安人生'));
+  assert.ok(validSymbol('龙'), 'one Chinese character can be a whole ticker');
+  assert.ok(validSymbol('SOL'));
+  assert.ok(!validSymbol('S'), 'one Latin letter is too short');
+  assert.ok(!validSymbol('币安 人生'), 'no spaces');
+  assert.ok(!validSymbol('SOL/USDT'));
+
+  const clock = new ManualClock(T);
+  const state = { pairs: [] as { pair: string; base: string; listingAt: number | null }[], anns: [] };
+  const venue = fakeVenue('mexc', state);
+  delete venue.fetchAnnouncements;
+  const service = new FirstprintService(openDb(':memory:'), clock, [venue]);
+  const alerts: string[] = [];
+  const tracker = new ListingTracker(service, [venue], { autoCreate: false, review: true, onNew: (ds) => void alerts.push(...ds.map((d) => d.symbol!)) });
+  await tracker.run();
+  state.pairs.push({ pair: '币安人生USDT', base: '币安人生', listingAt: T + 60 * MIN });
+  await tracker.run();
+  assert.deepEqual(alerts, ['币安人生']);
+
+  const prices = await service.exchangePrices('币安人生', ['mexc']);
+  assert.equal(prices[0].pair, '币安人生USDT');
+  const id = service.createManualMarket({ symbol: '币安人生', exchanges: ['mexc'], basePrice: 0.5, closeAt: T + 60 * MIN, resultAt: T + 72 * 60 * MIN, publish: true });
+  assert.match(id, /^token-m-[0-9a-f]{6}$/, 'link ids stay ASCII');
+  assert.equal(service.getMarket(id).symbol, '币安人生');
+  assert.equal(service.hasActiveMarket('币安人生'), true);
+});
+
 test('review queue: deleting a draft made from a listing returns it to the queue; stale drafts and time-less listings', async () => {
   const clock = new ManualClock(T);
   const state = { pairs: [] as { pair: string; base: string; listingAt: number | null }[], anns: [] };

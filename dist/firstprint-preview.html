@@ -10315,6 +10315,100 @@ svg.viz.viz-narrow {
   color: var(--crash);
 }
 
+/* ===== Admin: Telegram banner preview on the market form ===== */
+.banner-check {
+  display: grid;
+  gap: 8px;
+}
+.banner-check > .btn {
+  justify-self: start;
+}
+.banner-img {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+
+/* ===== Shareable PnL card ===== */
+.pnl-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #07080c;
+  aspect-ratio: 1200 / 630;
+}
+.pnl-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.pnl-actions .btn {
+  justify-content: center;
+}
+.my-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.pnl-mini {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-left: 8px;
+  vertical-align: middle;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pnl-mini:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+.pnl-mini .i {
+  width: 15px;
+  height: 15px;
+}
+.inbox li:has(.pnl-mini) {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+/* ===== Admin: markets that open by themselves ===== */
+.auto-open {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.auto-open[hidden],
+.auto-open-at[hidden] {
+  display: none;
+}
+.auto-open-at {
+  display: grid;
+  gap: 4px;
+}
+.auto-note {
+  display: block;
+  margin-top: 4px;
+  max-width: 280px;
+}
+
 </style>
   </head>
   <body>
@@ -10944,6 +11038,8 @@ function createAdminApi(key, baseUrl = '') {
     telegramConnect: (code) => post('/api/admin/telegram/connect', { code }),
     telegramTest: () => post('/api/admin/telegram/test'),
     telegramChannel: (channel) => post('/api/admin/telegram/channel', { channel }),
+    bannerPreview: (body) => post('/api/admin/banner-preview', body),
+    setTokenBanners: (enabled) => post('/api/admin/telegram/token-banners', { enabled }),
     setLogoPng: (id, logoPng) => post(`/api/admin/markets/${encodeURIComponent(id)}/logo-png`, { logoPng }),
     telegramPost: (id) => post(`/api/admin/markets/${encodeURIComponent(id)}/telegram`),
     telegramPostOpen: (again = false) => post('/api/admin/telegram/post-open', { again }),
@@ -12046,6 +12142,7 @@ const P = {
   shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
   lock: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/>',
   share: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="m16 6-4-4-4 4M12 2v13"/>',
   copy: '<rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
   external: '<path d="M15 3h6v6M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
@@ -13221,6 +13318,14 @@ function cardView(m) {
     </article>`;
 }
 
+/** On a settled market: the player's own points won or lost, with the button to share it. */
+function myResultRow(m) {
+  const mine = (m.mine ?? []).filter((p) => p.stake - (p.refund ?? 0) > 0);
+  if (m.status !== 'resolved' || !mine.length) return '';
+  const profit = mine.reduce((s, p) => s + (p.payout ?? 0) - (p.stake - (p.refund ?? 0)), 0);
+  return `<div class="my-result"><span>Your result <b class="${profit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(profit)} pts</b></span>${pnlButton(m.id, m.symbol, 'btn btn-sm')}</div>`;
+}
+
 /** "You: Up · 250" on a card, so players can see their picks without opening the market. */
 function myPickLine(m) {
   if (!m.mine?.length) return '';
@@ -13502,6 +13607,7 @@ function manualPanel(m) {
         <div><div>Result</div><div class="muted">${yn ? `Target ${fmtPrice(r.basePrice)} · final ${fmtPrice(r.finalPrice)}` : `Start ${fmtPrice(r.basePrice)} → final ${fmtPrice(r.finalPrice)}`}</div></div>
         <div class="now" style="color:${oVar(b, yn)}">${yn ? (r.winningBucket ? oName(b, true) : '–') : fmtPct(r.returnPct)}</div>
       </div>
+      ${myResultRow(m)}
     </div>
     ${
       r.winners?.length
@@ -14130,7 +14236,7 @@ function pastTable(st) {
         <td>${m.buckets.map((b) => outcome(b, m.binary)).join(' ')}</td>
         <td class="hide-sm">${m.winningBucket ? outcome(m.winningBucket, m.binary) : '–'}</td>
         <td class="right num-cell">${fmtNum(m.staked)}</td>
-        <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b></td>
+        <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b>${pnlButton(m.marketId, m.symbol, 'icon-btn pnl-mini', true)}</td>
       </tr>`,
     )
     .join('')}</tbody></table>${refunds}`;
@@ -14196,7 +14302,7 @@ function profileView(p) {
       <div class="section-head"><span class="section-ico">${ico('target')}</span><h2>In play${p.positions.length ? ` <span class="count-badge">${p.positions.length}</span>` : ''}</h2></div>
       ${positions}
     </section>
-    ${pastMarkets(st)}`;
+    ${pastMarkets(st, p.isMe)}`;
 }
 
 const signed = (n) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${fmtNum(Math.abs(n))}`;
@@ -14278,7 +14384,7 @@ function outcomeRecord(byOutcome, title = 'Your picks by outcome') {
 }
 
 /** Every settled market, one row each, newest first. */
-function pastMarkets(st) {
+function pastMarkets(st, mine = false) {
   const rows = st.history;
   return `
     <section class="section panel panel-flush">
@@ -14292,7 +14398,7 @@ function pastMarkets(st) {
                   <td>${m.buckets.map((b) => outcome(b, m.binary)).join(' ')}</td>
                   <td class="hide-sm">${m.winningBucket ? outcome(m.winningBucket, m.binary) : '–'}</td>
                   <td class="right">${fmtNum(m.staked)}</td>
-                  <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b></td>
+                  <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b>${mine ? pnlButton(m.marketId, m.symbol, 'icon-btn pnl-mini', true) : ''}</td>
                 </tr>`,
               )
               .join('')}</tbody></table>`
@@ -14794,6 +14900,8 @@ function renderAuth() {
     html = modalShell('Your results', 'What happened on the markets you predicted.', inboxView());
   } else if (kind === 'win') {
     html = winView(S.win);
+  } else if (kind === 'pnl') {
+    html = modalShell('Share your result', 'Your PnL card for this market. Post it on X, or save the image.', pnlView(S.pnl));
   } else if (kind === 'tour') {
     html = tourView();
   } else if (kind === 'faucet') {
@@ -14947,6 +15055,49 @@ function tickResend() {
 
 // ------------------------------------------------------------------ Results inbox, win popup, first-time tour
 
+// ------------------------------------------------------------------ Shareable PnL card
+
+/** A button that opens the PnL card for one of the player's settled markets. */
+function pnlButton(marketId, symbol, cls, iconOnly = false, label = 'Share your PnL') {
+  if (!S.me?.username || S.api.demo) return '';
+  return `<button class="${cls}" data-action="pnl-open" data-id="${esc(marketId)}" data-symbol="${esc(symbol)}"${iconOnly ? ` aria-label="Share your ${esc(symbol)} PnL" title="Share PnL"` : ''}>${ico('share')}${iconOnly ? '' : esc(label)}</button>`;
+}
+
+function pnlLinks(p) {
+  const path = `/share/pnl/${encodeURIComponent(p.marketId)}/${encodeURIComponent(S.me.username)}`;
+  return { page: `${location.origin}${path}`, png: `${path}.png` };
+}
+
+function pnlView(p) {
+  const l = pnlLinks(p);
+  const text = encodeURIComponent(`My ${p.symbol} call on Firstprint. Think you can call the next listing?`);
+  const file = `firstprint-${String(p.symbol).replace(/[^A-Za-z0-9]/g, '') || 'token'}-pnl.png`;
+  return `
+    <div class="pnl-card"><img src="${esc(l.png)}" alt="Your ${esc(p.symbol)} PnL card" width="1200" height="630" /></div>
+    <div class="pnl-actions">
+      <a class="btn btn-solid" href="https://x.com/intent/post?text=${text}&url=${encodeURIComponent(l.page)}" target="_blank" rel="noopener noreferrer">${ico('x')}Post on X</a>
+      <a class="btn" href="${esc(l.png)}" download="${esc(file)}">${ico('download')}Save image</a>
+      ${navigator.canShare ? `<button class="btn" data-action="pnl-native">${ico('share')}Share…</button>` : ''}
+      <button class="btn" data-action="pnl-copy">${ico('link')}Copy link</button>
+    </div>
+    <p class="fine">The X post shows this card as its preview. Points have no cash value.</p>
+    <button class="btn" style="width:100%;margin-top:6px" data-action="close-modal">Close</button>`;
+}
+
+async function pnlNativeShare() {
+  const p = S.pnl;
+  const l = pnlLinks(p);
+  try {
+    const blob = await (await fetch(l.png)).blob();
+    const file = new File([blob], `firstprint-${p.symbol}.png`, { type: 'image/png' });
+    const data = { files: [file], text: `My ${p.symbol} call on Firstprint`, url: l.page };
+    if (navigator.canShare(data)) await navigator.share(data);
+    else await navigator.share({ text: data.text, url: l.page });
+  } catch (err) {
+    if (err?.name !== 'AbortError') toast('Couldn’t open sharing here. Save the image or copy the link instead.', true);
+  }
+}
+
 /** What one result means for the player, in a sentence. */
 function resultLine(n) {
   const yn = n.outcomes === 'binary';
@@ -14966,6 +15117,7 @@ function inboxView() {
         return `<li class="${n.read ? '' : 'unread'}" style="--c:var(--${r.tone})">
           <span class="inbox-ico">${ico(r.icon)}</span>
           <a href="#/market/${encodeURIComponent(n.marketId)}" data-action="close-modal"><b>${r.title}</b><span>${r.body}</span><small>${fmtAgo(n.at)}</small></a>
+          ${n.status === 'resolved' && n.staked > 0 ? pnlButton(n.marketId, n.symbol, 'icon-btn pnl-mini', true) : ''}
         </li>`;
       })
       .join('')}</ul>
@@ -15025,7 +15177,7 @@ function winView(n) {
         <p class="win-amount">+${fmtNum(n.payout)} <small>pts</small></p>
         <p class="muted">${esc(n.symbol)} settled ${yn ? 'as' : 'in'} ${n.winningBucket ? outcome(n.winningBucket, yn) : 'your pick'}. You staked ${fmtPts(n.staked)}.</p>
         <div class="win-actions">
-          <a class="btn btn-gold btn-lg" href="https://x.com/intent/tweet?text=${text}&url=${url}" target="_blank" rel="noopener noreferrer">${ico('x')}Share on X</a>
+          ${S.me?.username && !S.api.demo ? pnlButton(n.marketId, n.symbol, 'btn btn-gold btn-lg', false, 'Share your win') : `<a class="btn btn-gold btn-lg" href="https://x.com/intent/tweet?text=${text}&url=${url}" target="_blank" rel="noopener noreferrer">${ico('x')}Share on X</a>`}
           <a class="btn btn-lg" href="#/market/${encodeURIComponent(n.marketId)}" data-action="win-close">See the market</a>
         </div>
         <button class="switch" data-action="win-close">Close</button>
@@ -15451,6 +15603,39 @@ function afterAdminRender() {
   if (form && link && /^https:\/\//i.test(link)) copyLogo(form, link);
   // A listing from the review queue: show its live price straight away.
   if (form?.querySelector('[name=detectionId]')) runPriceCheck();
+  if (form && form.querySelector('[name=symbol]')?.value.trim()) runBannerPreview();
+  if (form?.querySelector('[data-auto-open]')) syncAutoOpen(form);
+}
+
+/** Draws the market's Telegram banner from the form as it is now (nothing is saved). */
+async function runBannerPreview() {
+  const form = $('#admin-market');
+  const out = $('#banner-preview-out');
+  if (!form || !out) return;
+  const d = new FormData(form);
+  const symbol = String(d.get('symbol') ?? form.querySelector('[name=symbol]')?.value ?? '').trim();
+  if (!symbol) {
+    out.innerHTML = `<p class="checks-note">${ico('info')}Enter the token symbol first.</p>`;
+    return;
+  }
+  const seq = (A.bannerSeq = (A.bannerSeq ?? 0) + 1);
+  out.innerHTML = `<p class="checks-note">${ico('clock')}Drawing the banner…</p>`;
+  try {
+    const r = await A.api.bannerPreview({
+      symbol,
+      name: String(d.get('name') || '').trim(),
+      exchanges: d.getAll('exchanges').map(String),
+      basePrice: d.has('upcoming') ? null : d.get('basePrice') || null,
+      closeAt: inputMs(d.get('closeAt')),
+      resultAt: inputMs(d.get('resultAt')),
+      outcomes: d.get('outcomes') === 'binary' ? 'binary' : 'ladder',
+      logoPng: await logoPngCopy(String(d.get('logoUrl') || '')),
+    });
+    if (seq !== A.bannerSeq || !out.isConnected) return;
+    out.innerHTML = `${r.png ? `<img class="banner-img" src="${r.png}" alt="Telegram banner for ${esc(symbol)}" />` : ''}${r.reason ? `<p class="checks-note">${ico('info')}${esc(r.reason)}</p>` : ''}`;
+  } catch (err) {
+    if (seq === A.bannerSeq && out.isConnected) out.innerHTML = `<p class="checks-note">${ico('info')}Couldn’t draw the banner: ${esc(err.message)}</p>`;
+  }
 }
 
 /** Open markets compared with live exchange prices (cached for two minutes). */
@@ -15697,6 +15882,8 @@ const ADMIN_ACTIONS = {
   telegram_channel_off: 'Stopped posting to the Telegram channel',
   telegram_posted: 'Posted a market to the Telegram channel',
   telegram_posted_open: 'Posted open markets to the Telegram channel',
+  telegram_token_banners_on: 'Turned token banners on for the Telegram channel',
+  telegram_token_banners_off: 'Turned token banners off for the Telegram channel',
 };
 
 /** "MEXC, OKX and Gate" */
@@ -15809,7 +15996,7 @@ function marketForm(m, pre = null) {
   const pct = (n) => String(Math.round(n * 1000) / 10);
   const upcoming = Boolean(v) && v.basePrice == null;
   return `
-    <form id="admin-market" class="admin-form admin-grid" data-id="${m ? esc(m.id) : ''}" data-outcomes="${m?.outcomes === 'binary' ? 'binary' : 'ladder'}">
+    <form id="admin-market" class="admin-form admin-grid" data-id="${m ? esc(m.id) : ''}" data-published="${m?.published ? '1' : '0'}" data-outcomes="${m?.outcomes === 'binary' ? 'binary' : 'ladder'}">
       ${pre?.detectionId ? `<input type="hidden" name="detectionId" value="${pre.detectionId}" />` : ''}
       <fieldset class="type-pick" style="grid-column:1/-1"${lock}><legend class="field-label">Market type</legend>
         <label class="type-card"><input type="radio" name="outcomes" value="ladder"${m?.outcomes === 'binary' ? '' : ' checked'} /><span>${ico('trendUp')}<b>Five outcomes</b><small>Crash, Down, Flat, Up or Moon: how far the price moves from the start price.</small></span></label>
@@ -15835,6 +16022,11 @@ function marketForm(m, pre = null) {
         <div class="upcoming-opt">
           <label class="check upcoming-check"><input type="checkbox" name="upcoming" data-upcoming${upcoming ? ' checked' : ''}${lock} /> Upcoming token: not trading yet</label>
           <small class="muted">No price needed now: the start price becomes its opening price. Set predictions to close when trading starts, then add the opening price under Markets → Awaiting result.</small>
+          <div class="auto-open"${upcoming && !(m && m.published) ? '' : ' hidden'}>
+            <label class="check"><input type="checkbox" name="autoOpen" data-auto-open${v?.autoOpenAt ? ' checked' : ''} /> <b>Open by itself when trading starts</b></label>
+            <label class="auto-open-at"${v?.autoOpenAt ? '' : ' hidden'}><span class="field-label">Trading starts (your time)</span><input name="autoOpenAt" type="datetime-local" value="${toLocalInput(v?.autoOpenAt ?? v?.listingStart ?? soon)}" /><small class="utc-hint" data-utc-for="autoOpenAt"></small></label>
+            <small class="muted">Instead of opening now, the market waits as a draft. Once the token has traded for 3 minutes, its live exchange price (checked against those minutes, so an opening spike is skipped) becomes the start price and predictions open, with the channel post. You get a Telegram message either way. Needs the logo, and predictions must stay open at least 30 minutes after trading starts.</small>
+          </div>
         </div>
       </div>
       <label><span class="field-label">Predictions close (your time)</span><input name="closeAt" type="datetime-local" value="${toLocalInput(v?.closeAt ?? soon)}" required /><small class="utc-hint" data-utc-for="closeAt"></small></label>
@@ -15844,6 +16036,15 @@ function marketForm(m, pre = null) {
         <span class="muted">Compares the start price and timing with what the chosen exchanges show right now.</span>
         <div id="price-check-out" aria-live="polite"></div>
       </div>
+      ${
+        A.info.telegram?.channel
+          ? `<div class="banner-check" style="grid-column:1/-1">
+        <button class="btn btn-sm" type="button" data-action="admin-banner-preview">${ico('telegram')}Preview Telegram banner</button>
+        <span class="muted">What the channel post will look like. Check the logo is this token’s, not another token with the same ticker.</span>
+        <div id="banner-preview-out" aria-live="polite"></div>
+      </div>`
+          : ''
+      }
       <fieldset class="venues"><legend class="field-label">Reference exchanges</legend>
         ${A.info.exchanges
           .filter((e) => e.enabled || chosen.has(e.id))
@@ -15959,6 +16160,7 @@ function reviewPrefill(d) {
     basePrice: upcoming ? null : '',
     closeAt,
     settleAt,
+    listingStart: upcoming ? d.listingAt : null,
     note: `New on ${d.exchangeName}. The start price is the ${d.exchangeName} ${pair} price when ${upcoming ? 'trading opens' : 'predictions open'}, and the result is the ${d.exchangeName} ${pair} price at the result time.`,
   };
 }
@@ -16009,7 +16211,9 @@ function telegramPanel(t) {
           t.channel
             ? `<p class="all-good">${ico('checkCircle')}Posting to <a href="https://t.me/${esc(t.channel)}" target="_blank" rel="noopener noreferrer">@${esc(t.channel)}</a></p>
                <p class="muted">New markets and results are posted by themselves, and a “last hour” reminder goes out an hour before predictions close.${t.unposted ? ` <b>${t.unposted} open market${t.unposted === 1 ? ' hasn’t' : 's haven’t'} been posted yet</b> (made before the channel was set up).` : ''}</p>
-               <div class="admin-actions">${t.unposted ? `<button class="btn btn-solid btn-sm" data-action="admin-tg-post-open">${ico('telegram')}Post ${t.unposted === 1 ? 'it' : `all ${t.unposted}`} now</button>` : ''}${t.open && t.open > t.unposted ? `<button class="btn btn-sm" data-action="admin-tg-post-open" data-again="1">${ico('telegram')}Post all ${t.open} open markets again</button>` : ''}<button class="btn btn-sm" data-action="admin-tg-channel-remove">Stop posting</button></div>`
+               <div class="admin-actions">${t.unposted ? `<button class="btn btn-solid btn-sm" data-action="admin-tg-post-open">${ico('telegram')}Post ${t.unposted === 1 ? 'it' : `all ${t.unposted}`} now</button>` : ''}${t.open && t.open > t.unposted ? `<button class="btn btn-sm" data-action="admin-tg-post-open" data-again="1">${ico('telegram')}Post all ${t.open} open markets again</button>` : ''}<button class="btn btn-sm" data-action="admin-tg-channel-remove">Stop posting</button></div>
+               <div class="toggle-grid"><label class="toggle"><input type="checkbox" data-action="admin-token-banners"${t.tokenBanners ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>Token banners</label></div>
+               <p class="muted">${t.tokenBanners ? 'Each post gets the token’s own banner: its logo, ticker and details. A ticker the banner font can’t draw (such as Chinese) falls back to the fixed banner. Check it with “Preview Telegram banner” on the market form before publishing.' : 'Off: new markets use the fixed banner, and reminders and results are text only.'}</p>`
             : `<ol class="tg-steps">
                 <li>In Telegram, create a <b>New Channel</b>, make it <b>Public</b> and give it a link, like <code>firstprint_markets</code>.</li>
                 <li>Open the channel → <b>Administrators</b> → <b>Add Admin</b>, pick your bot, and leave <b>Post Messages</b> on.</li>
@@ -16040,7 +16244,11 @@ function marketActions(m) {
 
 function adminPhasePill(m) {
   const text = esc(adminPhase(m));
-  if (m.phase === 'draft') return `<span class="pill pill-off">${text}</span>`;
+  if (m.phase === 'draft' && m.autoOpenAt) {
+    const due = m.autoOpenAt > now();
+    return `<span class="pill pill-hot">${ico('clock')}${due ? `Opens by itself in <span data-until="${m.autoOpenAt}">${fmtDur(m.autoOpenAt - now())}</span>` : 'Opening: checking prices'}</span>${m.autoOpenNote ? `<small class="muted auto-note">${esc(m.autoOpenNote)}</small>` : ''}`;
+  }
+  if (m.phase === 'draft') return `<span class="pill pill-off">${text}</span>${m.autoOpenNote ? `<small class="muted auto-note">${esc(m.autoOpenNote)}</small>` : ''}`;
   if (m.phase === 'awaiting_result') return `<span class="pill pill-hot">${text}</span>`;
   if (m.status === 'resolved') return `<span class="pill pill-done">${isYesNo(m) ? `Settled: ${oName(m.result?.winningBucket, true)}` : text}</span>`;
   if (m.status === 'void') return `<span class="pill pill-off">${text}</span>`;
@@ -16220,6 +16428,17 @@ async function onAdminAction(action, el) {
       return renderAdmin();
     case 'admin-price-check':
       return runPriceCheck();
+    case 'admin-banner-preview':
+      return runBannerPreview();
+    case 'admin-token-banners':
+      try {
+        await A.api.setTokenBanners(el.checked);
+        A.info = await A.api.ping();
+        toast(el.checked ? 'Each market now gets its own banner on Telegram.' : 'Token banners are off. New markets use the fixed banner.');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
     case 'admin-use-price': {
       const form = $('#admin-market');
       const up = form?.querySelector('[data-upcoming]');
@@ -16460,6 +16679,13 @@ async function submitAdminMarket(form, intent) {
   // "Upcoming token": no start price yet; the opening price is added once trading starts.
   if (d.has('upcoming')) body.basePrice = null;
   else if (d.has('basePrice')) body.basePrice = Number(d.get('basePrice'));
+  // Opens by itself when trading starts: saved as a scheduled draft, never published from here.
+  const autoOpen = d.has('upcoming') && d.has('autoOpen');
+  if (autoOpen) {
+    body.autoOpenAt = inputMs(d.get('autoOpenAt'));
+    if (!Number.isFinite(body.autoOpenAt)) return toast('Choose when trading starts.', true);
+    if (!body.logoUrl) return toast('Add the token’s logo first: markets that open by themselves need one.', true);
+  } else if (form.dataset.id) body.autoOpenAt = null;
   if (d.has('crash')) {
     body.config = {
       thresholds: { crash: pct('crash'), down: pct('down'), up: pct('up'), moon: pct('moon') },
@@ -16469,7 +16695,10 @@ async function submitAdminMarket(form, intent) {
     };
   }
   if (!Number.isFinite(body.closeAt) || !Number.isFinite(body.resultAt)) return toast('Choose the close time and the expected result time.', true);
-  if (intent === 'publish' && !confirm('Publish this market? Users will be able to predict straight away.')) return;
+  if (autoOpen && intent === 'publish') {
+    if (!confirm(`Schedule this market? It stays a draft, then opens by itself about 3 minutes after trading starts (${new Date(body.autoOpenAt).toLocaleString()}), with the live price as its start price.`)) return;
+    intent = 'save';
+  } else if (intent === 'publish' && !confirm('Publish this market? Users will be able to predict straight away.')) return;
   const buttons = form.querySelectorAll('button');
   buttons.forEach((b) => (b.disabled = true));
   try {
@@ -16481,7 +16710,7 @@ async function submitAdminMarket(form, intent) {
     A.edit = null;
     A.review = null;
     A.tab = 'markets';
-    toast(m.published ? `${m.symbol} market is live` : `${m.symbol} saved as a draft`);
+    toast(m.published ? `${m.symbol} market is live` : m.autoOpenAt ? `${m.symbol} scheduled: it opens by itself when trading starts` : `${m.symbol} saved as a draft`);
   } catch (err) {
     toast(err.message, true);
     buttons.forEach((b) => (b.disabled = false));
@@ -16675,6 +16904,22 @@ document.addEventListener('click', async (e) => {
       return finishTour();
     case 'win-close':
       return closeWin();
+    case 'pnl-open': {
+      const btn = t.closest('[data-action]');
+      S.pnl = { marketId: btn.dataset.id, symbol: btn.dataset.symbol };
+      S.modal = 'pnl';
+      return renderAuth();
+    }
+    case 'pnl-native':
+      return pnlNativeShare();
+    case 'pnl-copy':
+      try {
+        await navigator.clipboard.writeText(pnlLinks(S.pnl).page);
+        toast('Link copied');
+      } catch {
+        toast('Couldn’t copy the link.', true);
+      }
+      return;
     case 'profile-skip':
       return afterProfile();
     case 'claim-tokens':
@@ -16792,9 +17037,33 @@ document.addEventListener(
   true,
 );
 
+/**
+ * "Open by itself when trading starts": shows the trading start time, keeps predictions open at
+ * least a day after it, and names the main button for what it will do.
+ */
+function syncAutoOpen(form, timeChanged = false) {
+  if (!form) return;
+  const on = Boolean(form.querySelector('[data-auto-open]')?.checked);
+  const at = form.querySelector('.auto-open-at');
+  if (at) at.hidden = !on;
+  if (on) {
+    const open = inputMs(form.querySelector('[name=autoOpenAt]').value);
+    const close = form.querySelector('[name=closeAt]');
+    const result = form.querySelector('[name=resultAt]');
+    if (Number.isFinite(open) && (timeChanged || !(inputMs(close.value) >= open + 30 * 60_000))) {
+      close.value = toLocalInput(open + 24 * 3_600_000);
+      if (!(inputMs(result.value) > open + 24 * 3_600_000)) result.value = toLocalInput(open + 72 * 3_600_000);
+    }
+  }
+  const main = form.querySelector('button[name=intent][value=publish]');
+  if (main) main.innerHTML = on ? `${ico('clock')}Schedule: opens by itself` : form.dataset.id ? 'Save and publish' : `${ico('send')}Publish market`;
+  updateUtcHints();
+}
+
 /** Puts a logo (link or data URL, '' for none) into the market form and its preview. */
 function setLogo(form, value, { keepLink = false } = {}) {
   if (!form) return;
+  if (form.id === 'admin-market' && $('#banner-preview-out')) setTimeout(runBannerPreview, 0);
   form.querySelector('[name=logoUrl]').value = value;
   if (!keepLink) form.querySelector('[data-logo-link]').value = value.startsWith('data:') ? '' : value;
   const preview = form.querySelector('[data-logo-preview]');
@@ -16869,12 +17138,21 @@ document.addEventListener('input', (e) => {
 
 document.addEventListener('change', (e) => {
   if (e.target.matches?.('[data-upcoming]')) {
-    const price = e.target.closest('form').querySelector('[name=basePrice]');
+    const form = e.target.closest('form');
+    const price = form.querySelector('[name=basePrice]');
     price.disabled = e.target.checked;
     price.required = !e.target.checked;
     price.placeholder = e.target.checked ? 'Set when trading opens' : '0.25';
     if (e.target.checked) price.value = '';
+    const auto = form.querySelector('.auto-open');
+    if (auto && !(form.dataset.id && form.dataset.published === '1')) auto.hidden = !e.target.checked;
+    if (!e.target.checked && form.querySelector('[data-auto-open]')) {
+      form.querySelector('[data-auto-open]').checked = false;
+      syncAutoOpen(form);
+    }
   }
+  if (e.target.matches?.('[data-auto-open]')) syncAutoOpen(e.target.closest('form'));
+  if (e.target.name === 'autoOpenAt' && e.target.closest('#admin-market')) syncAutoOpen(e.target.closest('form'), true);
   if (e.target.name === 'outcomes' && e.target.closest('#admin-market')) {
     e.target.closest('form').dataset.outcomes = e.target.value;
   }

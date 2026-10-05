@@ -48,11 +48,12 @@ export class ChannelPoster {
   }
 
   /**
-   * The fixed banner for a new market and plain text otherwise. Each token's own banner
-   * (logo, ticker, details) is off for now; setting `telegram_token_banners` to '1' turns it on.
+   * The token's own banner (logo, ticker, details). When token banners are switched off in
+   * Settings (`telegram_token_banners` = '0'), or the banner can't be drawn (a ticker in a script
+   * the font lacks), a new market gets the fixed banner and other posts are plain text.
    */
   private bannerFor(kind: BannerKind, id: string, m: Parameters<typeof renderBanner>[1]): Uint8Array | null {
-    if (this.service.getSetting('telegram_token_banners') !== '1') return kind === 'live' ? this.banner : null;
+    if (!this.service.tokenBannersEnabled()) return kind === 'live' ? this.banner : null;
     try {
       return renderBanner(kind, m, this.service.logoPng(id));
     } catch (err) {

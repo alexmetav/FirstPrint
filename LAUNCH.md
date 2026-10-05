@@ -65,7 +65,7 @@ The static site and the read-only demo above don't have accounts. The full app i
 
 1. In Telegram, open **@BotFather**, send `/newbot` and follow the steps. Put the token in Render as `TELEGRAM_BOT_TOKEN` (never in chat or the repo).
 2. **Your alerts:** Admin → Settings → Telegram alerts shows a code. Send it to your bot, then press **Connect**. You get a message for every new listing on the exchanges we watch and every market that closes and needs a result.
-3. **Player channel:** create a public channel, add the bot as an admin with **Post Messages**, and enter the channel name under **Player channel**. Every market you publish is posted with the new-market banner and a **Predict now** button, a "last hour" reminder goes out an hour before predictions close, and results with a winner are posted. **Post all now** posts open markets made before the channel was set up. Players see a Telegram button on market pages, their dashboard and the menu.
+3. **Player channel:** create a public channel, add the bot as an admin with **Post Messages**, and enter the channel name under **Player channel**. Every market you publish is posted with its own banner (the token's logo and ticker; check it with **Preview Telegram banner** on the market form before publishing) and a **Predict now** button, a "last hour" reminder goes out an hour before predictions close, and results with a winner are posted. **Post all now** posts open markets made before the channel was set up. Players see a Telegram button on market pages, their dashboard and the menu.
 
 ### Analytics for partners
 
