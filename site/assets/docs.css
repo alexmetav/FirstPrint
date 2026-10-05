@@ -16,7 +16,8 @@
   --down: #ff9f0a;
   --flat: #8e8e93;
   --up: #30d158;
-  --moon: #ffd60a;
+  --moon: #7dff3a;
+  --warn: #ffd60a;
   --violet: #bf5af2;
   --teal: #64d2ff;
   --display: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -83,7 +84,7 @@ svg {
   height: 3px;
   border-radius: 2px;
 }
-.doc-mark i:nth-child(1) { background: var(--moon); width: 100%; }
+.doc-mark i:nth-child(1) { background: var(--warn); width: 100%; }
 .doc-mark i:nth-child(2) { background: var(--up); width: 80%; }
 .doc-mark i:nth-child(3) { background: var(--flat); width: 60%; }
 .doc-mark i:nth-child(4) { background: var(--down); width: 80%; }
@@ -137,15 +138,15 @@ svg {
   gap: 10px;
   align-items: flex-start;
   padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, var(--moon) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--moon) 7%, transparent);
+  background: color-mix(in srgb, var(--warn) 7%, transparent);
   color: color-mix(in srgb, var(--text) 86%, var(--muted));
   font-size: 14px;
   line-height: 1.5;
 }
 .draft-note b {
-  color: var(--moon);
+  color: var(--warn);
 }
 .ladder-chips {
   display: flex;
@@ -834,7 +835,8 @@ svg {
     --link: #0071e3;
     --cta: #0071e3;
     --up: #248a3d;
-    --moon: #b38600;
+    --moon: #3f9c00;
+    --warn: #b38600;
     --down: #c45f00;
     --crash: #d70015;
     color-scheme: light;

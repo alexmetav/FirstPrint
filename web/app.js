@@ -1308,7 +1308,7 @@ function howItWorks() {
       <div class="section-head"><span class="section-ico">${ico('info')}</span><div><h2>How it works</h2><p class="muted">Free to play. Points only, no real money.</p></div><button class="btn btn-sm head-action" data-action="tour">${ico('sparkles')}Take the tour</button></div>
       <ol class="steps">
         <li><span class="step-ico" style="--c:var(--up)">${ico('target')}</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}, or a simple Yes or No.</p></li>
-        <li><span class="step-ico" style="--c:var(--moon)">${ico('coins')}</span><b>Stake free points</b><p>Everyone gets ${startPoints()}, plus up to 200 more every day with a daily streak. No real money.</p></li>
+        <li><span class="step-ico" style="--c:var(--warn)">${ico('coins')}</span><b>Stake free points</b><p>Everyone gets ${startPoints()}, plus up to 200 more every day with a daily streak. No real money.</p></li>
         <li><span class="step-ico" style="--c:var(--brand)">${ico('trophy')}</span><b>Win the pool</b><p>If you’re right, you split the pool with the other winners. Earlier picks earn more.</p></li>
       </ol>
       <details class="full-rules"><summary>Full rules</summary>`;
@@ -1910,7 +1910,7 @@ function celebrate(bucket) {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const root = $('#confetti');
   if (!root) return;
-  const colors = [`var(--${bucket})`, `var(--${bucket})`, 'var(--moon)', 'var(--up)', 'var(--text)'];
+  const colors = [`var(--${bucket})`, `var(--${bucket})`, 'var(--warn)', 'var(--up)', 'var(--text)'];
   root.innerHTML = Array.from({ length: 48 }, (_, i) => {
     const x = (Math.random() * 2 - 1) * 46; // vw from the centre
     const rot = Math.round(Math.random() * 720 - 360);
@@ -2406,7 +2406,7 @@ function profileView(p) {
     <dl class="stat-tiles">
       ${tile('percent', 'up', 'Win rate', pct === null ? '–' : `${pct}%`, st.settled ? `${st.wins} of ${st.settled} market${st.settled === 1 ? '' : 's'} won` : 'No settled markets yet')}
       ${tile('trendUp', st.netProfit >= 0 ? 'up' : 'crash', 'Points won', `<span class="${st.netProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(st.netProfit)}</span>`, `${fmtNum(st.totalWon)} paid out from ${fmtNum(st.totalStaked)} staked`)}
-      ${tile('star', 'moon', 'Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '–', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'No wins yet')}
+      ${tile('star', 'warn', 'Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '–', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'No wins yet')}
       ${tile('flame', 'down', 'Streak', `${st.currentStreak}`, `wins in a row · best ${st.bestStreak}`)}
       ${tile('target', 'brand', 'Markets played', fmtNum(st.marketsPlayed), `${fmtNum(st.open.markets)} still open`)}
     </dl>
@@ -2426,7 +2426,7 @@ function statTiles(st) {
     `<div class="stat-tile" style="--c:var(--${color})"><span class="tile-ico">${ico(icon)}</span><dt>${label}</dt><dd>${value}</dd><p>${sub}</p>${extra}</div>`;
   const points = tile(
     'coins',
-    'moon',
+    'warn',
     'Points',
     fmtNum(S.me.points),
     st?.open.staked ? `${fmtNum(st.open.staked)} more in play` : 'Available to predict with',
@@ -2440,7 +2440,7 @@ function statTiles(st) {
     ${points}
     ${tile('percent', 'up', 'Win rate', `${pct}%`, `${st.wins} of ${st.settled} market${st.settled === 1 ? '' : 's'} won`, `<div class="meter" role="img" aria-label="${pct}% of markets won"><i style="width:${pct}%"></i></div>`)}
     ${tile('trendUp', st.netProfit >= 0 ? 'up' : 'crash', 'Points won', `<span class="${st.netProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(st.netProfit)}</span>`, `${fmtNum(st.totalWon)} paid out from ${fmtNum(st.totalStaked)} staked`)}
-    ${tile('star', 'moon', 'Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '–', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'Your first win shows up here')}
+    ${tile('star', 'warn', 'Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '–', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'Your first win shows up here')}
     ${tile('flame', 'down', 'Streak', `${st.currentStreak}`, `wins in a row · best ${st.bestStreak}`)}
     ${tile('award', 'brand', 'Rank', st.rank ? `#${st.rank}` : '–', st.rank ? `of ${fmtNum(st.players)} players, all time` : 'After your first settled market')}
   </dl>`;
@@ -3208,7 +3208,7 @@ function resultLine(n) {
   const yn = n.outcomes === 'binary';
   if (n.status === 'void') return { icon: 'undo', tone: 'flat', title: `${esc(n.symbol)} was cancelled`, body: `${fmtPts(n.refund)} refunded to your balance.` };
   const win = n.winningBucket ? outcome(n.winningBucket, yn) : 'the result';
-  if (n.won) return { icon: 'trophy', tone: 'moon', title: `You won ${fmtPts(n.payout)} on ${esc(n.symbol)}`, body: `It settled ${yn ? 'as' : 'in'} ${win}. You staked ${fmtPts(n.staked)}.` };
+  if (n.won) return { icon: 'trophy', tone: 'warn', title: `You won ${fmtPts(n.payout)} on ${esc(n.symbol)}`, body: `It settled ${yn ? 'as' : 'in'} ${win}. You staked ${fmtPts(n.staked)}.` };
   return { icon: 'cross', tone: 'crash', title: `${esc(n.symbol)} settled ${yn ? 'as' : 'in'} ${win}`, body: `Your pick didn’t win this time${n.refund ? `; ${fmtPts(n.refund)} came back from the pool limit` : ''}.` };
 }
 
@@ -3848,8 +3848,8 @@ function adminOverview({ markets, waiting, drafts, token, tasks, log, pending })
   const todo = [];
   for (const m of waiting) todo.push(['alert', 'crash', `${esc(m.symbol)} is waiting for its result`, `${fmtPts(m.pool)} from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'}`, 'markets', 'Post result']);
   for (const m of drafts) todo.push(['edit', 'flat', `${esc(m.symbol)} is a draft`, 'Hidden until you publish it', 'markets', 'Review']);
-  if (token?.enabled && !token.ready) todo.push(['token', 'moon', 'TestFPT isn’t set up', 'Points stay in balances until it exists', 'token', 'Set up']);
-  if (token?.enabled && (token.authorityKey || (token.mint && !token.savedInEnv?.mint))) todo.push(['key', 'moon', 'Save the TestFPT keys in Render', 'So a restart can’t lose them', 'token', 'Show keys']);
+  if (token?.enabled && !token.ready) todo.push(['token', 'warn', 'TestFPT isn’t set up', 'Points stay in balances until it exists', 'token', 'Set up']);
+  if (token?.enabled && (token.authorityKey || (token.mint && !token.savedInEnv?.mint))) todo.push(['key', 'warn', 'Save the TestFPT keys in Render', 'So a restart can’t lose them', 'token', 'Show keys']);
   if (A.info.backup?.lastError) todo.push(['database', 'crash', 'Database backup is failing', esc(A.info.backup.lastError), 'settings', 'Check']);
   if (!open.length) todo.push(['plusCircle', 'up', 'No open markets', 'Players have nothing to predict', 'create', 'Create one']);
   if (!activeTasks.length) todo.push(['sparkles', 'up', 'No active tasks', 'Tasks give players more ways to earn', 'tasks', 'Add a task']);
@@ -3864,7 +3864,7 @@ function adminOverview({ markets, waiting, drafts, token, tasks, log, pending })
     <div class="adm-stats">
       ${stat('up', 'Open markets', fmtNum(open.length), drafts.length ? `${drafts.length} draft${drafts.length === 1 ? '' : 's'}` : 'Live now', 'markets')}
       ${stat('crash', 'Awaiting result', fmtNum(waiting.length), waiting.length ? 'Post the final price' : 'All caught up', 'markets')}
-      ${stat('moon', 'Points in open pools', fmtNum(inPools), 'Across open markets', 'markets')}
+      ${stat('warn', 'Points in open pools', fmtNum(inPools), 'Across open markets', 'markets')}
       ${stat('brand', 'Predictions', fmtNum(predictors), 'In open markets', 'analytics')}
       ${stat('down', 'Active tasks', fmtNum(activeTasks.length), `${fmtNum(tasks.reduce((n, t) => n + t.completions, 0))} done`, 'tasks')}
     </div>
@@ -4559,7 +4559,7 @@ function listingsList(pending) {
   const when = (d) => (!d.listingAt ? 'Start time not published' : d.listingAt > now ? `Trading starts ${fmtDate(d.listingAt)} · in ${until(d.listingAt)}` : `Trading started ${fmtDate(d.listingAt)}`);
   return `<ul class="todo">${pending
     .map(
-      (d) => `<li style="--c:var(--${d.listingAt && d.listingAt > now ? 'up' : 'moon'})"><span class="todo-ico">${ico('coins')}</span><div><b>${esc(d.symbol || '?')}${d.name ? ` <span class="muted">${esc(d.name)}</span>` : ''}</b><span class="muted">${esc(d.exchangeName)} · ${when(d)}</span></div>
+      (d) => `<li style="--c:var(--${d.listingAt && d.listingAt > now ? 'up' : 'warn'})"><span class="todo-ico">${ico('coins')}</span><div><b>${esc(d.symbol || '?')}${d.name ? ` <span class="muted">${esc(d.name)}</span>` : ''}</b><span class="muted">${esc(d.exchangeName)} · ${when(d)}</span></div>
         <span class="todo-actions"><button class="btn btn-sm btn-solid" data-action="admin-review" data-id="${d.id}">Review</button><button class="btn btn-sm" data-action="admin-review-ignore" data-id="${d.id}">Skip</button></span></li>`,
     )
     .join('')}</ul>`;

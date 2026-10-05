@@ -63,7 +63,8 @@
   --down: #ff9f0a;
   --flat: #8e8e93;
   --up: #30d158;
-  --moon: #ffd60a;
+  --moon: #7dff3a;
+  --warn: #ffd60a;
 
   /* SF Pro on Apple devices (Display for large sizes is picked automatically), Inter elsewhere. */
   --display: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -106,7 +107,8 @@
     --down: #c93400;
     --flat: #6e6e73;
     --up: #248a3d;
-    --moon: #a2670a;
+    --moon: #3f9c00;
+    --warn: #a2670a;
     color-scheme: light;
 }
 @media (prefers-color-scheme: light) {
@@ -137,7 +139,8 @@
     --down: #c93400;
     --flat: #6e6e73;
     --up: #248a3d;
-    --moon: #a2670a;
+    --moon: #3f9c00;
+    --warn: #a2670a;
     color-scheme: light;
   }
 }
@@ -264,7 +267,7 @@ h3 {
   height: 3px;
   border-radius: 2px;
 }
-.wordmark .mark i:nth-child(1) { background: var(--moon); width: 100%; }
+.wordmark .mark i:nth-child(1) { background: var(--warn); width: 100%; }
 .wordmark .mark i:nth-child(2) { background: var(--up); width: 80%; }
 .wordmark .mark i:nth-child(3) { background: var(--flat); width: 60%; }
 .wordmark .mark i:nth-child(4) { background: var(--down); width: 80%; }
@@ -456,7 +459,7 @@ a.radar-title:hover {
 
 .demo-bar {
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--moon) 9%, var(--bg));
+  background: color-mix(in srgb, var(--warn) 9%, var(--bg));
 }
 .demo-bar-inner {
   max-width: var(--page);
@@ -531,7 +534,7 @@ main:focus {
 }
 .featured h1 .countdown {
   display: block;
-  color: var(--moon);
+  color: var(--warn);
 }
 .featured .lede {
   color: var(--muted);
@@ -1196,7 +1199,7 @@ main:focus {
   text-align: right;
 }
 .table tr.me td {
-  background: color-mix(in srgb, var(--moon) 8%, transparent);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
 }
 .rank {
   font-family: var(--display);
@@ -1444,8 +1447,8 @@ main:focus {
 
 .tag-test {
   background: transparent;
-  color: var(--moon);
-  border: 1px solid color-mix(in srgb, var(--moon) 60%, transparent);
+  color: var(--warn);
+  border: 1px solid color-mix(in srgb, var(--warn) 60%, transparent);
   margin-left: 4px;
 }
 .m-venues {
@@ -1756,8 +1759,8 @@ code {
 
 /* Daily points: a small gift button next to the balance while today's points are unclaimed. */
 .gift {
-  border: 1px solid color-mix(in srgb, var(--moon) 55%, var(--line));
-  background: color-mix(in srgb, var(--moon) 14%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, var(--line));
+  background: color-mix(in srgb, var(--warn) 14%, var(--bg));
   color: var(--text);
   font-family: var(--display);
   font-weight: 600;
@@ -1769,7 +1772,7 @@ code {
   animation: wiggle 3.2s ease-in-out infinite;
 }
 .gift:hover {
-  background: color-mix(in srgb, var(--moon) 24%, var(--bg));
+  background: color-mix(in srgb, var(--warn) 24%, var(--bg));
 }
 @keyframes wiggle {
   0%, 86%, 100% { transform: rotate(0); }
@@ -1860,8 +1863,8 @@ code {
   transform: translateY(-2px);
 }
 .card.soon {
-  border-color: color-mix(in srgb, var(--moon) 45%, var(--line));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--moon) 20%, transparent), 0 8px 26px color-mix(in srgb, var(--moon) 10%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--warn) 20%, transparent), 0 8px 26px color-mix(in srgb, var(--warn) 10%, transparent);
 }
 .soon-tag {
   position: absolute;
@@ -1871,7 +1874,7 @@ code {
   font-weight: 600;
   padding: 2px 9px;
   border-radius: 999px;
-  background: var(--moon);
+  background: var(--warn);
   color: #1a1300;
 }
 
@@ -2339,8 +2342,8 @@ code {
   margin: 0 0 24px;
   padding: 16px 18px;
   border-radius: var(--r-md);
-  border: 1px solid color-mix(in srgb, var(--moon) 45%, var(--line));
-  background: color-mix(in srgb, var(--moon) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
+  background: color-mix(in srgb, var(--warn) 8%, var(--surface));
 }
 .start-card h2 {
   font-size: 19px;
@@ -2363,8 +2366,8 @@ code {
   padding: 20px;
   margin-bottom: 20px;
   border-radius: var(--r-lg);
-  border: 1px solid color-mix(in srgb, var(--moon) 40%, var(--line));
-  background: linear-gradient(135deg, color-mix(in srgb, var(--moon) 12%, var(--surface)), var(--surface));
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--warn) 12%, var(--surface)), var(--surface));
 }
 .claim-amount {
   display: grid;
@@ -2513,8 +2516,8 @@ code {
   margin-top: 8px;
   padding: 12px 14px;
   border-radius: var(--r-md);
-  border: 1px solid color-mix(in srgb, var(--moon) 45%, var(--line));
-  background: color-mix(in srgb, var(--moon) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
+  background: color-mix(in srgb, var(--warn) 8%, var(--surface));
 }
 .save-keys .secret {
   max-width: 100%;
@@ -2763,7 +2766,7 @@ main .input-wrap input:not([type='checkbox']) {
   color: var(--brand);
 }
 .points .i {
-  color: var(--moon);
+  color: var(--warn);
 }
 .points .unit {
   color: var(--muted);
@@ -2771,11 +2774,11 @@ main .input-wrap input:not([type='checkbox']) {
   font-size: 12px;
 }
 .gift {
-  border-color: color-mix(in srgb, var(--moon) 55%, var(--line));
-  background: color-mix(in srgb, var(--moon) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--line));
+  background: color-mix(in srgb, var(--warn) 14%, var(--surface));
 }
 .gift .i {
-  color: var(--moon);
+  color: var(--warn);
 }
 .wallet-chip {
   padding: 0 12px 0 4px;
@@ -2873,7 +2876,7 @@ main .input-wrap input:not([type='checkbox']) {
 }
 .pill-live { color: var(--up); background: color-mix(in srgb, var(--up) 14%, transparent); }
 .pill-soon { color: var(--brand); background: color-mix(in srgb, var(--brand) 15%, transparent); }
-.pill-wait { color: var(--moon); background: color-mix(in srgb, var(--moon) 14%, transparent); }
+.pill-wait { color: var(--warn); background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .pill-hot { color: var(--down); background: color-mix(in srgb, var(--down) 15%, transparent); }
 .pill-done { color: var(--text); background: var(--raised); }
 .pill-off { color: var(--muted); background: var(--raised); }
@@ -2935,8 +2938,8 @@ main .input-wrap input:not([type='checkbox']) {
   margin: 0;
 }
 .panel-alert {
-  border-color: color-mix(in srgb, var(--moon) 40%, var(--line));
-  background: linear-gradient(180deg, color-mix(in srgb, var(--moon) 7%, var(--surface-2)), var(--surface));
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--warn) 7%, var(--surface-2)), var(--surface));
 }
 
 .section-head {
@@ -3264,7 +3267,7 @@ main .input-wrap input:not([type='checkbox']) {
   font-weight: 600;
 }
 .card-foot .pool .i {
-  color: var(--moon);
+  color: var(--warn);
 }
 .card.soon {
   border-color: color-mix(in srgb, var(--down) 45%, var(--line));
@@ -3535,7 +3538,7 @@ main .input-wrap input:not([type='checkbox']) {
   min-width: 0;
 }
 .podium .podium-1 {
-  --c: var(--moon);
+  --c: var(--warn);
   order: 2;
   padding-top: 30px;
 }
@@ -3580,7 +3583,7 @@ main .input-wrap input:not([type='checkbox']) {
   font-size: 14px;
   background: var(--raised);
 }
-.rank.medal-1 { background: color-mix(in srgb, var(--moon) 25%, transparent); color: var(--moon); }
+.rank.medal-1 { background: color-mix(in srgb, var(--warn) 25%, transparent); color: var(--warn); }
 .rank.medal-2 { background: color-mix(in srgb, #b9c4d8 22%, transparent); color: #b9c4d8; }
 .rank.medal-3 { background: color-mix(in srgb, #d99a6c 22%, transparent); color: #d99a6c; }
 .who-cell,
@@ -3897,7 +3900,7 @@ main .input-wrap input:not([type='checkbox']) {
 }
 .start-ico,
 .claim-ico {
-  --c: var(--moon);
+  --c: var(--warn);
   width: 46px;
   height: 46px;
   border-radius: 14px;
@@ -4109,8 +4112,8 @@ main .input-wrap input:not([type='checkbox']) {
   border-color: color-mix(in srgb, var(--up) 35%, var(--line));
 }
 .status-chip.bad {
-  color: var(--moon);
-  border-color: color-mix(in srgb, var(--moon) 40%, var(--line));
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
 }
 .todo {
   list-style: none;
@@ -4344,7 +4347,7 @@ main .input-wrap input:not([type='checkbox']) {
   gap: 8px;
 }
 .save-keys b .i {
-  color: var(--moon);
+  color: var(--warn);
 }
 .admin-main .steplist li {
   padding: 14px;
@@ -5650,7 +5653,7 @@ main textarea::placeholder,
   justify-content: center;
 }
 .theme-toggle .i {
-  color: var(--moon);
+  color: var(--warn);
 }
 .featured .h1-soft {
   color: color-mix(in srgb, var(--brand) 75%, var(--text));
@@ -5799,7 +5802,7 @@ main textarea::placeholder,
   height: 16px;
 }
 .sum-points .sum-label .i {
-  color: var(--moon);
+  color: var(--warn);
 }
 .sum-note {
   font-size: 12px;
@@ -7283,8 +7286,8 @@ main:has(.home) {
   height: 36px;
   flex: none;
   border-radius: 10px;
-  background: color-mix(in srgb, var(--moon) 14%, transparent);
-  color: var(--moon);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  color: var(--warn);
 }
 .rail-ico .i {
   width: 18px;
@@ -9568,7 +9571,7 @@ a.hero-badge-live:hover .i {
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  color: var(--moon);
+  color: var(--warn);
   background: color-mix(in srgb, var(--gold) 14%, var(--surface-2));
   border: 1px solid color-mix(in srgb, var(--gold) 35%, transparent);
   box-shadow: 0 0 18px -4px color-mix(in srgb, var(--gold) 55%, transparent);
@@ -9594,7 +9597,7 @@ a.hero-badge-live:hover .i {
   font-weight: 650;
   line-height: 1.1;
   letter-spacing: -0.02em;
-  color: var(--moon);
+  color: var(--warn);
   font-variant-numeric: tabular-nums;
 }
 .rt-amt small {
@@ -10233,15 +10236,15 @@ a.wallet-option {
   color: #fff;
 }
 .st-day.today {
-  border-color: var(--moon);
-  background: color-mix(in srgb, var(--moon) 12%, var(--surface));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--moon) 18%, transparent);
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent);
 }
 .st-day.today b {
-  color: var(--moon);
+  color: var(--warn);
 }
 .st-day.today .st-ico {
-  color: var(--moon);
+  color: var(--warn);
 }
 .st-day:last-child b::after {
   content: '';
@@ -10289,7 +10292,7 @@ a.wallet-option {
   font-weight: 650;
 }
 .cal-cell.is-today {
-  border-color: var(--moon);
+  border-color: var(--warn);
   color: var(--text);
 }
 .cal-cell.future {
@@ -11731,7 +11734,7 @@ svg.viz.viz-narrow {
   justify-content: flex-end;
 }
 .adm-warn > summary .i {
-  color: var(--moon);
+  color: var(--warn);
 }
 .adm-warn.high {
   border-color: color-mix(in srgb, var(--crash) 35%, var(--line));
@@ -11872,7 +11875,7 @@ svg.viz.viz-narrow {
   margin: 10px 0 0;
   padding: 10px 12px;
   border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--moon) 9%, transparent);
+  background: color-mix(in srgb, var(--warn) 9%, transparent);
   font-size: 13px;
 }
 .mf-group {
@@ -15219,7 +15222,7 @@ function howItWorks() {
       <div class="section-head"><span class="section-ico">${ico('info')}</span><div><h2>How it works</h2><p class="muted">Free to play. Points only, no real money.</p></div><button class="btn btn-sm head-action" data-action="tour">${ico('sparkles')}Take the tour</button></div>
       <ol class="steps">
         <li><span class="step-ico" style="--c:var(--up)">${ico('target')}</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}, or a simple Yes or No.</p></li>
-        <li><span class="step-ico" style="--c:var(--moon)">${ico('coins')}</span><b>Stake free points</b><p>Everyone gets ${startPoints()}, plus up to 200 more every day with a daily streak. No real money.</p></li>
+        <li><span class="step-ico" style="--c:var(--warn)">${ico('coins')}</span><b>Stake free points</b><p>Everyone gets ${startPoints()}, plus up to 200 more every day with a daily streak. No real money.</p></li>
         <li><span class="step-ico" style="--c:var(--brand)">${ico('trophy')}</span><b>Win the pool</b><p>If you’re right, you split the pool with the other winners. Earlier picks earn more.</p></li>
       </ol>
       <details class="full-rules"><summary>Full rules</summary>`;
@@ -15821,7 +15824,7 @@ function celebrate(bucket) {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const root = $('#confetti');
   if (!root) return;
-  const colors = [`var(--${bucket})`, `var(--${bucket})`, 'var(--moon)', 'var(--up)', 'var(--text)'];
+  const colors = [`var(--${bucket})`, `var(--${bucket})`, 'var(--warn)', 'var(--up)', 'var(--text)'];
   root.innerHTML = Array.from({ length: 48 }, (_, i) => {
     const x = (Math.random() * 2 - 1) * 46; // vw from the centre
     const rot = Math.round(Math.random() * 720 - 360);
@@ -16317,7 +16320,7 @@ function profileView(p) {
     <dl class="stat-tiles">
       ${tile('percent', 'up', 'Win rate', pct === null ? '–' : `${pct}%`, st.settled ? `${st.wins} of ${st.settled} market${st.settled === 1 ? '' : 's'} won` : 'No settled markets yet')}
       ${tile('trendUp', st.netProfit >= 0 ? 'up' : 'crash', 'Points won', `<span class="${st.netProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(st.netProfit)}</span>`, `${fmtNum(st.totalWon)} paid out from ${fmtNum(st.totalStaked)} staked`)}
-      ${tile('star', 'moon', 'Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '–', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'No wins yet')}
+      ${tile('star', 'warn', 'Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '–', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'No wins yet')}
       ${tile('flame', 'down', 'Streak', `${st.currentStreak}`, `wins in a row · best ${st.bestStreak}`)}
       ${tile('target', 'brand', 'Markets played', fmtNum(st.marketsPlayed), `${fmtNum(st.open.markets)} still open`)}
     </dl>
@@ -16337,7 +16340,7 @@ function statTiles(st) {
     `<div class="stat-tile" style="--c:var(--${color})"><span class="tile-ico">${ico(icon)}</span><dt>${label}</dt><dd>${value}</dd><p>${sub}</p>${extra}</div>`;
   const points = tile(
     'coins',
-    'moon',
+    'warn',
     'Points',
     fmtNum(S.me.points),
     st?.open.staked ? `${fmtNum(st.open.staked)} more in play` : 'Available to predict with',
@@ -16351,7 +16354,7 @@ function statTiles(st) {
     ${points}
     ${tile('percent', 'up', 'Win rate', `${pct}%`, `${st.wins} of ${st.settled} market${st.settled === 1 ? '' : 's'} won`, `<div class="meter" role="img" aria-label="${pct}% of markets won"><i style="width:${pct}%"></i></div>`)}
     ${tile('trendUp', st.netProfit >= 0 ? 'up' : 'crash', 'Points won', `<span class="${st.netProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(st.netProfit)}</span>`, `${fmtNum(st.totalWon)} paid out from ${fmtNum(st.totalStaked)} staked`)}
-    ${tile('star', 'moon', 'Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '–', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'Your first win shows up here')}
+    ${tile('star', 'warn', 'Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '–', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'Your first win shows up here')}
     ${tile('flame', 'down', 'Streak', `${st.currentStreak}`, `wins in a row · best ${st.bestStreak}`)}
     ${tile('award', 'brand', 'Rank', st.rank ? `#${st.rank}` : '–', st.rank ? `of ${fmtNum(st.players)} players, all time` : 'After your first settled market')}
   </dl>`;
@@ -17119,7 +17122,7 @@ function resultLine(n) {
   const yn = n.outcomes === 'binary';
   if (n.status === 'void') return { icon: 'undo', tone: 'flat', title: `${esc(n.symbol)} was cancelled`, body: `${fmtPts(n.refund)} refunded to your balance.` };
   const win = n.winningBucket ? outcome(n.winningBucket, yn) : 'the result';
-  if (n.won) return { icon: 'trophy', tone: 'moon', title: `You won ${fmtPts(n.payout)} on ${esc(n.symbol)}`, body: `It settled ${yn ? 'as' : 'in'} ${win}. You staked ${fmtPts(n.staked)}.` };
+  if (n.won) return { icon: 'trophy', tone: 'warn', title: `You won ${fmtPts(n.payout)} on ${esc(n.symbol)}`, body: `It settled ${yn ? 'as' : 'in'} ${win}. You staked ${fmtPts(n.staked)}.` };
   return { icon: 'cross', tone: 'crash', title: `${esc(n.symbol)} settled ${yn ? 'as' : 'in'} ${win}`, body: `Your pick didn’t win this time${n.refund ? `; ${fmtPts(n.refund)} came back from the pool limit` : ''}.` };
 }
 
@@ -17759,8 +17762,8 @@ function adminOverview({ markets, waiting, drafts, token, tasks, log, pending })
   const todo = [];
   for (const m of waiting) todo.push(['alert', 'crash', `${esc(m.symbol)} is waiting for its result`, `${fmtPts(m.pool)} from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'}`, 'markets', 'Post result']);
   for (const m of drafts) todo.push(['edit', 'flat', `${esc(m.symbol)} is a draft`, 'Hidden until you publish it', 'markets', 'Review']);
-  if (token?.enabled && !token.ready) todo.push(['token', 'moon', 'TestFPT isn’t set up', 'Points stay in balances until it exists', 'token', 'Set up']);
-  if (token?.enabled && (token.authorityKey || (token.mint && !token.savedInEnv?.mint))) todo.push(['key', 'moon', 'Save the TestFPT keys in Render', 'So a restart can’t lose them', 'token', 'Show keys']);
+  if (token?.enabled && !token.ready) todo.push(['token', 'warn', 'TestFPT isn’t set up', 'Points stay in balances until it exists', 'token', 'Set up']);
+  if (token?.enabled && (token.authorityKey || (token.mint && !token.savedInEnv?.mint))) todo.push(['key', 'warn', 'Save the TestFPT keys in Render', 'So a restart can’t lose them', 'token', 'Show keys']);
   if (A.info.backup?.lastError) todo.push(['database', 'crash', 'Database backup is failing', esc(A.info.backup.lastError), 'settings', 'Check']);
   if (!open.length) todo.push(['plusCircle', 'up', 'No open markets', 'Players have nothing to predict', 'create', 'Create one']);
   if (!activeTasks.length) todo.push(['sparkles', 'up', 'No active tasks', 'Tasks give players more ways to earn', 'tasks', 'Add a task']);
@@ -17775,7 +17778,7 @@ function adminOverview({ markets, waiting, drafts, token, tasks, log, pending })
     <div class="adm-stats">
       ${stat('up', 'Open markets', fmtNum(open.length), drafts.length ? `${drafts.length} draft${drafts.length === 1 ? '' : 's'}` : 'Live now', 'markets')}
       ${stat('crash', 'Awaiting result', fmtNum(waiting.length), waiting.length ? 'Post the final price' : 'All caught up', 'markets')}
-      ${stat('moon', 'Points in open pools', fmtNum(inPools), 'Across open markets', 'markets')}
+      ${stat('warn', 'Points in open pools', fmtNum(inPools), 'Across open markets', 'markets')}
       ${stat('brand', 'Predictions', fmtNum(predictors), 'In open markets', 'analytics')}
       ${stat('down', 'Active tasks', fmtNum(activeTasks.length), `${fmtNum(tasks.reduce((n, t) => n + t.completions, 0))} done`, 'tasks')}
     </div>
@@ -18470,7 +18473,7 @@ function listingsList(pending) {
   const when = (d) => (!d.listingAt ? 'Start time not published' : d.listingAt > now ? `Trading starts ${fmtDate(d.listingAt)} · in ${until(d.listingAt)}` : `Trading started ${fmtDate(d.listingAt)}`);
   return `<ul class="todo">${pending
     .map(
-      (d) => `<li style="--c:var(--${d.listingAt && d.listingAt > now ? 'up' : 'moon'})"><span class="todo-ico">${ico('coins')}</span><div><b>${esc(d.symbol || '?')}${d.name ? ` <span class="muted">${esc(d.name)}</span>` : ''}</b><span class="muted">${esc(d.exchangeName)} · ${when(d)}</span></div>
+      (d) => `<li style="--c:var(--${d.listingAt && d.listingAt > now ? 'up' : 'warn'})"><span class="todo-ico">${ico('coins')}</span><div><b>${esc(d.symbol || '?')}${d.name ? ` <span class="muted">${esc(d.name)}</span>` : ''}</b><span class="muted">${esc(d.exchangeName)} · ${when(d)}</span></div>
         <span class="todo-actions"><button class="btn btn-sm btn-solid" data-action="admin-review" data-id="${d.id}">Review</button><button class="btn btn-sm" data-action="admin-review-ignore" data-id="${d.id}">Skip</button></span></li>`,
     )
     .join('')}</ul>`;
