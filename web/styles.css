@@ -8756,69 +8756,58 @@ p,
   gap: 12px;
   align-self: center;
 }
+/* A 3D stack: the front card, with the next markets as layers peeking out behind it.
+   Each card's depth (--d: 0 front, 1, 2, 3 hidden at the back) sets where it sits. */
 .hero-slides {
+  --step: 18px;
   position: relative;
   display: grid;
-  perspective: 1100px;
+  perspective: 1600px;
+  perspective-origin: 50% 0%;
   isolation: isolate;
 }
 .hero-deck.has-many .hero-slides {
-  margin-bottom: 14px;
+  padding-top: calc(var(--step) * 2);
 }
-/* Two cards peeking out underneath, so it reads as a deck. */
-.hero-deck.has-many .hero-slides::before,
-.hero-deck.has-many .hero-slides::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
-  transform: translateY(8px) scale(0.96);
-  z-index: 0;
-}
-.hero-deck.has-many .hero-slides::after {
-  transform: translateY(16px) scale(0.92);
-  opacity: 0.6;
-  z-index: -1;
+.hero-deck.has-many:hover .hero-slides {
+  --step: 24px;
 }
 .hero-slide {
+  --d: 0;
   grid-area: 1 / 1;
-  z-index: 1;
-  visibility: hidden;
-  backface-visibility: hidden;
-  transform-origin: 50% 50%;
+  z-index: calc(10 - var(--d));
+  transform-origin: 50% 0%;
+  transform: translateY(calc(var(--d) * var(--step) * -1)) translateZ(calc(var(--d) * -60px)) rotateX(calc(var(--d) * 2deg));
+  transition: transform 0.7s cubic-bezier(0.22, 0.8, 0.24, 1), opacity 0.5s, filter 0.7s;
+  will-change: transform;
 }
-.hero-slide.is-on,
-.hero-slide.is-out {
-  visibility: visible;
-}
-.hero-slide.is-in {
-  animation: hero-flip-in 0.55s cubic-bezier(0.2, 0.75, 0.25, 1) 0.3s both;
-}
-.hero-slide.is-out {
-  z-index: 2;
-  animation: hero-flip-out 0.3s ease-in both;
+.hero-slide:not(.is-on) {
   pointer-events: none;
+  filter: brightness(calc(1 - var(--d) * 0.22));
 }
-@keyframes hero-flip-in {
+.hero-slide.is-far {
+  opacity: 0;
+}
+.hero-slide.is-out {
+  animation: deck-to-back 0.9s cubic-bezier(0.45, 0, 0.25, 1);
+}
+/* The front card drops forward and down, fades, then slips in at the back of the stack. */
+@keyframes deck-to-back {
   0% {
-    opacity: 0;
-    transform: rotateY(-90deg) scale(0.94);
-  }
-  60% {
+    z-index: 30;
     opacity: 1;
-  }
-  100% {
-    opacity: 1;
+    filter: none;
     transform: none;
   }
-}
-@keyframes hero-flip-out {
-  to {
+  32% {
+    z-index: 30;
     opacity: 0;
-    transform: rotateY(90deg) scale(0.94);
-    visibility: hidden;
+    transform: translateY(90px) translateZ(60px) rotateX(-18deg) scale(0.98);
+  }
+  46% {
+    z-index: 0;
+    opacity: 0;
+    transform: translateY(calc(var(--step) * -3)) translateZ(-200px);
   }
 }
 .hero-dots {
@@ -8841,12 +8830,11 @@ p,
   background: var(--text);
 }
 @media (prefers-reduced-motion: reduce) {
-  .hero-slide.is-in,
-  .hero-slide.is-out {
-    animation: none;
+  .hero-slide {
+    transition: none;
   }
   .hero-slide.is-out {
-    visibility: hidden;
+    animation: none;
   }
 }
 .side-soon {
@@ -10651,9 +10639,6 @@ svg.viz.viz-narrow {
 }
 
 /* Featured panel as a flipping deck of the trending markets. */
-.feat-deck .hero-slides {
-  perspective: 2400px;
-}
 .feat-deck .hero-slide > .feat {
   height: 100%;
 }
