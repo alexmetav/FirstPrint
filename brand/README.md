@@ -6,9 +6,9 @@ The mark is the outcome ladder: five bars from **Moon** (neon green, top) to **C
 
 | File | Where it goes | Size |
 |---|---|---|
-| `x-avatar-dark.png` | Profile picture | 400 × 400 |
-| `x-avatar-light.png` | Profile picture, light alternative | 400 × 400 |
-| `x-banner.png` | Header image | 1500 × 500 |
+| `x-avatar.png` | Profile picture | 400 × 400 |
+| `x-banner.png` | Header image: the headline and a close-up phone on the outcome list | 1500 × 500 |
+| `x-banner-4k.png` | Same header in 4K, the one to upload for the sharpest result | 3840 × 1280 |
 
 **Setting them on X:** open your profile, choose **Edit profile**, click the camera on the photo for the avatar and on the banner area for the header. X crops the avatar to a circle, and the mark already sits inside a safe circle. The banner keeps its content clear of the lower-left corner, where your avatar overlaps.
 
@@ -22,7 +22,8 @@ The same avatar works for Telegram, Discord, GitHub, and Farcaster.
 | `logo-lockup-for-dark.svg` / `.png` | Mark plus wordmark, light text, transparent. Use on dark backgrounds |
 | `logo-lockup-for-light.svg` / `.png` | Mark plus wordmark, dark text, transparent. Use on light backgrounds |
 | `logo-lockup-ink.svg` / `.png` | Mark plus wordmark on the Firstprint dark background. Drop in anywhere |
-| `x-banner.svg` | Editable banner source |
+| `x-avatar.svg` | Editable avatar source (Geist font) |
+| `x-banner.html` + `screens/` | Editable banner source: open in Chromium at 1500 × 500 and screenshot at scale 1 and 2.56 |
 | `../site/og.png` | Link preview image for the website |
 
 SVGs stay sharp at any size, so use them wherever the platform allows.
@@ -41,7 +42,7 @@ SVGs stay sharp at any size, so use them wherever the platform allows.
 
 ## Type
 
-The website sets the wordmark in **Bricolage Grotesque** (700 weight, tight letter-spacing), a free Google font. That font wasn't available on the machine that rendered these PNGs, so the wordmark in `x-banner.png` and the lockup PNGs uses **Poppins Bold** instead. The mark itself is pure vector and exact everywhere.
+The X banner and avatar use **Geist** (the app font). The lockup PNGs set the wordmark in **Bricolage Grotesque** (700 weight, tight letter-spacing), a free Google font. The mark itself is pure vector and exact everywhere.
 
 To re-render with Bricolage Grotesque, install the font and open the SVGs in a browser or design tool, then export. The SVGs already ask for Bricolage Grotesque first and fall back to Poppins.
 

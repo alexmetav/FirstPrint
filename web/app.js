@@ -314,13 +314,26 @@ async function onRoute() {
   if (changed && document.activeElement?.id !== 'market-search') $('#view').focus({ preventScroll: true });
 }
 
+/**
+ * Writes a page into an element only when it changed. The 8-second refresh redraws the page, and
+ * rebuilding a few thousand unchanged nodes costs a slow phone a noticeable pause, so an identical
+ * page (countdown text aside, which the 1-second ticker keeps current) is left alone.
+ */
+function setHtml(el, html) {
+  const key = html.replace(/(data-until="\d+">)[^<]*/g, '$1');
+  if (el.__html === key && el.firstElementChild && el.firstElementChild === el.__first) return;
+  el.innerHTML = html;
+  el.__html = key;
+  el.__first = el.firstElementChild;
+}
+
 async function loadRoute() {
   const view = $('#view');
   try {
     if (S.route.name === 'home') {
       await loadHome();
       await heroFlipDone();
-      view.innerHTML = homeView();
+      setHtml(view, homeView());
     } else if (S.route.name === 'market') {
       await loadMarket(S.route.id);
       const pending = S.pendingPick;
@@ -336,10 +349,10 @@ async function loadRoute() {
       }
     } else if (S.route.name === 'leaderboard') {
       const lb = await S.api.leaderboard(S.lbPeriod);
-      view.innerHTML = leaderboardView(lb);
+      setHtml(view, leaderboardView(lb));
     } else if (S.route.name === 'profile') {
       S.profile = await S.api.profile(S.route.id);
-      view.innerHTML = profileView(S.profile);
+      setHtml(view, profileView(S.profile));
     } else if (S.route.name === 'admin') {
       await renderAdmin();
     } else if (S.route.name === 'stats') {
@@ -365,10 +378,10 @@ async function loadRoute() {
       return;
     } else if (S.route.name === 'radar') {
       const { listings } = await S.api.detectedListings();
-      view.innerHTML = radarView(listings);
+      setHtml(view, radarView(listings));
     } else if (S.route.name === 'earn') {
       await Promise.all([refreshRewards(), loadDaily()]);
-      view.innerHTML = earnView();
+      setHtml(view, earnView());
     } else if (S.route.name === 'portfolio') {
       const preds = S.me ? (await S.api.myPredictions()).predictions : [];
       const history = S.me && S.api.ledger ? (await S.api.ledger().catch(() => ({ entries: [] }))).entries : [];
@@ -381,7 +394,7 @@ async function loadRoute() {
         if (live) S.lists.live = live.markets;
       }
       S.dashData = [preds, history, stats, chain];
-      view.innerHTML = portfolioView(preds, history, stats, chain);
+      setHtml(view, portfolioView(preds, history, stats, chain));
     }
     document.title = titleFor();
   } catch (err) {
@@ -491,10 +504,13 @@ function drawTop() {
     ['leaderboard', '#/leaderboard', 'Leaderboard', 'Ranks'],
     ['portfolio', '#/portfolio', 'Dashboard', 'Me'],
   ];
-  $('#tabbar').innerHTML = pages
-    .map(([name, href, , short]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}<span>${short}</span></a>`)
-    .join('');
-  $('#topbar').innerHTML = `
+  setHtml(
+    $('#tabbar'),
+    pages.map(([name, href, , short]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}<span>${short}</span></a>`).join(''),
+  );
+  setHtml(
+    $('#topbar'),
+    `
     <div class="topbar-inner">
       <a class="wordmark" href="#/" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="word">Firstprint</span></a>
       <label class="top-search">${ico('search')}<input id="market-search" type="search" placeholder="Search a token or name" value="${esc(S.query ?? '')}" autocomplete="off" aria-label="Search markets by token or name" /><kbd aria-hidden="true">/</kbd></label>
@@ -514,7 +530,8 @@ function drawTop() {
     </div>
     <nav class="subnav" aria-label="Main">
       ${pages.map(([name, href, label]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}${label}</a>`).join('')}
-    </nav>`;
+    </nav>`,
+  );
 }
 
 /** With TestFPT on, the 1,000 starting points wait on the Earn page to be claimed to a wallet. */
@@ -1349,8 +1366,8 @@ function renderMarket() {
       <div id="mobile-bar-root"></div>`;
     S.tradeKey = '';
   }
-  $('#market-main').innerHTML = marketMain(m);
-  $('#mobile-bar-root').innerHTML = mobileBar(m);
+  setHtml($('#market-main'), marketMain(m));
+  setHtml($('#mobile-bar-root'), mobileBar(m));
   renderTrade();
 }
 
@@ -3479,7 +3496,7 @@ function onLive(type, data) {
         marketRenderTimer = setTimeout(() => {
           marketRenderTimer = null;
           if (S.route.name === 'market' && S.market) {
-            $('#market-main').innerHTML = marketMain(S.market);
+            setHtml($('#market-main'), marketMain(S.market));
             renderTrade();
           }
         }, 800);
@@ -3491,7 +3508,7 @@ function onLive(type, data) {
       if (hit && !homeRenderTimer && !busy) {
         homeRenderTimer = setTimeout(() => {
           homeRenderTimer = null;
-          heroFlipDone().then(() => S.route.name === 'home' && ($('#view').innerHTML = homeView()));
+          heroFlipDone().then(() => S.route.name === 'home' && setHtml($('#view'), homeView()));
         }, 2_000);
       }
     }
@@ -5728,7 +5745,8 @@ setInterval(() => {
   let expired = false;
   document.querySelectorAll('[data-until]').forEach((el) => {
     const left = Number(el.dataset.until) - now();
-    el.textContent = fmtDur(left);
+    const text = fmtDur(left);
+    if (el.textContent !== text) el.textContent = text;
     if (left <= 0 && left > -1500) expired = true;
   });
   if (expired) setTimeout(refresh, 1200);
@@ -5738,13 +5756,16 @@ setInterval(() => {
   if (!document.hidden) refresh();
 }, 8000);
 
-// The trending stack steps every few seconds unless the visitor is pointing at it
-// (with reduced motion the CSS swaps the 3D drop for a gentle fade).
+// The trending stack steps every six seconds (each step is a full 3D move, so not more often) unless
+// the visitor is pointing at it (with reduced motion the CSS swaps the 3D drop for a gentle fade).
 setInterval(() => {
   const deck = $('[data-hero-deck]');
   if (!deck || document.hidden || deck.matches(':hover, :focus-within') || Date.now() < (S.heroPausedUntil ?? 0)) return;
+  // Nobody sees it scrolled off screen, so don't spend the phone's time animating it.
+  const r = deck.getBoundingClientRect();
+  if (r.bottom < 0 || r.top > innerHeight) return;
   showHeroSlide((S.heroIdx ?? 0) + 1);
-}, 3500);
+}, 6000);
 
 // ------------------------------------------------------------------ Boot
 

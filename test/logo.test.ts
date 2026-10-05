@@ -89,6 +89,18 @@ test('HTTP: lists link to the logo, unchanged lists answer 304, big answers are 
     // Uptime monitors check with HEAD: it must answer like GET.
     const head = await new Promise<number>((resolve, reject) => request({ port, path: '/api/health', method: 'HEAD' }, (res) => { res.resume(); resolve(res.statusCode ?? 0); }).on('error', reject).end());
     assert.equal(head, 200);
+    // App files: gzipped, tagged, and a returning browser gets a 304 instead of the file.
+    const js = await get('/app.js', { 'accept-encoding': 'gzip' });
+    assert.equal(js.status, 200);
+    assert.equal(js.headers['content-encoding'], 'gzip');
+    assert.ok(gunzipSync(js.body).toString().includes('function setHtml'));
+    assert.ok(js.headers.etag);
+    assert.equal((await get('/app.js', { 'if-none-match': String(js.headers.etag) })).status, 304);
+    // A proxy that compresses may weaken the tag; it still matches.
+    assert.equal((await get('/app.js', { 'if-none-match': `W/${String(js.headers.etag).replace(/^W\//, '')}` })).status, 304);
+    const plain = await get('/app.js');
+    assert.equal(plain.headers['content-encoding'], undefined);
+    assert.ok(plain.body.toString().includes('function setHtml'));
   } finally {
     server.close();
   }
