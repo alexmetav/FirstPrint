@@ -7,8 +7,8 @@ The mark is the outcome ladder: five bars from **Moon** (neon green, top) to **C
 | File | Where it goes | Size |
 |---|---|---|
 | `x-avatar.png` | Profile picture | 400 × 400 |
-| `x-banner.png` | Header image: the headline and two phones showing the app | 1500 × 500 |
-| `x-banner@2x.png` | Same header at double resolution, for sharper uploads | 3000 × 1000 |
+| `x-banner.png` | Header image: the headline and a close-up phone on the outcome list | 1500 × 500 |
+| `x-banner-4k.png` | Same header in 4K, the one to upload for the sharpest result | 3840 × 1280 |
 
 **Setting them on X:** open your profile, choose **Edit profile**, click the camera on the photo for the avatar and on the banner area for the header. X crops the avatar to a circle, and the mark already sits inside a safe circle. The banner keeps its content clear of the lower-left corner, where your avatar overlaps.
 
