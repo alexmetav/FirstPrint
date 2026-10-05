@@ -10652,6 +10652,44 @@ svg.viz.viz-narrow {
   color: var(--text);
 }
 
+/* Card footer: status, pool and exchange on one line, the time on its own line, never spilling out. */
+.mcard .card-foot {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  row-gap: 4px;
+}
+.mcard .card-foot .when {
+  flex: 1 0 100%;
+  margin-left: 0;
+  padding-left: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mcard .card-foot .card-ex {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+/* Featured facts: two tidy columns, dates kept on one line with the countdown underneath. */
+.feat-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, max-content));
+  gap: 14px 40px;
+}
+.feat-facts dd {
+  white-space: nowrap;
+}
+.feat-facts .feat-sub {
+  display: block;
+  margin: 2px 0 0;
+}
+@media (max-width: 380px) {
+  .feat-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 </style>
   </head>
   <body>
@@ -13616,7 +13654,7 @@ function cardView(m) {
   let when;
   if (m.phase === 'pre_listing') when = `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}`;
   else if (upcoming) when = `Lists ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
-  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Predictions close ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
+  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Closes ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
   else if (m.phase === 'running') when = `Result in ${until(m.settleAt)}`;
   else if (m.phase === 'awaiting_result') when = 'Awaiting result';
   else when = fmtDate(m.settleAt);

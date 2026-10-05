@@ -1179,7 +1179,7 @@ function cardView(m) {
   let when;
   if (m.phase === 'pre_listing') when = `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}`;
   else if (upcoming) when = `Lists ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
-  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Predictions close ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
+  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Closes ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
   else if (m.phase === 'running') when = `Result in ${until(m.settleAt)}`;
   else if (m.phase === 'awaiting_result') when = 'Awaiting result';
   else when = fmtDate(m.settleAt);
