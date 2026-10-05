@@ -1197,9 +1197,29 @@ export class FirstprintService {
     if (m.published === 1 || this.predictions(marketId).length > 0) {
       throw new AppError(409, 'not_a_draft', 'Only unpublished drafts can be deleted. Cancel a published market to refund it.');
     }
+    this.deleteMarket(marketId);
+  }
+
+  /**
+   * Whether a market can be removed for good: nobody predicted on it, or it was cancelled and every
+   * stake refunded. A settled market with players stays, so their winnings keep their history.
+   */
+  deletable(m: { status: string }, predictions: number) {
+    if (predictions === 0) return { ok: true as const };
+    if (m.status === 'void') return { ok: true as const };
+    if (m.status === 'resolved') return { ok: false as const, why: 'This market is settled and players were paid, so it stays for their history.' };
+    return { ok: false as const, why: 'Players have predicted on this market. Cancel and refund it first, then delete it.' };
+  }
+
+  /** Removes a market and everything stored for it. Drafts made from the New listings queue go back to the queue. */
+  deleteMarket(marketId: string) {
+    const m = as<MarketRow | undefined>(this.db.prepare('SELECT * FROM markets WHERE id = ?').get(marketId));
+    if (!m) throw new AppError(404, 'market_not_found', 'Market not found');
+    const check = this.deletable(m, this.predictions(marketId).length);
+    if (!check.ok) throw new AppError(409, 'not_deletable', check.why);
     tx(this.db, () => {
-      // A draft made from the New listings queue goes back to the queue.
-      this.db.prepare("UPDATE detected_listings SET status = 'pending', market_id = NULL WHERE market_id = ?").run(marketId);
+      this.db.prepare(`UPDATE detected_listings SET status = ${m.published === 1 ? "'ignored'" : "'pending'"}, market_id = NULL WHERE market_id = ?`).run(marketId);
+      for (const table of ['notifications', 'predictions', 'candles', 'settlements']) this.db.prepare(`DELETE FROM ${table} WHERE market_id = ?`).run(marketId);
       this.db.prepare('DELETE FROM markets WHERE id = ?').run(marketId);
     });
   }

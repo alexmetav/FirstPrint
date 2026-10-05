@@ -4026,6 +4026,7 @@ const ADMIN_ACTIONS = {
   market_unpublished: 'Moved a market back to drafts',
   market_edited: 'Edited a market',
   draft_deleted: 'Deleted a draft',
+  market_deleted: 'Deleted a market',
   result_posted: 'Posted a result',
   market_voided: 'Settled as cancelled and refunded',
   market_cancelled: 'Cancelled and refunded a market',
@@ -4626,6 +4627,8 @@ function marketActions(m) {
   if (A.info.telegram?.channel && m.status === 'open' && m.published && m.kind !== 'live_test') more.push(item('admin-tg-post', 'telegram', 'Post to Telegram'));
   if (manualOpen && !m.published) more.push(item('admin-delete', 'trash', 'Delete draft', ' danger'));
   if (canAdmin('admin') && (m.status === 'open' || m.status === 'locked') && (m.published || m.mode !== 'manual')) more.push(item('admin-cancel', 'undo', 'Cancel and refund', ' danger'));
+  // A published market nobody predicted on, or one cancelled and refunded, can be removed for good.
+  if (canAdmin('admin') && (m.published || m.mode !== 'manual') && (m.status === 'void' || m.predictors === 0)) more.push(item('admin-delete-market', 'trash', 'Delete market', ' danger'));
   if (more.length) main.push(`<details class="row-menu"><summary class="btn btn-sm" aria-label="More actions for ${esc(m.symbol)}">${ico('more')}</summary><div class="row-menu-list">${more.join('')}</div></details>`);
   return main.join('');
 }
@@ -5023,6 +5026,15 @@ async function onAdminAction(action, el) {
         else if (action === 'admin-unpublish') await A.api.unpublish(el.dataset.id);
         else await A.api.deleteDraft(el.dataset.id);
         toast(action === 'admin-publish' ? 'Market published' : action === 'admin-unpublish' ? 'Market moved back to drafts' : 'Draft deleted');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
+    case 'admin-delete-market':
+      if (!confirm('Delete this market for good? It disappears from the app and can’t be brought back.')) return;
+      try {
+        await A.api.deleteMarket(el.dataset.id);
+        toast('Market deleted');
       } catch (err) {
         toast(err.message, true);
       }

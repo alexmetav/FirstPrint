@@ -229,6 +229,36 @@ test('cancel refunds a market that is awaiting its result; drafts can be deleted
   assert.throws(() => service.getMarket(d, undefined, true), (e) => e instanceof AppError && e.status === 404);
 });
 
+test('test and cancelled markets can be deleted; a settled market with players stays', async () => {
+  const { db, clock, service } = setup();
+  const a = await service.createUser({ username: 'alice' });
+  // Published, nobody predicted: deleted straight away.
+  const empty = service.createManualMarket(draft({ publish: true }));
+  service.deleteMarket(empty);
+  assert.throws(() => service.getMarket(empty, undefined, true), (e) => e instanceof AppError && e.status === 404);
+
+  // Open with a prediction: cancel first, then delete; balances stay right.
+  const played = service.createManualMarket(draft({ publish: true }));
+  service.placePrediction(played, a.id, 'up', 100);
+  assert.throws(() => service.deleteMarket(played), (e) => e instanceof AppError && e.code === 'not_deletable');
+  service.cancelMarket(played);
+  service.deleteMarket(played);
+  assert.throws(() => service.getMarket(played, undefined, true), (e) => e instanceof AppError && e.status === 404);
+  assert.equal(service.getUser(a.id).points, START_POINTS);
+  assert.ok(ledgerMatchesBalances(db));
+
+  // Settled with a winner: kept for the player's history.
+  const b = await service.createUser({ username: 'bob' });
+  const settled = service.createManualMarket(draft({ publish: true }));
+  service.placePrediction(settled, a.id, 'up', 100);
+  service.placePrediction(settled, b.id, 'down', 100);
+  goto(clock, T0 + 27 * HOUR);
+  service.closeDueMarkets();
+  service.resolveManualMarket(settled, { finalPrice: 2.5 });
+  assert.equal(service.getMarket(settled).status, 'resolved');
+  assert.throws(() => service.deleteMarket(settled), (e) => e instanceof AppError && e.code === 'not_deletable');
+});
+
 test('manual markets never trigger exchange calls', async () => {
   const { clock, service, scheduler } = setup();
   const id = service.createManualMarket(draft({ publish: true }));

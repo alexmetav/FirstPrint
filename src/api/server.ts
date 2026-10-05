@@ -735,6 +735,15 @@ export function createApiServer(opts: ServerOptions): Server {
     return { ok: true };
   });
 
+  // Removes a test or cancelled market for good (admins only; drafts use the route above).
+  route('POST', '/api/admin/markets/:id/delete', ({ req, params, requireAdmin }) => {
+    requireAdmin();
+    const symbol = service.getMarket(params.id, undefined, true).symbol;
+    service.deleteMarket(params.id);
+    audit(req, 'market_deleted', params.id, symbol);
+    return { ok: true };
+  });
+
   const resolveBody = (b: Record<string, unknown>) => ({
     finalPrice: Number(b.finalPrice),
     basePrice: b.basePrice === undefined || b.basePrice === '' || b.basePrice === null ? undefined : Number(b.basePrice),
