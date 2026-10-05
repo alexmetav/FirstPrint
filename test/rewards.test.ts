@@ -78,8 +78,9 @@ async function tokenBalance(svm: LiteSVM, owner: Address, mint: Address) {
   return acct.exists ? decodeToken(acct).data.amount : 0n;
 }
 
-test('TestFPT: admin sets up the token, a new player claims 1,000 to their wallet and pays the fee', async () => {
+test('TestFPT: admin sets up the token; with the server out of SOL a player claims by signing and paying the fee', async () => {
   const { service, rewards, svm } = await setup();
+  rewards.serverPaysClaims = false;
   assert.equal(rewards.ready(), false);
   let status = await rewards.setupAuthority();
   assert.ok(status.enabled && status.authority);
@@ -106,7 +107,7 @@ test('TestFPT: admin sets up the token, a new player claims 1,000 to their walle
 
   // No test SOL: the claim is refused and the rewards stay claimable.
   let claim = await rewards.startClaim(user.id, wallet.address);
-  await assert.rejects(rewards.submitClaim(user.id, claim.claimId, await signAsWallet(claim.transaction, wallet)), failsWith('claim_rejected'));
+  await assert.rejects(rewards.submitClaim(user.id, claim.claimId, await signAsWallet(claim.transaction!, wallet)), failsWith('claim_rejected'));
   assert.equal(rewards.summary(user.id).claimable, START_POINTS);
 
   // With test SOL from the faucet it goes through.
@@ -116,9 +117,9 @@ test('TestFPT: admin sets up the token, a new player claims 1,000 to their walle
   assert.equal(claim.amount, START_POINTS);
   // The transaction handed to the wallet carries no mint-authority signature, so it can't be
   // broadcast without going through submitClaim.
-  const unsigned = getTransactionDecoder().decode(getBase64Encoder().encode(claim.transaction));
+  const unsigned = getTransactionDecoder().decode(getBase64Encoder().encode(claim.transaction!));
   assert.ok(Object.values(unsigned.signatures).every((sig) => sig === null), 'no signatures before the wallet signs');
-  const done = await rewards.submitClaim(user.id, claim.claimId, await signAsWallet(claim.transaction, wallet));
+  const done = await rewards.submitClaim(user.id, claim.claimId, await signAsWallet(claim.transaction!, wallet));
   assert.equal(done.status, 'confirmed');
   assert.match(done.explorerUrl ?? '', /explorer\.solana\.com\/tx\/.+\?cluster=testnet/);
   assert.equal(await tokenBalance(svm, wallet.address, mint), 1000n, 'TestFPT is in the wallet');
@@ -133,6 +134,7 @@ test('TestFPT: admin sets up the token, a new player claims 1,000 to their walle
 
 test('TestFPT: a tampered or wrongly signed transaction is refused; claims only go to your own wallet', async () => {
   const { service, rewards, svm } = await setup();
+  rewards.serverPaysClaims = false;
   await rewards.setupAuthority();
   await rewards.airdropAuthority();
   await rewards.createMint();
@@ -143,16 +145,39 @@ test('TestFPT: a tampered or wrongly signed transaction is refused; claims only 
 
   const claim = await rewards.startClaim(user.id, wallet.address);
   // A forged signature: sign properly, then corrupt the player's signature bytes.
-  const forged = Buffer.from(await signAsWallet(claim.transaction, wallet), 'base64');
+  const forged = Buffer.from(await signAsWallet(claim.transaction!, wallet), 'base64');
   forged[1] ^= 0xff;
   await assert.rejects(rewards.submitClaim(user.id, claim.claimId, forged.toString('base64')), failsWith('bad_signed_claim'));
   // A different transaction (here, an unsigned copy of a new claim) is not the one prepared.
   assert.equal(typeof stranger.address, 'string');
   const other = await rewards.startClaim(user.id, wallet.address); // the first prepared claim is replaced
-  await assert.rejects(rewards.submitClaim(user.id, claim.claimId, await signAsWallet(other.transaction, wallet)), failsWith('claim_closed'));
-  const ok = await rewards.submitClaim(user.id, other.claimId, await signAsWallet(other.transaction, wallet));
+  await assert.rejects(rewards.submitClaim(user.id, claim.claimId, await signAsWallet(other.transaction!, wallet)), failsWith('claim_closed'));
+  const ok = await rewards.submitClaim(user.id, other.claimId, await signAsWallet(other.transaction!, wallet));
   assert.equal(ok.status, 'confirmed');
   assert.equal(service.getUser(user.id).points, START_POINTS);
+});
+
+test('TestFPT: a claim to your own wallet is signed and paid by Firstprint: no pop-up, no SOL needed', async () => {
+  const { service, rewards, svm } = await setup();
+  await rewards.setupAuthority();
+  await rewards.airdropAuthority();
+  const status = await rewards.createMint();
+  const mint = (status.enabled && status.mint) as Address;
+  const { user, wallet } = await player(service, 'cy@example.com');
+  assert.equal(svm.getBalance(wallet.address) ?? 0n, 0n, 'the wallet has no SOL at all');
+  const stranger = await generateKeyPairSigner();
+  await assert.rejects(rewards.startClaim(user.id, stranger.address), failsWith('wallet_not_linked'));
+
+  const done = await rewards.startClaim(user.id, wallet.address);
+  assert.ok('serverPaid' in done && done.serverPaid, 'nothing for the wallet to sign');
+  assert.ok(!('transaction' in done));
+  assert.equal(done.status, 'confirmed');
+  assert.equal(done.amount, START_POINTS);
+  assert.equal(await tokenBalance(svm, wallet.address, mint), 1000n, 'TestFPT is in the wallet');
+  assert.equal(svm.getBalance(wallet.address) ?? 0n, 0n, 'the player paid nothing');
+  assert.equal(service.getUser(user.id).points, START_POINTS);
+  assert.equal(rewards.summary(user.id).claimable, 0);
+  await assert.rejects(rewards.startClaim(user.id, wallet.address), failsWith('nothing_to_claim'));
 });
 
 test('tasks: link X, open the task, wait, confirm once; limits; rewards wait for the claim when TestFPT is on', async () => {

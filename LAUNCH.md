@@ -73,7 +73,7 @@ Admin → **Analytics** shows players, active players, predictions, points stake
 
 ### TestFPT, tasks and invites
 
-Players' starting points (1,000) and rewards from tasks and invites (not daily points or winnings, which stay in the Firstprint balance) are claimed to their own Solana wallet as **TestFPT**, a Token-2022 token on Solana **testnet** (set `TOKEN_CLUSTER=devnet` for devnet). The player signs the claim and pays the tiny network fee in free test SOL from https://faucet.solana.com; the app walks them through it.
+Players' starting points (1,000) and rewards from tasks and invites (not daily points or winnings, which stay in the Firstprint balance) are claimed to their own Solana wallet as **TestFPT**, a Token-2022 token on Solana **testnet** (set `TOKEN_CLUSTER=devnet` for devnet). The server signs the claim and pays the tiny network fee from the mint authority's test SOL, so players need no SOL and approve nothing. Only if the mint authority runs out of test SOL does a claim fall back to the player's wallet signing it and paying the fee.
 
 Set it up once in the admin panel (`/app/#/admin` → **TestFPT token**):
 1. **Create authority.** The server makes the key that mints TestFPT and stores it in its database (which is backed up privately). Copy its address.
