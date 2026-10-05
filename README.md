@@ -34,6 +34,8 @@ One "Log in or sign up" popup, like Polymarket: **Continue with Google**, **Cont
 
 ## Running markets from the admin panel
 
+**Opening the admin console.** Set `ADMIN_EMAILS` (comma-separated) and/or `ADMIN_WALLETS` (Solana addresses) on the server, then simply log in on the site: an email in the list opens `#/admin` when signed in with Google or an email code (a password sign-in never counts, since it didn't prove the address), and a wallet in the list when it is linked to the signed-in account. Admin accounts see **Admin console** in the menu. The `ADMIN_KEY` still works for anyone without such an account; **Lock admin** closes the console for the rest of the page visit.
+
 By default (`MANUAL_ONLY=1`) admins run markets at `/#/admin`, and the only things fetched from exchanges by themselves are new pairs and listing announcements (see *New listings* below):
 
 1. **Exchanges:** switch exchanges on or off. Only enabled exchanges can be used in new markets.

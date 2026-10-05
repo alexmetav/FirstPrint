@@ -160,3 +160,46 @@ test('HTTP admin: ping, create live market, list, cancel', async () => {
     server.close();
   }
 });
+
+test('admin by account: an ADMIN_EMAILS email signed in by code or Google, or a linked ADMIN_WALLETS wallet, opens the console without the key', async () => {
+  const { createApiServer } = await import('../src/api/server.ts');
+  const db = openDb(':memory:');
+  const service = new FirstprintService(db, new ManualClock(Date.now()), []);
+  const WALLET = '7RSEwQz5qQ8mU2J6dYzW1bq3rF1kV9cX2nL4pT8hLF37';
+  const server = createApiServer({
+    service,
+    adminKey: 'k'.repeat(32),
+    adminEmails: ['boss@example.com'],
+    adminWallets: [WALLET],
+    secureCookies: false,
+    webDir: new URL('../web', import.meta.url).pathname,
+  });
+  await new Promise<void>((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const as = (token: string | null, key?: string) =>
+    fetch(`${base}/api/admin/ping`, { headers: { ...(token ? { cookie: `fp_session=${token}` } : {}), ...(key !== undefined ? { 'x-admin-key': key } : {}) } }).then((r) => r.status);
+  const me = (token: string) => fetch(`${base}/api/me`, { headers: { cookie: `fp_session=${token}` } }).then((r) => r.json());
+  try {
+    const boss = await service.createUser({ username: 'boss', email: 'Boss@Example.com' });
+    const other = await service.createUser({ username: 'other', email: 'other@example.com' });
+    const byCode = service.createSession(boss.id, 'email').token;
+    const byGoogle = service.createSession(boss.id, 'google').token;
+    const byPassword = service.createSession(boss.id, 'password').token;
+
+    assert.equal(await as(byCode), 200);
+    assert.equal(await as(byGoogle), 200);
+    assert.equal((await me(byCode)).isAdmin, true);
+    assert.equal(await as(byPassword), 403, 'a password sign-in never proved the email');
+    assert.equal(await as(service.createSession(other.id, 'email').token), 403);
+    assert.equal(await as(null), 403);
+    assert.equal(await as(byCode, 'wrong-key'), 403, 'a wrong key is still refused');
+    assert.equal(await as(null, 'k'.repeat(32)), 200, 'the key keeps working');
+
+    db.prepare('INSERT INTO wallets (address, user_id, verified_at) VALUES (?, ?, ?)').run(WALLET, other.id, Date.now());
+    const walletSession = service.createSession(other.id, 'wallet').token;
+    assert.equal(await as(walletSession), 200, 'linked admin wallet');
+    assert.equal((await me(walletSession)).isAdmin, true);
+  } finally {
+    server.close();
+  }
+});

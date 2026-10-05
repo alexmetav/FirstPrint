@@ -157,6 +157,8 @@ const server = createApiServer({
   live,
   rewards,
   adminKey: cfg.adminKey,
+  adminEmails: cfg.adminEmails,
+  adminWallets: cfg.adminWallets,
   manualOnly: cfg.manualOnly,
   autoListings: autoListings === 'off' ? null : { mode: autoListings, perDay: cfg.autoMarketsPerDay, hours: cfg.autoMarketHours, venues: tracked.map((v) => v.id) },
   telegram,

@@ -21,6 +21,9 @@ export interface ServerOptions {
   scheduler?: Scheduler;
   live?: LiveFeed;
   adminKey: string | null;
+  /** Signed-in accounts that open the admin console without the key: by verified email or linked wallet. */
+  adminEmails?: string[];
+  adminWallets?: string[];
   /** How many proxies sit between visitors and this server (0 = none). Used to find the visitor's address for rate limits. */
   trustProxyHops?: number;
   /** Google OAuth client ID (public). Enables "Continue with Google". */
@@ -267,7 +270,7 @@ export function createApiServer(opts: ServerOptions): Server {
     rateLimit(`emailverify:${visitor(req)}`, 20, 10 * 60_000);
     rateLimit(`emailverify:${String(b.email ?? '').trim().toLowerCase()}`, 10, 10 * 60_000);
     const { user, created } = service.verifyEmailCode(String(b.email ?? ''), String(b.code ?? ''), refOf(b));
-    const session = service.createSession(user.id);
+    const session = service.createSession(user.id, 'email');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
   });
@@ -279,7 +282,7 @@ export function createApiServer(opts: ServerOptions): Server {
     const who = await verifyGoogleIdToken(String(b.credential ?? ''), opts.googleClientId, opts.googleJwks ?? (googleJwks ??= cachedGoogleJwks()));
     if (!who) throw new AppError(401, 'bad_google_token', 'Google sign-in failed. Try again.');
     const { user, created } = service.signInWithVerifiedEmail(who.email, who.name, refOf(b));
-    const session = service.createSession(user.id);
+    const session = service.createSession(user.id, 'google');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
   });
@@ -307,7 +310,7 @@ export function createApiServer(opts: ServerOptions): Server {
       walletName: b.walletName ? String(b.walletName).slice(0, 40) : undefined,
       ref: refOf(b),
     });
-    const session = service.createSession(user.id);
+    const session = service.createSession(user.id, 'wallet');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
   });
@@ -317,7 +320,7 @@ export function createApiServer(opts: ServerOptions): Server {
     rateLimit(`login:${visitor(req)}`, 10, 60_000);
     rateLimit(`login:${String(b.email ?? '').toLowerCase()}`, 10, 10 * 60_000);
     const user = await service.authenticate(String(b.email ?? ''), String(b.password ?? ''));
-    const session = service.createSession(user.id);
+    const session = service.createSession(user.id, 'password');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)) };
   });
@@ -366,9 +369,9 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // --- User routes ----------------------------------------------------------------
 
-  route('GET', '/api/me', ({ user }) => {
+  route('GET', '/api/me', ({ req, user }) => {
     const u = user();
-    return { ...publicUser(u, service.clock.now(), service.walletsFor(u.id)), unreadNotifications: service.unreadNotifications(u.id) };
+    return { ...publicUser(u, service.clock.now(), service.walletsFor(u.id)), unreadNotifications: service.unreadNotifications(u.id), isAdmin: sessionIsAdmin(req, u) };
   });
 
   route('GET', '/api/me/notifications', ({ user }) => service.notificationsFor(user().id));
@@ -976,6 +979,23 @@ export function createApiServer(opts: ServerOptions): Server {
     });
   }
 
+  /**
+   * An account listed in ADMIN_EMAILS (signed in this session with an email code or Google, which
+   * prove the address) or with a wallet in ADMIN_WALLETS linked (proved by signing). Password
+   * sign-ins never count by email: those addresses were never checked.
+   */
+  function sessionIsAdmin(req: IncomingMessage, u: UserRow | null): boolean {
+    if (!u) return false;
+    const emails = opts.adminEmails ?? [];
+    const wallets = opts.adminWallets ?? [];
+    if (!emails.length && !wallets.length) return false;
+    if (u.email && emails.includes(u.email.toLowerCase())) {
+      const via = service.sessionVia(sessionToken(req));
+      if (via === 'email' || via === 'google') return true;
+    }
+    return wallets.length > 0 && service.walletsFor(u.id).some((w) => wallets.includes(w.address));
+  }
+
   // --- Shareable PnL cards ----------------------------------------------------------
   // /share/pnl/<market>/<username>.png is the card; /share/pnl/<market>/<username> is a page with
   // that card as its preview image (what X shows for the link), which then opens the market.
@@ -1093,10 +1113,13 @@ export function createApiServer(opts: ServerOptions): Server {
       requireAdmin: () => {
         // Wrong keys are limited tightly (guessing); the right key gets room for the panel's own traffic.
         const given = String(req.headers['x-admin-key'] ?? '');
-        const ok =
+        const keyOk =
+          Boolean(given) &&
           opts.adminKey &&
           Buffer.byteLength(given) === Buffer.byteLength(opts.adminKey) &&
           timingSafeEqual(Buffer.from(given), Buffer.from(opts.adminKey));
+        // No key: an admin account signed in on this browser (ADMIN_EMAILS / ADMIN_WALLETS).
+        const ok = keyOk || (!given && sessionIsAdmin(req, ctx.optionalUser()));
         if (!ok) {
           rateLimit(`admin-bad:${visitor(req)}`, 20, 60_000);
           throw new AppError(403, 'forbidden', 'Admin key required.');

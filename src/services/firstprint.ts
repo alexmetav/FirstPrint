@@ -573,15 +573,23 @@ export class FirstprintService {
     return this.getUser(userId);
   }
 
-  createSession(userId: string): { token: string; expiresAt: number } {
+  /** `via` is how the user proved who they are; an email only counts for admin access after an email code or Google. */
+  createSession(userId: string, via: 'email' | 'google' | 'wallet' | 'password' | null = null): { token: string; expiresAt: number } {
     const token = randomBytes(32).toString('base64url');
     const now = this.clock.now();
     const expiresAt = now + SESSION_MS;
     this.db
-      .prepare('INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)')
-      .run(sha256(token), userId, expiresAt, now);
+      .prepare('INSERT INTO sessions (token_hash, user_id, expires_at, created_at, via) VALUES (?, ?, ?, ?, ?)')
+      .run(sha256(token), userId, expiresAt, now, via);
     this.db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now);
     return { token, expiresAt };
+  }
+
+  /** How a live session signed in, or null. */
+  sessionVia(token: string): string | null {
+    if (!token) return null;
+    const row = as<{ via: string | null; expires_at: number } | undefined>(this.db.prepare('SELECT via, expires_at FROM sessions WHERE token_hash = ?').get(sha256(token)));
+    return row && row.expires_at >= this.clock.now() ? row.via : null;
   }
 
   userForSession(token: string): UserRow | null {

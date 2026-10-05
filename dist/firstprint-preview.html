@@ -11014,7 +11014,8 @@ function createAdminApi(key, baseUrl = '') {
   async function request(path, init = {}) {
     let res;
     try {
-      res = await fetch(baseUrl + path, { ...init, headers: { 'content-type': 'application/json', 'x-admin-key': key } });
+      // No key: the server checks the signed-in account instead (an admin email or wallet).
+      res = await fetch(baseUrl + path, { ...init, headers: { 'content-type': 'application/json', ...(key ? { 'x-admin-key': key } : {}) } });
     } catch {
       throw new ApiError(0, 'offline', 'Can’t reach the server.');
     }
@@ -12944,6 +12945,7 @@ function menuView(pages) {
     <div class="top-menu" id="top-menu" role="menu">
       ${pages.filter(([name]) => name !== 'home').map(([name, href, label]) => `<a role="menuitem" href="${href}">${ico(NAV_ICONS[name])}${label}</a>`).join('')}
       ${S.me ? `<a role="menuitem" href="#/u/${encodeURIComponent(S.me.username)}">${ico('user')}Public profile</a>` : ''}
+      ${S.me?.isAdmin ? `<a role="menuitem" href="#/admin">${ico('lock')}Admin console</a>` : ''}
       ${telegramUrl() ? `<a role="menuitem" href="${telegramUrl()}" target="_blank" rel="noopener noreferrer">${ico('telegram')}Telegram alerts</a>` : ''}
       ${S.cfg?.rewards ? `<button role="menuitem" data-action="faucet">${ico('droplet')}Get test SOL</button>` : ''}
       <button role="menuitemcheckbox" aria-checked="${!light}" data-action="theme" class="menu-switch">${ico('moon')}Dark mode<span class="switch-track" aria-hidden="true"><i></i></span></button>
@@ -15436,12 +15438,15 @@ async function renderAdmin() {
   }
   const key = A.api ? null : readAdminKey();
   if (!A.api && key) A.api = createAdminApi(key);
+  // No key: an admin account signed in here (ADMIN_EMAILS / ADMIN_WALLETS on the server) opens it as is.
+  const byAccount = !A.api && !A.locked && Boolean(S.me);
+  if (byAccount) A.api = createAdminApi('');
   if (A.api && !A.info) {
     try {
       A.info = await A.api.ping();
     } catch (err) {
       A.api = null;
-      saveAdminKey('');
+      if (!byAccount) saveAdminKey('');
       if (err.status !== 403) toast(err.message, true);
     }
   }
@@ -15450,11 +15455,15 @@ async function renderAdmin() {
       <div class="admin-login">
         <span class="page-ico">${ico('lock')}</span>
         <h1 class="page-title">Admin console</h1>
-        <p class="muted">Enter the ADMIN_KEY from your server settings. It’s kept only for this browser tab.</p>
+        <p class="muted">${S.me ? `Signed in as <b>${esc(S.me.username)}</b>, which isn’t an admin account.` : 'Log in with your admin email or wallet to open it straight away.'} An admin account is one whose email is in <code>ADMIN_EMAILS</code> (signed in with Google or an email code) or with a linked wallet in <code>ADMIN_WALLETS</code>, set in the server settings.</p>
+        ${S.me ? '' : `<button class="btn btn-solid btn-lg" data-action="connect">${ico('wallet')}Log in</button>`}
+        <details class="admin-key-login"${S.me ? ' open' : ''}><summary>Use the admin key instead</summary>
         <form id="admin-login" class="admin-form">
           <label><span class="field-label">Admin key</span><input name="key" type="password" autocomplete="off" required /></label>
           <button class="btn btn-solid btn-lg" type="submit">${ico('key')}Open admin</button>
         </form>
+        <p class="fine">The ADMIN_KEY from your server settings. It’s kept only for this browser tab.</p>
+        </details>
       </div>`;
     return;
   }
@@ -16365,6 +16374,8 @@ async function onAdminAction(action, el) {
       }
       return renderAdmin();
     case 'admin-logout':
+      // Stays locked for this page, even for an admin account, until the page is reloaded.
+      A.locked = true;
       A.api = null;
       A.info = null;
       A.checks = null;
@@ -16854,6 +16865,8 @@ document.addEventListener('click', async (e) => {
       return closeModal();
     case 'logout':
       await S.api.logout();
+      A.api = null;
+      A.info = null;
       await disconnectWallets();
       S.me = null;
       renderTop();

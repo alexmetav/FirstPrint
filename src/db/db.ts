@@ -31,6 +31,8 @@ function migrate(db: DB) {
   ensure('users', 'streak', 'streak INTEGER NOT NULL DEFAULT 0');
   ensure('markets', 'announced_at', 'announced_at INTEGER');
   ensure('markets', 'logo_png', 'logo_png TEXT');
+  // How a session signed in (email, google, wallet, password): only verified emails count for admin access.
+  ensure('sessions', 'via', 'via TEXT');
   // Upcoming tokens the admin scheduled to open by themselves when trading starts.
   ensure('markets', 'auto_open_at', 'auto_open_at INTEGER');
   ensure('markets', 'auto_open_note', 'auto_open_note TEXT');

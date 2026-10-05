@@ -123,7 +123,8 @@ export function createAdminApi(key, baseUrl = '') {
   async function request(path, init = {}) {
     let res;
     try {
-      res = await fetch(baseUrl + path, { ...init, headers: { 'content-type': 'application/json', 'x-admin-key': key } });
+      // No key: the server checks the signed-in account instead (an admin email or wallet).
+      res = await fetch(baseUrl + path, { ...init, headers: { 'content-type': 'application/json', ...(key ? { 'x-admin-key': key } : {}) } });
     } catch {
       throw new ApiError(0, 'offline', 'Can’t reach the server.');
     }
