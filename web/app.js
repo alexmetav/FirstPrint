@@ -329,7 +329,13 @@ async function loadRoute() {
       const history = S.me && S.api.ledger ? (await S.api.ledger().catch(() => ({ entries: [] }))).entries : [];
       const stats = S.me && S.api.stats ? await S.api.stats().catch(() => null) : null;
       const chain = S.me && S.api.chain ? await S.api.chain().catch(() => null) : null;
-      await loadDaily();
+      // Open markets give the active positions their crowd share, payout and closing time.
+      if (S.me && preds.some((p) => p.marketStatus === 'open' || p.marketStatus === 'locked')) {
+        const [open, live] = await Promise.all(['open', 'live'].map((f) => S.api.markets(f).catch(() => null)));
+        if (open) S.lists.open = open.markets;
+        if (live) S.lists.live = live.markets;
+      }
+      S.dashData = [preds, history, stats, chain];
       view.innerHTML = portfolioView(preds, history, stats, chain);
     }
     document.title = titleFor();
@@ -451,7 +457,7 @@ function drawTop() {
         ${
           S.me
             ? `<button class="chip bell${S.me.unreadNotifications ? ' has-new' : ''}" data-action="inbox" aria-label="Your results${S.me.unreadNotifications ? `, ${S.me.unreadNotifications} new` : ''}">${ico('bell')}${S.me.unreadNotifications ? `<span class="bell-n">${S.me.unreadNotifications > 9 ? '9+' : S.me.unreadNotifications}</span>` : ''}</button>
-               ${S.me.canClaimDaily ? `<button class="chip gift" data-action="claim" title="Claim your free daily points" aria-label="Claim ${dailyNext()} free daily points">${ico('gift')}<span class="gift-n">+${dailyNext()}</span></button>` : ''}
+               ${streakChip()}
                <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${tick('me:points:top', S.me.points)}<span class="unit">pts</span></a>
                <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
             : `<a class="top-link hide-sm" href="#/" data-action="how">${ico('info')}How it works</a><button class="btn btn-gold" data-action="connect">Log in</button>`
@@ -459,6 +465,7 @@ function drawTop() {
         <button class="chip menu-btn" data-action="menu" aria-label="Menu" aria-haspopup="true" aria-expanded="${S.menuOpen ? 'true' : 'false'}" aria-controls="top-menu">${ico('menu')}</button>
       </div>
       ${S.menuOpen ? menuView(pages) : ''}
+      ${S.streakOpen && S.me ? streakPop() : ''}
     </div>
     <nav class="subnav" aria-label="Main">
       ${pages.map(([name, href, label]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}${label}</a>`).join('')}
@@ -478,6 +485,39 @@ function dailyLine() {
   const d = S.me?.daily;
   if (!d || !d.streak) return 'Claim every day: 50 points today, growing to 200 a day by day 7.';
   return `Day ${d.nextDay} of your streak. Keep going to reach 200 a day.`;
+}
+
+/** The flame next to the bell: the streak length, glowing when today's points are waiting. */
+function streakChip() {
+  const d = S.me?.daily;
+  if (!d) return '';
+  const can = S.me.canClaimDaily;
+  const label = `Daily streak: ${d.streak} day${d.streak === 1 ? '' : 's'}${can ? `. Claim +${d.next} today` : ''}`;
+  return `<button class="chip streak-chip${d.streak ? ' lit' : ''}${can ? ' can-claim' : ''}" data-action="streak" aria-label="${label}" aria-haspopup="dialog" aria-expanded="${S.streakOpen ? 'true' : 'false'}" aria-controls="streak-pop">${ico('flame')}<span class="streak-n">${d.streak}</span>${can ? '<i class="streak-dot" aria-hidden="true"></i>' : ''}</button>`;
+}
+
+/** The streak, small: seven days as circles (green once claimed) with their points, and the claim button. */
+function streakPop() {
+  const d = S.me.daily;
+  if (!d) return '';
+  const can = S.me.canClaimDaily;
+  const pos = Math.min(d.claimedToday ? d.streak : d.nextDay, 7);
+  const days = DAILY_SCHEDULE.map((pts, i) => {
+    const n = i + 1;
+    const done = n < pos || (n === pos && d.claimedToday);
+    const state = done ? 'done' : n === pos ? 'today' : 'next';
+    return `<li class="sp-day ${state}"><span class="sp-dot">${done ? ico('check') : ''}</span><b>+${pts}</b><small>${n === 7 ? 'Day 7+' : `Day ${n}`}</small></li>`;
+  }).join('');
+  return `
+    <div class="streak-pop" id="streak-pop" role="dialog" aria-label="Daily streak">
+      <div class="sp-head">
+        <span class="sp-flame${d.streak ? ' lit' : ''}">${ico('flame')}</span>
+        <div><b>${d.streak ? `${d.streak}-day streak` : 'Start a streak'}</b><small>${can ? `Today: +${d.next} points` : `Claimed today · +${d.next} tomorrow`}</small></div>
+      </div>
+      <ol class="sp-days">${days}</ol>
+      ${can ? `<button class="btn btn-gold sp-claim" data-action="claim">${ico('gift')}Claim +${d.next}</button>` : ''}
+      <p class="sp-rule">One claim a day (UTC). Miss a day and it starts again at 50.</p>
+    </div>`;
 }
 
 async function loadDaily() {
@@ -2019,19 +2059,19 @@ function portfolioView(preds, history = [], stats = null, chain = null) {
         </div>
       </header>
       ${startChecklist()}
-      ${dashSummary(stats)}
-      ${stats && stats.history.length >= 2 ? `<div class="dash-insights">${profitChart(stats.history)}${outcomeRecord(stats.byOutcome)}</div>` : ''}
+      <div class="pf-top">${portfolioCard(stats, active)}${pnlCard(stats)}</div>
+      ${statStrip(stats)}
       <div class="dash-layout">
         <section class="dash-card dash-main" aria-label="Your predictions">
           <div class="dash-tabs" role="tablist">
-            <button role="tab" id="dt-active" aria-controls="dp-active" aria-selected="${tab === 'active'}" tabindex="${tab === 'active' ? 0 : -1}" data-dash-tab="active">Active predictions${active.length ? `<span class="count">${active.length}</span>` : ''}</button>
-            <button role="tab" id="dt-past" aria-controls="dp-past" aria-selected="${tab === 'past'}" tabindex="${tab === 'past' ? 0 : -1}" data-dash-tab="past">Past markets${past.length ? `<span class="count">${past.length}</span>` : ''}</button>
+            <button role="tab" id="dt-active" aria-controls="dp-active" aria-selected="${tab === 'active'}" tabindex="${tab === 'active' ? 0 : -1}" data-dash-tab="active">Positions${positions(active).length ? `<span class="count">${positions(active).length}</span>` : ''}</button>
+            <button role="tab" id="dt-past" aria-controls="dp-past" aria-selected="${tab === 'past'}" tabindex="${tab === 'past' ? 0 : -1}" data-dash-tab="past">History${past.length ? `<span class="count">${past.length}</span>` : ''}</button>
           </div>
           <div role="tabpanel" id="dp-active" aria-labelledby="dt-active"${tab === 'active' ? '' : ' hidden'}>${activeTable(active)}</div>
           <div role="tabpanel" id="dp-past" aria-labelledby="dt-past"${tab === 'past' ? '' : ' hidden'}>${pastTable(stats)}</div>
         </section>
         <aside class="dash-side">
-          ${streakCard(true)}
+          ${stats ? outcomeRecord(stats.byOutcome) : ''}
           ${telegramCard()}
           ${walletsCard(chain)}
           ${chainCard(chain)}
@@ -2066,52 +2106,114 @@ document.addEventListener('keydown', (e) => {
 /** A small empty state: an icon, one sentence and at most one action. */
 const dashEmpty = (icon, text, action = '') => `<div class="dash-empty"><span class="dash-empty-ico">${ico(icon)}</span><p>${text}</p>${action}</div>`;
 
-/** Points and win rate side by side; a record card joins them once a market has settled. */
-function dashSummary(st) {
-  const points = `
-    <div class="sum-card sum-points">
-      <div class="sum-top"><span class="sum-label">${ico('coins')}Points</span>
-        ${S.me.canClaimDaily ? `<button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim ${dailyNext()}</button>` : `<span class="sum-note">${ico('flame')}Day ${S.me.daily?.streak ?? 1} streak · +${dailyNext()} tomorrow</span>`}</div>
-      <div class="sum-value">${tick('me:points:dash', S.me.points)}</div>
-      <p class="sum-sub">${st?.open.staked ? `${fmtNum(st.open.staked)} more in play` : 'Available to predict with'}</p>
-    </div>`;
-  const settled = Boolean(st?.settled);
-  const pct = settled ? Math.round(st.winRate * 100) : null;
-  const winRate = `
-    <div class="sum-card">
-      <div class="sum-top"><span class="sum-label">${ico('percent')}Win rate</span></div>
-      ${
-        settled
-          ? `<div class="sum-value">${pct}%</div>
-             <div class="meter" role="img" aria-label="${pct}% of markets won"><i style="width:${pct}%"></i></div>
-             <p class="sum-sub">${st.wins} of ${st.settled} market${st.settled === 1 ? '' : 's'} won</p>`
-          : `<div class="sum-value sum-na" aria-label="Not available yet">—</div>
-             <p class="sum-sub">${st?.marketsPlayed ? 'Shows once your first market settles' : 'Not available until your first market settles'}</p>`
-      }
-    </div>`;
-  if (!settled) return `<section class="dash-summary" aria-label="Summary">${points}${winRate}</section>`;
-  const fact = (label, value, sub) => `<div><dt>${label}</dt><dd>${value}</dd>${sub ? `<p>${sub}</p>` : ''}</div>`;
-  const record = `
-    <div class="sum-card sum-record">
-      <div class="sum-top"><span class="sum-label">${ico('award')}Your record</span></div>
-      <dl class="record-grid">
-        ${fact('Points won', `<span class="${st.netProfit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(st.netProfit)}</span>`, `from ${fmtNum(st.totalStaked)} staked`)}
-        ${fact('Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '<span class="sum-na">—</span>', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'No wins yet')}
-        ${fact('Streak', `${st.currentStreak}`, `best ${st.bestStreak}`)}
-        ${fact('Rank', st.rank ? `#${fmtNum(st.rank)}` : '<span class="sum-na">—</span>', st.rank ? `of ${fmtNum(st.players)}` : 'Not ranked yet')}
+/** Points to play with and points in open markets, as one balance (like a portfolio value). */
+function portfolioCard(st, active) {
+  const inPlay = st?.open?.staked ?? active.reduce((sum, p) => sum + p.stake - (p.refund ?? 0), 0);
+  const total = S.me.points + inPlay;
+  const share = total ? Math.round((S.me.points / total) * 100) : 100;
+  return `
+    <section class="pf-card" aria-label="Your points">
+      <div class="pf-label">${ico('coins')}Portfolio</div>
+      <div class="pf-value">${tick('me:points:dash', total)}<span class="unit">pts</span></div>
+      <div class="pf-bar" role="img" aria-label="${share}% available, ${100 - share}% in play"><i style="width:${share}%"></i></div>
+      <dl class="pf-split">
+        <div><dt><i class="pf-key avail" aria-hidden="true"></i>Available</dt><dd>${fmtNum(S.me.points)}</dd></div>
+        <div><dt><i class="pf-key play" aria-hidden="true"></i>In play</dt><dd>${fmtNum(inPlay)}</dd></div>
       </dl>
-    </div>`;
-  return `<section class="dash-summary has-record" aria-label="Summary">${points}${winRate}${record}</section>`;
+      <div class="pf-actions"><a class="btn btn-gold btn-sm" href="#/">${ico('target')}Predict</a><a class="btn btn-sm" href="#/earn">${ico('gift')}Earn points</a></div>
+    </section>`;
+}
+
+const PNL_RANGES = [
+  ['all', 'All', null],
+  ['30d', '30D', 30],
+  ['7d', '7D', 7],
+];
+
+/** Net points won over a chosen range, with its line. */
+function pnlCard(st) {
+  const range = PNL_RANGES.find(([id]) => id === S.pnlRange) ?? PNL_RANGES[0];
+  const since = range[2] ? now() - range[2] * 86_400_000 : -Infinity;
+  const rows = [...(st?.history ?? [])].filter((m) => m.settledAt >= since).reverse();
+  let run = 0;
+  const values = [0, ...rows.map((m) => (run += m.profit))];
+  const net = run;
+  const tabs = PNL_RANGES.map(([id, label]) => `<button data-pnl-range="${id}" aria-pressed="${id === range[0]}">${label}</button>`).join('');
+  let chart = '<div class="pnl-flat" aria-hidden="true"></div>';
+  if (values.length > 1) {
+    const lo = Math.min(0, ...values);
+    const hi = Math.max(0, ...values);
+    const span = hi - lo || 1;
+    const x = (i) => (i / (values.length - 1)) * 100;
+    const y = (v) => 96 - ((v - lo) / span) * 92;
+    const d = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(2)},${y(v).toFixed(2)}`).join('');
+    const tone = net >= 0 ? 'up' : 'crash';
+    chart = `<svg class="pnl-chart" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="pnl-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="var(--${tone})" stop-opacity="0.28" /><stop offset="1" stop-color="var(--${tone})" stop-opacity="0" /></linearGradient></defs>
+        <path d="${d}L100,100L0,100Z" fill="url(#pnl-fill)" />
+        <line x1="0" x2="100" y1="${y(0).toFixed(2)}" y2="${y(0).toFixed(2)}" class="pnl-zero" vector-effect="non-scaling-stroke" />
+        <path d="${d}" class="pnl-line ${tone}" vector-effect="non-scaling-stroke" />
+      </svg>`;
+  }
+  return `
+    <section class="pf-card pnl-card" aria-label="Profit and loss">
+      <div class="pf-label">${ico('chart')}Profit / loss<div class="pnl-range" role="group" aria-label="Range">${tabs}</div></div>
+      <div class="pf-value ${rows.length ? (net >= 0 ? 'profit-pos' : 'profit-neg') : ''}">${rows.length ? signed(net) : '0'}<span class="unit">pts</span></div>
+      <p class="pf-sub">${rows.length ? `${range[0] === 'all' ? 'All time' : `Last ${range[2]} days`} · ${rows.length} settled market${rows.length === 1 ? '' : 's'}` : st?.marketsPlayed ? 'Shows once a market you predicted on settles' : 'Predict on a market to start your record'}</p>
+      ${chart}
+    </section>`;
+}
+
+/** The record in one line of small numbers, like a token's stats on a screener. */
+function statStrip(st) {
+  const na = '<span class="sum-na">—</span>';
+  const settled = Boolean(st?.settled);
+  const item = (label, value, sub = '') => `<div><dt>${label}</dt><dd>${value}${sub ? `<small>${sub}</small>` : ''}</dd></div>`;
+  return `
+    <dl class="stat-strip" aria-label="Your record">
+      ${item('Win rate', settled ? `${Math.round(st.winRate * 100)}%` : na, settled ? `${st.wins}/${st.settled}` : '')}
+      ${item('Markets', fmtNum(st?.marketsPlayed ?? 0))}
+      ${item('Staked', fmtNum(st?.totalStaked ?? 0))}
+      ${item('Best win', st?.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : na, st?.bestWin ? esc(st.bestWin.symbol) : '')}
+      ${item('Win streak', settled ? fmtNum(st.currentStreak) : na, settled ? `best ${st.bestStreak}` : '')}
+      ${item('Rank', st?.rank ? `#${fmtNum(st.rank)}` : na, st?.rank ? `of ${fmtNum(st.players)}` : '')}
+    </dl>`;
+}
+
+/** Active predictions grouped into positions: one row per market and outcome. */
+function positions(active) {
+  const by = new Map();
+  for (const p of active) {
+    const key = `${p.marketId}:${p.bucket}`;
+    const cur = by.get(key) ?? { ...p, stake: 0, count: 0 };
+    cur.stake += p.stake - (p.refund ?? 0);
+    cur.count += 1;
+    by.set(key, cur);
+  }
+  return [...by.values()];
 }
 
 function activeTable(active) {
-  if (!active.length) return dashEmpty('target', 'No active predictions. Pick an outcome on any open market to start your record.', `<a class="btn btn-sm" href="#/">${ico('grid')}Explore markets</a>`);
-  return `<table class="table dash-table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right">Status</th></tr></thead><tbody>${active
+  if (!active.length) return dashEmpty('target', 'No open positions. Pick an outcome on any open market to start your record.', `<a class="btn btn-sm" href="#/">${ico('grid')}Explore markets</a>`);
+  const markets = new Map([...S.lists.open, ...S.lists.live].map((m) => [m.id, m]));
+  return `<table class="table dash-table pos-table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right hide-sm">Crowd</th><th class="right">If it wins</th><th class="right hide-sm">Status</th></tr></thead><tbody>${positions(active)
     .map((p) => {
+      const m = markets.get(p.marketId);
+      const yn = p.outcomes === 'binary';
+      const mult = m ? poolMultiple(m, p.bucket) : null;
+      const crowd = m?.pool ? `${Math.round(share(m, p.bucket) * 100)}%` : '–';
+      const when = m ? (p.marketStatus === 'open' ? `Closes in ${until(m.closeAt)}` : `Result ${fmtDate(m.settleAt)}`) : '';
       const status = p.marketStatus === 'open' ? '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>' : `<span class="pill pill-wait">${p.mode === 'manual' ? 'Awaiting result' : 'In play'}</span>`;
-      return `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(p.marketId)}">${tokenAvatar(p, 'avatar-sm')}<span>${esc(p.symbol)}</span></a></td><td>${outcome(p.bucket, p.outcomes === 'binary')}</td><td class="right num-cell">${fmtNum(p.stake)}</td><td class="right">${status}</td></tr>`;
+      return `<tr>
+        <td><a class="mkt-cell" href="#/market/${encodeURIComponent(p.marketId)}">${m ? tokenAvatar(m, 'avatar-sm') : tokenAvatar(p, 'avatar-sm')}<span>${esc(p.symbol)}${when ? `<small class="muted">${when}</small>` : ''}</span></a></td>
+        <td>${outcome(p.bucket, yn)}${p.count > 1 ? `<small class="muted pos-n">${p.count} picks</small>` : ''}</td>
+        <td class="right num-cell">${fmtNum(p.stake)}</td>
+        <td class="right num-cell hide-sm">${crowd}</td>
+        <td class="right num-cell">${mult ? `<b class="profit-pos">≈${fmtNum(Math.floor(p.stake * mult))}</b><small class="muted pos-x">${mult.toFixed(1)}×</small>` : '–'}</td>
+        <td class="right hide-sm">${status}</td>
+      </tr>`;
     })
-    .join('')}</tbody></table>`;
+    .join('')}</tbody></table><p class="fine pos-note">“If it wins” is your stake at the pool’s current payout. Earlier picks get a bonus, so yours can be higher.</p>`;
 }
 
 function pastTable(st) {
@@ -4782,6 +4884,10 @@ document.addEventListener('click', async (e) => {
   const filter = t.closest('[data-filter]')?.dataset.filter;
   const lbPeriod = t.closest('[data-lb-period]')?.dataset.lbPeriod;
   if (S.menuOpen && !t.closest('#top-menu') && !t.closest('[data-action="menu"]')) closeMenu();
+  if (S.streakOpen && !t.closest('#streak-pop') && !t.closest('[data-action="streak"]')) {
+    S.streakOpen = false;
+    renderTop();
+  }
   const exchangePick = t.closest('[data-exchange]')?.dataset.exchange;
   if (exchangePick) {
     S.exchange = exchangePick;
@@ -4790,6 +4896,12 @@ document.addEventListener('click', async (e) => {
   }
   const dashTab = t.closest('[data-dash-tab]')?.dataset.dashTab;
   if (dashTab) return showDashTab(dashTab);
+  const pnlRange = t.closest('[data-pnl-range]')?.dataset.pnlRange;
+  if (pnlRange && S.dashData) {
+    S.pnlRange = pnlRange;
+    $('#view').innerHTML = portfolioView(...S.dashData);
+    return;
+  }
   if (lbPeriod) {
     S.lbPeriod = lbPeriod;
     return loadRoute();
@@ -4956,7 +5068,14 @@ document.addEventListener('click', async (e) => {
       return closeSheet();
     case 'theme':
       return setTheme(currentTheme() === 'light' ? 'dark' : 'light');
+    case 'streak':
+      S.streakOpen = !S.streakOpen;
+      S.menuOpen = false;
+      renderTop();
+      if (S.streakOpen) $('#streak-pop .sp-claim')?.focus();
+      return;
     case 'menu':
+      S.streakOpen = false;
       S.menuOpen = !S.menuOpen;
       renderTop();
       if (S.menuOpen) $('#top-menu a, #top-menu button')?.focus();
@@ -5349,6 +5468,11 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && S.menuOpen) {
     closeMenu();
     $('[data-action="menu"]')?.focus();
+  }
+  if (e.key === 'Escape' && S.streakOpen) {
+    S.streakOpen = false;
+    renderTop();
+    $('[data-action="streak"]')?.focus();
   }
   // "/" jumps to search, as on most trading sites.
   if (e.key === '/' && !e.target.closest?.('input, textarea, select, [contenteditable]')) {
