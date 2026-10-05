@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Firstprint X banner</title>
+<!-- Source for x-banner.png (1500 × 500). Open in Chromium and screenshot the page at 1500 × 500; the phones show screens/markets.png and screens/ranks.png from the /play/ demo. -->
+<style>
+  @font-face { font-family: Geist; src: url(../assets/fonts/Geist-Regular.ttf); font-weight: 400; }
+  @font-face { font-family: Geist; src: url(../assets/fonts/Geist-SemiBold.ttf); font-weight: 600; }
+  @font-face { font-family: Geist; src: url(../assets/fonts/Geist-Bold.ttf); font-weight: 700; }
+  @font-face { font-family: Geist Mono; src: url(../assets/fonts/GeistMono-Medium.ttf); font-weight: 500; }
+  * { margin: 0; box-sizing: border-box; }
+  html, body { width: 1500px; height: 500px; overflow: hidden; background: #07080c; }
+  .stage { position: relative; width: 1500px; height: 500px; overflow: hidden; font-family: Geist, sans-serif;
+    background:
+      radial-gradient(520px 380px at 1130px 230px, rgba(125,255,58,0.16), transparent 70%),
+      radial-gradient(circle at 2px 2px, rgba(255,255,255,0.06) 1.2px, transparent 1.6px) 0 0 / 28px 28px,
+      #07080c; }
+  .fade { position: absolute; inset: 0; background: linear-gradient(90deg, #07080c 0%, rgba(7,8,12,0.9) 30%, rgba(7,8,12,0) 55%); }
+  .copy { position: absolute; left: 116px; top: 92px; }
+  .brand { display: flex; align-items: center; gap: 16px; margin-left: 4px; }
+  .brand span { font-size: 28px; font-weight: 600; color: #f5f5f7; letter-spacing: -0.5px; }
+  h1 { margin-top: 52px; font-size: 62px; line-height: 70px; font-weight: 700; letter-spacing: -2px; color: #f5f5f7; }
+  h1 em { font-style: normal; color: #8e8e93; }
+  p { margin: 26px 0 0 4px; font-size: 22px; color: #9a9aa3; }
+
+  .scene { position: absolute; left: 780px; top: 0; width: 720px; height: 500px; perspective: 1600px; }
+  .phone { position: absolute; width: 262px; height: 560px; border-radius: 46px; padding: 9px;
+    background: linear-gradient(145deg, #3a3d46, #121318 40%, #24262d);
+    box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.14), 0 40px 80px rgba(0,0,0,0.7); transform-style: preserve-3d; }
+  .phone .screen { width: 100%; height: 100%; border-radius: 38px; overflow: hidden; background: #0b0c10 center 30px / 100% auto no-repeat; position: relative; }
+  .phone .bar { position: absolute; top: 0; left: 0; right: 0; height: 30px; display: flex; justify-content: space-between; align-items: center; padding: 2px 26px 0 30px; font: 600 11px Geist; color: #f5f5f7; z-index: 2; }
+  .phone .bar i { width: 18px; height: 8px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.6); display: block; position: relative; }
+  .phone .bar i::after { content: ''; position: absolute; inset: 1px 4px 1px 1px; background: #f5f5f7; border-radius: 1px; }
+  .phone .screen::after { content: ''; position: absolute; top: 7px; left: 50%; width: 70px; height: 20px; margin-left: -35px; z-index: 3; border-radius: 12px; background: #000; }
+  .phone .screen::before { content: ''; position: absolute; inset: 0; z-index: 1;
+    background: linear-gradient(115deg, rgba(255,255,255,0.10), rgba(255,255,255,0) 35%); }
+  .back { left: 340px; top: 78px; transform: rotateY(-26deg) rotateX(8deg) rotateZ(4deg); filter: brightness(0.82); }
+  .back .screen { background-image: url(screens/ranks.png); }
+  .front { left: 110px; top: 26px; z-index: 2; transform: rotateY(-18deg) rotateX(10deg) rotateZ(-5deg);
+    box-shadow: inset 0 0 0 1.5px rgba(255,255,255,0.16), 0 50px 90px rgba(0,0,0,0.8), 0 0 70px rgba(125,255,58,0.18); }
+  .front .screen { background-image: url(screens/markets.png); }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="scene">
+    <div class="phone back"><div class="screen"><div class="bar"><span>9:41</span><i></i></div></div></div>
+    <div class="phone front"><div class="screen"><div class="bar"><span>9:41</span><i></i></div></div></div>
+  </div>
+  <div class="fade" style="right:auto;width:780px;background:linear-gradient(90deg,#07080c 70%,rgba(7,8,12,0))"></div>
+  <div class="copy">
+    <div class="brand">
+      <svg width="48" height="48" viewBox="0 0 48 48">
+        <rect width="48" height="48" rx="12" fill="#0b0f2a" stroke="#313b80" stroke-width="1.5"/>
+        <rect x="8" y="8" width="32" height="5.2" rx="2.6" fill="#7dff3a"/>
+        <rect x="12" y="15.8" width="24" height="5.2" rx="2.6" fill="#3fd69a"/>
+        <rect x="16" y="23.6" width="16" height="5.2" rx="2.6" fill="#9faac0"/>
+        <rect x="12" y="31.4" width="24" height="5.2" rx="2.6" fill="#ff8a5c"/>
+        <rect x="8" y="39.2" width="32" height="5.2" rx="2.6" fill="#ff4d6a"/>
+      </svg>
+      <span>Firstprint</span>
+    </div>
+    <h1>Call the first move<br><em>of every new listing</em></h1>
+    <p>Free prediction markets on new and trending tokens</p>
+  </div>
+</div>
+</body>
+</html>

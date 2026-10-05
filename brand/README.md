@@ -7,7 +7,8 @@ The mark is the outcome ladder: five bars from **Moon** (neon green, top) to **C
 | File | Where it goes | Size |
 |---|---|---|
 | `x-avatar.png` | Profile picture | 400 × 400 |
-| `x-banner.png` | Header image: the headline and a live market card | 1500 × 500 |
+| `x-banner.png` | Header image: the headline and two phones showing the app | 1500 × 500 |
+| `x-banner@2x.png` | Same header at double resolution, for sharper uploads | 3000 × 1000 |
 
 **Setting them on X:** open your profile, choose **Edit profile**, click the camera on the photo for the avatar and on the banner area for the header. X crops the avatar to a circle, and the mark already sits inside a safe circle. The banner keeps its content clear of the lower-left corner, where your avatar overlaps.
 
@@ -21,7 +22,8 @@ The same avatar works for Telegram, Discord, GitHub, and Farcaster.
 | `logo-lockup-for-dark.svg` / `.png` | Mark plus wordmark, light text, transparent. Use on dark backgrounds |
 | `logo-lockup-for-light.svg` / `.png` | Mark plus wordmark, dark text, transparent. Use on light backgrounds |
 | `logo-lockup-ink.svg` / `.png` | Mark plus wordmark on the Firstprint dark background. Drop in anywhere |
-| `x-avatar.svg` / `x-banner.svg` | Editable sources (Geist font) |
+| `x-avatar.svg` | Editable avatar source (Geist font) |
+| `x-banner.html` + `screens/` | Editable banner source: open in Chromium and screenshot at 1500 × 500 |
 | `../site/og.png` | Link preview image for the website |
 
 SVGs stay sharp at any size, so use them wherever the platform allows.
