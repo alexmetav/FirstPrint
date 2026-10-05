@@ -12095,3 +12095,18 @@ svg.viz.viz-narrow {
 .mf .upcoming-opt[hidden] {
   display: none;
 }
+
+/* Find tokens: a token that already got a market in this visit */
+.disc-made {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--up);
+  white-space: nowrap;
+}
+.disc-made .i {
+  width: 15px;
+  height: 15px;
+}

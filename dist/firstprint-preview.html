@@ -12126,6 +12126,21 @@ svg.viz.viz-narrow {
   display: none;
 }
 
+/* Find tokens: a token that already got a market in this visit */
+.disc-made {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--up);
+  white-space: nowrap;
+}
+.disc-made .i {
+  width: 15px;
+  height: 15px;
+}
+
 </style>
   </head>
   <body>
@@ -12770,6 +12785,7 @@ function createAdminApi(key, baseUrl = '') {
     publish: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/publish`),
     unpublish: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/unpublish`),
     deleteDraft: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/delete`),
+    deleteMarket: (id) => post(`/api/admin/markets/${encodeURIComponent(id)}/delete`),
     previewResult: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/preview`, body),
     resolve: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/resolve`, body),
     analytics: (days = 30) => request(`/api/admin/analytics?days=${days}`),
@@ -14409,7 +14425,7 @@ function drawTop() {
   $('#topbar').innerHTML = `
     <div class="topbar-inner">
       <a class="wordmark" href="#/" aria-label="Firstprint home"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span class="word">Firstprint</span></a>
-      <label class="top-search">${ico('search')}<input id="market-search" type="search" placeholder="Search markets" value="${esc(S.query ?? '')}" autocomplete="off" aria-label="Search markets" /><kbd aria-hidden="true">/</kbd></label>
+      <label class="top-search">${ico('search')}<input id="market-search" type="search" placeholder="Search a token or name" value="${esc(S.query ?? '')}" autocomplete="off" aria-label="Search markets by token or name" /><kbd aria-hidden="true">/</kbd></label>
       <div class="account">
         ${
           S.me
@@ -17518,6 +17534,8 @@ async function renderAdmin() {
   const [{ markets }, detected, { log }, token, { tasks }, teamData] = loaded;
   void backfillLogoPngs(markets);
   A.detected = detected;
+  // Tokens that already have a live market show "Market made" in Find tokens.
+  A.made = { ...(A.made ?? {}), ...Object.fromEntries(markets.filter((m) => m.status === 'open' || m.status === 'locked').map((m) => [m.symbol.toUpperCase(), m.id])) };
   const venues = A.info.venues;
   const editing = markets.find((m) => m.id === A.edit && m.mode === 'manual' && m.status === 'open') ?? null;
   if (A.edit && !editing) A.edit = null;
@@ -17940,6 +17958,7 @@ const ADMIN_ACTIONS = {
   market_unpublished: 'Moved a market back to drafts',
   market_edited: 'Edited a market',
   draft_deleted: 'Deleted a draft',
+  market_deleted: 'Deleted a market',
   result_posted: 'Posted a result',
   market_voided: 'Settled as cancelled and refunded',
   market_cancelled: 'Cancelled and refunded a market',
@@ -18343,7 +18362,7 @@ function discoverView() {
         <td class="hide-sm">${l.listingAt ? `${fmtDate(l.listingAt)}${l.listingAt > Date.now() ? ` · in ${until(l.listingAt)}` : ''}` : '<span class="muted">Not published</span>'}</td>
         <td class="right num-cell">${usd(l.openPrice)}</td>
         <td class="right num-cell">${usd(l.price)} ${pctChip(chg)}</td>
-        <td class="right">${l.marketId ? `<button class="btn btn-sm" data-action="admin-edit" data-id="${esc(l.marketId)}">Has a market</button>` : `<button class="btn btn-sm btn-gold" data-action="admin-discover-make" data-src="ex" data-i="${i}">Make market</button>`}</td>
+        <td class="right">${l.marketId ? `<button class="btn btn-sm" data-action="admin-edit" data-id="${esc(l.marketId)}">Has a market</button>` : A.made?.[l.symbol.toUpperCase()] ? `<span class="disc-made">${ico('checkCircle')}Market made</span>` : `<button class="btn btn-sm btn-gold" data-action="admin-discover-make" data-src="ex" data-i="${i}">Make market</button>`}</td>
       </tr>`;
     })
     .join('');
@@ -18353,7 +18372,7 @@ function discoverView() {
         <td><span class="disc-tok">${c.logo ? `<img src="${esc(c.logo)}" alt="" referrerpolicy="no-referrer" loading="lazy" />` : ''}<span><b>${esc(c.symbol)}</b><small class="muted">${esc(c.name)}${c.rank ? ` · #${c.rank}` : ''}</small></span></span></td>
         <td class="right num-cell">${usd(c.priceUsd)}</td>
         <td class="right hide-sm">${pctChip(c.change24h)}</td>
-        <td class="right"><a class="btn btn-sm" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}</a> <button class="btn btn-sm btn-gold" data-action="admin-discover-make" data-src="cg" data-i="${i}">Make market</button></td>
+        <td class="right"><a class="btn btn-sm" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}</a> ${A.made?.[c.symbol.toUpperCase()] ? `<span class="disc-made">${ico('checkCircle')}Market made</span>` : `<button class="btn btn-sm btn-gold" data-action="admin-discover-make" data-src="cg" data-i="${i}">Make market</button>`}</td>
       </tr>`,
     )
     .join('');
@@ -18437,7 +18456,7 @@ async function makeFromDiscovery(el) {
       note: `Trending on CoinGecko. The start price is the CoinGecko price when the market opened; the result is the CoinGecko price at the result time.`,
     };
   }
-  A.prefill = pre;
+  A.prefill = { ...pre, from: 'discover' };
   A.review = null;
   A.edit = null;
   A.tab = 'create';
@@ -18540,6 +18559,8 @@ function marketActions(m) {
   if (A.info.telegram?.channel && m.status === 'open' && m.published && m.kind !== 'live_test') more.push(item('admin-tg-post', 'telegram', 'Post to Telegram'));
   if (manualOpen && !m.published) more.push(item('admin-delete', 'trash', 'Delete draft', ' danger'));
   if (canAdmin('admin') && (m.status === 'open' || m.status === 'locked') && (m.published || m.mode !== 'manual')) more.push(item('admin-cancel', 'undo', 'Cancel and refund', ' danger'));
+  // A published market nobody predicted on, or one cancelled and refunded, can be removed for good.
+  if (canAdmin('admin') && (m.published || m.mode !== 'manual') && (m.status === 'void' || m.predictors === 0)) more.push(item('admin-delete-market', 'trash', 'Delete market', ' danger'));
   if (more.length) main.push(`<details class="row-menu"><summary class="btn btn-sm" aria-label="More actions for ${esc(m.symbol)}">${ico('more')}</summary><div class="row-menu-list">${more.join('')}</div></details>`);
   return main.join('');
 }
@@ -18922,10 +18943,10 @@ async function onAdminAction(action, el) {
     case 'admin-discover-make':
       return makeFromDiscovery(el);
     case 'admin-edit-cancel':
+      A.tab = A.prefill?.from === 'discover' ? 'discover' : 'markets';
       A.review = null;
       A.prefill = null;
       A.edit = null;
-      A.tab = 'markets';
       return renderAdmin();
     case 'admin-publish':
     case 'admin-unpublish':
@@ -18937,6 +18958,15 @@ async function onAdminAction(action, el) {
         else if (action === 'admin-unpublish') await A.api.unpublish(el.dataset.id);
         else await A.api.deleteDraft(el.dataset.id);
         toast(action === 'admin-publish' ? 'Market published' : action === 'admin-unpublish' ? 'Market moved back to drafts' : 'Draft deleted');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
+    case 'admin-delete-market':
+      if (!confirm('Delete this market for good? It disappears from the app and can’t be brought back.')) return;
+      try {
+        await A.api.deleteMarket(el.dataset.id);
+        toast('Market deleted');
       } catch (err) {
         toast(err.message, true);
       }
@@ -19061,10 +19091,13 @@ async function submitAdminMarket(form, intent) {
     if (id) m = await A.api.updateManual(id, body);
     else m = await A.api.createManual({ ...body, publish: intent === 'publish' });
     if (id && intent === 'publish') m = await A.api.publish(id);
+    // Made from Find tokens: go back there, so the next token is one click away.
+    const fromDiscover = !id && A.prefill?.from === 'discover';
+    if (fromDiscover) (A.made ??= {})[String(m.symbol).toUpperCase()] = m.id;
     A.edit = null;
     A.review = null;
     A.prefill = null;
-    A.tab = 'markets';
+    A.tab = fromDiscover ? 'discover' : 'markets';
     toast(m.published ? `${m.symbol} market is live` : m.autoOpenAt ? `${m.symbol} scheduled: it opens by itself when trading starts` : `${m.symbol} saved as a draft`);
   } catch (err) {
     toast(err.message, true);
@@ -19363,9 +19396,17 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('input', (e) => {
   if (e.target.id === 'market-search') {
+    const was = Boolean((S.query ?? '').trim());
     S.query = e.target.value;
     if (S.route.name !== 'home') {
       location.hash = '#/';
+      return;
+    }
+    // Starting or clearing a search redraws the page: the hero and featured deck step aside, so
+    // the results show straight under the search bar instead of below the fold.
+    if (was !== Boolean(S.query.trim())) {
+      $('#view').innerHTML = homeView();
+      window.scrollTo({ top: 0 });
       return;
     }
     const out = $('#market-results');
