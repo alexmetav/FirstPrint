@@ -167,6 +167,8 @@ export function createAdminApi(key, baseUrl = '') {
     analytics: (days = 30) => request(`/api/admin/analytics?days=${days}`),
     analyticsShare: (enabled) => post('/api/admin/analytics/share', { enabled }),
     priceCheck: (body) => post('/api/admin/price-check', body),
+    trending: () => request('/api/admin/discover/trending'),
+    exchangeNew: (venue) => request(`/api/admin/discover/exchange?venue=${encodeURIComponent(venue)}`),
     marketChecks: () => request('/api/admin/market-checks'),
     fetchImage: (url) => request(`/api/admin/fetch-image?url=${encodeURIComponent(url)}`),
     setStartPrice: (id, basePrice) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/start-price`, { basePrice }),

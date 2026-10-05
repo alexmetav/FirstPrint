@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import type { FirstprintService } from './firstprint.ts';
 import { closingSoonText, marketLiveText, marketResultText, type Telegram } from './telegram.ts';
-import { renderBanner, type BannerKind } from './banner.ts';
+import { logoToPng, renderBanner, type BannerKind } from './banner.ts';
+import { fetchImage } from '../api/fetchImage.ts';
 
 /** Telegram allows about 20 posts a minute to one channel; stay well under it. */
 const GAP_MS = 3_500;
@@ -29,6 +30,8 @@ export class ChannelPoster {
   private log: (msg: string) => void;
   private gapMs: number;
   private banner: Uint8Array | null;
+  /** Downloads a logo (swappable in tests). */
+  fetchLogo: (url: string) => Promise<{ contentType: string; data: string }> = (url) => fetchImage(url);
 
   constructor(service: FirstprintService, telegram: Telegram | null, appUrl: string, log: (msg: string) => void = () => {}, gapMs = GAP_MS) {
     this.service = service;
@@ -52,13 +55,45 @@ export class ChannelPoster {
    * Settings (`telegram_token_banners` = '0'), or the banner can't be drawn (a ticker in a script
    * the font lacks), a new market gets the fixed banner and other posts are plain text.
    */
-  private bannerFor(kind: BannerKind, id: string, m: Parameters<typeof renderBanner>[1]): Uint8Array | null {
+  private async bannerFor(kind: BannerKind, id: string, m: Parameters<typeof renderBanner>[1]): Promise<Uint8Array | null> {
     if (!this.service.tokenBannersEnabled()) return kind === 'live' ? this.banner : null;
+    const logo = await this.logoFor(id);
     try {
-      return renderBanner(kind, m, this.service.logoPng(id));
+      return renderBanner(kind, m, logo);
     } catch (err) {
       this.log(`banner for ${id} could not be drawn: ${(err as Error).message}`);
-      return kind === 'live' ? this.banner : null;
+    }
+    // A logo the renderer chokes on shouldn't cost the whole banner: try again with the letter.
+    if (logo) {
+      try {
+        return renderBanner(kind, m, null);
+      } catch {
+        /* the ticker itself can't be drawn */
+      }
+    }
+    return kind === 'live' ? this.banner : null;
+  }
+
+  /**
+   * The logo for a market's banners. The admin's browser normally saves a PNG copy; when it
+   * couldn't (blocked download, an SVG, a JPEG), the server fetches the logo itself, converts it,
+   * and keeps the copy so it is done once.
+   */
+  private async logoFor(id: string): Promise<string | null> {
+    const saved = this.service.logoPng(id);
+    if (saved) return saved;
+    const src = (this.service.getMarket(id, undefined, true) as { logoUrl?: string | null }).logoUrl ?? '';
+    if (!src) return null;
+    try {
+      const data = /^data:(image\/[a-z+.-]+);base64,([A-Za-z0-9+/=]+)$/i.exec(src);
+      const img = data ? { contentType: data[1].toLowerCase(), data: data[2] } : await this.fetchLogo(src);
+      const png = logoToPng(img.contentType, img.data);
+      if (png) this.service.setLogoPng(id, png);
+      else this.log(`logo for ${id} couldn't be converted (${img.contentType})`);
+      return png;
+    } catch (err) {
+      this.log(`logo for ${id} couldn't be fetched: ${(err as Error).message}`);
+      return null;
     }
   }
 
@@ -81,7 +116,7 @@ export class ChannelPoster {
     if (!this.telegram || !channel) throw new Error('No player channel is set.');
     const m = this.service.getMarket(id, undefined, true);
     if (!m.published || m.status !== 'open') throw new Error('Only open, published markets can be posted.');
-    await this.post(channel, this.bannerFor('live', id, m), marketLiveText(m, this.link(id)), { text: 'Predict now', url: this.link(id) });
+    await this.post(channel, await this.bannerFor('live', id, m), marketLiveText(m, this.link(id)), { text: 'Predict now', url: this.link(id) });
     this.service.markAnnounced(id);
   }
 
@@ -90,7 +125,7 @@ export class ChannelPoster {
     if (!this.telegram || !channel) return;
     const m = this.service.getMarket(id);
     const text = marketResultText(m, this.link(id));
-    if (text) await this.post(channel, this.bannerFor('result', id, m), text, { text: 'See the result', url: this.link(id) });
+    if (text) await this.post(channel, await this.bannerFor('result', id, m), text, { text: 'See the result', url: this.link(id) });
   }
 
   /** Posts open markets (only never-posted ones unless `again`), a few seconds apart, in the background. */
@@ -108,11 +143,12 @@ export class ChannelPoster {
     for (const id of this.service.marketsClosingSoon()) {
       if (this.reminding.has(id)) continue;
       this.reminding.add(id);
-      const m = this.service.getMarket(id);
       // Marked only once Telegram accepts it, so a failed send is tried again on the next minute.
       this.later(async () => {
         try {
-          await this.post(channel, this.bannerFor('closing', id, m), closingSoonText(m, this.link(id)), { text: 'Predict now', url: this.link(id) });
+          // Read when it is sent, so the time left on the banner is right.
+          const m = this.service.getMarket(id);
+          await this.post(channel, await this.bannerFor('closing', id, m), closingSoonText(m, this.link(id)), { text: 'Predict now', url: this.link(id) });
           this.service.markReminded(id);
         } finally {
           this.reminding.delete(id);

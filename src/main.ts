@@ -10,6 +10,7 @@ import { Scheduler } from './workers/scheduler.ts';
 import { ListingTracker } from './workers/listingTracker.ts';
 import { AutoOpener } from './workers/autoOpen.ts';
 import { LiveFeed } from './workers/liveFeed.ts';
+import { Discover } from './services/discover.ts';
 import { createApiServer } from './api/server.ts';
 import { allVenues } from './exchanges/venues.ts';
 import { SimVenue, simProfileFromDb } from './exchanges/sim.ts';
@@ -160,6 +161,8 @@ service.onClosed = (ids) => {
 
 const server = createApiServer({
   service,
+  // CoinGecko's trending list for Admin → Find tokens; a free demo key (optional) raises its rate limit.
+  discover: new Discover(service, { apiKey: process.env.COINGECKO_API_KEY?.trim() || null }),
   scheduler,
   live,
   rewards,
