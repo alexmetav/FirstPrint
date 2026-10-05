@@ -258,6 +258,13 @@ const as = <T>(v: unknown) => v as T;
 // Service
 // ---------------------------------------------------------------------------
 
+/** A short fingerprint of a logo, so its URL changes when the logo does. */
+function logoVersion(s: string) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i += 7) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return ((h >>> 0).toString(36) + s.length.toString(36)).slice(0, 12);
+}
+
 export class FirstprintService {
   db: DB;
   clock: Clock;
@@ -906,7 +913,7 @@ export class FirstprintService {
 
   adminMarkets() {
     const rows = as<MarketRow[]>(this.db.prepare('SELECT * FROM markets ORDER BY created_at DESC LIMIT 200').all());
-    return rows.map((r) => this.view(r));
+    return rows.map((r) => this.view(r, undefined, true));
   }
 
   venueList() {
@@ -1900,15 +1907,27 @@ export class FirstprintService {
   getMarket(id: string, userId?: string, asAdmin = false) {
     const m = this.row(id);
     if (m.published === 0 && !asAdmin) throw new AppError(404, 'market_not_found', 'Market not found.');
-    return this.view(m, userId);
+    return this.view(m, userId, asAdmin);
+  }
+
+  /**
+   * An uploaded logo (stored as a data: URL) as image bytes, for /api/logo/:id. Public lists link to
+   * it instead of carrying the image in every response, so browsers and the CDN cache it.
+   */
+  logoImage(id: string): { type: string; bytes: Buffer } | null {
+    const r = as<{ logo_url: string | null; published: number } | undefined>(this.db.prepare('SELECT logo_url, published FROM markets WHERE id = ?').get(id));
+    const m = r?.published === 1 ? /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=]+)$/.exec(r.logo_url ?? '') : null;
+    return m ? { type: m[1], bytes: Buffer.from(m[2], 'base64') } : null;
   }
 
   settlement(id: string) {
+    this.publicRow(id);
     const s = as<{ result: string; data_hash: string; settled_at: number } | undefined>(
       this.db.prepare('SELECT * FROM settlements WHERE market_id = ?').get(id),
     );
     if (!s) throw new AppError(404, 'not_settled', 'This market has not settled yet.');
-    return { marketId: id, settledAt: s.settled_at, dataHash: s.data_hash, result: JSON.parse(s.result) as SettlementResult };
+    // Public: players' internal ids are left out (the hash still proves the stored result).
+    return { marketId: id, settledAt: s.settled_at, dataHash: s.data_hash, result: JSON.parse(s.result, (k, v) => (k === 'userId' ? undefined : v)) as SettlementResult };
   }
 
   /** Downsampled price series for charts. */
@@ -2221,7 +2240,7 @@ export class FirstprintService {
     return { note: s.manual?.note ?? null, winners: winners.map((w) => ({ username: w.username, bucket: w.bucket, stake: w.accepted, payout: w.payout })) };
   }
 
-  private view(m: MarketRow, userId?: string) {
+  private view(m: MarketRow, userId?: string, rawLogo = false) {
     const cfg = parseConfig(m);
     const w = windows(cfg, m.listing_at);
     const now = this.clock.now();
@@ -2327,7 +2346,8 @@ export class FirstprintService {
       exchange: m.exchange,
       venues: (JSON.parse(m.venues) as VenueRef[]).map((v) => ({ id: v.venue, name: this.venues.get(v.venue)?.name ?? v.venue, pair: v.symbol })),
       sourceUrl: m.source_url,
-      logoUrl: m.logo_url ?? null,
+      // Uploaded logos are served from /api/logo/:id (versioned, cached) instead of inline in every list.
+      logoUrl: m.logo_url && !rawLogo && /^data:image\/(png|jpeg|webp|gif);/.test(m.logo_url) ? `/api/logo/${encodeURIComponent(m.id)}?v=${logoVersion(m.logo_url)}` : (m.logo_url ?? null),
       hasLogoPng: Boolean(m.logo_png),
       autoOpenAt: m.auto_open_at ?? null,
       autoOpenNote: m.auto_open_note ?? null,

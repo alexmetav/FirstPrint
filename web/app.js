@@ -1,7 +1,7 @@
 // Firstprint website. Vanilla ES modules, no build step.
 
 import { bucketRangeLabel } from './engine.js';
-import { ApiError, backendAvailable, captureReferral, createAdminApi, createApi, wake } from './api.js';
+import { ApiError, backendAvailable, captureReferral, createAdminApi, createApi, serverClock, wake } from './api.js';
 import { DemoBackend } from './demo.js';
 import { OUTCOME_ICONS, ico } from './icons.js';
 import { INSTALL_LINKS, WALLET_LOGOS, connectAndSign, disconnectWallets, isMobileDevice, listWallets, mobileWalletLinks, onWalletsChanged, shortAddress, signTransactionWith } from './wallet.js';
@@ -20,7 +20,7 @@ const oVar = (b, yn = false) => (yn ? (b === 'up' ? 'var(--up)' : 'var(--crash)'
 const icon = (b, yn = false) => ico(yn ? (b === 'up' ? 'check' : 'cross') : OUTCOME_ICONS[b], 'oc-ico');
 const VOID_REASONS = {
   listing_delayed: 'the listing was delayed by more than 24 hours',
-  retracted: 'the exchange cancelled the listing',
+  retracted: 'the market was cancelled',
   trading_halted: 'trading was halted for too long',
   insufficient_baseline_data: 'there was not enough trading right after listing',
   insufficient_settlement_data: 'there was not enough trading at the end',
@@ -186,7 +186,9 @@ function rewardToast({ amount, unit = 'points', sub = '', note = '', streak = 0 
 }
 
 function syncClock(serverTime) {
-  if (typeof serverTime === 'number') S.skew = serverTime - Date.now();
+  // The live server: its Date header (a cached body's serverTime can be old). The demo: its serverTime.
+  if (!S.api?.demo && serverClock.skew !== null) S.skew = serverClock.skew;
+  else if (typeof serverTime === 'number') S.skew = serverTime - Date.now();
 }
 
 // ------------------------------------------------------------------ Data
@@ -2714,7 +2716,7 @@ function xCard(r) {
       <div class="card-head"><span class="card-ico">${ico('x')}</span><h2>Your X account</h2>${r.xConnectPoints && !r.xUsername ? `<span class="pill pill-pts">+${r.xConnectPoints}</span>` : ''}</div>
       ${
         r.xUsername
-          ? `<p class="linked">${ico('checkCircle')}Linked as <b>@${esc(r.xUsername)}</b></p><p class="fine">Tasks on X are checked against this account.</p>`
+          ? `<p class="linked">${ico('checkCircle')}Linked as <b>@${esc(r.xUsername)}</b></p><p class="fine">Tasks on X use this account. Each task pays once.</p>`
           : `<p class="muted">Link your X username to unlock X tasks${r.xConnectPoints ? ` and get <b>+${r.xConnectPoints} points</b>` : ''}. No password or login needed.</p>
              <form id="x-form" class="inline-form" novalidate><span class="input-wrap"><span class="input-prefix">@</span><input name="x" placeholder="yourname" maxlength="16" autocomplete="off" aria-label="X username" /></span><button class="btn btn-solid" type="submit">${ico('link')}Link</button></form>
              <p class="form-error" id="x-error" role="alert"></p>`
@@ -3971,6 +3973,7 @@ function saveKeysNote(t) {
   const rows = [];
   if (t.authorityKey && !t.savedInEnv?.authority) rows.push(['TESTFPT_AUTHORITY_KEY', t.authorityKey]);
   if (t.mint && !t.savedInEnv?.mint) rows.push(['TESTFPT_MINT', t.mint]);
+  if (t.authorityKeyHidden && !t.savedInEnv?.authority) return `<p class="muted">${ico('key')} The owner can see and save the TestFPT keys in Render.</p>`;
   if (!rows.length) return '';
   return `<div class="save-keys">
     <b>${ico('key')}Save these in Render so a restart can’t lose them</b>

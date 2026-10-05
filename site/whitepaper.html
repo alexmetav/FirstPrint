@@ -84,7 +84,7 @@
         </div>
         <p>Five outcomes keep the question simple while rewarding a sharper view than up-or-down. Thresholds are set per market, so a calmer token can use tighter bands.</p>
         <h3>Yes/No markets</h3>
-        <p>A binary market asks one question, such as “will the price be at or above $0.25 when the result is posted?”. The target is the market’s start price; Yes and No each have their own pool.</p>
+        <p>A binary market asks one question, such as “will the price be at or above $0.25 when the result is posted?”. The target is the market’s start price; Yes and No stakes go into one pool, shared by whoever is right.</p>
         <h3>Market life cycle</h3>
         <ol>
           <li><b>Draft and review.</b> A detected listing becomes a draft. An operator checks the token, logo, exchanges and times, then publishes it.</li>
@@ -112,9 +112,9 @@
         </div>
         <ul>
           <li><b>Early-bird weights.</b> A prediction placed when the market opens weighs 1.5×; one placed at the last moment weighs 1.0×. Calling it early is rewarded, which also brings liquidity in sooner.</li>
-          <li><b>Caps.</b> A pool has a size cap, and one player’s accepted stake is limited to a share of it (10% by default). Stakes over a cap are refunded, so no single player can dominate a market.</li>
-          <li><b>Rounding.</b> Payouts are rounded down; the remainder stays in the treasury.</li>
-          <li><b>No winners.</b> If nobody picked the winning outcome, or a market is cancelled, every stake is refunded in full.</li>
+          <li><b>Caps.</b> A pool has a size cap, and one player’s accepted stake is limited to a share of it (10% by default). A stake that would go over the pool cap or your limit isn’t accepted, so no single player can dominate a market.</li>
+          <li><b>Rounding.</b> Payouts are rounded down; the fee and the remainder are not paid out to anyone.</li>
+          <li><b>No winners.</b> If nobody picked the winning outcome, everyone picked the same outcome, or a market is cancelled, every stake is refunded in full.</li>
         </ul>
         <div class="callout" style="--c: var(--up)"><p><b>Example.</b> A 10,000-point pool, 4% fee: 9,600 points are shared. If the winners staked 2,000 points at equal weight, each winning point returns 4.8 points.</p></div>
 
@@ -123,8 +123,8 @@
         <ul>
           <li><b>Predictions close before the result window.</b> Nobody can predict once the answer is forming.</li>
           <li><b>Averages and medians, not last trades.</b> Moving a one-hour, multi-exchange median costs far more than a market could pay.</li>
-          <li><b>Cancellation rules.</b> A market is cancelled and refunded if the listing is delayed by more than a day, trading halts for more than six hours in total, or price data is too thin.</li>
-          <li><b>One account, one player.</b> Sign-in is verified (Google, email code or a signed wallet message); tasks check the linked X account; referral rewards need the friend to make a real prediction.</li>
+          <li><b>Cancellation rules.</b> An automatic market is cancelled and refunded if the listing is delayed by more than a day, trading halts for more than six hours in total, or price data is too thin. Admin-run markets are cancelled and refunded by the operator.</li>
+          <li><b>One account, one player.</b> Sign-in is verified (Google, email code or a signed wallet message); tasks are honour-based, with one X username per account and each task paying once; referral rewards need the friend to make a real prediction.</li>
           <li><b>Public results.</b> Every settled market shows its start price, result price and winning outcome.</li>
         </ul>
 
@@ -144,7 +144,7 @@
         <ul>
           <li><b>TestFPT.</b> A Token-2022 token on Solana testnet. Starting points, rewards and daily streak points are minted to the player’s wallet.</li>
           <li><b>Predictions as transfers.</b> For Firstprint-wallet players, every stake is a TestFPT transfer from their wallet to the market escrow, and every payout or refund a transfer back, each carrying a memo such as <code>firstprint:stake:&lt;market&gt;:&lt;outcome&gt;</code>.</li>
-          <li><b>Fees paid by Firstprint.</b> The server signs and pays every network fee, including claims to players’ own wallets, so nobody needs SOL to play.</li>
+          <li><b>Fees paid by Firstprint.</b> The server normally signs and pays every network fee, including claims to players’ own wallets, so players don’t need SOL. If the server runs low on test SOL, a claim to your own wallet asks you to sign and pay the small fee.</li>
           <li><b>Exactly once.</b> Each transaction is recorded before it is sent and only retried after its blockhash has expired, so nothing is minted or moved twice.</li>
           <li><b>On-chain pools.</b> A Solana program for USDC prediction pools with oracle settlement exists as a devnet prototype. It is unaudited and not in use.</li>
         </ul>
@@ -154,9 +154,9 @@
         <ul>
           <li><b>Shareable PnL cards.</b> Every settled prediction has an image card and link with a preview made for X.</li>
           <li><b>Daily streaks</b> bring players back every day.</li>
-          <li><b>Referrals</b> reward both sides once the friend predicts.</li>
+          <li><b>Referrals</b> reward the inviter once the friend makes a prediction.</li>
           <li><b>Telegram channel</b> posts every new market, its last hour and its result.</li>
-          <li><b>Leaderboards</b> by week, month and all time, with public profiles.</li>
+          <li><b>Leaderboards</b> by day, week, month and all time, with public profiles.</li>
         </ul>
 
         <h2 id="economics"><span class="n">10</span>Economics</h2>

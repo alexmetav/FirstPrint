@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
+import { gzipSync } from 'node:zlib';
 import { extname, join, normalize, resolve } from 'node:path';
 import { AppError, DAILY_MAX, DAILY_POINTS, dailyStatus, LEADERBOARD_PERIODS, LIVE_PRESETS, MIN_STAKE, SESSION_MS, SUGGESTED_LIVE_TOKENS, type FirstprintService, type LeaderboardPeriod, type UserRow } from '../services/firstprint.ts';
 import type { Scheduler } from '../workers/scheduler.ts';
@@ -37,6 +38,8 @@ export interface ServerOptions {
   adminWallets?: string[];
   /** How many proxies sit between visitors and this server (0 = none). Used to find the visitor's address for rate limits. */
   trustProxyHops?: number;
+  /** Behind Cloudflare: take the visitor's address from CF-Connecting-IP (BEHIND_CLOUDFLARE=1). */
+  behindCloudflare?: boolean;
   /** Google OAuth client ID (public). Enables "Continue with Google". */
   googleClientId?: string | null;
   /** Override for tests: where Google's signing keys come from. */
@@ -129,6 +132,12 @@ export function createApiServer(opts: ServerOptions): Server {
    */
   function clientIp(req: IncomingMessage): string {
     const direct = req.socket.remoteAddress ?? 'unknown';
+    // Behind Cloudflare every request reaches the host from a Cloudflare address; the visitor's own
+    // address is in CF-Connecting-IP. Without this, all visitors share one rate-limit bucket.
+    if (opts.behindCloudflare) {
+      const cf = String(req.headers['cf-connecting-ip'] ?? '').trim();
+      if (/^[0-9a-f:.]{3,45}$/i.test(cf)) return cf;
+    }
     if (proxyHops === 0) return direct;
     const chain = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
     return chain.length >= proxyHops ? chain[chain.length - proxyHops] : direct;
@@ -847,13 +856,17 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // --- Admin: TestFPT token and tasks ---------------------------------------------
 
-  route('GET', '/api/admin/token', ({ requireAdmin }) => {
-    requireAdmin();
-    return opts.rewards ? opts.rewards.tokenStatus() : { enabled: false };
+  route('GET', '/api/admin/token', async ({ requireAdmin }) => {
+    const level = requireAdmin();
+    if (!opts.rewards) return { enabled: false };
+    const status = await opts.rewards.tokenStatus();
+    // The mint authority's secret key is shown to the owner only (to copy into Render).
+    return level === 'owner' ? status : { ...status, authorityKey: null, authorityKeyHidden: Boolean(status.authorityKey) };
   });
 
+  // Setting up the token creates and shows the mint authority's key: the owner only.
   route('POST', '/api/admin/token/:step', async ({ req, params, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('owner');
     const r = rewardsOn();
     if (params.step === 'authority') return r.setupAuthority();
     if (params.step === 'airdrop') return r.airdropAuthority();
@@ -870,17 +883,27 @@ export function createApiServer(opts: ServerOptions): Server {
     return { tasks: rewardsOn().listTasksAdmin() };
   });
 
+  // A tasks-only team member can add tasks worth up to TEAM_TASK_MAX points; bigger ones need an admin.
+  const TEAM_TASK_MAX = 500;
+  const capTask = (level: string, b: Record<string, unknown>) => {
+    if (level === 'tasks' && b.points !== undefined && Number(b.points) > TEAM_TASK_MAX) {
+      throw new AppError(403, 'not_allowed', `Your team role can add tasks worth up to ${TEAM_TASK_MAX} points. Ask an admin for more.`);
+    }
+  };
+
   route('POST', '/api/admin/tasks', async ({ req, body, requireAdmin }) => {
-    requireAdmin('tasks');
+    const level = requireAdmin('tasks');
     const b = await body();
+    capTask(level, b);
     const id = rewardsOn().createTask(taskInput(b) as TaskInput);
     audit(req, 'task_created', id, `${b.kind} ${b.points} pts`);
     return { id };
   });
 
   route('POST', '/api/admin/tasks/:id', async ({ req, params, body, requireAdmin }) => {
-    requireAdmin('tasks');
+    const level = requireAdmin('tasks');
     const b = await body();
+    capTask(level, b);
     rewardsOn().updateTask(params.id, taskInput(b));
     audit(req, 'task_updated', params.id, JSON.stringify(b).slice(0, 200));
     return { ok: true };
@@ -941,7 +964,8 @@ export function createApiServer(opts: ServerOptions): Server {
   route('POST', '/api/admin/price-check', async ({ body, requireAdmin }) => {
     requireAdmin('listings');
     const b = await body();
-    return { prices: await service.exchangePrices(String(b.symbol ?? ''), Array.isArray(b.exchanges) ? b.exchanges.map(String) : [], (b.pairs as Record<string, string>) ?? {}) };
+    const pairs = Object.fromEntries(Object.entries((b.pairs as Record<string, unknown>) ?? {}).filter(([, v]) => typeof v === 'string' && /^[a-z0-9_-]{1,100}$/i.test(v))) as Record<string, string>;
+    return { prices: await service.exchangePrices(String(b.symbol ?? ''), Array.isArray(b.exchanges) ? b.exchanges.map(String) : [], pairs) };
   });
 
   route('GET', '/api/admin/market-checks', async ({ requireAdmin }) => {
@@ -1013,11 +1037,14 @@ export function createApiServer(opts: ServerOptions): Server {
       }
       // The app routes in the browser, so any path is its page; on the website an unknown address is
       // a 404 (still showing the landing page) so search engines don't index it.
+      const type = MIME[extname(file)] ?? 'application/octet-stream';
+      const z = maybeGzip(res as Negotiated, type, data);
       res.writeHead(missing && linkToApp ? 404 : 200, {
-        'content-type': MIME[extname(file)] ?? 'application/octet-stream',
+        'content-type': type,
         'cache-control': extname(file) === '.html' ? 'no-cache' : 'public, max-age=300',
+        ...z.headers,
       });
-      res.end(data);
+      res.end(z.body);
     } catch {
       send(res, 404, { error: 'not_found', message: 'Not found.' });
     }
@@ -1149,6 +1176,8 @@ export function createApiServer(opts: ServerOptions): Server {
 
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
+    (res as Negotiated).gzipOk = /\bgzip\b/.test(String(req.headers['accept-encoding'] ?? ''));
+    (res as Negotiated).ifNoneMatch = req.method === 'GET' ? String(req.headers['if-none-match'] ?? '') : null;
     res.setHeader('x-content-type-options', 'nosniff');
     res.setHeader('referrer-policy', 'same-origin');
     res.setHeader('x-frame-options', 'DENY');
@@ -1172,6 +1201,20 @@ export function createApiServer(opts: ServerOptions): Server {
     }
 
     if (url.pathname === '/api/stream' && req.method === 'GET') return openStream(req, res);
+
+    // A market's uploaded logo as an image. The URL carries a version, so it can be cached for good.
+    const logo = req.method === 'GET' ? /^\/api\/logo\/([^/]+)$/.exec(url.pathname) : null;
+    if (logo) {
+      let img: { type: string; bytes: Buffer } | null = null;
+      try {
+        img = service.logoImage(decodeURIComponent(logo[1]));
+      } catch {
+        /* bad id */
+      }
+      if (!img) return send(res, 404, { error: 'not_found', message: 'No logo.' });
+      res.writeHead(200, { 'content-type': img.type, 'cache-control': 'public, max-age=31536000, immutable', 'content-length': img.bytes.length });
+      return res.end(img.bytes);
+    }
 
     const match = routes
       .map((r) => ({ r, m: r.method === req.method ? r.pattern.exec(url.pathname) : null }))
@@ -1267,10 +1310,40 @@ function taskInput(b: Record<string, unknown>): Partial<TaskInput> {
   return out;
 }
 
+/** What the request accepts, noted on the response so send() can compress and answer 304s. */
+type Negotiated = ServerResponse & { gzipOk?: boolean; ifNoneMatch?: string | null };
+
+const ZIPPABLE = /^(?:text\/|application\/(?:json|javascript|manifest\+json|xml)|image\/svg\+xml)/;
+
+/** Gzips a response body when the client accepts it and it is worth it. */
+function maybeGzip(res: Negotiated, type: string, data: Buffer | string): { body: Buffer | string; headers: Record<string, string> } {
+  if (!res.gzipOk || !ZIPPABLE.test(type) || Buffer.byteLength(data) < 1400) return { body: data, headers: { vary: 'accept-encoding' } };
+  return { body: gzipSync(data), headers: { 'content-encoding': 'gzip', vary: 'accept-encoding' } };
+}
+
 function send(res: ServerResponse, status: number, body: unknown) {
   if (res.headersSent) return;
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-  res.end(JSON.stringify(body));
+  const r = res as Negotiated;
+  const json = JSON.stringify(body);
+  const type = 'application/json; charset=utf-8';
+  // GETs that succeed carry an ETag: the 8-second refreshes then cost a few bytes when nothing changed.
+  // "private, no-cache" keeps them out of shared caches but lets the browser revalidate.
+  if (status === 200 && r.ifNoneMatch !== null && r.ifNoneMatch !== undefined) {
+    // serverTime changes every call; leave it out so an unchanged list still matches.
+    const tagged = json.includes('"serverTime"') ? JSON.stringify(body, (k, v) => (k === 'serverTime' ? 0 : v)) : json;
+    const etag = `W/"${createHash('sha1').update(tagged).digest('base64url').slice(0, 22)}"`;
+    const headers = { 'cache-control': 'private, no-cache', etag, vary: 'accept-encoding, cookie' };
+    if (r.ifNoneMatch === etag) {
+      res.writeHead(304, headers);
+      return res.end();
+    }
+    const z = maybeGzip(r, type, json);
+    res.writeHead(status, { 'content-type': type, ...headers, ...z.headers, vary: headers.vary });
+    return res.end(z.body);
+  }
+  const z = maybeGzip(r, type, json);
+  res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', ...z.headers });
+  res.end(z.body);
 }
 
 async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
