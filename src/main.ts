@@ -61,10 +61,13 @@ const rewards = new RewardsService(
     chain: rpcChain(process.env.SOLANA_RPC_URL || rpcUrlFor(tokenCluster)),
     authoritySecret: process.env.TESTFPT_AUTHORITY_KEY || null,
     mint: process.env.TESTFPT_MINT || null,
+    walletKey: process.env.WALLET_ENCRYPTION_KEY || null,
   },
   cfg.publicUrl ?? 'https://www.firstprint.fun',
 );
 await rewards.init();
+// Server-paid TestFPT: daily streak mints, Firstprint-wallet reward claims, and confirmations.
+setInterval(() => void rewards.runChain().catch((err: Error) => log(`chain work failed: ${err.message}`)), 15_000).unref();
 const live = new LiveFeed(service);  // still serves the browser event stream; prices are only polled when not manual-only
 // Results are stored for the in-app bell by the service. Here they are logged and, where the player
 // signed in with email and a real mailer is set up, sent as a short email.

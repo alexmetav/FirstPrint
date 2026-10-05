@@ -214,3 +214,71 @@ test('without TestFPT: rewards go straight to the balance; referrals pay when th
   clock.advance(1);
   await assert.rejects(rewards.startClaim(host.id, 'x'), failsWith('token_off'));
 });
+
+test('Firstprint wallets: email players get a wallet, their rewards and daily streak arrive on chain, paid by the server', async () => {
+  const { WalletVault } = await import('../src/solana/vault.ts');
+  const vault = new WalletVault('a-long-test-secret-for-wallets');
+  assert.equal(vault.open(vault.seal('seed')), 'seed');
+  assert.throws(() => new WalletVault('a-different-secret-1').open(vault.seal('seed')), 'another key can’t open it');
+
+  const clock = new ManualClock(T0);
+  const service = new FirstprintService(openDb(':memory:'), clock, [venue]);
+  const { svm, chain } = liteChain();
+  const rewards = new RewardsService(service, { cluster: 'testnet', chain, walletKey: 'a-long-test-secret-for-wallets' }, 'https://firstprint.test');
+  rewards.confirmWaitMs = 0;
+  await rewards.init();
+  await rewards.setupAuthority();
+  await rewards.airdropAuthority();
+  const status = await rewards.createMint();
+  const mint = (status as { mint: Address }).mint;
+
+  // An email sign-up: no wallet of their own, so one is made.
+  const code = service.startEmailLogin('eva@example.com').code;
+  const { user } = service.verifyEmailCode('eva@example.com', code);
+  const addr = (await rewards.ensureWallet(user.id)) as Address;
+  assert.ok(addr);
+  assert.equal(await rewards.ensureWallet(user.id), null, 'only once');
+  assert.deepEqual(service.walletsFor(user.id).map((w) => [w.address, w.walletName]), [[addr, 'Firstprint wallet']]);
+  const sealed = (service.db.prepare('SELECT secret_sealed FROM embedded_wallets WHERE user_id = ?').get(user.id) as { secret_sealed: string }).secret_sealed;
+  assert.match(sealed, /^v1\./, 'the key is stored sealed, never in plain text');
+
+  // The welcome bonus is claimed by itself, signed and paid by the server.
+  await rewards.runChain();
+  assert.equal(await tokenBalance(svm, addr, mint), BigInt(START_POINTS));
+  assert.equal(service.getUser(user.id).points, START_POINTS);
+  assert.equal(svm.getBalance(addr) ?? 0n, 0n, 'the player never needed test SOL');
+
+  // The daily streak is minted to the wallet too.
+  service.claimDaily(user.id);
+  const daily = service.getUser(user.id).points - START_POINTS;
+  assert.ok(daily > 0);
+  await rewards.runChain();
+  assert.equal(await tokenBalance(svm, addr, mint), BigInt(START_POINTS + daily));
+  const act = rewards.chainActivity(user.id);
+  assert.equal(act.wallet, addr);
+  assert.deepEqual(act.activity.map((a) => [a.kind, a.status]), [['daily', 'confirmed'], ['claim', 'confirmed']]);
+  assert.ok(act.activity.every((a) => /explorer\.solana\.com\/tx\//.test(a.explorerUrl ?? '')));
+  await rewards.runChain();
+  assert.equal(await tokenBalance(svm, addr, mint), BigInt(START_POINTS + daily), 'nothing is minted twice');
+
+  // A player who signed in with their own wallet gets the daily mint there, with no signature asked.
+  const { user: p2, wallet } = await player(service, 'phil@example.com');
+  assert.equal(await rewards.ensureWallet(p2.id), null, 'has a wallet already');
+  service.claimDaily(p2.id);
+  await rewards.runChain();
+  assert.ok((await tokenBalance(svm, wallet.address, mint)) > 0n);
+  assert.equal(rewards.summary(p2.id).claimable, START_POINTS, 'their welcome bonus still waits for them to claim (they pay that fee)');
+
+  // Out of test SOL: nothing is sent; it goes out once the authority is topped up.
+  const realBalance = chain.balance;
+  chain.balance = async () => 1_000n;
+  clock.advance(24 * 60 * 60_000);
+  service.claimDaily(user.id);
+  await rewards.runChain();
+  assert.equal(rewards.chainCounts().mintsWaiting, 1);
+  assert.equal((await rewards.tokenStatus() as { lowFunds: boolean }).lowFunds, true, 'the admin page warns');
+  chain.balance = realBalance;
+  await rewards.runChain();
+  assert.equal(rewards.chainCounts().mintsWaiting, 0);
+  assert.equal(rewards.chainCounts().wallets, 1);
+});

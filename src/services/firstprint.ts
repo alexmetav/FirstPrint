@@ -271,6 +271,8 @@ export class FirstprintService {
   onAnnounce: (kind: 'live' | 'result', marketId: string) => void = () => {};
   /** Markets whose predictions just closed, however the close happened (timer tick or an admin preview). */
   onClosed: (marketIds: string[]) => void = () => {};
+  /** A daily streak claim went through (the rewards service mints it on chain as TestFPT). */
+  onDailyClaimed: (userId: string, day: string, amount: number) => void = () => {};
   private announce(kind: 'live' | 'result', marketId: string) {
     queueMicrotask(() => {
       try {
@@ -638,6 +640,7 @@ export class FirstprintService {
       const reward = dailyReward(nextDay);
       this.db.prepare('UPDATE users SET last_claim_day = ?, streak = ? WHERE id = ?').run(day, nextDay, userId);
       this.credit(userId, reward, 'daily', day);
+      this.onDailyClaimed(userId, day, reward);
       return this.getUser(userId);
     });
   }

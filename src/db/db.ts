@@ -42,6 +42,32 @@ function migrate(db: DB) {
     db.exec('ALTER TABLE markets ADD COLUMN result_alerted_at INTEGER');
     db.exec("UPDATE markets SET result_alerted_at = created_at WHERE status != 'open' AND base_price IS NOT NULL");
   }
+  // Firstprint wallets made for players who sign up without one (key sealed, see solana/vault.ts).
+  db.exec(`CREATE TABLE IF NOT EXISTS embedded_wallets (
+    user_id TEXT PRIMARY KEY REFERENCES users(id),
+    address TEXT NOT NULL UNIQUE,
+    secret_sealed TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`);
+  // TestFPT the server mints on its own (daily streak), one row per transaction, so each can be
+  // retried safely and shown with its explorer link.
+  db.exec(`CREATE TABLE IF NOT EXISTS chain_mints (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    wallet TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('queued', 'submitted', 'confirmed', 'failed')),
+    signature TEXT,
+    last_valid_height INTEGER,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE (user_id, kind, ref)
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS chain_mints_status ON chain_mints(status)');
   // People the owner gave admin-console access from Settings → Team (by email or wallet).
   db.exec(`CREATE TABLE IF NOT EXISTS team_members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

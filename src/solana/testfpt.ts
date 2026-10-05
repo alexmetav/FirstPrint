@@ -226,3 +226,35 @@ export async function newAuthoritySecret(): Promise<string> {
   const { randomBytes } = await import('node:crypto');
   return randomBytes(32).toString('hex');
 }
+
+export interface ServerMint {
+  transaction: Base64EncodedWireTransaction;
+  signature: string;
+  lastValidBlockHeight: bigint;
+}
+
+/**
+ * A mint the server signs and pays for on its own: `amount` TestFPT to `owner`, creating their
+ * token account if needed. Minting needs no signature from the owner, so this works for every
+ * player's wallet, and the player never needs test SOL.
+ */
+export async function buildServerMint(chain: Chain, authority: KeyPairSigner, mint: Address, owner: Address, amount: bigint): Promise<ServerMint> {
+  const [ata] = await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_2022_PROGRAM_ADDRESS });
+  const { blockhash, lastValidBlockHeight } = await chain.latestBlockhash();
+  const tx = await pipe(
+    createTransactionMessage({ version: 0 }),
+    (m) => setTransactionMessageFeePayerSigner(authority, m),
+    (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m),
+    (m) =>
+      appendTransactionMessageInstructions(
+        [
+          getCreateAssociatedTokenIdempotentInstruction({ payer: authority, ata, owner, mint, tokenProgram: TOKEN_2022_PROGRAM_ADDRESS }),
+          getMintToCheckedInstruction({ mint, token: ata, mintAuthority: authority, amount, decimals: TOKEN_DECIMALS }, { programAddress: TOKEN_2022_PROGRAM_ADDRESS }),
+        ],
+        m,
+      ),
+    (m) => signTransactionMessageWithSigners(m),
+  );
+  const wire = getBase64EncodedWireTransaction(tx);
+  return { transaction: wire, signature: transactionId(wire), lastValidBlockHeight };
+}

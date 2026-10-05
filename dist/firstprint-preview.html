@@ -10450,6 +10450,60 @@ svg.viz.viz-narrow {
   }
 }
 
+/* ===== Dashboard: Firstprint wallet and on-chain activity ===== */
+.fp-wallet {
+  display: inline-grid;
+  place-items: center;
+  color: var(--accent, var(--up));
+}
+.fp-wallet .i {
+  width: 18px;
+  height: 18px;
+}
+.chain-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chain-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.chain-list li > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.kpis-mini {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+.kpis-mini dt {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.kpis-mini dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.dash-wallets button.dw-link {
+  background: none;
+  border: 0;
+  padding: 4px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.dash-wallets button.dw-link:hover {
+  color: var(--text);
+}
+
 </style>
   </head>
   <body>
@@ -11021,6 +11075,7 @@ function createApi(baseUrl = '') {
     walletChallenge: (address) => request(`/api/auth/wallet/challenge?address=${encodeURIComponent(address)}`),
     walletVerify: (body) => post('/api/auth/wallet/verify', { ...body, ref: referralCode() }),
     rewards: () => request('/api/me/rewards'),
+    chain: () => request('/api/me/chain'),
     connectX: (username) => post('/api/me/x', { username }),
     startTask: (t) => post(`/api/tasks/${id(t)}/start`),
     verifyTask: (t) => post(`/api/tasks/${id(t)}/verify`),
@@ -12559,8 +12614,9 @@ async function loadRoute() {
       const preds = S.me ? (await S.api.myPredictions()).predictions : [];
       const history = S.me && S.api.ledger ? (await S.api.ledger().catch(() => ({ entries: [] }))).entries : [];
       const stats = S.me && S.api.stats ? await S.api.stats().catch(() => null) : null;
+      const chain = S.me && S.api.chain ? await S.api.chain().catch(() => null) : null;
       await loadDaily();
-      view.innerHTML = portfolioView(preds, history, stats);
+      view.innerHTML = portfolioView(preds, history, stats, chain);
     }
     document.title = titleFor();
   } catch (err) {
@@ -14151,7 +14207,7 @@ function leaderboardView(lb) {
     ${S.me && !lb.me ? '<p class="fine">You’ll appear here after one of your predictions settles.</p>' : ''}`;
 }
 
-function portfolioView(preds, history = [], stats = null) {
+function portfolioView(preds, history = [], stats = null, chain = null) {
   if (!S.me) {
     return `
       <header class="page-head"><span class="page-ico">${ico('dashboard')}</span><div><h1 class="page-title">Your dashboard</h1></div></header>
@@ -14195,7 +14251,8 @@ function portfolioView(preds, history = [], stats = null) {
         <aside class="dash-side">
           ${streakCard(true)}
           ${telegramCard()}
-          ${walletsCard()}
+          ${walletsCard(chain)}
+          ${chainCard(chain)}
           ${historyView(history)}
         </aside>
       </div>
@@ -14292,7 +14349,28 @@ function pastTable(st) {
     .join('')}</tbody></table>${refunds}`;
 }
 
-function walletsCard() {
+const CHAIN_KIND = { daily: 'Daily streak', claim: 'Rewards claim' };
+
+/** Every TestFPT transaction made for the player, newest first, each with its explorer link. */
+function chainCard(c) {
+  if (!c?.onChain || (!c.activity.length && !c.wallet)) return '';
+  const state = { confirmed: '', queued: 'sending…', submitted: 'confirming…', pending: 'waiting for your wallet', failed: 'failed', expired: 'expired' };
+  return `
+    <section class="dash-card">
+      <div class="dash-card-head"><h2>${ico('token')}On-chain activity</h2>${c.activity.length ? `<span class="count">${c.activity.length}</span>` : ''}</div>
+      ${
+        c.activity.length
+          ? `<ul class="chain-list">${c.activity
+              .map(
+                (a) => `<li><span><b>+${fmtNum(a.amount)} TestFPT</b><small class="muted">${esc(CHAIN_KIND[a.kind] ?? a.kind)} · ${fmtAgo(a.at)}${state[a.status] ? ` · ${state[a.status]}` : ''}</small></span>${a.explorerUrl ? `<a class="dw-link" href="${esc(a.explorerUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a>` : ''}</li>`,
+              )
+              .join('')}</ul>`
+          : '<p class="dash-card-text">Your daily streak and rewards are sent to your wallet as TestFPT, and each one shows up here.</p>'
+      }
+    </section>`;
+}
+
+function walletsCard(chain = null) {
   const ws = S.me.wallets;
   return `
     <section class="dash-card">
@@ -14301,8 +14379,14 @@ function walletsCard() {
         ws.length
           ? `<ul class="dash-wallets">${ws
               .map(
-                (w) => `<li>${WALLET_LOGOS[w.walletName] ? `<img class="wallet-logo" src="${WALLET_LOGOS[w.walletName]}" alt="" width="20" height="20" />` : ''}<span class="dw-main"><span class="addr" title="${esc(w.address)}">${esc(shortAddress(w.address))}</span><span class="muted">${esc(w.walletName || 'Solana wallet')}</span></span>
-                  <a class="dw-link" href="https://solscan.io/account/${encodeURIComponent(w.address)}" target="_blank" rel="noopener noreferrer" aria-label="View ${esc(shortAddress(w.address))} on Solscan">Solscan ${ico('external')}</a></li>`,
+                (w) => {
+                  const own = chain?.wallet === w.address;
+                  const link = own && chain.walletUrl
+                    ? `<a class="dw-link" href="${esc(chain.walletUrl)}" target="_blank" rel="noopener noreferrer" aria-label="View your Firstprint wallet on Solana Explorer">Explorer ${ico('external')}</a>`
+                    : `<a class="dw-link" href="https://solscan.io/account/${encodeURIComponent(w.address)}" target="_blank" rel="noopener noreferrer" aria-label="View ${esc(shortAddress(w.address))} on Solscan">Solscan ${ico('external')}</a>`;
+                  return `<li>${own ? `<span class="wallet-logo fp-wallet" aria-hidden="true">${ico('shield')}</span>` : WALLET_LOGOS[w.walletName] ? `<img class="wallet-logo" src="${WALLET_LOGOS[w.walletName]}" alt="" width="20" height="20" />` : ''}<span class="dw-main"><span class="addr" title="${esc(w.address)}">${esc(shortAddress(w.address))}</span><span class="muted">${own ? 'Firstprint wallet · made for you' : esc(w.walletName || 'Solana wallet')}</span></span>
+                  <button class="dw-link" data-action="copy-text" data-text="${esc(w.address)}" aria-label="Copy address">${ico('copy')}</button>${link}</li>`;
+                },
               )
               .join('')}</ul>`
           : '<p class="dash-card-text">No wallet linked. Link one to sign in with it and to claim TestFPT.</p>'
@@ -14643,6 +14727,13 @@ function earnView() {
 
 function claimCard(r) {
   const wallets = S.me.wallets;
+  if (r.firstprintWallet) {
+    return `
+    <section class="claim-card${r.claimable ? ' has-claim' : ' is-empty'}">
+      <div class="claim-amount"><span class="claim-ico">${ico('token')}</span><div><b>${r.claimable ? `Sending <span class="num">${fmtNum(r.claimable)}</span> TestFPT to your wallet…` : 'Rewards arrive by themselves'}</b><span class="muted">Everything you earn is sent to your Firstprint wallet (${esc(shortAddress(r.firstprintWallet))}) as TestFPT, on chain, with no fee for you.</span></div></div>
+      <div class="claim-side"><p class="fine" id="claim-status" role="status">${r.mintUrl ? `<a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a>` : ''}</p></div>
+    </section>`;
+  }
   return `
     <section class="claim-card${r.claimable ? ' has-claim' : ' is-empty'}">
       <div class="claim-amount"><span class="claim-ico">${ico('token')}</span><div><b>${r.claimable ? `<span class="num">${fmtNum(r.claimable)}</span> TestFPT ready to claim` : 'Nothing to claim yet'}</b><span class="muted">${r.claimable ? 'Send it to your wallet whenever you like.' : 'Finish a task or invite a friend, then claim it here as TestFPT.'}</span></div></div>
@@ -15292,7 +15383,7 @@ function finishTour() {
   } catch {
     /* storage unavailable */
   }
-  if (S.me && S.rewards?.onChain && !S.rewards.welcomeClaimed) return openAuth('start');
+  if (S.me && needsClaimSteps()) return openAuth('start');
   closeModal();
 }
 
@@ -15324,7 +15415,7 @@ function closeModal() {
 async function afterSignIn(user, created) {
   closeModal();
   await refreshMe();
-  const claimFirst = S.rewards?.onChain && !S.rewards.welcomeClaimed;
+  const claimFirst = needsClaimSteps();
   toast(created ? (claimFirst ? 'Account created. Claim your 1,000 TestFPT to start.' : 'Account created. 1,000 points added.') : `Signed in as ${S.me.username}`);
   S.tradeKey = '';
   await loadRoute();
@@ -15334,13 +15425,16 @@ async function afterSignIn(user, created) {
   else if (claimFirst) openAuth('start');
 }
 
+/** Players with their own wallet claim the welcome bonus themselves; a Firstprint wallet gets it by itself. */
+const needsClaimSteps = () => Boolean(S.rewards?.onChain && !S.rewards.welcomeClaimed && !S.rewards.firstprintWallet);
+
 /** After the profile step, new players see the getting-started steps if they still have to claim. */
 function afterProfile() {
   if (S.newPlayer) {
     S.newPlayer = false;
     return openTour();
   }
-  if (S.rewards?.onChain && !S.rewards.welcomeClaimed) openAuth('start');
+  if (needsClaimSteps()) openAuth('start');
   else closeModal();
 }
 
@@ -15850,7 +15944,9 @@ function tokenAdminSection(t) {
   if (t.ready) {
     return `<section class="panel">
       <div class="section-head"><span class="section-ico">${ico('token')}</span><div><h2>TestFPT token <span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Live</span></h2>
-      <p class="muted">Players claim their points to their wallets as TestFPT on Solana ${net}. They pay the network fee in test SOL.</p></div></div>
+      <p class="muted">${t.walletsOn ? `Email and Google players get a Firstprint wallet; their rewards and every player’s daily streak are minted to their wallets by this server, which pays the fees. Players with their own wallet still claim rewards themselves (they pay that fee).` : `Players claim their points to their wallets as TestFPT on Solana ${net}. They pay the network fee in test SOL. Set WALLET_ENCRYPTION_KEY on the server to give email and Google players a Firstprint wallet.`}</p></div></div>
+      ${t.lowFunds ? `<p class="form-error">The mint authority is almost out of test SOL (${t.authoritySol} SOL), so on-chain mints are paused. Send it test SOL: <code>${esc(t.authority)}</code> <a href="https://faucet.solana.com" target="_blank" rel="noopener noreferrer">faucet ${ico('external')}</a></p>` : ''}
+      ${t.chain ? `<dl class="kpis-mini"><div><dt>Firstprint wallets</dt><dd>${fmtNum(t.chain.wallets)}</dd></div><div><dt>Server mints</dt><dd>${fmtNum(t.chain.mintsConfirmed)}</dd></div><div><dt>Claims on chain</dt><dd>${fmtNum(t.chain.claimsConfirmed)}</dd></div><div><dt>Waiting</dt><dd>${fmtNum(t.chain.mintsWaiting)}</dd></div>${t.chain.mintsFailed ? `<div><dt>Failed</dt><dd>${fmtNum(t.chain.mintsFailed)}</dd></div>` : ''}<div><dt>Authority SOL</dt><dd>${t.authoritySol ?? '–'}</dd></div></dl>` : ''}
       <div class="kv"><span class="muted">Mint address</span><span class="copy-row"><code>${esc(t.mint)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(t.mint)}">${ico('copy')}Copy</button><a class="btn btn-sm" href="${esc(t.mintUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a></span></div>
       ${saveKeysNote(t)}</section>`;
   }
@@ -17020,7 +17116,7 @@ document.addEventListener('click', async (e) => {
         await collectPoints(from, got);
         S.me = me;
         S.daily = null;
-        toast(`+${got} points · Day ${day} streak${day > 1 ? ' 🔥' : ''}. Tomorrow: +${me.daily?.next ?? got}.`);
+        toast(`+${got} points · Day ${day} streak${day > 1 ? ' 🔥' : ''}${S.rewards?.onChain && me.wallets?.length ? ' · sent to your wallet as TestFPT' : ''}. Tomorrow: +${me.daily?.next ?? got}.`);
         renderTop();
         return loadRoute();
       } catch (err) {

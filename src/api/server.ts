@@ -230,6 +230,9 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('GET', '/api/me/rewards', ({ user }) => rewardsOn().summary(user().id));
 
+  // The player's Firstprint wallet and every TestFPT transaction made for them, with explorer links.
+  route('GET', '/api/me/chain', ({ user }) => rewardsOn().chainActivity(user().id));
+
   route('POST', '/api/me/x', async ({ req, user, body }) => {
     rateLimit(`x:${visitor(req)}`, 10, 60_000);
     const b = await body();
@@ -378,8 +381,10 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // --- User routes ----------------------------------------------------------------
 
-  route('GET', '/api/me', ({ req, user }) => {
+  route('GET', '/api/me', async ({ req, user }) => {
     const u = user();
+    // Email and Google players get a Firstprint wallet the first time they come back (or sign up).
+    if (opts.rewards) await opts.rewards.ensureWallet(u.id).catch((err: Error) => service.log(`wallet for ${u.id} failed: ${err.message}`));
     const adminLevel = accountLevel(req, u);
     return { ...publicUser(u, service.clock.now(), service.walletsFor(u.id)), unreadNotifications: service.unreadNotifications(u.id), isAdmin: adminLevel !== null, adminLevel };
   });
