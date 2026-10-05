@@ -106,12 +106,25 @@ test('channel: posts open markets not posted yet, then a single last-hour remind
   channel.remindClosing();
   channel.remindClosing();
   await channel.later(async () => {});
-  assert.deepEqual(posts.slice(2), ['@firstprintfun ⏳ <b>Last hour: LONG</b>'], 'token banners off: plain text');
+  assert.deepEqual(posts.slice(2), ['@firstprintfun [banner ok] ⏳ <b>Last hour: LONG</b>'], 'token banners are on by default');
 
-  // Each token's own banner, once switched on.
-  service.setSetting('telegram_token_banners', '1');
+  // A ticker the banner font can't draw: the fixed banner, never a broken image.
+  const cn = service.createManualMarket({ symbol: '币安人生', exchanges: ['mexc'], basePrice: 1, closeAt: T0 + 30 * HOUR, resultAt: T0 + 80 * HOUR, publish: true });
+  let photo: Uint8Array | null = null;
+  const send = t.sendPhotoTo;
+  t.sendPhotoTo = async (chat: string, png: Uint8Array, html: string) => {
+    photo = png;
+    return send(chat, png, html);
+  };
+  await channel.postLive(cn);
+  const { readFileSync } = await import('node:fs');
+  assert.deepEqual(Buffer.from(photo!), readFileSync(new URL('../assets/telegram/new-market.png', import.meta.url)), 'fixed banner');
+
+  // Switched off in Settings: new markets get the fixed banner again.
+  service.setTokenBanners(false);
+  assert.equal(service.tokenBannersEnabled(), false);
   await channel.postLive(long);
-  assert.equal(posts.at(-1), '@firstprintfun [banner ok] 🟢 <b>New market: LONG</b>');
+  assert.deepEqual(Buffer.from(photo!), readFileSync(new URL('../assets/telegram/new-market.png', import.meta.url)));
   assert.equal(service.getMarket(long).symbol, 'LONG');
 });
 
@@ -190,4 +203,11 @@ test('banners: each market gets its own PNG for new market, last hour and result
   assert.match(svg, /Agency &lt;x&gt;/, 'names are escaped');
   assert.match(svg, /5 Oct, 12:00 UTC/);
   assert.ok(isPng(renderBanner('live', { ...m, logoUrl: 'x' } as typeof m, 'data:image/webp;base64,AAAA')), 'a non-PNG logo falls back to the letter');
+
+  // Text the font can't draw never reaches the image.
+  assert.throws(() => renderBanner('live', { ...m, symbol: '币安人生' }), /can't draw/);
+  assert.doesNotMatch(bannerSvg('live', { ...m, name: '币安人生 Token' }), /币安/, 'a Chinese name is left off');
+  // Many exchanges fit on one line.
+  assert.match(bannerSvg('live', { ...m, exchange: 'Binance, MEXC, Bybit, OKX, Gate, Bitget, and KuCoin' }), /on Binance \+6 more/);
+  assert.match(bannerSvg('live', { ...m, exchange: 'MEXC and Gate' }), /on MEXC and Gate/);
 });

@@ -10284,3 +10284,20 @@ svg.viz.viz-narrow {
 .ex-verdict.fail {
   color: var(--crash);
 }
+
+/* ===== Admin: Telegram banner preview on the market form ===== */
+.banner-check {
+  display: grid;
+  gap: 8px;
+}
+.banner-check > .btn {
+  justify-self: start;
+}
+.banner-img {
+  display: block;
+  width: 100%;
+  max-width: 640px;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}

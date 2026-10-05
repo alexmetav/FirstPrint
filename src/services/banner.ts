@@ -31,6 +31,18 @@ export interface BannerMarket {
 
 export type BannerKind = 'live' | 'closing' | 'result';
 
+/**
+ * Text the Geist fonts can draw: Latin letters (with accents), digits and common punctuation.
+ * Anything else (Chinese, emoji, …) would come out as empty boxes, so it is never put on a banner.
+ */
+export const drawable = (s: string) => /^[\x20-\x7e\u00a0-\u024f\u2013\u2014\u2018\u2019\u201c\u201d\u2026\u00b7]*$/.test(s);
+
+/** "MEXC" or "MEXC +2 more", so a market on many exchanges still fits on one line. */
+function exchangeLabel(exchange: string) {
+  const names = exchange.split(/,\s*|\s+and\s+/).map((x) => x.trim()).filter(Boolean);
+  return names.length > 2 ? `${names[0]} +${names.length - 1} more` : names.join(' and ');
+}
+
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 function utc(ts: number) {
@@ -72,7 +84,8 @@ function tokenBlock(m: BannerMarket, logoPng: string | null, y: number) {
   const x = 80;
   const sym = m.symbol.toUpperCase();
   const symSize = Math.max(64, Math.min(124, Math.floor(820 / (Math.max(sym.length + 1, 4) * 0.64))));
-  const name = (m.name ?? '').trim();
+  // A name the font can't draw is left off; the ticker is checked before drawing (see renderBanner).
+  const name = drawable((m.name ?? '').trim()) ? (m.name ?? '').trim() : '';
   const shortName = name.length > 30 ? `${name.slice(0, 29)}…` : name;
   const avatar = logoPng
     ? `<clipPath id="logo"><circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}"/></clipPath>
@@ -83,7 +96,7 @@ function tokenBlock(m: BannerMarket, logoPng: string | null, y: number) {
   const tx = x + size + 44;
   return `${avatar}
     <text x="${tx}" y="${y + 92}" font-size="${symSize}" font-weight="700" fill="${C.text}" letter-spacing="-3">$${esc(sym)}</text>
-    <text x="${tx + 4}" y="${y + 150}" font-size="34" fill="${C.muted}">${esc(shortName ? `${shortName} · ` : '')}on ${esc(m.exchange)}</text>`;
+    <text x="${tx + 4}" y="${y + 150}" font-size="34" fill="${C.muted}">${esc(shortName ? `${shortName} · ` : '')}on ${esc(exchangeLabel(m.exchange))}</text>`;
 }
 
 
@@ -132,8 +145,12 @@ export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | n
   </svg>`;
 }
 
-/** Renders a market's banner to PNG bytes. */
+/**
+ * Renders a market's banner to PNG bytes. Throws for a ticker the font can't draw (such as
+ * 币安人生), so the caller sends the fixed banner or plain text instead of a broken image.
+ */
 export function renderBanner(kind: BannerKind, m: BannerMarket, logoPng: string | null = null): Uint8Array {
+  if (!drawable(m.symbol)) throw new Error(`the banner font can't draw the ticker ${m.symbol}`);
   const logo = logoPng && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(logoPng) ? logoPng : null;
   const resvg = new Resvg(bannerSvg(kind, m, logo), {
     fitTo: { mode: 'width', value: W },

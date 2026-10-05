@@ -1604,6 +1604,16 @@ export class FirstprintService {
 
   // --- Public Telegram channel ------------------------------------------------------
 
+  /** Each token's own banner on channel posts. On unless an admin switched it off in Settings. */
+  tokenBannersEnabled() {
+    return this.getSetting('telegram_token_banners') !== '0';
+  }
+
+  setTokenBanners(enabled: boolean) {
+    this.setSetting('telegram_token_banners', enabled ? '1' : '0');
+    return this.tokenBannersEnabled();
+  }
+
   /** Stores the PNG copy of a market's logo used on its Telegram banners. */
   setLogoPng(marketId: string, png: string | null) {
     if (png !== null && (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(png) || png.length > 300_000)) {

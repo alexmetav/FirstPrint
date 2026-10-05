@@ -10,6 +10,7 @@ import type { Mailer } from '../auth/mailer.ts';
 import type { Bucket } from '../engine/engine.ts';
 import { linkSiteToApp } from '../site/links.ts';
 import { fetchImage } from './fetchImage.ts';
+import { drawable, renderBanner } from '../services/banner.ts';
 import { channelName, type Telegram } from '../services/telegram.ts';
 import type { ChannelPoster } from '../services/channel.ts';
 import { analytics } from '../services/analytics.ts';
@@ -639,6 +640,43 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   // PNG copy of a market's logo for its Telegram banners (the admin page makes it in the browser).
+  // The Telegram banner a market would get, drawn from the form before it is saved, so the admin
+  // sees exactly what players will see (right logo, right ticker) before publishing.
+  route('POST', '/api/admin/banner-preview', async ({ req, body, requireAdmin }) => {
+    requireAdmin();
+    rateLimit(`banner:${visitor(req)}`, 60, 60_000);
+    const b = await body();
+    const symbol = String(b.symbol ?? '').trim().toUpperCase();
+    if (!symbol) throw new AppError(400, 'bad_symbol', 'Enter the token symbol first.');
+    const names = new Map(service.venueList().map((v) => [v.id, v.name]));
+    const exchanges = (Array.isArray(b.exchanges) ? b.exchanges : []).map((id: unknown) => names.get(String(id))).filter(Boolean) as string[];
+    const logoPng = typeof b.logoPng === 'string' && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(b.logoPng) && b.logoPng.length < 300_000 ? b.logoPng : null;
+    if (!service.tokenBannersEnabled()) return { png: null, reason: 'Token banners are off (Settings → Player channel), so this market is posted with the fixed banner.' };
+    if (!drawable(symbol)) return { png: null, reason: `The banner font can’t draw “${symbol}”, so this market is posted with the fixed banner instead.` };
+    const basePrice = b.basePrice === null || b.basePrice === '' || b.basePrice === undefined ? null : Number(b.basePrice);
+    const png = renderBanner(
+      'live',
+      {
+        symbol,
+        name: String(b.name ?? '').trim().slice(0, 60) || null,
+        exchange: exchanges.join(', ') || 'MEXC',
+        outcomes: b.outcomes === 'binary' ? 'binary' : 'ladder',
+        basePrice: basePrice !== null && Number.isFinite(basePrice) && basePrice > 0 ? basePrice : null,
+        closeAt: Number(b.closeAt) || Date.now(),
+        settleAt: Number(b.resultAt) || Date.now(),
+      },
+      logoPng,
+    );
+    return { png: `data:image/png;base64,${Buffer.from(png).toString('base64')}`, reason: logoPng ? null : 'No logo yet: the banner shows the first letter instead.' };
+  });
+
+  route('POST', '/api/admin/telegram/token-banners', async ({ req, body, requireAdmin }) => {
+    requireAdmin();
+    const enabled = service.setTokenBanners(Boolean((await body()).enabled));
+    audit(req, enabled ? 'telegram_token_banners_on' : 'telegram_token_banners_off', null);
+    return { enabled };
+  });
+
   route('POST', '/api/admin/markets/:id/logo-png', async ({ params, body, requireAdmin }) => {
     requireAdmin();
     service.setLogoPng(params.id, String((await body()).logoPng ?? ''));
@@ -750,6 +788,7 @@ export function createApiServer(opts: ServerOptions): Server {
         channel: service.getSetting('telegram_channel'),
         unposted: service.unannouncedOpenMarkets().length,
         open: service.channelMarkets().length,
+        tokenBanners: service.tokenBannersEnabled(),
       },
       backup: opts.backupStatus?.() ?? { enabled: false, lastOkAt: null, lastError: null },
       presets: Object.entries(LIVE_PRESETS).map(([id, p]) => ({ id, label: p.label })),

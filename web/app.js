@@ -3360,6 +3360,38 @@ function afterAdminRender() {
   if (form && link && /^https:\/\//i.test(link)) copyLogo(form, link);
   // A listing from the review queue: show its live price straight away.
   if (form?.querySelector('[name=detectionId]')) runPriceCheck();
+  if (form && form.querySelector('[name=symbol]')?.value.trim()) runBannerPreview();
+}
+
+/** Draws the market's Telegram banner from the form as it is now (nothing is saved). */
+async function runBannerPreview() {
+  const form = $('#admin-market');
+  const out = $('#banner-preview-out');
+  if (!form || !out) return;
+  const d = new FormData(form);
+  const symbol = String(d.get('symbol') ?? form.querySelector('[name=symbol]')?.value ?? '').trim();
+  if (!symbol) {
+    out.innerHTML = `<p class="checks-note">${ico('info')}Enter the token symbol first.</p>`;
+    return;
+  }
+  const seq = (A.bannerSeq = (A.bannerSeq ?? 0) + 1);
+  out.innerHTML = `<p class="checks-note">${ico('clock')}Drawing the banner…</p>`;
+  try {
+    const r = await A.api.bannerPreview({
+      symbol,
+      name: String(d.get('name') || '').trim(),
+      exchanges: d.getAll('exchanges').map(String),
+      basePrice: d.has('upcoming') ? null : d.get('basePrice') || null,
+      closeAt: inputMs(d.get('closeAt')),
+      resultAt: inputMs(d.get('resultAt')),
+      outcomes: d.get('outcomes') === 'binary' ? 'binary' : 'ladder',
+      logoPng: await logoPngCopy(String(d.get('logoUrl') || '')),
+    });
+    if (seq !== A.bannerSeq || !out.isConnected) return;
+    out.innerHTML = `${r.png ? `<img class="banner-img" src="${r.png}" alt="Telegram banner for ${esc(symbol)}" />` : ''}${r.reason ? `<p class="checks-note">${ico('info')}${esc(r.reason)}</p>` : ''}`;
+  } catch (err) {
+    if (seq === A.bannerSeq && out.isConnected) out.innerHTML = `<p class="checks-note">${ico('info')}Couldn’t draw the banner: ${esc(err.message)}</p>`;
+  }
 }
 
 /** Open markets compared with live exchange prices (cached for two minutes). */
@@ -3606,6 +3638,8 @@ const ADMIN_ACTIONS = {
   telegram_channel_off: 'Stopped posting to the Telegram channel',
   telegram_posted: 'Posted a market to the Telegram channel',
   telegram_posted_open: 'Posted open markets to the Telegram channel',
+  telegram_token_banners_on: 'Turned token banners on for the Telegram channel',
+  telegram_token_banners_off: 'Turned token banners off for the Telegram channel',
 };
 
 /** "MEXC, OKX and Gate" */
@@ -3753,6 +3787,15 @@ function marketForm(m, pre = null) {
         <span class="muted">Compares the start price and timing with what the chosen exchanges show right now.</span>
         <div id="price-check-out" aria-live="polite"></div>
       </div>
+      ${
+        A.info.telegram?.channel
+          ? `<div class="banner-check" style="grid-column:1/-1">
+        <button class="btn btn-sm" type="button" data-action="admin-banner-preview">${ico('telegram')}Preview Telegram banner</button>
+        <span class="muted">What the channel post will look like. Check the logo is this token’s, not another token with the same ticker.</span>
+        <div id="banner-preview-out" aria-live="polite"></div>
+      </div>`
+          : ''
+      }
       <fieldset class="venues"><legend class="field-label">Reference exchanges</legend>
         ${A.info.exchanges
           .filter((e) => e.enabled || chosen.has(e.id))
@@ -3918,7 +3961,9 @@ function telegramPanel(t) {
           t.channel
             ? `<p class="all-good">${ico('checkCircle')}Posting to <a href="https://t.me/${esc(t.channel)}" target="_blank" rel="noopener noreferrer">@${esc(t.channel)}</a></p>
                <p class="muted">New markets and results are posted by themselves, and a “last hour” reminder goes out an hour before predictions close.${t.unposted ? ` <b>${t.unposted} open market${t.unposted === 1 ? ' hasn’t' : 's haven’t'} been posted yet</b> (made before the channel was set up).` : ''}</p>
-               <div class="admin-actions">${t.unposted ? `<button class="btn btn-solid btn-sm" data-action="admin-tg-post-open">${ico('telegram')}Post ${t.unposted === 1 ? 'it' : `all ${t.unposted}`} now</button>` : ''}${t.open && t.open > t.unposted ? `<button class="btn btn-sm" data-action="admin-tg-post-open" data-again="1">${ico('telegram')}Post all ${t.open} open markets again</button>` : ''}<button class="btn btn-sm" data-action="admin-tg-channel-remove">Stop posting</button></div>`
+               <div class="admin-actions">${t.unposted ? `<button class="btn btn-solid btn-sm" data-action="admin-tg-post-open">${ico('telegram')}Post ${t.unposted === 1 ? 'it' : `all ${t.unposted}`} now</button>` : ''}${t.open && t.open > t.unposted ? `<button class="btn btn-sm" data-action="admin-tg-post-open" data-again="1">${ico('telegram')}Post all ${t.open} open markets again</button>` : ''}<button class="btn btn-sm" data-action="admin-tg-channel-remove">Stop posting</button></div>
+               <div class="toggle-grid"><label class="toggle"><input type="checkbox" data-action="admin-token-banners"${t.tokenBanners ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>Token banners</label></div>
+               <p class="muted">${t.tokenBanners ? 'Each post gets the token’s own banner: its logo, ticker and details. A ticker the banner font can’t draw (such as Chinese) falls back to the fixed banner. Check it with “Preview Telegram banner” on the market form before publishing.' : 'Off: new markets use the fixed banner, and reminders and results are text only.'}</p>`
             : `<ol class="tg-steps">
                 <li>In Telegram, create a <b>New Channel</b>, make it <b>Public</b> and give it a link, like <code>firstprint_markets</code>.</li>
                 <li>Open the channel → <b>Administrators</b> → <b>Add Admin</b>, pick your bot, and leave <b>Post Messages</b> on.</li>
@@ -4129,6 +4174,17 @@ async function onAdminAction(action, el) {
       return renderAdmin();
     case 'admin-price-check':
       return runPriceCheck();
+    case 'admin-banner-preview':
+      return runBannerPreview();
+    case 'admin-token-banners':
+      try {
+        await A.api.setTokenBanners(el.checked);
+        A.info = await A.api.ping();
+        toast(el.checked ? 'Each market now gets its own banner on Telegram.' : 'Token banners are off. New markets use the fixed banner.');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
     case 'admin-use-price': {
       const form = $('#admin-market');
       const up = form?.querySelector('[data-upcoming]');
@@ -4704,6 +4760,7 @@ document.addEventListener(
 /** Puts a logo (link or data URL, '' for none) into the market form and its preview. */
 function setLogo(form, value, { keepLink = false } = {}) {
   if (!form) return;
+  if (form.id === 'admin-market' && $('#banner-preview-out')) setTimeout(runBannerPreview, 0);
   form.querySelector('[name=logoUrl]').value = value;
   if (!keepLink) form.querySelector('[data-logo-link]').value = value.startsWith('data:') ? '' : value;
   const preview = form.querySelector('[data-logo-preview]');
