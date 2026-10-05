@@ -14026,7 +14026,8 @@ async function submitPrediction() {
     const payout = S.trade.quote?.payout;
     await S.api.predict(m.id, bucket, stake);
     celebrate(isYesNo(m) && bucket === 'down' ? 'crash' : bucket);
-    toast(`You’re in! ${oName(bucket, isYesNo(m))} for ${fmtPts(stake)}${payout ? `. Win about ${fmtPts(payout)} if it lands.` : '.'}`);
+    const onChain = S.me?.wallets?.some((w) => w.walletName === 'Firstprint wallet');
+    toast(`You’re in! ${oName(bucket, isYesNo(m))} for ${fmtPts(stake)}${payout ? `. Win about ${fmtPts(payout)} if it lands.` : '.'}${onChain ? ' Your stake goes on chain as TestFPT.' : ''}`);
     $('#trade-error').textContent = '';
     closeSheet();
     await refreshMe();
@@ -14349,7 +14350,7 @@ function pastTable(st) {
     .join('')}</tbody></table>${refunds}`;
 }
 
-const CHAIN_KIND = { daily: 'Daily streak', claim: 'Rewards claim' };
+const CHAIN_KIND = { daily: 'Daily streak', claim: 'Rewards claim', stake: 'Prediction', payout: 'Winnings', refund: 'Refund' };
 
 /** Every TestFPT transaction made for the player, newest first, each with its explorer link. */
 function chainCard(c) {
@@ -14362,10 +14363,10 @@ function chainCard(c) {
         c.activity.length
           ? `<ul class="chain-list">${c.activity
               .map(
-                (a) => `<li><span><b>+${fmtNum(a.amount)} TestFPT</b><small class="muted">${esc(CHAIN_KIND[a.kind] ?? a.kind)} · ${fmtAgo(a.at)}${state[a.status] ? ` · ${state[a.status]}` : ''}</small></span>${a.explorerUrl ? `<a class="dw-link" href="${esc(a.explorerUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a>` : ''}</li>`,
+                (a) => `<li><span><b class="${a.amount < 0 ? '' : 'profit-pos'}">${a.amount < 0 ? '−' : '+'}${fmtNum(Math.abs(a.amount))} TestFPT</b><small class="muted">${esc(CHAIN_KIND[a.kind] ?? a.kind)}${a.symbol ? ` · <a href="#/market/${encodeURIComponent(a.marketId)}">${esc(a.symbol)}</a>` : ''} · ${fmtAgo(a.at)}${state[a.status] ? ` · ${state[a.status]}` : ''}</small></span>${a.explorerUrl ? `<a class="dw-link" href="${esc(a.explorerUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a>` : ''}</li>`,
               )
               .join('')}</ul>`
-          : '<p class="dash-card-text">Your daily streak and rewards are sent to your wallet as TestFPT, and each one shows up here.</p>'
+          : '<p class="dash-card-text">Your daily streak, rewards, predictions and winnings move as TestFPT on chain, and each one shows up here.</p>'
       }
     </section>`;
 }
@@ -15946,7 +15947,7 @@ function tokenAdminSection(t) {
       <div class="section-head"><span class="section-ico">${ico('token')}</span><div><h2>TestFPT token <span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Live</span></h2>
       <p class="muted">${t.walletsOn ? `Email and Google players get a Firstprint wallet; their rewards and every player’s daily streak are minted to their wallets by this server, which pays the fees. Players with their own wallet still claim rewards themselves (they pay that fee).` : `Players claim their points to their wallets as TestFPT on Solana ${net}. They pay the network fee in test SOL. Set WALLET_ENCRYPTION_KEY on the server to give email and Google players a Firstprint wallet.`}</p></div></div>
       ${t.lowFunds ? `<p class="form-error">The mint authority is almost out of test SOL (${t.authoritySol} SOL), so on-chain mints are paused. Send it test SOL: <code>${esc(t.authority)}</code> <a href="https://faucet.solana.com" target="_blank" rel="noopener noreferrer">faucet ${ico('external')}</a></p>` : ''}
-      ${t.chain ? `<dl class="kpis-mini"><div><dt>Firstprint wallets</dt><dd>${fmtNum(t.chain.wallets)}</dd></div><div><dt>Server mints</dt><dd>${fmtNum(t.chain.mintsConfirmed)}</dd></div><div><dt>Claims on chain</dt><dd>${fmtNum(t.chain.claimsConfirmed)}</dd></div><div><dt>Waiting</dt><dd>${fmtNum(t.chain.mintsWaiting)}</dd></div>${t.chain.mintsFailed ? `<div><dt>Failed</dt><dd>${fmtNum(t.chain.mintsFailed)}</dd></div>` : ''}<div><dt>Authority SOL</dt><dd>${t.authoritySol ?? '–'}</dd></div></dl>` : ''}
+      ${t.chain ? `<dl class="kpis-mini"><div><dt>Firstprint wallets</dt><dd>${fmtNum(t.chain.wallets)}</dd></div><div><dt>On-chain transactions</dt><dd>${fmtNum(t.chain.mintsConfirmed)}</dd></div><div><dt>Claims on chain</dt><dd>${fmtNum(t.chain.claimsConfirmed)}</dd></div><div><dt>Waiting</dt><dd>${fmtNum(t.chain.mintsWaiting)}</dd></div>${t.chain.mintsFailed ? `<div><dt>Failed</dt><dd>${fmtNum(t.chain.mintsFailed)}</dd></div>` : ''}<div><dt>Authority SOL</dt><dd>${t.authoritySol ?? '–'}</dd></div></dl>` : ''}
       <div class="kv"><span class="muted">Mint address</span><span class="copy-row"><code>${esc(t.mint)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(t.mint)}">${ico('copy')}Copy</button><a class="btn btn-sm" href="${esc(t.mintUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a></span></div>
       ${saveKeysNote(t)}</section>`;
   }

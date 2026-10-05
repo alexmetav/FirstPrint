@@ -37,6 +37,11 @@ function liteChain() {
       svm.airdrop(a, lamports(amount));
       return 'airdrop' as never;
     },
+    async tokenBalance(owner, mint) {
+      const [ata] = await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_2022_PROGRAM_ADDRESS });
+      const acct = svm.getAccount(ata);
+      return acct.exists ? decodeToken(acct).data.amount : 0n;
+    },
   };
   return { svm, chain };
 }
@@ -281,4 +286,63 @@ test('Firstprint wallets: email players get a wallet, their rewards and daily st
   await rewards.runChain();
   assert.equal(rewards.chainCounts().mintsWaiting, 0);
   assert.equal(rewards.chainCounts().wallets, 1);
+});
+
+test('predictions on chain: stakes move TestFPT from Firstprint wallets to the escrow, payouts and refunds move it back', async () => {
+  const { Scheduler } = await import('../src/workers/scheduler.ts');
+  const clock = new ManualClock(T0);
+  const service = new FirstprintService(openDb(':memory:'), clock, [venue]);
+  const { svm, chain } = liteChain();
+  const rewards = new RewardsService(service, { cluster: 'testnet', chain, walletKey: 'a-long-test-secret-for-wallets' }, 'https://firstprint.test');
+  rewards.confirmWaitMs = 0;
+  await rewards.init();
+  await rewards.setupAuthority();
+  await rewards.airdropAuthority();
+  const status = (await rewards.createMint()) as { mint: Address; authority: Address };
+  const mint = status.mint;
+
+  const signUp = async (email: string) => {
+    const { user } = service.verifyEmailCode(email, service.startEmailLogin(email).code);
+    const addr = (await rewards.ensureWallet(user.id)) as Address;
+    return { id: user.id, addr };
+  };
+  const ana = await signUp('ana@example.com');
+  const ben = await signUp('ben@example.com');
+  await rewards.runChain();
+  assert.equal(await tokenBalance(svm, ana.addr, mint), 1000n);
+
+  const id = service.createManualMarket({ symbol: 'XYZ', exchanges: ['exa'], basePrice: 2, closeAt: T0 + 60 * 60_000, publish: true });
+  service.placePrediction(id, ana.id, 'up', 300);
+  service.placePrediction(id, ben.id, 'down', 200);
+  await rewards.runChain();
+  assert.equal(await tokenBalance(svm, ana.addr, mint), 700n, 'the stake left Ana’s wallet');
+  assert.equal(await tokenBalance(svm, ben.addr, mint), 800n);
+  assert.equal(await chain.tokenBalance(status.authority, mint), 500n, 'and sits in the escrow');
+  const stakes = rewards.chainActivity(ana.id).activity.filter((a) => a.kind === 'stake');
+  assert.equal(stakes.length, 1);
+  assert.equal(stakes[0].status, 'confirmed');
+  assert.match(stakes[0].explorerUrl ?? '', /explorer\.solana\.com\/tx\//);
+
+  clock.advance(2 * 60 * 60_000);
+  await new Scheduler(service, async () => {}, { tickMs: 1000 }).tick();
+  service.resolveManualMarket(id, { finalPrice: 2.5 }); // Up wins
+  await rewards.runChain();
+  const anaPoints = service.getUser(ana.id).points;
+  assert.equal(await tokenBalance(svm, ana.addr, mint), BigInt(anaPoints), 'Ana’s wallet matches her points');
+  assert.equal(await tokenBalance(svm, ben.addr, mint), BigInt(service.getUser(ben.id).points));
+  assert.ok(anaPoints > 1000, 'she won');
+  const kinds = rewards.chainActivity(ana.id).activity.map((a) => `${a.kind}:${a.status}`);
+  assert.ok(kinds.includes('payout:confirmed'));
+  await rewards.runChain();
+  assert.equal(await tokenBalance(svm, ana.addr, mint), BigInt(anaPoints), 'nothing moves twice');
+
+  // A cancelled market refunds on chain too.
+  const id2 = service.createManualMarket({ symbol: 'ABC', exchanges: ['exa'], basePrice: 1, closeAt: clock.now() + 60 * 60_000, publish: true });
+  service.placePrediction(id2, ben.id, 'up', 100);
+  await rewards.runChain();
+  assert.equal(await tokenBalance(svm, ben.addr, mint), BigInt(service.getUser(ben.id).points));
+  service.cancelMarket(id2);
+  await rewards.runChain();
+  assert.equal(await tokenBalance(svm, ben.addr, mint), BigInt(service.getUser(ben.id).points), 'refund back in the wallet');
+  assert.ok(rewards.chainActivity(ben.id).activity.some((a) => a.kind === 'refund' && a.status === 'confirmed'));
 });
