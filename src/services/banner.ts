@@ -79,69 +79,101 @@ function brand(x: number, y: number) {
 }
 
 
+/** The token: logo (or a letter avatar), the ticker, and its name and exchange underneath. */
 function tokenBlock(m: BannerMarket, logoPng: string | null, y: number) {
-  const size = 176;
+  const size = 160;
   const x = 80;
   const sym = m.symbol.toUpperCase();
-  const symSize = Math.max(64, Math.min(124, Math.floor(820 / (Math.max(sym.length + 1, 4) * 0.64))));
+  const symSize = Math.max(60, Math.min(110, Math.floor(780 / (Math.max(sym.length + 1, 4) * 0.64))));
   // A name the font can't draw is left off; the ticker is checked before drawing (see renderBanner).
   const name = drawable((m.name ?? '').trim()) ? (m.name ?? '').trim() : '';
   const shortName = name.length > 30 ? `${name.slice(0, 29)}…` : name;
+  const cx = x + size / 2;
+  const cy = y + size / 2;
   const avatar = logoPng
-    ? `<clipPath id="logo"><circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}"/></clipPath>
-       <circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2 + 4}" fill="#ffffff" fill-opacity="0.08"/>
+    ? `<clipPath id="logo"><circle cx="${cx}" cy="${cy}" r="${size / 2}"/></clipPath>
        <image href="${logoPng}" x="${x}" y="${y}" width="${size}" height="${size}" clip-path="url(#logo)" preserveAspectRatio="xMidYMid slice"/>`
-    : `<circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}" fill="${avatarColor(sym)}"/>
-       <text x="${x + size / 2}" y="${y + size / 2 + 30}" text-anchor="middle" font-size="88" font-weight="700" fill="#ffffff">${esc(sym.slice(0, 1))}</text>`;
-  const tx = x + size + 44;
+    : `<circle cx="${cx}" cy="${cy}" r="${size / 2}" fill="${avatarColor(sym)}"/>
+       <text x="${cx}" y="${cy + 28}" text-anchor="middle" font-size="80" font-weight="700" fill="#ffffff">${esc(sym.slice(0, 1))}</text>`;
+  const tx = x + size + 40;
   return `${avatar}
-    <text x="${tx}" y="${y + 92}" font-size="${symSize}" font-weight="700" fill="${C.text}" letter-spacing="-3">$${esc(sym)}</text>
-    <text x="${tx + 4}" y="${y + 150}" font-size="34" fill="${C.muted}">${esc(shortName ? `${shortName} · ` : '')}on ${esc(exchangeLabel(m.exchange))}</text>`;
+    <text x="${tx}" y="${y + 92}" font-size="${symSize}" font-weight="700" fill="${C.text}" letter-spacing="-2.5">${esc(sym)}</text>
+    <text x="${tx + 3}" y="${y + 142}" font-size="30" fill="${C.muted}">${esc(shortName ? `${shortName} · ` : '')}on ${esc(exchangeLabel(m.exchange))}</text>`;
 }
 
-
+/** Up to three label / value pairs along the bottom, like an exchange listing notice. */
+function facts(items: [string, string][], y: number) {
+  return items
+    .slice(0, 3)
+    .map(
+      ([label, value], i) => `<g transform="translate(${80 + i * 340},${y})">
+        <text font-family="Geist Mono" font-size="17" font-weight="500" fill="${C.muted}" letter-spacing="1.8">${esc(label.toUpperCase())}</text>
+        <text y="44" font-size="30" font-weight="600" fill="${C.text}">${esc(value)}</text>
+      </g>`,
+    )
+    .join('');
+}
 
 /**
- * The SVG for a market's banner (exported for tests and previews). Kept deliberately minimal:
- * the brand, the token (logo and ticker), one headline and one line of detail. Nothing else.
+ * The SVG for a market's banner (exported for tests and previews). Clean and minimal, like an
+ * exchange listing notice: the status, one plain headline, the token, and the key facts.
+ * No slogans.
  */
 export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | null = null) {
-  const accent = kind === 'live' ? '#30d158' : kind === 'closing' ? '#ff9f0a' : OUTCOME_COLORS[m.result?.winningBucket ?? 'flat'] ?? '#3987e5';
-  const tag = kind === 'live' ? 'NEW MARKET' : kind === 'closing' ? 'LAST HOUR' : 'RESULT';
-  let headline = '';
-  let detail = '';
+  const upcoming = m.basePrice === null;
+  const status =
+    kind === 'live'
+      ? upcoming
+        ? { text: 'UPCOMING', color: '#ff9f0a' }
+        : { text: 'LIVE', color: '#30d158' }
+      : kind === 'closing'
+        ? { text: 'CLOSING SOON', color: '#ff9f0a' }
+        : { text: 'RESULT', color: OUTCOME_COLORS[m.result?.winningBucket ?? 'flat'] ?? '#3987e5' };
+  let headline: string;
+  let items: [string, string][];
   if (kind === 'live') {
-    headline =
-      m.outcomes === 'binary' && m.basePrice !== null
-        ? `<tspan fill="${C.text}">Above ${esc(price(m.basePrice))}?</tspan> <tspan fill="${C.muted}">Yes or No.</tspan>`
-        : `<tspan fill="${C.text}">Moon or Crash?</tspan> <tspan fill="${C.muted}">Call it.</tspan>`;
-    detail = `${m.basePrice === null ? 'Starts at listing' : `Start ${price(m.basePrice)}`}   ·   Closes ${utc(m.closeAt)}`;
+    headline = 'New Market Listed';
+    items = [
+      ['Start price', upcoming ? 'At listing' : price(m.basePrice!)],
+      ['Predictions close', utc(m.closeAt)],
+      ['Result', utc(m.settleAt)],
+    ];
   } else if (kind === 'closing') {
-    headline = `<tspan fill="${accent}">1 hour left</tspan> <tspan fill="${C.muted}">to predict.</tspan>`;
-    detail = m.predictors ? `${(m.predictors ?? 0).toLocaleString('en-US')} predictor${m.predictors === 1 ? '' : 's'}   ·   ${(m.pool ?? 0).toLocaleString('en-US')} pts in the pool` : 'No picks yet. Early picks earn more.';
+    headline = 'Last Hour to Predict';
+    items = [
+      ['Predictions close', utc(m.closeAt)],
+      ['Predictors', (m.predictors ?? 0).toLocaleString('en-US')],
+      ['Pool', `${(m.pool ?? 0).toLocaleString('en-US')} pts`],
+    ];
   } else {
     const r = m.result;
     const won = r?.winningBucket ? (m.outcomes === 'binary' ? (r.winningBucket === 'up' ? 'Yes' : 'No') : OUTCOME_NAMES[r.winningBucket]) : 'Settled';
-    const pct = r?.returnPct != null ? `${r.returnPct >= 0 ? '+' : ''}${(r.returnPct * 100).toFixed(1)}%` : '';
-    headline = `<tspan fill="${accent}">${esc(won)}</tspan>${pct ? ` <tspan fill="${C.muted}">${esc(pct)}</tspan>` : ''}`;
-    const move = r?.basePrice != null && r?.finalPrice != null ? `${price(r.basePrice)} → ${price(r.finalPrice)}   ·   ` : '';
-    detail = `${move}${(r?.pool ?? 0).toLocaleString('en-US')} pts paid out`;
+    const pct = r?.returnPct != null ? ` ${r.returnPct >= 0 ? '+' : ''}${(r.returnPct * 100).toFixed(1)}%` : '';
+    headline = 'Market Settled';
+    items = [
+      ['Outcome', `${won}${pct}`],
+      ...(r?.basePrice != null && r?.finalPrice != null ? [['Price', `${price(r.basePrice)} → ${price(r.finalPrice)}`] as [string, string]] : []),
+      ['Paid out', `${(r?.pool ?? 0).toLocaleString('en-US')} pts`],
+    ];
   }
+  const pillW = status.text.length * 14 + 62;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Geist">
     <defs>
-      <radialGradient id="glow" cx="0.85" cy="0" r="0.7"><stop offset="0" stop-color="${accent}" stop-opacity="0.16"/><stop offset="1" stop-color="${accent}" stop-opacity="0"/></radialGradient>
+      <radialGradient id="glow" cx="0.9" cy="0" r="0.6"><stop offset="0" stop-color="${status.color}" stop-opacity="0.10"/><stop offset="1" stop-color="${status.color}" stop-opacity="0"/></radialGradient>
     </defs>
     <rect width="${W}" height="${H}" fill="${C.bg}"/>
     <rect width="${W}" height="${H}" fill="url(#glow)"/>
-    ${brand(80, 70)}
-    <g transform="translate(${W - 80},108)">
-      <circle cx="-${tag.length * 15.4 + 22}" cy="-7" r="6" fill="${accent}"/>
-      <text text-anchor="end" font-family="Geist Mono" font-size="21" font-weight="500" fill="${accent}" letter-spacing="2.6">${esc(tag)}</text>
+    ${brand(80, 64)}
+    <g transform="translate(${W - 80 - pillW},70)">
+      <rect width="${pillW}" height="48" rx="24" fill="${status.color}" fill-opacity="0.12" stroke="${status.color}" stroke-opacity="0.5"/>
+      <circle cx="28" cy="24" r="6" fill="${status.color}"/>
+      <text x="46" y="31" font-family="Geist Mono" font-size="19" font-weight="500" fill="${status.color}" letter-spacing="2">${esc(status.text)}</text>
     </g>
-    ${tokenBlock(m, logoPng, 214)}
-    <text x="80" y="540" font-size="60" font-weight="600" letter-spacing="-1.8">${headline}</text>
-    <text x="82" y="598" font-size="28" fill="${C.muted}">${esc(detail)}</text>
-    <text x="${W - 80}" y="${H - 52}" text-anchor="end" font-family="Geist Mono" font-size="18" fill="${C.muted}" letter-spacing="1">firstprint.fun</text>
+    <text x="80" y="232" font-size="56" font-weight="600" fill="${C.text}" letter-spacing="-1.4">${esc(headline)}</text>
+    ${tokenBlock(m, logoPng, 286)}
+    <line x1="80" y1="524" x2="${W - 80}" y2="524" stroke="${C.line}" stroke-width="1.5"/>
+    ${facts(items, 576)}
+    <text x="${W - 80}" y="${H - 34}" text-anchor="end" font-family="Geist Mono" font-size="17" fill="${C.muted}" letter-spacing="1">firstprint.fun</text>
   </svg>`;
 }
 
