@@ -1400,8 +1400,9 @@ main:focus {
   }
 }
 
+/* Reduced motion switches animation off everywhere, except the trending stack, which has its own gentle version. */
 @media (prefers-reduced-motion: reduce) {
-  *,
+  *:not(.hero-slide),
   *::before,
   *::after {
     transition: none !important;
@@ -8829,12 +8830,30 @@ p,
   width: 18px;
   background: var(--text);
 }
+/* Reduced motion: the layers still step forward, gently, without the 3D drop. */
 @media (prefers-reduced-motion: reduce) {
   .hero-slide {
-    transition: none;
+    transition: transform 0.5s ease, opacity 0.4s, filter 0.5s;
   }
   .hero-slide.is-out {
-    animation: none;
+    animation: deck-fade-back 0.6s ease;
+  }
+}
+@keyframes deck-fade-back {
+  0% {
+    z-index: 30;
+    opacity: 1;
+    filter: none;
+    transform: none;
+  }
+  40% {
+    z-index: 30;
+    opacity: 0;
+    transform: none;
+  }
+  41% {
+    z-index: 0;
+    opacity: 0;
   }
 }
 .side-soon {

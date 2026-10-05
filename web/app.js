@@ -5239,12 +5239,12 @@ setInterval(() => {
   if (!document.hidden) refresh();
 }, 8000);
 
-// The hero's trending cards flip every few seconds, unless the visitor is pointing at them or prefers less motion.
-const calmMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+// The trending stack steps every few seconds unless the visitor is pointing at it
+// (with reduced motion the CSS swaps the 3D drop for a gentle fade).
 setInterval(() => {
   const deck = $('[data-hero-deck]');
   if (!deck || document.hidden || deck.matches(':hover, :focus-within') || Date.now() < (S.heroPausedUntil ?? 0)) return;
-  showHeroSlide((S.heroIdx ?? 0) + 1, !calmMotion?.matches);
+  showHeroSlide((S.heroIdx ?? 0) + 1);
 }, 3500);
 
 // ------------------------------------------------------------------ Boot
