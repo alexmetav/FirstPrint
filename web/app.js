@@ -42,6 +42,8 @@ const S = {
   query: '',
   exchange: 'all',
   lists: { open: [], live: [], settled: [] },
+  /** Predictor counts as last drawn on each card, to float "+N" when more people join. */
+  cardSeen: new Map(),
   market: null,
   chart: null,
   activity: [],
@@ -1206,22 +1208,15 @@ function cardView(m) {
     body = `<div class="o-rows">${top
       .map((b) => {
         const x = poolMultiple(m, b);
-        return `<div class="o-row" style="--c:var(--${b})">
-          <span class="o-name">${icon(b)}${oName(b)}<small>${rangeOf(m, b)}</small></span>
-          <b class="o-pct">${m.pool ? `${Math.round(share(m, b) * 100)}%` : '–'}</b>
+        const pct = m.pool ? Math.round(share(m, b) * 100) : 0;
+        return `<div class="o-row" style="--c:var(--${b});--share:${pct}%">
+          <span class="o-name">${icon(b)}${oName(b)}</span>
+          <b class="o-pct">${m.pool ? `${tick(`pct:${m.id}:${b}`, pct)}%` : '–'}</b>
           <button class="qp qp-sm" style="--c:var(--${b})" data-action="quick-pick" data-id="${esc(m.id)}" data-bucket="${b}"${open ? '' : ' disabled'} aria-label="Pick ${oName(b)} on ${esc(m.symbol)}">${x ? `${x.toFixed(1)}×` : 'Pick'}</button>
         </div>`;
       })
       .join('')}</div>`;
   }
-
-  let when;
-  if (m.phase === 'pre_listing') when = `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}`;
-  else if (upcoming) when = `Lists ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
-  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Closes ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
-  else if (m.phase === 'running') when = `Result in ${until(m.settleAt)}`;
-  else if (m.phase === 'awaiting_result') when = 'Awaiting result';
-  else when = fmtDate(m.settleAt);
 
   const state =
     m.status === 'resolved' ? '<span class="st st-done">Settled</span>'
@@ -1231,19 +1226,26 @@ function cardView(m) {
     : upcoming ? '<span class="st st-soon"><i aria-hidden="true"></i>Upcoming</span>'
     : '<span class="st st-live"><i aria-hidden="true"></i>Open</span>';
 
+  // New predictors since this card was last drawn float up as "+N": real activity, never made up.
+  const seen = S.cardSeen.get(m.id);
+  const joined = seen === undefined ? 0 : m.predictors - seen;
+  S.cardSeen.set(m.id, m.predictors);
+  const activity = m.predictors
+    ? `<span class="card-act">${ico('users')}${tick(`pred:${m.id}`, m.predictors)}<span>${open ? 'predicting' : 'predicted'}</span></span>`
+    : open
+    ? '<span class="card-act quiet">Be the first to predict</span>'
+    : '';
+
   return `
-    <article class="card mcard${soon ? ' soon' : ''}">
+    <article class="card mcard${soon ? ' soon' : ''}${joined > 0 ? ' has-new' : ''}">
+      ${joined > 0 ? `<span class="card-bump" aria-hidden="true">+${joined}</span>` : ''}
       <div class="card-top">
         ${tokenAvatar(m, 'avatar-md')}
         <a class="card-link" href="${href}"><span class="sym">${esc(m.symbol)}${yn ? ' <span class="tag tag-yn">Yes / No</span>' : ''}</span><span class="card-name">${esc(m.name || '')}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</span></a>
         ${g}
       </div>
       ${body}
-      ${myPickLine(m)}
-      <div class="card-foot">
-        ${state}${m.pool ? `<span class="dot-sep" aria-hidden="true">·</span><span>${tick(`pool:card:${m.id}`, m.pool)} pts</span>` : ''}<span class="dot-sep" aria-hidden="true">·</span><span class="card-ex">${esc(venueNames(m))}</span>
-        <span class="when">${when}</span>
-      </div>
+      <div class="card-foot">${state}${activity}</div>
     </article>`;
 }
 
@@ -1253,20 +1255,6 @@ function myResultRow(m) {
   if (m.status !== 'resolved' || !mine.length) return '';
   const profit = mine.reduce((s, p) => s + (p.payout ?? 0) - (p.stake - (p.refund ?? 0)), 0);
   return `<div class="my-result"><span>Your result <b class="${profit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(profit)} pts</b></span>${pnlButton(m.id, m.symbol, 'btn btn-sm')}</div>`;
-}
-
-/** "You: Up · 250" on a card, so players can see their picks without opening the market. */
-function myPickLine(m) {
-  if (!m.mine?.length) return '';
-  const yn = isYesNo(m);
-  const by = {};
-  for (const p of m.mine) by[p.bucket] = (by[p.bucket] ?? 0) + p.stake;
-  let state = '';
-  if (m.status === 'resolved') state = m.mine.some((p) => p.payout > 0) ? ` · <b class="profit-pos">won ${fmtNum(m.mine.reduce((s, p) => s + (p.payout ?? 0), 0))}</b>` : ' · didn’t win';
-  else if (m.status === 'void') state = ' · refunded';
-  return `<div class="card-mine">${ico('user')}<span>You: ${Object.entries(by)
-    .map(([b, pts]) => `${outcome(b, yn)} ${fmtNum(pts)}`)
-    .join(', ')}${state}</span></div>`;
 }
 
 /** Three friendly steps up front; the full rules stay one tap away. */
@@ -1294,7 +1282,7 @@ function howItWorks() {
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
         <li>Firstprint watches seven exchanges for new listings and opens a market when one is confirmed. Sign in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
-        <li>Pick one of five outcomes for the price 72 hours after listing, from Crash to Moon. Predictions stay open until 1 hour after trading starts, and earlier predictions earn a bigger share.</li>
+        <li>Pick one of five outcomes for where the price lands at the result time shown on the market, from Crash to Moon. Predictions stay open until the time shown, and earlier predictions earn a bigger share.</li>
         <li>The starting price is the average over the first hour of trading. The final price is the average over the last hour, so a single spike can’t decide a market.</li>
         <li>Everyone who picked the winning outcome splits the pool, minus the fee shown on the market (usually 4%). Everyone gets their points back if nobody picked the winner, everyone picked the same outcome, or the market is cancelled.</li>
       </ol></details>
