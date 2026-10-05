@@ -2383,28 +2383,9 @@ function historyView(entries) {
 
 // ------------------------------------------------------------------ Earn: tasks, referrals, TestFPT
 
-const FAUCET_URL = 'https://faucet.solana.com';
 const rewardsCluster = () => S.rewards?.cluster || S.cfg?.rewards?.cluster || 'testnet';
 const clusterName = () => (rewardsCluster() === 'devnet' ? 'Devnet' : 'Testnet');
 const TASK_ICONS = { follow: 'userPlus', repost: 'repeat', like: 'heart', share: 'megaphone', link: 'link' };
-
-/** How to get free test SOL for the network fee. */
-function faucetSteps() {
-  const wallet = S.me?.wallets?.[0]?.address;
-  const net = clusterName();
-  return `
-    <ol class="howto">
-      <li><b>Switch your wallet to ${net}.</b>
-        <span class="muted">Phantom: Settings → Developer Settings → turn on Testnet Mode → Solana ${net}. Solflare: Settings → Network → ${net}. Backpack: Settings → Solana → ${net}.</span></li>
-      <li><b>Copy your wallet address.</b>
-        ${wallet ? `<span class="copy-row"><code>${esc(shortAddress(wallet))}</code><button class="btn" data-action="copy-text" data-text="${esc(wallet)}">Copy address</button></span>` : '<span class="muted">It’s at the top of your wallet. Link it to Firstprint on the Earn page so you can claim to it.</span>'}</li>
-      <li><b>Get test SOL from the faucet.</b>
-        <span class="muted">Open the faucet, choose ${net}, paste your address and request 1 SOL. It’s free and has no value. If it says you’ve asked too often, try again later.</span>
-        <a class="btn btn-solid" href="${FAUCET_URL}" target="_blank" rel="noopener noreferrer">${ico('droplet')}Open the Solana faucet ${ico('external')}</a></li>
-      <li><b>That’s it.</b> <span class="muted">You only need test SOL to send TestFPT on from your own wallet. Claiming on Firstprint is free: Firstprint pays that fee.</span></li>
-    </ol>
-    <button class="btn" style="width:100%" data-action="close-modal">Done</button>`;
-}
 
 /** The getting-started steps, with what's already done ticked. */
 function startSteps() {
@@ -2832,8 +2813,6 @@ function renderAuth() {
     html = modalShell('Share your result', 'Your PnL card for this market. Post it on X, or save the image.', pnlView(S.pnl));
   } else if (kind === 'tour') {
     html = tourView();
-  } else if (kind === 'faucet') {
-    html = modalShell('Get free test SOL', 'TestFPT lives on the Solana test network. Claiming on Firstprint is free; test SOL is only for sending TestFPT on from your own wallet.', faucetSteps());
   } else if (kind === 'start') {
     html = modalShell('Start predicting in 3 steps', 'Your 1,000 starting points are TestFPT tokens. Claim them to your wallet, then use them to predict.', startSteps());
   } else if (S.auth.step === 'code') {
@@ -4919,8 +4898,6 @@ document.addEventListener('click', async (e) => {
     case 'testnet-hide':
       writePref('fp:testnet-hide', '1');
       return t.closest('.testnet-card')?.remove();
-    case 'faucet':
-      return openAuth('faucet');
     case 'start-guide':
       return openAuth('start');
     case 'inbox':
