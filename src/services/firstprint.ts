@@ -876,7 +876,7 @@ export class FirstprintService {
         return { ok: false, ms: Date.now() - t0, value: null, error: (err as Error).message };
       }
     };
-    const venues = [...this.venues.values()].filter((v) => v.id !== 'sim');
+    const venues = [...this.venues.values()].filter((v) => v.id !== 'sim' && !v.priceOnly);
     return Promise.all(
       venues.map(async (venue) => {
         const pair = venue.pair('BTC');
@@ -941,7 +941,7 @@ export class FirstprintService {
 
   exchangeSettings() {
     const off = this.disabledExchanges();
-    return [...this.venues.values()].map((v) => ({ id: v.id, name: v.name, enabled: !off.has(v.id) }));
+    return [...this.venues.values()].map((v) => ({ id: v.id, name: v.name, enabled: !off.has(v.id), ...(v.priceOnly ? { priceOnly: true } : {}) }));
   }
 
   setExchangeEnabled(id: string, enabled: boolean) {

@@ -12065,6 +12065,64 @@ svg.viz.viz-narrow {
   }
 }
 
+/* Market form: "Close in" presets and the price check link */
+.mf-presets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+}
+.mf-presets .muted {
+  margin-right: 4px;
+}
+.mf-presets .chip-btn {
+  all: unset;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.mf-presets .chip-btn:hover {
+  border-color: var(--line-strong);
+}
+.mf-presets .chip-btn.on {
+  border-color: var(--text);
+  background: var(--surface-2);
+}
+.mf-presets .chip-btn:focus-visible {
+  outline: 2px solid var(--focus, var(--brand));
+}
+.mf-verify {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.mf-verify > .i {
+  width: 15px;
+  height: 15px;
+  color: var(--up);
+}
+.mf-verify a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+.mf-verify a .i {
+  width: 13px;
+  height: 13px;
+}
+.mf .upcoming-opt[hidden] {
+  display: none;
+}
+
 </style>
   </head>
   <body>
@@ -15371,6 +15429,7 @@ const TRADE_URLS = {
   gate: (b) => `https://www.gate.io/trade/${b}_USDT`,
   bitget: (b) => `https://www.bitget.com/spot/${b}USDT`,
   kucoin: (b) => `https://www.kucoin.com/trade/${b}-USDT`,
+  coingecko: (b, v) => `https://www.coingecko.com/en/coins/${encodeURIComponent(v.pair || b.toLowerCase())}`,
 };
 
 function priceLinks(m) {
@@ -15378,7 +15437,7 @@ function priceLinks(m) {
   if (!links.length || m.status === 'resolved' || m.status === 'void') return '';
   const base = encodeURIComponent(m.symbol.toUpperCase());
   return `<div class="price-links"><span class="muted">${ico('chart')}Check the live price:</span>${links
-    .map((v) => `<a class="btn btn-sm" href="${TRADE_URLS[v.id](base)}" target="_blank" rel="noopener noreferrer">${esc(v.name)} ${ico('external')}</a>`)
+    .map((v) => `<a class="btn btn-sm" href="${TRADE_URLS[v.id](base, v)}" target="_blank" rel="noopener noreferrer">${esc(v.name)} ${ico('external')}</a>`)
     .join('')}</div>`;
 }
 
@@ -17542,7 +17601,7 @@ async function runPriceCheck() {
   out.innerHTML = `<p class="checks-note">${ico('clock')}Checking ${esc(symbol.toUpperCase())} on ${exchanges.length} exchange${exchanges.length === 1 ? '' : 's'}…</p>`;
   let prices;
   try {
-    ({ prices } = await A.api.priceCheck({ symbol, exchanges }));
+    ({ prices } = await A.api.priceCheck({ symbol, exchanges, pairs: d.get('pairs') ? JSON.parse(String(d.get('pairs'))) : undefined }));
   } catch (err) {
     out.innerHTML = `<p class="checks-note">${ico('info')}${esc(err.message)}</p>`;
     return;
@@ -17563,7 +17622,7 @@ async function runPriceCheck() {
       else notes.push(['ok', `Start price is within ${Math.round(Math.abs(diff) * 100)}% of the live price.`]);
     }
     if (!upcoming && !(base > 0)) notes.push(['medium', `Enter a start price. ${usePrice}`]);
-    if (Number.isFinite(closeAt) && closeAt - Date.now() > 48 * 3_600_000) notes.push(['medium', `Predictions stay open ${Math.round((closeAt - Date.now()) / 86_400_000)} days while the price is visible. 1–2 days is fairer.`]);
+    if (Number.isFinite(closeAt) && closeAt - Date.now() > 48 * 3_600_000 && !d.get('pairs')) notes.push(['medium', `Predictions stay open ${Math.round((closeAt - Date.now()) / 86_400_000)} days while the price is visible. 1–2 days is fairer.`]);
   }
   out.innerHTML = `
     <div class="pc-prices">${prices.map((p) => `<span class="pc-chip${p.price === null ? ' off' : ''}"><b>${esc(p.name)}</b> ${p.price === null ? 'not trading' : fmtPrice(p.price)}</span>`).join('')}</div>
@@ -18054,9 +18113,13 @@ function marketForm(m, pre = null) {
   const soon = Math.ceil((Date.now() + 24 * 3_600_000) / 3_600_000) * 3_600_000;
   const pct = (n) => String(Math.round(n * 1000) / 10);
   const upcoming = Boolean(v) && v.basePrice == null;
+  // A market priced from CoinGecko keeps its coin id (e.g. pudgy-penguins) as the "pair".
+  const cgPair = pre?.pairs?.coingecko ?? m?.venues?.find((x) => x.id === 'coingecko')?.pair ?? null;
+  const verifyUrl = pre?.verifyUrl ?? (cgPair ? TRADE_URLS.coingecko('', { pair: cgPair }) : null);
   return `
     <form id="admin-market" class="admin-form mf" data-id="${m ? esc(m.id) : ''}" data-published="${m?.published ? '1' : '0'}" data-outcomes="${m?.outcomes === 'binary' ? 'binary' : 'ladder'}">
       ${pre?.detectionId ? `<input type="hidden" name="detectionId" value="${pre.detectionId}" />` : ''}
+      ${cgPair ? `<input type="hidden" name="pairs" value="${esc(JSON.stringify({ coingecko: cgPair }))}" />` : ''}
       <fieldset class="mf-type"${lock}><legend class="sr-only">Market type</legend>
         <label><input type="radio" name="outcomes" value="ladder"${m?.outcomes === 'binary' ? '' : ' checked'} /><span>${ico('trendUp')}Five outcomes</span></label>
         <label><input type="radio" name="outcomes" value="binary"${m?.outcomes === 'binary' ? ' checked' : ''} /><span>${ico('checkCircle')}Yes / No</span></label>
@@ -18091,7 +18154,11 @@ function marketForm(m, pre = null) {
           <label><span class="field-label">Predictions close</span><input name="closeAt" type="datetime-local" value="${toLocalInput(v?.closeAt ?? soon)}" required /><small class="utc-hint" data-utc-for="closeAt"></small></label>
           <label><span class="field-label">Result by</span><input name="resultAt" type="datetime-local" value="${toLocalInput(v?.settleAt ?? soon + 24 * 3_600_000)}" required /><small class="utc-hint" data-utc-for="resultAt"></small></label>
         </div>
-        <div class="upcoming-opt">
+        <div class="mf-presets" role="group" aria-label="Predictions close in">
+          <span class="muted">Close in</span>${CLOSE_PRESETS.map((d) => `<button type="button" class="chip-btn${pre?.days === d ? ' on' : ''}" data-action="admin-close-in" data-days="${d}">${d} days</button>`).join('')}
+        </div>
+        ${verifyUrl ? `<p class="mf-verify">${ico('checkCircle')}Start price is the live price now. <a href="${esc(verifyUrl)}" target="_blank" rel="noopener noreferrer">Verify it on CoinGecko ${ico('external')}</a></p>` : ''}
+        <div class="upcoming-opt"${cgPair ? ' hidden' : ''}>
           <label class="check upcoming-check"><input type="checkbox" name="upcoming" data-upcoming${upcoming ? ' checked' : ''}${lock} /> Upcoming token: not trading yet</label>
           <details class="adm-how"><summary>How upcoming works</summary><p>No price needed now: set predictions to close when trading starts. Once the token trades, its opening price (from its first minutes of trading) is read from the exchange and becomes the start price by itself. You’re asked for the result only when it is due.</p></details>
           <div class="auto-open"${upcoming && !(m && m.published) ? '' : ' hidden'}>
@@ -18107,7 +18174,7 @@ function marketForm(m, pre = null) {
         <h3 class="mf-h">Exchanges</h3>
         <fieldset class="venues"><legend class="sr-only">Reference exchanges</legend>
           ${A.info.exchanges
-            .filter((e) => e.enabled || chosen.has(e.id))
+            .filter((e) => (e.enabled && !e.priceOnly) || chosen.has(e.id))
             .map((e) => `<label class="check"><input type="checkbox" name="exchanges" value="${esc(e.id)}"${chosen.has(e.id) ? ' checked' : ''} /> ${esc(e.name)}</label>`)
             .join('')}
         </fieldset>
@@ -18235,9 +18302,13 @@ const TRACKER_PAGES = [
   ['CoinMarketCap · Trending', 'https://coinmarketcap.com/trending-cryptocurrencies/'],
   ['CoinMarketCap · New coins', 'https://coinmarketcap.com/new/'],
 ];
-/** A trending token gets a longer market: predictions open for 3 days, the result after 15. */
-const TRENDING_CLOSE_DAYS = 3;
-const TRENDING_RESULT_DAYS = 15;
+const roundUpHour = (t) => Math.ceil(t / 3_600_000) * 3_600_000;
+
+/** "Close in" buttons on the market form; a trending token starts on 15 days. */
+const CLOSE_PRESETS = [3, 7, 15, 30];
+const TRENDING_DAYS = 15;
+/** The result comes this long after predictions close. */
+const RESULT_AFTER_CLOSE = 24 * 3_600_000;
 
 async function loadDiscover(key, fetcher) {
   A.discover = { ...(A.discover ?? {}), [key]: { loading: true } };
@@ -18256,7 +18327,7 @@ const usd = (n) => (n == null ? '–' : fmtPrice(n));
 
 function discoverView() {
   const d = A.discover ?? {};
-  const exchanges = A.info.exchanges ?? [];
+  const exchanges = (A.info.exchanges ?? []).filter((e) => !e.priceOnly);
   const venue = A.discoverVenue;
   const ex = venue ? d[`ex:${venue}`] : null;
   const exName = exchanges.find((e) => e.id === venue)?.name ?? venue;
@@ -18301,7 +18372,7 @@ function discoverView() {
       }
     </section>
     <section class="panel">
-      <div class="section-head"><span class="section-ico">${ico('flame')}</span><div><h2>Trending now</h2><p class="muted">From CoinGecko. “Make market” fills in a ${TRENDING_RESULT_DAYS}-day market.</p></div><button class="btn btn-sm" data-action="admin-discover-trending">${ico('refresh')}${tr?.data ? 'Refresh' : 'Fetch trending'}</button></div>
+      <div class="section-head"><span class="section-ico">${ico('flame')}</span><div><h2>Trending now</h2><p class="muted">From CoinGecko. “Make market” fills in everything; you only check the price.</p></div><button class="btn btn-sm" data-action="admin-discover-trending">${ico('refresh')}${tr?.data ? 'Refresh' : 'Fetch trending'}</button></div>
       ${state(tr, trRows ? `<div class="table-scroll"><table class="table disc-table"><thead><tr><th>Token</th><th class="right">Price</th><th class="right hide-sm">24h</th><th></th></tr></thead><tbody>${trRows}</tbody></table></div><p class="fine">From CoinGecko${tr?.data ? `, ${fmtAgo(tr.data.fetchedAt)}` : ''}.</p>` : '<p class="muted">CoinGecko returned no tokens.</p>')}
     </section>
     <section class="panel">
@@ -18334,34 +18405,33 @@ async function makeFromDiscovery(el) {
       note: `New on ${l.exchangeName}. The start price is the ${l.exchangeName} ${l.symbol}/USDT price when predictions open, and the result is its price at the result time.`,
     };
   } else {
+    // Trending on CoinGecko: everything comes from CoinGecko (name, logo, live price), so the token
+    // needn't trade on any of our exchanges. The admin only checks the price and publishes.
     const c = A.discover?.trending?.data?.coins?.[i];
     if (!c) return;
     el.disabled = true;
-    el.textContent = 'Checking exchanges…';
-    const ids = (A.info.exchanges ?? []).filter((e) => e.enabled).map((e) => e.id);
-    let found = [];
+    el.textContent = 'Getting price…';
+    let live = c.priceUsd;
     try {
-      const { prices } = await A.api.priceCheck({ symbol: c.symbol, exchanges: ids });
-      found = prices.filter((p) => p.price != null);
+      const { prices } = await A.api.priceCheck({ symbol: c.symbol, exchanges: ['coingecko'], pairs: { coingecko: c.id } });
+      live = prices.find((p) => p.price != null)?.price ?? live;
     } catch {
-      /* fall through: no exchange found */
+      /* keep the trending list's price */
     }
-    if (!found.length) {
-      el.disabled = false;
-      el.textContent = 'Make market';
-      return toast(`${c.symbol} doesn’t trade on your exchanges right now (or the ticker differs there). Open CoinGecko to see where it trades.`, true);
-    }
-    const sorted = found.map((p) => p.price).sort((a, b) => a - b);
-    const closeAt = roundHour(now + TRENDING_CLOSE_DAYS * 24 * hour);
+    const closeAt = roundHour(now + TRENDING_DAYS * 24 * hour);
     pre = {
       symbol: c.symbol,
       name: c.name,
       logoUrl: c.logo ?? '',
-      venues: found.map((p) => ({ id: p.id })),
-      basePrice: sorted[Math.floor((sorted.length - 1) / 2)],
+      venues: [{ id: 'coingecko' }],
+      pairs: { coingecko: c.id },
+      verifyUrl: c.url,
+      days: TRENDING_DAYS,
+      trending: true,
+      basePrice: live ?? '',
       closeAt,
-      settleAt: roundHour(now + TRENDING_RESULT_DAYS * 24 * hour),
-      note: `Trending on CoinGecko. Where will ${c.symbol} be in ${TRENDING_RESULT_DAYS} days? The start price is the price on ${found.map((p) => p.name).join(', ')} when the market opened; the result is the price there at the result time.`,
+      settleAt: closeAt + RESULT_AFTER_CLOSE,
+      note: `Trending on CoinGecko. The start price is the CoinGecko price when the market opened; the result is the CoinGecko price at the result time.`,
     };
   }
   A.prefill = pre;
@@ -18657,6 +18727,15 @@ async function onAdminAction(action, el) {
         toast(err.message, true);
       }
       return renderAdmin();
+    case 'admin-close-in': {
+      const form = el.closest('form');
+      const close = roundUpHour(Date.now() + Number(el.dataset.days) * 86_400_000);
+      form.querySelector('[name=closeAt]').value = toLocalInput(close);
+      form.querySelector('[name=resultAt]').value = toLocalInput(close + RESULT_AFTER_CLOSE);
+      form.querySelectorAll('[data-action="admin-close-in"]').forEach((b) => b.classList.toggle('on', b === el));
+      updateUtcHints();
+      return;
+    }
     case 'admin-inbox':
       A.inbox = el.dataset.pane;
       el.closest('.adm-inbox')?.querySelectorAll('[data-pane]').forEach((x) => {
@@ -18947,6 +19026,7 @@ async function submitAdminMarket(form, intent) {
   // Disabled (locked) fields are absent from FormData and stay unchanged on the server.
   if (d.has('symbol')) body.symbol = String(d.get('symbol') || '').trim();
   if (d.get('detectionId')) body.detectionId = Number(d.get('detectionId'));
+  if (d.get('pairs')) body.pairs = JSON.parse(String(d.get('pairs')));
   // "Upcoming token": no start price yet; the opening price is added once trading starts.
   if (d.has('upcoming')) body.basePrice = null;
   else if (d.has('basePrice')) body.basePrice = Number(d.get('basePrice'));

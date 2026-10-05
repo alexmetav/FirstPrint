@@ -68,7 +68,7 @@ export class ListingTracker {
     const created: number[] = [];
     const names = new Map<number, string>();
     for (const venue of this.venues) {
-      if (!this.venueEnabled(venue.id)) continue;
+      if (venue.priceOnly || !this.venueEnabled(venue.id)) continue;
       if (venue.fetchAnnouncements) {
         try {
           const oldest = this.service.clock.now() - OLDEST_ANNOUNCEMENT_MS;

@@ -48,6 +48,8 @@ export interface Venue {
   listPairs(): Promise<Pair[]>;
   /** New-listing announcements, newest first. Not every exchange offers this. */
   fetchAnnouncements?(): Promise<Announcement[]>;
+  /** A price source, not an exchange: never scanned for new listings (CoinGecko, for trending tokens). */
+  priceOnly?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -457,6 +459,36 @@ export function kucoin(http: Http = defaultHttp): Venue {
   };
 }
 
-export function allVenues(http: Http = defaultHttp): Venue[] {
-  return [binance(http), mexc(http), bybit(http), okx(http), gate(http), bitget(http), kucoin(http)];
+// ---------------------------------------------------------------------------
+// CoinGecko: a price source for trending tokens that may not trade on the exchanges above.
+// Its "pair" is the CoinGecko coin id (e.g. pudgy-penguins), which markets store as their pair.
+// ---------------------------------------------------------------------------
+
+export function coingecko(http: Http = defaultHttp, apiKey: string | null = null): Venue {
+  const base = 'https://api.coingecko.com/api/v3';
+  const key = apiKey ? `&x_cg_demo_api_key=${encodeURIComponent(apiKey)}` : '';
+  const id = (pair: string) => encodeURIComponent(pair.trim().toLowerCase());
+  return {
+    id: 'coingecko',
+    name: 'CoinGecko',
+    priceOnly: true,
+    pair: (b) => b.toLowerCase(),
+    async fetchTicker(pair) {
+      const d = (await http(`${base}/simple/price?ids=${id(pair)}&vs_currencies=usd${key}`)) as Record<string, { usd?: number }>;
+      const price = d[pair.trim().toLowerCase()]?.usd;
+      return typeof price === 'number' && price > 0 ? { price, ts: Date.now() } : null;
+    },
+    async fetchCandles(pair, startMs, endMs) {
+      // CoinGecko has no 1-minute candles; each price point (about every 5 minutes) becomes a flat candle.
+      const d = (await http(`${base}/coins/${id(pair)}/market_chart/range?vs_currency=usd&from=${Math.floor(startMs / 1000)}&to=${Math.ceil(endMs / 1000)}${key}`)) as { prices?: [number, number][] };
+      return (d.prices ?? [])
+        .filter(([ts, p]) => ts >= startMs && ts <= endMs && p > 0)
+        .map(([ts, p]) => ({ ts: Math.floor(ts / MINUTE) * MINUTE, close: p, volume: 0 }));
+    },
+    listPairs: async () => [],
+  };
+}
+
+export function allVenues(http: Http = defaultHttp, opts: { coingeckoKey?: string | null } = {}): Venue[] {
+  return [binance(http), mexc(http), bybit(http), okx(http), gate(http), bitget(http), kucoin(http), coingecko(http, opts.coingeckoKey ?? null)];
 }

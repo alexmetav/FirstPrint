@@ -12034,3 +12034,61 @@ svg.viz.viz-narrow {
     display: none;
   }
 }
+
+/* Market form: "Close in" presets and the price check link */
+.mf-presets {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+}
+.mf-presets .muted {
+  margin-right: 4px;
+}
+.mf-presets .chip-btn {
+  all: unset;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.mf-presets .chip-btn:hover {
+  border-color: var(--line-strong);
+}
+.mf-presets .chip-btn.on {
+  border-color: var(--text);
+  background: var(--surface-2);
+}
+.mf-presets .chip-btn:focus-visible {
+  outline: 2px solid var(--focus, var(--brand));
+}
+.mf-verify {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.mf-verify > .i {
+  width: 15px;
+  height: 15px;
+  color: var(--up);
+}
+.mf-verify a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+.mf-verify a .i {
+  width: 13px;
+  height: 13px;
+}
+.mf .upcoming-opt[hidden] {
+  display: none;
+}

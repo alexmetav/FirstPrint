@@ -48,7 +48,7 @@ test('telegram: alert texts', () => {
 });
 
 test('telegram: channel names and channel posts', async () => {
-  const { channelName, marketLiveText, marketResultText } = await import('../src/services/telegram.ts');
+  const { channelName, marketLiveText, marketResultText, closingSoonText } = await import('../src/services/telegram.ts');
   assert.equal(channelName('@firstprint_markets'), 'firstprint_markets');
   assert.equal(channelName('https://t.me/firstprint_markets'), 'firstprint_markets');
   assert.equal(channelName('fp'), null);
@@ -62,8 +62,10 @@ test('telegram: channel names and channel posts', async () => {
   assert.match(live, /Predictions close: 5 Oct, 12:00 UTC/);
   assert.ok(live.endsWith(`👉 <b>Predict now:</b> <a href="${link}">${link}</a>`), 'ends with the link to the market');
   assert.match(marketLiveText({ ...base, basePrice: null }), /Upcoming[\s\S]*Start price: the opening price at listing/);
-  assert.match(marketLiveText({ ...base, outcomes: 'binary' }), /Will \$AGENCY be at or above \$0\.0421 on MEXC\?/);
-  assert.match(marketLiveText({ ...base, exchange: 'Binance, MEXC, Bybit, OKX, Gate, Bitget, and KuCoin' }), /on Binance \+6 more\?/);
+  assert.match(marketLiveText({ ...base, outcomes: 'binary' }), /Will \$AGENCY be at or above \$0\.0421\?/);
+  // Exchanges are named on the market page only, never in channel posts.
+  assert.doesNotMatch(marketLiveText({ ...base, exchange: 'Binance, MEXC' }), /MEXC|Binance/);
+  assert.doesNotMatch(closingSoonText({ ...base, basePrice: null, pool: 0, predictors: 0 }), /MEXC/);
   assert.doesNotMatch(marketLiveText(base), /href/, 'no link given: no link line');
 
   const res = marketResultText({ ...base, predictors: 23, result: { winningBucket: 'up', returnPct: 0.234, basePrice: 0.0421, finalPrice: 0.052, pool: 1500 } }, link);
@@ -222,9 +224,13 @@ test('banners: each market gets its own PNG for new market, last hour and result
   // Text the font can't draw never reaches the image.
   assert.throws(() => renderBanner('live', { ...m, symbol: '币安人生' }), /can't draw/);
   assert.doesNotMatch(bannerSvg('live', { ...m, name: '币安人生 Token' }), /币安/, 'a Chinese name is left off');
-  // Many exchanges fit on one line.
-  assert.match(bannerSvg('live', { ...m, exchange: 'Binance, MEXC, Bybit, OKX, Gate, Bitget, and KuCoin' }), /on Binance \+6 more/);
-  assert.match(bannerSvg('live', { ...m, exchange: 'MEXC and Gate' }), /on MEXC and Gate/);
+  // Exchanges are named on the market page only, never on banners.
+  for (const kind of ['live', 'closing', 'result'] as const) assert.doesNotMatch(bannerSvg(kind, { ...m, exchange: 'MEXC and Gate' }), /MEXC|Gate/);
+  // The result banner shows the winning outcome's character: a bull for Up, a rocket dog for Moon.
+  const settled = (b: string) => bannerSvg('result', { ...m, result: { winningBucket: b, returnPct: 0.2, basePrice: 1, finalPrice: 1.2, pool: 100 } });
+  assert.match(settled('up'), /#f3e3c3/);
+  assert.match(settled('moon'), /#e8a54b/);
+  assert.doesNotMatch(bannerSvg('live', m), /#f3e3c3|#e8a54b/);
 });
 
 test('channel: a logo the browser could not copy is fetched and kept by the server; a broken logo never costs the banner', async () => {
