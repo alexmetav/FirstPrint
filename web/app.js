@@ -780,7 +780,7 @@ function analyticsSharePanel(key) {
   const url = key ? `${location.origin}${location.pathname}#/stats/${key}` : '';
   return `
     <section class="panel viz-share">
-      <div class="section-head"><span class="section-ico">${ico('share')}</span><div><h2>Share with partners</h2><p class="muted">A read-only link to this page with totals only. No names, emails or wallets. Anyone with the link can see it, so share it only with partners.</p></div></div>
+      <div class="section-head"><span class="section-ico">${ico('share')}</span><div><h2>Share with partners</h2><p class="muted">A read-only link with totals only: no names, emails or wallets.</p></div></div>
       ${
         key
           ? `<div class="tg-channel-form"><input id="viz-share-url" value="${esc(url)}" readonly /><button class="btn btn-solid btn-sm" data-action="admin-copy-share">${ico('copy')}Copy link</button><button class="btn btn-sm" data-action="admin-analytics-share">New link</button><button class="btn btn-sm" data-action="admin-analytics-off">Turn off</button></div>
@@ -3523,11 +3523,11 @@ function saveAdminKey(key) {
 }
 
 const ADMIN_TABS = [
-  ['overview', 'grid', 'Overview', 'What needs your attention and how Firstprint is doing.'],
+  ['overview', 'grid', 'Overview', 'Today at a glance.'],
   ['markets', 'list', 'Markets', 'Post results, publish drafts, edit or cancel markets.'],
-  ['analytics', 'chart', 'Analytics', 'Players, activity and markets. Share a read-only link with partners.'],
-  ['discover', 'search', 'Find tokens', 'New listings on each exchange and what is trending, with prices. Make a market in one click.'],
-  ['create', 'plusCircle', 'Create market', 'Save a draft, check it, then publish. Users only see published markets.'],
+  ['analytics', 'chart', 'Analytics', 'Players, activity and markets.'],
+  ['discover', 'search', 'Find tokens', 'New listings and trending tokens, ready to become markets.'],
+  ['create', 'plusCircle', 'Create market', 'Players only see it once you publish.'],
   ['token', 'token', 'TestFPT token', 'The on-chain token players claim their points as.'],
   ['tasks', 'sparkles', 'Tasks', 'Tasks players complete on X for points.'],
   ['settings', 'sliders', 'Settings', 'Automatic markets, reference exchanges and backups.'],
@@ -3617,8 +3617,8 @@ async function renderAdmin() {
   const [, , title, lede] = ADMIN_TABS.find(([id]) => id === tab);
 
   let body;
-  if (tab === 'overview') body = listingsPanel(pending) + adminOverview({ markets, waiting, drafts, token, tasks, log });
-  else if (tab === 'markets') body = listingsPanel(pending) + adminMarketsTab(markets, waiting);
+  if (tab === 'overview') body = adminOverview({ markets, waiting, drafts, token, tasks, log, pending });
+  else if (tab === 'markets') body = adminMarketsTab(markets, waiting, pending);
   else if (tab === 'analytics') {
     try {
       const data = await A.api.analytics(S.vizDays ?? 30);
@@ -3628,7 +3628,7 @@ async function renderAdmin() {
     }
   }
   else if (tab === 'create') body = `<section class="panel" id="admin-market-section">
-      <div class="section-head"><span class="section-ico">${ico(editing ? 'edit' : 'plusCircle')}</span><div><h2>${editing ? `Edit ${esc(editing.symbol)} market` : review ? `Review ${esc(review.symbol)} from ${esc(review.exchangeName)}` : 'New market'}</h2><p class="muted">${review ? 'Check the start price and times, add the logo and a description, then publish.' : 'When the close time passes, the market waits in Markets for your result.'}</p></div></div>
+      ${editing || review ? `<div class="section-head"><h2>${editing ? `Edit ${esc(editing.symbol)} market` : `Review ${esc(review.symbol)} from ${esc(review.exchangeName)}`}</h2></div>` : ''}
       ${marketForm(editing, review ? reviewPrefill(review) : editing ? null : A.prefill)}
     </section>`;
   else if (tab === 'discover') body = discoverView();
@@ -3639,7 +3639,7 @@ async function renderAdmin() {
       ${autoListingsPanel(A.info.autoListings)}
       ${telegramPanel(A.info.telegram)}
       <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('landmark')}</span><div><h2>Reference exchanges</h2><p class="muted">Switch off an exchange to stop it being offered for new markets you create and to stop checking it for new listings. They are shown to users as the reference for the price you enter.</p></div></div>
+        <div class="section-head"><span class="section-ico">${ico('landmark')}</span><div><h2>Reference exchanges</h2><p class="muted">Offered for new markets and checked for listings.</p></div></div>
         <div class="toggle-grid">${A.info.exchanges
           .map((e) => `<label class="toggle"><input type="checkbox" data-action="admin-exchange" data-id="${esc(e.id)}"${e.enabled ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>${esc(e.name)}</label>`)
           .join('')}</div>
@@ -3667,7 +3667,7 @@ async function renderAdmin() {
       </aside>
       <div class="admin-main">
         <header class="admin-top">
-          <div><span class="eyebrow">Admin</span><h1 class="page-title">${title}</h1><p class="muted">${lede}</p></div>
+          <div><h1 class="page-title">${title}</h1><p class="muted">${lede}</p></div>
           <div class="admin-status">${statusChips(token, A.info.backup)}</div>
         </header>
         ${body}
@@ -3783,14 +3783,16 @@ async function loadMarketChecks(box) {
 function checksView(list) {
   if (!list.length) return '';
   const items = list.flatMap((c) => c.warnings.map((w) => ({ ...w, c })));
-  if (!items.length) return `<p class="checks-note ok">${ico('checkCircle')}No problems found in ${list.length} open market${list.length === 1 ? '' : 's'} (checked against live exchange prices).</p>`;
+  if (!items.length) return '';
+  const high = items.some((i) => i.level === 'high');
   return `
-    <section class="panel panel-alert checks">
-      <div class="section-head"><span class="section-ico">${ico('alert')}</span><div><h2>Check these markets <span class="count-badge">${items.length}</span></h2><p class="muted">Compared with live exchange prices ${fmtAgo(A.checks.at)}. Fix them before players notice.</p></div><button class="btn btn-sm head-action" data-action="admin-recheck">${ico('refresh')}Check again</button></div>
+    <details class="adm-collapse adm-warn${high ? ' high' : ''}">
+      <summary>${ico('alert')}<b>${items.length} price warning${items.length === 1 ? '' : 's'}</b><span class="muted">in open markets, checked ${fmtAgo(A.checks.at)}</span></summary>
       <ul class="check-list">${items
         .map((i) => `<li class="lvl-${i.level}"><span class="check-dot" aria-hidden="true"></span><p><b>${esc(i.c.symbol)}</b> ${esc(i.text)}</p><button class="btn btn-sm" data-action="admin-edit" data-id="${esc(i.c.id)}">${ico('edit')}Edit</button></li>`)
         .join('')}</ul>
-    </section>`;
+      <div class="adm-collapse-foot"><button class="btn btn-sm" data-action="admin-recheck">${ico('refresh')}Check again</button></div>
+    </details>`;
 }
 
 /** Shows each date-time field in UTC, since exchanges announce listing times in UTC. */
@@ -3821,6 +3823,9 @@ async function copyLogo(form, url) {
   }
 }
 
+/** The long explanation behind a setting, folded away until asked for. */
+const how = (html, label = 'How it works') => `<details class="adm-how"><summary>${label}</summary><p>${html}</p></details>`;
+
 /** Small health chips for the admin header: TestFPT and backups. */
 function statusChips(token, backup) {
   const chip = (ok, icon, text) => `<span class="status-chip ${ok === true ? 'ok' : ok === false ? 'bad' : 'idle'}">${ico(icon)}${text}</span>`;
@@ -3831,59 +3836,79 @@ function statusChips(token, backup) {
   return out.join('');
 }
 
-/** Overview: headline numbers, then anything that needs doing. */
-function adminOverview({ markets, waiting, drafts, token, tasks, log }) {
+/** Overview: the headline numbers first, then one inbox (to do / new listings), then recent activity. */
+function adminOverview({ markets, waiting, drafts, token, tasks, log, pending }) {
   const open = markets.filter((m) => m.status === 'open' && m.phase !== 'draft');
   const inPools = open.reduce((n, m) => n + m.pool, 0);
   const predictors = open.reduce((n, m) => n + m.predictors, 0);
   const activeTasks = tasks.filter((t) => t.active);
-  const done = tasks.reduce((n, t) => n + t.completions, 0);
-  const kpi = (icon, color, label, value, sub) =>
-    `<div class="stat-tile" style="--c:var(--${color})"><span class="tile-ico">${ico(icon)}</span><dt>${label}</dt><dd>${value}</dd><p>${sub}</p></div>`;
+  const stat = (color, label, value, sub, goto) =>
+    `<button type="button" class="adm-stat" style="--c:var(--${color})" data-action="admin-tab" data-tab="${goto}"><span class="adm-stat-l">${label}</span><b>${value}</b><small>${sub}</small></button>`;
   const todo = [];
-  for (const m of waiting) todo.push(['alert', 'crash', `${esc(m.symbol)} is waiting for its result`, `Predictions closed. ${fmtPts(m.pool)} from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'} to pay out.`, 'markets', 'Post result']);
-  for (const m of drafts) todo.push(['edit', 'flat', `${esc(m.symbol)} is a draft`, 'Users can’t see it until you publish it.', 'markets', 'Review']);
-  if (token?.enabled && !token.ready) todo.push(['token', 'moon', 'TestFPT isn’t set up', 'Players get points in their balance until the token exists.', 'token', 'Set up']);
-  if (token?.enabled && (token.authorityKey || (token.mint && !token.savedInEnv?.mint))) todo.push(['key', 'moon', 'Save the TestFPT keys in Render', 'So a restart can’t lose them.', 'token', 'Show keys']);
+  for (const m of waiting) todo.push(['alert', 'crash', `${esc(m.symbol)} is waiting for its result`, `${fmtPts(m.pool)} from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'}`, 'markets', 'Post result']);
+  for (const m of drafts) todo.push(['edit', 'flat', `${esc(m.symbol)} is a draft`, 'Hidden until you publish it', 'markets', 'Review']);
+  if (token?.enabled && !token.ready) todo.push(['token', 'moon', 'TestFPT isn’t set up', 'Points stay in balances until it exists', 'token', 'Set up']);
+  if (token?.enabled && (token.authorityKey || (token.mint && !token.savedInEnv?.mint))) todo.push(['key', 'moon', 'Save the TestFPT keys in Render', 'So a restart can’t lose them', 'token', 'Show keys']);
   if (A.info.backup?.lastError) todo.push(['database', 'crash', 'Database backup is failing', esc(A.info.backup.lastError), 'settings', 'Check']);
-  if (!open.length) todo.push(['plusCircle', 'up', 'No open markets', 'Players have nothing to predict on right now.', 'create', 'Create one']);
-  if (!activeTasks.length) todo.push(['sparkles', 'up', 'No active tasks', 'Tasks give players more ways to earn points.', 'tasks', 'Add a task']);
+  if (!open.length) todo.push(['plusCircle', 'up', 'No open markets', 'Players have nothing to predict', 'create', 'Create one']);
+  if (!activeTasks.length) todo.push(['sparkles', 'up', 'No active tasks', 'Tasks give players more ways to earn', 'tasks', 'Add a task']);
+  const todoList = todo.length
+    ? `<ul class="todo">${todo
+        .map(([icon, color, t, sub, goto, label]) => `<li style="--c:var(--${color})"><span class="todo-ico">${ico(icon)}</span><div><b>${t}</b><span class="muted">${sub}</span></div><button class="btn btn-sm" data-action="admin-tab" data-tab="${goto}">${label}</button></li>`)
+        .join('')}</ul>`
+    : `<p class="all-good">${ico('checkCircle')}Everything’s in order.</p>`;
+  const panes = [['todo', 'To do', todo.length, todoList]];
+  if (A.info.manualOnly) panes.push(['listings', 'New listings', pending.length, pending.length ? listingsList(pending) : '<p class="muted">Nothing new. Listings found on the exchanges show up here.</p>']);
   return `
+    <div class="adm-stats">
+      ${stat('up', 'Open markets', fmtNum(open.length), drafts.length ? `${drafts.length} draft${drafts.length === 1 ? '' : 's'}` : 'Live now', 'markets')}
+      ${stat('crash', 'Awaiting result', fmtNum(waiting.length), waiting.length ? 'Post the final price' : 'All caught up', 'markets')}
+      ${stat('moon', 'Points in open pools', fmtNum(inPools), 'Across open markets', 'markets')}
+      ${stat('brand', 'Predictions', fmtNum(predictors), 'In open markets', 'analytics')}
+      ${stat('down', 'Active tasks', fmtNum(activeTasks.length), `${fmtNum(tasks.reduce((n, t) => n + t.completions, 0))} done`, 'tasks')}
+    </div>
     <div id="admin-checks"></div>
-    <dl class="stat-tiles">
-      ${kpi('target', 'up', 'Open markets', fmtNum(open.length), `${drafts.length} draft${drafts.length === 1 ? '' : 's'}`)}
-      ${kpi('clock', 'crash', 'Awaiting result', fmtNum(waiting.length), waiting.length ? 'Post the final price' : 'All caught up')}
-      ${kpi('coins', 'moon', 'Points in open pools', fmtNum(inPools), 'Across open markets')}
-      ${kpi('users', 'brand', 'Predictions', fmtNum(predictors), 'In open markets')}
-      ${kpi('sparkles', 'down', 'Active tasks', fmtNum(activeTasks.length), `${fmtNum(done)} completion${done === 1 ? '' : 's'} so far`)}
-    </dl>
-    <div class="dash-grid">
-      <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('checkCircle')}</span><h2>Needs attention${todo.length ? ` <span class="count-badge">${todo.length}</span>` : ''}</h2></div>
-        ${
-          todo.length
-            ? `<ul class="todo">${todo
-                .map(([icon, color, t, sub, goto, label]) => `<li style="--c:var(--${color})"><span class="todo-ico">${ico(icon)}</span><div><b>${t}</b><span class="muted">${sub}</span></div><button class="btn btn-sm" data-action="admin-tab" data-tab="${goto}">${label}</button></li>`)
-                .join('')}</ul>`
-            : `<p class="all-good">${ico('checkCircle')}Everything’s in order.</p>`
-        }
-      </section>
-      ${adminLogView(log.slice(0, 6), true)}
-    </div>`;
+    ${adminInbox(panes)}
+    ${adminLogView(log.slice(0, 5), true)}`;
 }
 
-function adminMarketsTab(markets, waiting) {
+/** One panel with tabs, so lists that are often empty don’t each take a whole frame. */
+function adminInbox(panes) {
+  const first = panes.find(([, , n]) => n)?.[0] ?? panes[0][0];
+  const cur = panes.some(([id]) => id === A.inbox) ? A.inbox : first;
+  return `<section class="panel adm-inbox">
+    <div class="adm-tabs" role="tablist">${panes
+      .map(([id, label, n]) => `<button type="button" role="tab" data-action="admin-inbox" data-pane="${id}" aria-selected="${id === cur}">${label}${n ? `<span class="count-badge">${n}</span>` : ''}</button>`)
+      .join('')}</div>
+    ${panes.map(([id, , , html]) => `<div class="adm-pane" data-pane="${id}"${id === cur ? '' : ' hidden'}>${html}</div>`).join('')}
+  </section>`;
+}
+
+function adminMarketsTab(markets, waiting, pending) {
+  const results = waiting.length
+    ? `<section class="panel adm-results"><div class="section-head"><span class="section-ico">${ico('alert')}</span><h2>Waiting for your result <span class="count-badge">${waiting.length}</span></h2></div>
+        ${
+          canAdmin('admin')
+            ? waiting
+                .map(
+                  (m) => `<details class="adm-row"${A.preview?.id === m.id || waiting.length === 1 ? ' open' : ''}>
+                    <summary><span class="mkt-cell">${tokenAvatar(m, 'avatar-sm')}<span><b>${esc(m.symbol)}</b><small class="muted">${fmtPts(m.pool)} · ${m.predictors} predictor${m.predictors === 1 ? '' : 's'}</small></span></span><span class="adm-row-cta">Post result</span></summary>
+                    ${resultForm(m)}
+                  </details>`,
+                )
+                .join('')
+            : `<p class="muted">${waiting.map((m) => esc(m.symbol)).join(', ')}: an admin posts the result.</p>`
+        }</section>`
+    : '';
+  const listings = pending.length
+    ? `<details class="adm-collapse"><summary>${ico('zap')}<b>New listings</b><span class="count-badge">${pending.length}</span><span class="muted">found on the exchanges</span></summary>${listingsList(pending)}</details>`
+    : '';
   return `
+    ${results}
     <div id="admin-checks"></div>
-    ${
-      waiting.length
-        ? `<section class="panel panel-alert"><div class="section-head"><span class="section-ico">${ico('alert')}</span><div><h2>Waiting for your result <span class="count-badge">${waiting.length}</span></h2>
-          <p class="muted">Predictions have closed. Enter the final price to pick the winners and pay out the pool.</p></div></div>
-          ${canAdmin('admin') ? waiting.map(resultForm).join('') : `<p class="muted pad">${waiting.map((m) => esc(m.symbol)).join(', ')}: an admin posts the result.</p>`}</section>`
-        : ''
-    }
+    ${listings}
     <section class="panel panel-flush">
-      <div class="section-head"><span class="section-ico">${ico('list')}</span><h2>All markets <span class="count-badge">${markets.length}</span></h2><button class="btn btn-solid btn-sm head-action" data-action="admin-tab" data-tab="create">${ico('plus')}New market</button></div>
+      <div class="section-head"><h2>All markets <span class="count-badge">${markets.length}</span></h2><button class="btn btn-solid btn-sm head-action" data-action="admin-tab" data-tab="create">${ico('plus')}New market</button></div>
       ${
         markets.length
           ? `<div class="table-scroll"><table class="table"><thead><tr><th>Market</th><th class="hide-sm">Type</th><th>Status</th><th class="right">Pool</th><th class="right"></th></tr></thead><tbody>${markets
@@ -3909,11 +3934,12 @@ function tokenAdminSection(t) {
   if (t.ready) {
     return `<section class="panel">
       <div class="section-head"><span class="section-ico">${ico('token')}</span><div><h2>TestFPT token <span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Live</span></h2>
-      <p class="muted">${t.walletsOn ? `Email and Google players get a Firstprint wallet; their rewards and every player’s daily streak are minted to their wallets by this server, which pays the fees. Players with their own wallet claim with one click and the server pays that fee too (they only sign if the server runs out of test SOL).` : `Players claim their points to their wallets as TestFPT on Solana ${net}. They pay the network fee in test SOL. Set WALLET_ENCRYPTION_KEY on the server to give email and Google players a Firstprint wallet.`}</p></div></div>
+      <p class="muted">Players claim points as TestFPT on Solana ${net}.</p></div></div>
       ${t.lowFunds ? `<p class="form-error">The mint authority is almost out of test SOL (${t.authoritySol} SOL), so on-chain mints are paused. Send it test SOL: <code>${esc(t.authority)}</code> <a href="https://faucet.solana.com" target="_blank" rel="noopener noreferrer">faucet ${ico('external')}</a></p>` : ''}
       ${t.chain ? `<dl class="kpis-mini"><div><dt>Firstprint wallets</dt><dd>${fmtNum(t.chain.wallets)}</dd></div><div><dt>On-chain transactions</dt><dd>${fmtNum(t.chain.mintsConfirmed)}</dd></div><div><dt>Claims on chain</dt><dd>${fmtNum(t.chain.claimsConfirmed)}</dd></div><div><dt>Waiting</dt><dd>${fmtNum(t.chain.mintsWaiting)}</dd></div>${t.chain.mintsFailed ? `<div><dt>Failed</dt><dd>${fmtNum(t.chain.mintsFailed)}</dd></div>` : ''}<div><dt>Authority SOL</dt><dd>${t.authoritySol ?? '–'}</dd></div></dl>` : ''}
       <div class="kv"><span class="muted">Mint address</span><span class="copy-row"><code>${esc(t.mint)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(t.mint)}">${ico('copy')}Copy</button><a class="btn btn-sm" href="${esc(t.mintUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a></span></div>
-      ${saveKeysNote(t)}</section>`;
+      ${saveKeysNote(t)}
+      ${how(t.walletsOn ? 'Email and Google players get a Firstprint wallet; their rewards and every player’s daily streak are minted to their wallets by this server, which pays the fees. Players with their own wallet claim with one click and the server pays that fee too (they only sign if the server runs out of test SOL).' : 'Players pay the network fee in test SOL. Set WALLET_ENCRYPTION_KEY on the server to give email and Google players a Firstprint wallet.')}</section>`;
   }
   const sol = t.authoritySol;
   const check = (done) => `<span class="step-check" aria-hidden="true">${done ? ico('check') : ''}</span>`;
@@ -3957,8 +3983,7 @@ const TASK_TARGET_HINT = { follow: 'X handle, e.g. @firstprint', repost: 'Link t
 /** Tasks players complete for points: create, set a limit, switch off. */
 function tasksAdminSection(tasks) {
   return `<section class="panel">
-    <div class="section-head"><span class="section-ico">${ico('plusCircle')}</span><div><h2>Add a task</h2>
-    <p class="muted">Players open the task, do it on X, then press Verify. X has no free API to check, so it's honour-based: each X username can only be linked to one account, and each task pays once per player.</p></div></div>
+    <div class="section-head"><span class="section-ico">${ico('plusCircle')}</span><div><h2>Add a task</h2></div></div>
     <form id="admin-task" class="admin-form task-form" novalidate>
       <label><span class="field-label">Type</span><select name="kind">
         <option value="follow">Follow on X</option><option value="repost">Repost on X</option><option value="like">Like on X</option><option value="share">Post on X (with invite link)</option><option value="link">Visit a link</option>
@@ -3969,6 +3994,7 @@ function tasksAdminSection(tasks) {
       <label><span class="field-label">Limit <span class="muted">(players)</span></span><input name="maxCompletions" type="number" min="1" placeholder="No limit" /></label>
       <button class="btn btn-solid" type="submit">${ico('plus')}Add task</button>
     </form>
+    ${how('Players open the task, do it on X, then press Verify. X has no free API to check, so it’s honour-based: each X username can only be linked to one account, and each task pays once per player.')}
   </section>
   <section class="panel panel-flush">
     <div class="section-head"><span class="section-ico">${ico('sparkles')}</span><h2>Tasks <span class="count-badge">${tasks.length}</span></h2></div>
@@ -4046,7 +4072,7 @@ function teamPanel(team) {
   const roleName = { admin: 'Admin', listings: 'Listings + tasks', tasks: 'Tasks only' };
   return `
       <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('user')}</span><div><h2>Team</h2><p class="muted">Give people access to this console. They log in on the site with this email (Google or an email code) or with this wallet linked, then open Admin from the menu. <b>Admin</b>: everything except this list. <b>Listings + tasks</b>: review new listings, create, edit, publish and unpublish markets, post them to Telegram, and manage tasks (not results, refunds or settings). <b>Tasks only</b>: add and edit tasks.</p></div></div>
+        <div class="section-head"><span class="section-ico">${ico('user')}</span><div><h2>Team</h2><p class="muted">Who else can open this console.</p></div></div>
         ${
           team.length
             ? `<ul class="team-list">${team
@@ -4061,6 +4087,7 @@ function teamPanel(team) {
           <select id="team-role"><option value="listings">Listings + tasks</option><option value="tasks">Tasks only</option><option value="admin">Admin</option></select>
           <button class="btn btn-solid btn-sm" data-action="admin-team-add">${ico('plus')}Add</button>
         </div>
+        ${how('They log in on the site with this email (Google or an email code) or with this wallet linked, then open Admin from the menu. <b>Admin</b>: everything except this list. <b>Listings + tasks</b>: review new listings, create, edit, publish and unpublish markets, post them to Telegram, and manage tasks (not results, refunds or settings). <b>Tasks only</b>: add and edit tasks.', 'What each role can do')}
       </section>`;
 }
 
@@ -4075,12 +4102,13 @@ function autoListingsPanel(a) {
   const where = !a.exchanges ? 'the watched exchanges' : a.exchanges.length ? listNames(a.exchanges) : 'no exchange (all are switched off under Reference exchanges)';
   return `
       <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('zap')}</span><div><h2>${a.mode === 'review' ? 'New listings' : 'Automatic markets'}</h2><p class="muted">${
+        <div class="section-head"><span class="section-ico">${ico('zap')}</span><div><h2>${a.mode === 'review' ? 'New listings' : 'Automatic markets'}</h2><p class="muted">Checks ${esc(where)} every 2 minutes.</p></div>
+          <label class="toggle head-action"><input type="checkbox" data-action="admin-auto-listings"${a.enabled ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span><span class="sr-only">Check for new listings</span></label></div>
+        ${how(
           a.mode === 'review'
-            ? `Every 2 minutes Firstprint checks ${esc(where)} for new USDT listings and listing announcements. Each one appears under New listings in Overview and Markets (and on Telegram, if connected). A token that already has a market or is already waiting is not repeated. Review it to open a market with the start price, logo and description you choose. Switch an exchange off under Reference exchanges to stop checking it.`
-            : `Every 2 minutes Firstprint checks ${esc(where)} for new USDT listings and opens a market by itself, up to ${a.perDay} a day. Predictions stay open until 1 hour after trading starts. The start price is the average of that first hour and the result comes ${a.hours} hours after listing, both from the exchange it listed on, with no admin needed. You can cancel any of them in Markets.`
-        }</p></div></div>
-        <div class="toggle-grid"><label class="toggle"><input type="checkbox" data-action="admin-auto-listings"${a.enabled ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>Check for new listings</label></div>
+            ? 'Firstprint looks for new USDT listings and listing announcements. Each one shows under New listings in Overview and Markets (and on Telegram, if connected). A token that already has a market or is already waiting is not repeated. Review it to open a market with the start price, logo and description you choose. Switch an exchange off under Reference exchanges to stop checking it.'
+            : `Firstprint opens a market for each new USDT listing by itself, up to ${a.perDay} a day. Predictions stay open until 1 hour after trading starts. The start price is the average of that first hour and the result comes ${a.hours} hours after listing, both from the exchange it listed on, with no admin needed. You can cancel any of them in Markets.`,
+        )}
       </section>`;
 }
 
@@ -4174,65 +4202,79 @@ function marketForm(m, pre = null) {
   const pct = (n) => String(Math.round(n * 1000) / 10);
   const upcoming = Boolean(v) && v.basePrice == null;
   return `
-    <form id="admin-market" class="admin-form admin-grid" data-id="${m ? esc(m.id) : ''}" data-published="${m?.published ? '1' : '0'}" data-outcomes="${m?.outcomes === 'binary' ? 'binary' : 'ladder'}">
+    <form id="admin-market" class="admin-form mf" data-id="${m ? esc(m.id) : ''}" data-published="${m?.published ? '1' : '0'}" data-outcomes="${m?.outcomes === 'binary' ? 'binary' : 'ladder'}">
       ${pre?.detectionId ? `<input type="hidden" name="detectionId" value="${pre.detectionId}" />` : ''}
-      <fieldset class="type-pick" style="grid-column:1/-1"${lock}><legend class="field-label">Market type</legend>
-        <label class="type-card"><input type="radio" name="outcomes" value="ladder"${m?.outcomes === 'binary' ? '' : ' checked'} /><span>${ico('trendUp')}<b>Five outcomes</b><small>Crash, Down, Flat, Up or Moon: how far the price moves from the start price.</small></span></label>
-        <label class="type-card"><input type="radio" name="outcomes" value="binary"${m?.outcomes === 'binary' ? ' checked' : ''} /><span>${ico('checkCircle')}<b>Yes / No</b><small>Will the price be at or above a target price? Simplest for new players.</small></span></label>
+      <fieldset class="mf-type"${lock}><legend class="sr-only">Market type</legend>
+        <label><input type="radio" name="outcomes" value="ladder"${m?.outcomes === 'binary' ? '' : ' checked'} /><span>${ico('trendUp')}Five outcomes</span></label>
+        <label><input type="radio" name="outcomes" value="binary"${m?.outcomes === 'binary' ? ' checked' : ''} /><span>${ico('checkCircle')}Yes / No</span></label>
       </fieldset>
-      ${locked ? '<p class="muted" style="grid-column:1/-1">Users have already predicted, so the token, start price, ranges, and pool rules are locked. You can still edit the description, exchanges, and move the close time later. To change anything else, cancel and refund the market.</p>' : ''}
-      <label><span class="field-label">Token symbol</span><input name="symbol" placeholder="XYZ" value="${esc(v?.symbol ?? '')}" required autocomplete="off"${lock} /></label>
-      <label><span class="field-label">Token name (optional)</span><input name="name" placeholder="XYZ Protocol" value="${esc(v?.name ?? '')}" autocomplete="off" /></label>
-      <div class="logo-field" style="grid-column:1/-1">
-        <span class="field-label">Token logo (optional)</span>
-        <div class="logo-row">
-          <span class="logo-preview" data-logo-preview>${v?.logoUrl ? `<img src="${esc(v.logoUrl)}" alt="" referrerpolicy="no-referrer" />` : ico('image')}</span>
-          <input type="hidden" name="logoUrl" value="${esc(v?.logoUrl ?? '')}" />
-          <input class="logo-link" data-logo-link type="url" inputmode="url" placeholder="Paste an image link (https://…)" value="${v?.logoUrl && !v.logoUrl.startsWith('data:') ? esc(v.logoUrl) : ''}" autocomplete="off" />
-          <label class="btn btn-sm logo-upload">${ico('upload')}Upload<input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-logo-file hidden /></label>
-          <button class="btn btn-sm" type="button" data-action="logo-clear"${v?.logoUrl ? '' : ' hidden'}>Remove</button>
+      <p class="mf-hint"><span class="ladder-only">Crash, Down, Flat, Up or Moon: how far the price moves from the start price.</span><span class="binary-only">Will the price be at or above a target price? Simplest for new players.</span></p>
+      ${locked ? '<p class="mf-note">Players have already predicted, so the token, price, ranges and pool rules are locked. You can still change the description, exchanges and close time.</p>' : ''}
+
+      <section class="mf-group">
+        <h3 class="mf-h">Token</h3>
+        <div class="mf-cols">
+          <label><span class="field-label">Symbol</span><input name="symbol" placeholder="XYZ" value="${esc(v?.symbol ?? '')}" required autocomplete="off"${lock} /></label>
+          <label><span class="field-label">Name <span class="muted">(optional)</span></span><input name="name" placeholder="XYZ Protocol" value="${esc(v?.name ?? '')}" autocomplete="off" /></label>
         </div>
-        <small class="logo-status" data-logo-status></small>
-        <small class="muted">Square images look best. Pasted links and uploads are saved as a 128 × 128 copy, so the logo keeps working even if the link changes. Tip: on CoinGecko, right-click the token's logo and choose “Copy image address”.</small>
-      </div>
-      <div class="price-field">
-        <label><span class="field-label"><span class="ladder-only">Start price (USD)</span><span class="binary-only">Target price (USD)</span></span><input name="basePrice" type="number" step="any" min="0" placeholder="${upcoming ? 'Set when trading opens' : '0.25'}" value="${v?.basePrice ?? ''}"${upcoming ? ' disabled' : ' required'}${lock} /></label>
+        <div class="logo-field">
+          <span class="field-label">Logo</span>
+          <div class="logo-row">
+            <span class="logo-preview" data-logo-preview>${v?.logoUrl ? `<img src="${esc(v.logoUrl)}" alt="" referrerpolicy="no-referrer" />` : ico('image')}</span>
+            <input type="hidden" name="logoUrl" value="${esc(v?.logoUrl ?? '')}" />
+            <input class="logo-link" data-logo-link type="url" inputmode="url" placeholder="Paste an image link (https://…)" value="${v?.logoUrl && !v.logoUrl.startsWith('data:') ? esc(v.logoUrl) : ''}" autocomplete="off" />
+            <label class="btn btn-sm logo-upload">${ico('upload')}<span>Upload</span><input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-logo-file hidden /></label>
+            <button class="btn btn-sm" type="button" data-action="logo-clear"${v?.logoUrl ? '' : ' hidden'}>Remove</button>
+          </div>
+          <small class="logo-status" data-logo-status></small>
+          <small class="muted" title="On CoinGecko, right-click the token’s logo and choose “Copy image address”.">Square works best. A copy is saved, so the logo keeps working if the link changes.</small>
+        </div>
+      </section>
+
+      <section class="mf-group">
+        <h3 class="mf-h">Price and timing</h3>
+        <div class="mf-cols mf-cols-3">
+          <label><span class="field-label"><span class="ladder-only">Start price (USD)</span><span class="binary-only">Target price (USD)</span></span><input name="basePrice" type="number" step="any" min="0" placeholder="${upcoming ? 'Set when trading opens' : '0.25'}" value="${v?.basePrice ?? ''}"${upcoming ? ' disabled' : ' required'}${lock} /></label>
+          <label><span class="field-label">Predictions close</span><input name="closeAt" type="datetime-local" value="${toLocalInput(v?.closeAt ?? soon)}" required /><small class="utc-hint" data-utc-for="closeAt"></small></label>
+          <label><span class="field-label">Result by</span><input name="resultAt" type="datetime-local" value="${toLocalInput(v?.settleAt ?? soon + 24 * 3_600_000)}" required /><small class="utc-hint" data-utc-for="resultAt"></small></label>
+        </div>
         <div class="upcoming-opt">
           <label class="check upcoming-check"><input type="checkbox" name="upcoming" data-upcoming${upcoming ? ' checked' : ''}${lock} /> Upcoming token: not trading yet</label>
-          <small class="muted">No price needed now: set predictions to close when trading starts. Once the token trades, its opening price (from its first minutes of trading) is read from the exchange and becomes the start price by itself; you’re asked for the result only when it is due.</small>
+          <details class="adm-how"><summary>How upcoming works</summary><p>No price needed now: set predictions to close when trading starts. Once the token trades, its opening price (from its first minutes of trading) is read from the exchange and becomes the start price by itself. You’re asked for the result only when it is due.</p></details>
           <div class="auto-open"${upcoming && !(m && m.published) ? '' : ' hidden'}>
             <label class="check"><input type="checkbox" name="autoOpen" data-auto-open${v?.autoOpenAt ? ' checked' : ''} /> <b>Open by itself when trading starts</b></label>
-            <label class="auto-open-at"${v?.autoOpenAt ? '' : ' hidden'}><span class="field-label">Trading starts (your time)</span><input name="autoOpenAt" type="datetime-local" value="${toLocalInput(v?.autoOpenAt ?? v?.listingStart ?? soon)}" /><small class="utc-hint" data-utc-for="autoOpenAt"></small></label>
-            <small class="muted">Instead of opening now, the market waits as a draft. Once the token has traded for 3 minutes, its live exchange price (checked against those minutes, so an opening spike is skipped) becomes the start price and predictions open, with the channel post. You get a Telegram message either way. Needs the logo, and predictions must stay open at least 30 minutes after trading starts.</small>
+            <label class="auto-open-at"${v?.autoOpenAt ? '' : ' hidden'}><span class="field-label">Trading starts</span><input name="autoOpenAt" type="datetime-local" value="${toLocalInput(v?.autoOpenAt ?? v?.listingStart ?? soon)}" /><small class="utc-hint" data-utc-for="autoOpenAt"></small></label>
+            <details class="adm-how"><summary>How this works</summary><p>The market waits as a draft. Once the token has traded for 3 minutes, its live price (checked against those minutes, so an opening spike is skipped) becomes the start price and predictions open, with the channel post. You get a Telegram message either way. Needs the logo, and predictions must stay open at least 30 minutes after trading starts.</p></details>
           </div>
         </div>
-      </div>
-      <label><span class="field-label">Predictions close (your time)</span><input name="closeAt" type="datetime-local" value="${toLocalInput(v?.closeAt ?? soon)}" required /><small class="utc-hint" data-utc-for="closeAt"></small><small class="muted">The last moment players can pick. Cards show this time; the result time is separate.</small></label>
-      <label><span class="field-label">Result expected by (your time)</span><input name="resultAt" type="datetime-local" value="${toLocalInput(v?.settleAt ?? soon + 24 * 3_600_000)}" required /><small class="utc-hint" data-utc-for="resultAt"></small></label>
-      <div class="price-check" style="grid-column:1/-1">
-        <button class="btn btn-sm" type="button" data-action="admin-price-check">${ico('activity')}Check live price</button>
-        <span class="muted">Compares the start price and timing with what the chosen exchanges show right now.</span>
+        <p class="mf-fine">Times are in your time zone. Players can pick until predictions close; the result comes after.</p>
+      </section>
+
+      <section class="mf-group">
+        <h3 class="mf-h">Exchanges</h3>
+        <fieldset class="venues"><legend class="sr-only">Reference exchanges</legend>
+          ${A.info.exchanges
+            .filter((e) => e.enabled || chosen.has(e.id))
+            .map((e) => `<label class="check"><input type="checkbox" name="exchanges" value="${esc(e.id)}"${chosen.has(e.id) ? ' checked' : ''} /> ${esc(e.name)}</label>`)
+            .join('')}
+        </fieldset>
+        <div class="mf-tools">
+          <button class="btn btn-sm" type="button" data-action="admin-price-check" title="Compares the start price and timing with what these exchanges show right now">${ico('activity')}Check live price</button>
+          ${A.info.telegram?.channel ? `<button class="btn btn-sm" type="button" data-action="admin-banner-preview" title="What the channel post will look like. Check the logo is this token’s.">${ico('telegram')}Preview banner</button>` : ''}
+        </div>
         <div id="price-check-out" aria-live="polite"></div>
-      </div>
-      ${
-        A.info.telegram?.channel
-          ? `<div class="banner-check" style="grid-column:1/-1">
-        <button class="btn btn-sm" type="button" data-action="admin-banner-preview">${ico('telegram')}Preview Telegram banner</button>
-        <span class="muted">What the channel post will look like. Check the logo is this token’s, not another token with the same ticker.</span>
-        <div id="banner-preview-out" aria-live="polite"></div>
-      </div>`
-          : ''
-      }
-      <fieldset class="venues"><legend class="field-label">Reference exchanges</legend>
-        ${A.info.exchanges
-          .filter((e) => e.enabled || chosen.has(e.id))
-          .map((e) => `<label class="check"><input type="checkbox" name="exchanges" value="${esc(e.id)}"${chosen.has(e.id) ? ' checked' : ''} /> ${esc(e.name)}</label>`)
-          .join('')}
-      </fieldset>
-      <label style="grid-column:1/-1"><span class="field-label">Description and result rules (shown to users)</span>
-        <textarea name="note" rows="3" maxlength="2000" placeholder="e.g. Result is the XYZ/USDT closing price on Binance at 12:00 UTC.">${esc(v?.note ?? '')}</textarea></label>
-      <details style="grid-column:1/-1"><summary class="field-label">Outcome ranges and pool rules</summary>
-        <div class="admin-grid" style="margin-top:10px">
+        ${A.info.telegram?.channel ? '<div id="banner-preview-out" class="banner-check" aria-live="polite"></div>' : ''}
+      </section>
+
+      <section class="mf-group">
+        <h3 class="mf-h">Shown to players</h3>
+        <label><span class="sr-only">Description and result rules</span>
+          <textarea name="note" rows="3" maxlength="2000" placeholder="Description and result rules, e.g. Result is the XYZ/USDT closing price on Binance at 12:00 UTC.">${esc(v?.note ?? '')}</textarea></label>
+      </section>
+
+      <details class="mf-more">
+        <summary>Outcome ranges and pool rules</summary>
+        <div class="mf-cols mf-cols-3">
           <p class="muted binary-only" style="grid-column:1/-1;margin:0">Yes/No markets ignore the ranges: Yes wins at or above the target price.</p>
           <label><span class="field-label">Crash at or below (%)</span><input name="crash" type="number" step="any" value="${pct(t.crash)}"${lock} /></label>
           <label><span class="field-label">Down at or below (%)</span><input name="down" type="number" step="any" value="${pct(t.down)}"${lock} /></label>
@@ -4242,7 +4284,8 @@ function marketForm(m, pre = null) {
           <label><span class="field-label">Pool limit (points)</span><input name="softCap" type="number" min="100" step="1" value="${m?.softCap ?? 50000}"${lock} /></label>
         </div>
       </details>
-      <div class="admin-actions" style="grid-column:1/-1">
+
+      <div class="admin-actions mf-actions">
         ${
           m
             ? `<button class="btn btn-solid" type="submit" name="intent" value="save">Save changes</button>
@@ -4390,7 +4433,7 @@ function discoverView() {
   const state = (s, empty) => (!s ? '' : s.loading ? '<p class="muted">Loading…</p>' : s.error ? `<p class="form-error">${esc(s.error)}</p>` : empty);
   return `<div id="discover-root" class="discover">
     <section class="panel">
-      <div class="section-head"><span class="section-ico">${ico('zap')}</span><div><h2>New on exchanges</h2><p class="muted">Pick an exchange to see what it listed this week, with the opening price and the price now. The arrow opens its own listings page.</p></div></div>
+      <div class="section-head"><span class="section-ico">${ico('zap')}</span><div><h2>New on exchanges</h2><p class="muted">Pick an exchange to see what it listed this week.</p></div></div>
       <div class="disc-ex">${exchanges
         .map(
           (e) => `<span class="disc-ex-item${venue === e.id ? ' on' : ''}"><button class="btn btn-sm" data-action="admin-discover-exchange" data-venue="${esc(e.id)}"${venue === e.id ? ' aria-pressed="true"' : ''}>${esc(e.name)}</button>${LISTING_PAGES[e.id] ? `<a class="icon-btn" href="${LISTING_PAGES[e.id]}" target="_blank" rel="noopener noreferrer" aria-label="${esc(e.name)} listings page">${ico('external')}</a>` : ''}</span>`,
@@ -4405,11 +4448,11 @@ function discoverView() {
       }
     </section>
     <section class="panel">
-      <div class="section-head"><span class="section-ico">${ico('flame')}</span><div><h2>Trending now</h2><p class="muted">The tokens trending on CoinGecko, with their price. “Make market” checks which of your exchanges trade it and fills in a ${TRENDING_RESULT_DAYS}-day market.</p></div><button class="btn btn-sm" data-action="admin-discover-trending">${ico('refresh')}${tr?.data ? 'Refresh' : 'Fetch trending'}</button></div>
+      <div class="section-head"><span class="section-ico">${ico('flame')}</span><div><h2>Trending now</h2><p class="muted">From CoinGecko. “Make market” fills in a ${TRENDING_RESULT_DAYS}-day market.</p></div><button class="btn btn-sm" data-action="admin-discover-trending">${ico('refresh')}${tr?.data ? 'Refresh' : 'Fetch trending'}</button></div>
       ${state(tr, trRows ? `<div class="table-scroll"><table class="table disc-table"><thead><tr><th>Token</th><th class="right">Price</th><th class="right hide-sm">24h</th><th></th></tr></thead><tbody>${trRows}</tbody></table></div><p class="fine">From CoinGecko${tr?.data ? `, ${fmtAgo(tr.data.fetchedAt)}` : ''}.</p>` : '<p class="muted">CoinGecko returned no tokens.</p>')}
     </section>
     <section class="panel">
-      <div class="section-head"><span class="section-ico">${ico('external')}</span><div><h2>Look by hand</h2><p class="muted">CoinMarketCap needs a paid key for this data, so it opens in a new tab.</p></div></div>
+      <div class="section-head"><span class="section-ico">${ico('external')}</span><div><h2>Look by hand</h2><p class="muted">Opens in a new tab.</p></div></div>
       <div class="disc-links">${TRACKER_PAGES.map(([label, href]) => `<a class="btn btn-sm" href="${href}" target="_blank" rel="noopener noreferrer">${esc(label)} ${ico('external')}</a>`).join('')}</div>
     </section>
   </div>`;
@@ -4499,20 +4542,15 @@ function reviewPrefill(d) {
 }
 
 /** New exchange listings waiting for the admin: review (opens the market form filled in) or skip. */
-function listingsPanel(pending) {
-  if (!pending.length) return '';
+function listingsList(pending) {
   const now = Date.now();
   const when = (d) => (!d.listingAt ? 'Start time not published' : d.listingAt > now ? `Trading starts ${fmtDate(d.listingAt)} · in ${until(d.listingAt)}` : `Trading started ${fmtDate(d.listingAt)}`);
-  return `
-    <section class="panel panel-alert">
-      <div class="section-head"><span class="section-ico">${ico('zap')}</span><div><h2>New listings <span class="count-badge">${pending.length}</span></h2><p class="muted">Found on the exchange by Firstprint. Review one to open a market for it, or skip it.</p></div></div>
-      <ul class="todo">${pending
-        .map(
-          (d) => `<li style="--c:var(--${d.listingAt && d.listingAt > now ? 'up' : 'moon'})"><span class="todo-ico">${ico('coins')}</span><div><b>${esc(d.symbol || '?')}${d.name ? ` <span class="muted">${esc(d.name)}</span>` : ''}</b><span class="muted">${esc(d.exchangeName)} · ${when(d)}</span></div>
-            <span class="todo-actions"><button class="btn btn-sm btn-solid" data-action="admin-review" data-id="${d.id}">Review</button><button class="btn btn-sm" data-action="admin-review-ignore" data-id="${d.id}">Skip</button></span></li>`,
-        )
-        .join('')}</ul>
-    </section>`;
+  return `<ul class="todo">${pending
+    .map(
+      (d) => `<li style="--c:var(--${d.listingAt && d.listingAt > now ? 'up' : 'moon'})"><span class="todo-ico">${ico('coins')}</span><div><b>${esc(d.symbol || '?')}${d.name ? ` <span class="muted">${esc(d.name)}</span>` : ''}</b><span class="muted">${esc(d.exchangeName)} · ${when(d)}</span></div>
+        <span class="todo-actions"><button class="btn btn-sm btn-solid" data-action="admin-review" data-id="${d.id}">Review</button><button class="btn btn-sm" data-action="admin-review-ignore" data-id="${d.id}">Skip</button></span></li>`,
+    )
+    .join('')}</ul>`;
 }
 
 /** Settings: Telegram alerts for new listings and markets that need a result. */
@@ -4539,14 +4577,14 @@ function telegramPanel(t) {
   const channel = t.configured
     ? `
       <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('telegram')}</span><div><h2>Player channel</h2><p class="muted">A public Telegram channel players join. Every market you publish is posted there with a banner and a “Predict now” button, a reminder goes out in its last hour, and results with a winner are posted (cancelled markets are not). Players see a Telegram button on market pages, their dashboard and the menu.</p></div></div>
+        <div class="section-head"><span class="section-ico">${ico('telegram')}</span><div><h2>Player channel</h2><p class="muted">The public channel where markets and results are posted.</p></div></div>
         ${
           t.channel
             ? `<p class="all-good">${ico('checkCircle')}Posting to <a href="https://t.me/${esc(t.channel)}" target="_blank" rel="noopener noreferrer">@${esc(t.channel)}</a></p>
-               <p class="muted">New markets and results are posted by themselves, and a “last hour” reminder goes out an hour before predictions close.${t.unposted ? ` <b>${t.unposted} open market${t.unposted === 1 ? ' hasn’t' : 's haven’t'} been posted yet</b> (made before the channel was set up).` : ''}</p>
+               ${t.unposted ? `<p class="muted"><b>${t.unposted} open market${t.unposted === 1 ? ' hasn’t' : 's haven’t'} been posted yet</b> (made before the channel was set up).</p>` : ''}
                <div class="admin-actions">${t.unposted ? `<button class="btn btn-solid btn-sm" data-action="admin-tg-post-open">${ico('telegram')}Post ${t.unposted === 1 ? 'it' : `all ${t.unposted}`} now</button>` : ''}${t.open && t.open > t.unposted ? `<button class="btn btn-sm" data-action="admin-tg-post-open" data-again="1">${ico('telegram')}Post all ${t.open} open markets again</button>` : ''}<button class="btn btn-sm" data-action="admin-tg-channel-remove">Stop posting</button></div>
                <div class="toggle-grid"><label class="toggle"><input type="checkbox" data-action="admin-token-banners"${t.tokenBanners ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>Token banners</label></div>
-               <p class="muted">${t.tokenBanners ? 'Each post gets the token’s own banner: its logo, ticker and details. A ticker the banner font can’t draw (such as Chinese) falls back to the fixed banner. Check it with “Preview Telegram banner” on the market form before publishing.' : 'Off: new markets use the fixed banner, and reminders and results are text only.'}</p>`
+               ${how(`Every market you publish is posted with a banner and a “Predict now” button, a reminder goes out in its last hour, and results with a winner are posted (cancelled markets are not). ${t.tokenBanners ? 'Token banners on: each post gets the token’s own banner with its logo and ticker. A ticker the banner font can’t draw (such as Chinese) falls back to the fixed banner. Check it with “Preview banner” on the market form.' : 'Token banners off: new markets use the fixed banner, and reminders and results are text only.'} Players see a Telegram button on market pages, their dashboard and the menu.`)}`
             : `<ol class="tg-steps">
                 <li>In Telegram, create a <b>New Channel</b>, make it <b>Public</b> and give it a link, like <code>firstprint_markets</code>.</li>
                 <li>Open the channel → <b>Administrators</b> → <b>Add Admin</b>, pick your bot, and leave <b>Post Messages</b> on.</li>
@@ -4558,21 +4596,26 @@ function telegramPanel(t) {
     : '';
   return `
       <section class="panel">
-        <div class="section-head"><span class="section-ico">${ico('bell')}</span><div><h2>Telegram alerts</h2><p class="muted">A message to you when a new token lists on an exchange we watch, and when a market closes and needs your result.</p></div></div>
+        <div class="section-head"><span class="section-ico">${ico('bell')}</span><div><h2>Telegram alerts</h2><p class="muted">Messages to you for new listings and results to post.</p></div></div>
         ${body}
       </section>${channel}`;
 }
 
+/** Row actions: the everyday one stays visible, the rest (cancel, delete, Telegram…) sit in a "⋯" menu. */
 function marketActions(m) {
   const btn = (action, icon, label, cls = '') => `<button class="btn btn-sm${cls}" data-action="${action}" data-id="${esc(m.id)}">${ico(icon)}${label}</button>`;
+  const item = (action, icon, label, cls = '') => `<button type="button" class="row-menu-item${cls}" data-action="${action}" data-id="${esc(m.id)}">${ico(icon)}${label}</button>`;
   const manualOpen = m.mode === 'manual' && m.status === 'open';
-  const out = [];
-  if (manualOpen) out.push(btn('admin-edit', 'edit', 'Edit'));
-  if (manualOpen && !m.published) out.push(btn('admin-publish', 'send', 'Publish', ' btn-solid'), btn('admin-delete', 'trash', 'Delete', ' btn-danger'));
-  if (manualOpen && m.published && m.predictors === 0) out.push(btn('admin-unpublish', 'eye', 'Unpublish'));
-  if (A.info.telegram?.channel && m.status === 'open' && m.published && m.kind !== 'live_test') out.push(btn('admin-tg-post', 'telegram', 'Post to Telegram'));
-  if (canAdmin('admin') && (m.status === 'open' || m.status === 'locked') && (m.published || m.mode !== 'manual')) out.push(btn('admin-cancel', 'undo', 'Cancel and refund', ' btn-danger'));
-  return out.join(' ');
+  const main = [];
+  const more = [];
+  if (manualOpen && !m.published) main.push(btn('admin-publish', 'send', 'Publish', ' btn-solid'));
+  if (manualOpen) main.push(btn('admin-edit', 'edit', 'Edit'));
+  if (manualOpen && m.published && m.predictors === 0) more.push(item('admin-unpublish', 'eye', 'Unpublish'));
+  if (A.info.telegram?.channel && m.status === 'open' && m.published && m.kind !== 'live_test') more.push(item('admin-tg-post', 'telegram', 'Post to Telegram'));
+  if (manualOpen && !m.published) more.push(item('admin-delete', 'trash', 'Delete draft', ' danger'));
+  if (canAdmin('admin') && (m.status === 'open' || m.status === 'locked') && (m.published || m.mode !== 'manual')) more.push(item('admin-cancel', 'undo', 'Cancel and refund', ' danger'));
+  if (more.length) main.push(`<details class="row-menu"><summary class="btn btn-sm" aria-label="More actions for ${esc(m.symbol)}">${ico('more')}</summary><div class="row-menu-list">${more.join('')}</div></details>`);
+  return main.join('');
 }
 
 function adminPhasePill(m) {
@@ -4634,7 +4677,7 @@ function exchangeCheckPanel() {
   const blocked = c ? c.results.filter((r) => r.verdict === 'blocked').map((r) => r.name) : [];
   const works = c ? c.results.filter((r) => r.verdict === 'works').map((r) => r.name) : [];
   const summary = !c
-    ? '<p class="muted">Calls every exchange once from this server (a BTC price, recent candles, the pair list and announcements) to see which ones new listings could come from. Takes up to 15 seconds.</p>'
+    ? how('Calls every exchange once from this server (a BTC price, recent candles, the pair list and announcements) to see which ones new listings could come from. Takes up to 15 seconds.')
     : `<p class="checks-note ok">${ico('checkCircle')}Works from this server: ${works.length ? esc(works.join(', ')) : 'none'}.</p>
        ${blocked.length ? `<p class="checks-note">${ico('alert')}Blocked from this server's location: ${esc(blocked.join(', '))}. These exchanges refuse servers in some countries (such as the US). A server in another region, such as Singapore or Frankfurt, can reach them.</p>` : ''}
        <ul class="ex-check">${c.results.map(exCheckRow).join('')}</ul>
@@ -4761,6 +4804,13 @@ async function onAdminAction(action, el) {
         toast(err.message, true);
       }
       return renderAdmin();
+    case 'admin-inbox':
+      A.inbox = el.dataset.pane;
+      el.closest('.adm-inbox')?.querySelectorAll('[data-pane]').forEach((x) => {
+        if (x.matches('[role=tab]')) x.setAttribute('aria-selected', String(x === el));
+        else x.hidden = x.dataset.pane !== A.inbox;
+      });
+      return;
     case 'admin-recheck':
       A.checks = null;
       return renderAdmin();
@@ -5528,6 +5578,12 @@ document.addEventListener('input', (e) => {
   if (e.target.id !== 'auth-code') return;
   e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
   if (e.target.value.length === 6) submitCode(e.target.form);
+});
+
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('details.row-menu[open]').forEach((d) => {
+    if (!d.contains(e.target) || e.target.closest('.row-menu-item')) d.open = false;
+  });
 });
 
 document.addEventListener('change', (e) => {

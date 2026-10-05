@@ -11498,3 +11498,539 @@ svg.viz.viz-narrow {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* =====================================================================
+   Admin, clean pass: smaller headings, numbers first, long help folded
+   into "How it works", grouped market form.
+   ===================================================================== */
+
+.admin-main .panel {
+  padding: 18px 20px;
+  margin-bottom: 14px;
+}
+.admin-main .panel-flush {
+  padding: 0;
+}
+.admin-main .panel-flush > .section-head {
+  padding: 14px 20px 10px;
+}
+.admin-main .section-head {
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.admin-main .section-head h2 {
+  font-size: 16px;
+}
+.admin-main .section-head p {
+  margin-top: 1px;
+  font-size: 13px;
+}
+.admin-main .section-ico {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+.admin-main .section-ico .i {
+  width: 16px;
+  height: 16px;
+}
+.admin-top {
+  margin-bottom: 16px;
+  align-items: center;
+}
+.admin-top .page-title {
+  margin: 0 0 2px;
+}
+.admin-top p {
+  font-size: 14px;
+}
+
+/* Headline numbers */
+.adm-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--line);
+  overflow: hidden;
+}
+.adm-stat {
+  all: unset;
+  box-sizing: border-box;
+  display: grid;
+  gap: 2px;
+  padding: 14px 16px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.adm-stat:hover {
+  background: var(--surface-2);
+}
+.adm-stat:focus-visible {
+  outline: 2px solid var(--focus, var(--brand));
+  outline-offset: -2px;
+}
+.adm-stat-l {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.adm-stat-l::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c);
+}
+.adm-stat b {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.adm-stat small {
+  font-size: 12px;
+  color: var(--muted);
+}
+@media (max-width: 900px) {
+  .adm-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .adm-stat:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* One panel, a few tabs */
+.adm-tabs {
+  display: flex;
+  gap: 4px;
+  margin: -4px 0 14px;
+  border-bottom: 1px solid var(--line);
+}
+.adm-tabs button {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  margin-bottom: -1px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.adm-tabs button[aria-selected='true'] {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+.adm-tabs button:focus-visible {
+  outline: 2px solid var(--focus, var(--brand));
+  border-radius: 6px;
+}
+.admin-main .todo {
+  gap: 8px;
+}
+.admin-main .todo li {
+  padding: 10px 12px;
+}
+.admin-main .todo-ico {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+
+/* Folded sections */
+.adm-collapse {
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.adm-collapse > summary,
+.adm-row > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+.adm-collapse > summary::-webkit-details-marker,
+.adm-row > summary::-webkit-details-marker,
+.adm-how > summary::-webkit-details-marker,
+.mf-more > summary::-webkit-details-marker {
+  display: none;
+}
+.adm-collapse > summary::after,
+.adm-row > summary::after,
+.mf-more > summary::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.15s;
+}
+.adm-collapse[open] > summary::after,
+.adm-row[open] > summary::after,
+.mf-more[open] > summary::after {
+  transform: rotate(225deg) translateY(-2px);
+}
+.adm-collapse > summary .i {
+  width: 16px;
+  height: 16px;
+}
+.adm-collapse > summary .muted {
+  font-size: 13px;
+}
+.adm-collapse > :not(summary) {
+  margin: 0 16px 14px;
+}
+.adm-collapse-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+.adm-warn > summary .i {
+  color: var(--moon);
+}
+.adm-warn.high {
+  border-color: color-mix(in srgb, var(--crash) 35%, var(--line));
+}
+.adm-warn.high > summary .i {
+  color: var(--crash);
+}
+.adm-warn .check-list {
+  margin-top: 0;
+}
+
+/* Results waiting: one row each, the form opens below */
+.adm-row {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.adm-row + .adm-row {
+  margin-top: 8px;
+}
+.adm-row > summary {
+  padding: 10px 12px;
+}
+.adm-row-cta {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--crash);
+}
+.adm-row > summary::after {
+  margin-left: 6px;
+}
+.adm-row .admin-result {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 var(--r-md) var(--r-md);
+}
+
+/* "How it works" */
+.adm-how {
+  margin-top: 10px;
+  font-size: 13px;
+}
+.adm-how > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  border: 0 !important;
+  padding: 0 !important;
+  font-weight: 500;
+}
+.adm-how > summary::before {
+  content: '' !important;
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+.adm-how[open] > summary::before {
+  transform: rotate(45deg);
+}
+.adm-how > summary:hover {
+  color: var(--text);
+}
+.adm-how > p {
+  margin: 8px 0 0;
+  max-width: 72ch;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.admin-main .section-head .toggle.head-action {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* Market form */
+.admin-main .mf {
+  display: grid;
+  gap: 0;
+}
+.mf-type {
+  display: inline-flex;
+  justify-self: start;
+  gap: 2px;
+  margin: 0;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.mf-type label {
+  display: block !important;
+  cursor: pointer;
+}
+.mf-type input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.mf-type span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.mf-type .i {
+  width: 15px;
+  height: 15px;
+}
+.mf-type input:checked + span {
+  background: var(--surface-2);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.mf-type input:focus-visible + span {
+  outline: 2px solid var(--focus, var(--brand));
+}
+.mf-type:disabled {
+  opacity: 0.6;
+}
+.mf-hint {
+  margin: 8px 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.mf-note {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--moon) 9%, transparent);
+  font-size: 13px;
+}
+.mf-group {
+  display: grid;
+  gap: 12px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+.mf-h {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.mf-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.mf-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 720px) {
+  .mf-cols,
+  .mf-cols-3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.mf .utc-hint {
+  margin-top: 4px;
+}
+.mf-fine {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.mf .upcoming-opt {
+  display: grid;
+  gap: 0;
+}
+.mf .upcoming-opt .adm-how {
+  margin-top: 6px;
+}
+.mf .auto-open {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.mf .auto-open[hidden] {
+  display: none;
+}
+.mf .auto-open .adm-how {
+  margin-top: 0;
+}
+.mf-tools {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mf #price-check-out:empty,
+.mf #banner-preview-out:empty {
+  display: none;
+}
+.mf .banner-check {
+  margin: 0;
+}
+.mf-more {
+  border-bottom: 1px solid var(--line);
+}
+.mf-more > summary {
+  display: flex !important;
+  align-items: center;
+  padding: 16px 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+}
+.mf-more > summary::before {
+  content: none !important;
+}
+.mf-more > summary:hover {
+  color: var(--text);
+}
+.mf-more > .mf-cols {
+  padding-bottom: 18px;
+}
+.mf-actions {
+  padding-top: 18px;
+}
+
+/* Logo row: icon and text side by side on the Upload button */
+.admin-main .admin-form label.logo-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.logo-row .logo-link {
+  flex: 1 1 220px;
+}
+.admin-main .mf-cols > label {
+  align-content: start;
+}
+.mf-type label {
+  position: relative;
+}
+
+/* "⋯" menu on admin table rows */
+.row-menu {
+  position: relative;
+}
+.row-menu > summary {
+  list-style: none;
+  padding-inline: 8px;
+}
+.row-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.row-menu > summary .i {
+  margin: 0;
+}
+.row-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 20;
+  display: grid;
+  min-width: 190px;
+  padding: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised, var(--surface-2));
+  box-shadow: var(--shadow-lg);
+}
+.row-menu-item {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.row-menu-item:hover,
+.row-menu-item:focus-visible {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+.row-menu-item .i {
+  width: 15px;
+  height: 15px;
+}
+.row-menu-item.danger {
+  color: var(--crash);
+}
+.admin-main .panel-flush,
+.admin-main .table-scroll:has(.row-menu[open]) {
+  overflow: visible;
+}
+@media (max-width: 640px) {
+  .admin-main .todo li {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+  .admin-main .todo-ico {
+    display: none;
+  }
+  .admin-main .todo li > .btn {
+    grid-column: auto;
+  }
+  .admin-main .todo li .todo-actions {
+    grid-column: 1 / -1;
+  }
+  .adm-collapse > summary .muted {
+    display: none;
+  }
+  .adm-collapse > summary .count-badge + .muted,
+  .adm-collapse > summary b + .muted {
+    display: none;
+  }
+}
