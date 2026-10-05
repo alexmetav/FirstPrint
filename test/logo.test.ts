@@ -62,7 +62,7 @@ test('HTTP: lists link to the logo, unchanged lists answer 304, big answers are 
   const { service, create } = setup();
   const id = create(PNG);
   for (let i = 0; i < 12; i++) create();
-  const server = createApiServer({ service, secureCookies: false, webDir: new URL('../web', import.meta.url).pathname });
+  const server = createApiServer({ service, adminKey: 'admin-key-for-tests-123456', secureCookies: false, webDir: new URL('../web', import.meta.url).pathname });
   await new Promise<void>((r) => server.listen(0, r));
   const port = (server.address() as { port: number }).port;
   // node:http, so the gzip body and 304s come through untouched.

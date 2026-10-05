@@ -1922,6 +1922,10 @@ export class FirstprintService {
 
   settlement(id: string) {
     this.publicRow(id);
+    return this.settlementOf(id);
+  }
+
+  private settlementOf(id: string) {
     const s = as<{ result: string; data_hash: string; settled_at: number } | undefined>(
       this.db.prepare('SELECT * FROM settlements WHERE market_id = ?').get(id),
     );
@@ -2211,6 +2215,23 @@ export class FirstprintService {
     return m;
   }
 
+  /**
+   * Predictions for drawing a market, reused for up to 2 seconds while nothing has been written:
+   * every refresh of every visitor's list would otherwise re-read every prediction of every market.
+   * Any write on this connection (total_changes) makes it read afresh. Points logic never uses this.
+   */
+  private viewCache = new Map<string, { gen: number; at: number; rows: readonly PredictionRow[] }>();
+  private predictionsForView(marketId: string): readonly PredictionRow[] {
+    const gen = (this.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n;
+    const at = Date.now();
+    const hit = this.viewCache.get(marketId);
+    if (hit && hit.gen === gen && at - hit.at < 2_000) return hit.rows;
+    const rows = this.predictions(marketId);
+    if (this.viewCache.size > 1_000) this.viewCache.clear();
+    this.viewCache.set(marketId, { gen, at, rows });
+    return rows;
+  }
+
   private predictions(marketId: string): PredictionRow[] {
     return as<PredictionRow[]>(
       this.db.prepare('SELECT * FROM predictions WHERE market_id = ? ORDER BY placed_at, id').all(marketId),
@@ -2244,7 +2265,7 @@ export class FirstprintService {
     const cfg = parseConfig(m);
     const w = windows(cfg, m.listing_at);
     const now = this.clock.now();
-    const preds = this.predictions(m.id);
+    const preds = this.predictionsForView(m.id);
     const afterClose = m.status !== 'open';
 
     const totals = emptyTotals();
@@ -2306,7 +2327,7 @@ export class FirstprintService {
 
     let result = null;
     if (m.status === 'resolved' || m.status === 'void') {
-      const s = this.settlement(m.id).result;
+      const s = this.settlementOf(m.id).result;
       result = {
         winningBucket: s.winningBucket,
         returnPct: s.returnPct,
