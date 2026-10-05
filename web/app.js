@@ -3604,6 +3604,8 @@ async function renderAdmin() {
   const [{ markets }, detected, { log }, token, { tasks }, teamData] = loaded;
   void backfillLogoPngs(markets);
   A.detected = detected;
+  // Tokens that already have a live market show "Market made" in Find tokens.
+  A.made = { ...(A.made ?? {}), ...Object.fromEntries(markets.filter((m) => m.status === 'open' || m.status === 'locked').map((m) => [m.symbol.toUpperCase(), m.id])) };
   const venues = A.info.venues;
   const editing = markets.find((m) => m.id === A.edit && m.mode === 'manual' && m.status === 'open') ?? null;
   if (A.edit && !editing) A.edit = null;
@@ -4430,7 +4432,7 @@ function discoverView() {
         <td class="hide-sm">${l.listingAt ? `${fmtDate(l.listingAt)}${l.listingAt > Date.now() ? ` · in ${until(l.listingAt)}` : ''}` : '<span class="muted">Not published</span>'}</td>
         <td class="right num-cell">${usd(l.openPrice)}</td>
         <td class="right num-cell">${usd(l.price)} ${pctChip(chg)}</td>
-        <td class="right">${l.marketId ? `<button class="btn btn-sm" data-action="admin-edit" data-id="${esc(l.marketId)}">Has a market</button>` : `<button class="btn btn-sm btn-gold" data-action="admin-discover-make" data-src="ex" data-i="${i}">Make market</button>`}</td>
+        <td class="right">${l.marketId ? `<button class="btn btn-sm" data-action="admin-edit" data-id="${esc(l.marketId)}">Has a market</button>` : A.made?.[l.symbol.toUpperCase()] ? `<span class="disc-made">${ico('checkCircle')}Market made</span>` : `<button class="btn btn-sm btn-gold" data-action="admin-discover-make" data-src="ex" data-i="${i}">Make market</button>`}</td>
       </tr>`;
     })
     .join('');
@@ -4440,7 +4442,7 @@ function discoverView() {
         <td><span class="disc-tok">${c.logo ? `<img src="${esc(c.logo)}" alt="" referrerpolicy="no-referrer" loading="lazy" />` : ''}<span><b>${esc(c.symbol)}</b><small class="muted">${esc(c.name)}${c.rank ? ` · #${c.rank}` : ''}</small></span></span></td>
         <td class="right num-cell">${usd(c.priceUsd)}</td>
         <td class="right hide-sm">${pctChip(c.change24h)}</td>
-        <td class="right"><a class="btn btn-sm" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}</a> <button class="btn btn-sm btn-gold" data-action="admin-discover-make" data-src="cg" data-i="${i}">Make market</button></td>
+        <td class="right"><a class="btn btn-sm" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}</a> ${A.made?.[c.symbol.toUpperCase()] ? `<span class="disc-made">${ico('checkCircle')}Market made</span>` : `<button class="btn btn-sm btn-gold" data-action="admin-discover-make" data-src="cg" data-i="${i}">Make market</button>`}</td>
       </tr>`,
     )
     .join('');
@@ -4524,7 +4526,7 @@ async function makeFromDiscovery(el) {
       note: `Trending on CoinGecko. The start price is the CoinGecko price when the market opened; the result is the CoinGecko price at the result time.`,
     };
   }
-  A.prefill = pre;
+  A.prefill = { ...pre, from: 'discover' };
   A.review = null;
   A.edit = null;
   A.tab = 'create';
@@ -5011,10 +5013,10 @@ async function onAdminAction(action, el) {
     case 'admin-discover-make':
       return makeFromDiscovery(el);
     case 'admin-edit-cancel':
+      A.tab = A.prefill?.from === 'discover' ? 'discover' : 'markets';
       A.review = null;
       A.prefill = null;
       A.edit = null;
-      A.tab = 'markets';
       return renderAdmin();
     case 'admin-publish':
     case 'admin-unpublish':
@@ -5159,10 +5161,13 @@ async function submitAdminMarket(form, intent) {
     if (id) m = await A.api.updateManual(id, body);
     else m = await A.api.createManual({ ...body, publish: intent === 'publish' });
     if (id && intent === 'publish') m = await A.api.publish(id);
+    // Made from Find tokens: go back there, so the next token is one click away.
+    const fromDiscover = !id && A.prefill?.from === 'discover';
+    if (fromDiscover) (A.made ??= {})[String(m.symbol).toUpperCase()] = m.id;
     A.edit = null;
     A.review = null;
     A.prefill = null;
-    A.tab = 'markets';
+    A.tab = fromDiscover ? 'discover' : 'markets';
     toast(m.published ? `${m.symbol} market is live` : m.autoOpenAt ? `${m.symbol} scheduled: it opens by itself when trading starts` : `${m.symbol} saved as a draft`);
   } catch (err) {
     toast(err.message, true);
