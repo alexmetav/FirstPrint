@@ -265,7 +265,7 @@ h3 {
   height: 8px;
   border-radius: 50%;
   background: var(--up);
-  animation: pulse 1.6s ease-in-out infinite;
+  animation: pulse 1.6s ease-in-out 6;
 }
 @keyframes pulse {
   50% { opacity: 0.35; }
@@ -1643,7 +1643,7 @@ code {
   height: 8px;
   border-radius: 50%;
   background: var(--up);
-  animation: pulse 1.6s ease-in-out infinite;
+  animation: pulse 1.6s ease-in-out 6;
 }
 
 /* Market timeline */
@@ -1685,7 +1685,7 @@ code {
 }
 .timeline .now .step-dot {
   background: var(--up);
-  animation: pulse 1.6s ease-in-out infinite;
+  animation: pulse 1.6s ease-in-out 6;
 }
 .timeline .muted {
   font-size: 13px;
@@ -1739,7 +1739,7 @@ code {
   border-radius: 999px;
   white-space: nowrap;
   cursor: pointer;
-  animation: wiggle 3.2s ease-in-out infinite;
+  animation: wiggle 3.2s ease-in-out 6;
 }
 .gift:hover {
   background: color-mix(in srgb, var(--warn) 24%, var(--bg));
@@ -2818,7 +2818,7 @@ main .input-wrap input:not([type='checkbox']) {
   border-radius: 50%;
   background: currentColor;
   box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 22%, transparent);
-  animation: pulse 1.8s ease-in-out infinite;
+  animation: pulse 1.8s ease-in-out 6;
 }
 .eyebrow .dot {
   background: var(--up);
@@ -5267,7 +5267,7 @@ h2,
 }
 .bell.has-new .i {
   color: var(--gold);
-  animation: bellRing 3.6s ease-in-out infinite;
+  animation: bellRing 3.6s ease-in-out 4;
   transform-origin: 50% 10%;
 }
 @keyframes bellRing {
@@ -8769,16 +8769,28 @@ p,
 }
 .hero-slide {
   --d: 0;
+  position: relative;
   grid-area: 1 / 1;
   z-index: calc(10 - var(--d));
   transform-origin: 50% 0%;
   transform: translateY(calc(var(--d) * var(--step) * -1)) translateZ(calc(var(--d) * -60px)) rotateX(calc(var(--d) * 2deg));
-  transition: transform 0.7s cubic-bezier(0.22, 0.8, 0.24, 1), opacity 0.5s, filter 0.7s;
+  transition: transform 0.7s cubic-bezier(0.22, 0.8, 0.24, 1), opacity 0.5s;
   will-change: transform;
 }
 .hero-slide:not(.is-on) {
   pointer-events: none;
-  filter: brightness(calc(1 - var(--d) * 0.22));
+}
+/* Cards further back are dimmed by a black layer: animating its opacity is cheap, unlike a filter. */
+.hero-slide::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border-radius: 16px;
+  background: #000;
+  opacity: calc(var(--d) * 0.22);
+  pointer-events: none;
+  transition: opacity 0.7s;
 }
 .hero-slide.is-far {
   opacity: 0;
@@ -8791,7 +8803,6 @@ p,
   0% {
     z-index: 30;
     opacity: 1;
-    filter: none;
     transform: none;
   }
   32% {
@@ -8827,7 +8838,7 @@ p,
 /* Reduced motion: the layers still step forward, gently, without the 3D drop. */
 @media (prefers-reduced-motion: reduce) {
   .hero-slide {
-    transition: transform 0.5s ease, opacity 0.4s, filter 0.5s;
+    transition: transform 0.5s ease, opacity 0.4s;
   }
   .hero-slide.is-out {
     animation: deck-fade-back 0.6s ease;
@@ -8837,7 +8848,6 @@ p,
   0% {
     z-index: 30;
     opacity: 1;
-    filter: none;
     transform: none;
   }
   40% {
@@ -9174,7 +9184,7 @@ p,
   border-radius: 50%;
   border: 1px solid var(--up);
   opacity: 0;
-  animation: live-ping 2.4s ease-out infinite;
+  animation: live-ping 2.4s ease-out 6;
 }
 @keyframes live-ping {
   0% { transform: scale(0.6); opacity: 0.9; }
@@ -9233,7 +9243,7 @@ a.hero-badge-live:hover .i {
   border-radius: 50%;
   background: linear-gradient(180deg, #ffe680, #d9a400);
   box-shadow: inset 0 -2px 0 rgba(120, 85, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.25);
-  animation: coin-bob 2.8s ease-in-out infinite;
+  animation: coin-bob 2.8s ease-in-out 6;
 }
 .tn-coins i:nth-child(1) { top: 40px; }
 .tn-coins i:nth-child(2) { top: 28px; animation-delay: 0.15s; }
@@ -10926,7 +10936,8 @@ svg.viz.viz-narrow {
 }
 .streak-chip.can-claim .i {
   color: #ff9f0a;
-  animation: flameFlicker 1.8s ease-in-out infinite;
+  /* A few flickers to catch the eye; the orange chip keeps saying "claim me" after that. */
+  animation: flameFlicker 1.8s ease-in-out 3;
 }
 @keyframes flameFlicker {
   0%, 100% { transform: scale(1) rotate(0); }
@@ -11303,26 +11314,6 @@ svg.viz.viz-narrow {
   border-radius: inherit;
   transition: width 0.8s var(--ease-out, ease);
 }
-/* A slow sheen runs along the bars, staggered so the grid never moves in step. */
-.mcard .o-row::after {
-  content: '';
-  position: absolute;
-  inset: 0 auto 0 0;
-  z-index: -1;
-  width: calc((100% - 92px) * var(--sf, 0));
-  background: linear-gradient(100deg, transparent 0%, color-mix(in srgb, var(--c) 22%, transparent) 50%, transparent 100%);
-  background-size: 200% 100%;
-  background-repeat: no-repeat;
-  animation: oSheen 4.8s ease-in-out infinite;
-  opacity: 0.9;
-}
-.mcard:nth-child(3n + 2) .o-row::after { animation-delay: 1.6s; }
-.mcard:nth-child(3n + 3) .o-row::after { animation-delay: 3.2s; }
-.mcard .o-row + .o-row::after { animation-delay: 0.4s; }
-@keyframes oSheen {
-  0%, 55% { background-position: 200% 0; }
-  100% { background-position: -100% 0; }
-}
 .mcard .card-foot {
   display: flex;
   align-items: center;
@@ -11346,15 +11337,6 @@ svg.viz.viz-narrow {
 }
 .card-act.quiet {
   font-style: normal;
-}
-/* The live dot breathes. */
-.st-live i,
-.st-soon i {
-  animation: livePulse 1.8s ease-in-out infinite;
-}
-@keyframes livePulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 45%, transparent); }
-  50% { opacity: 0.55; box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 0%, transparent); }
 }
 /* "+N" when new players join, floating up from the corner. */
 .card-bump {

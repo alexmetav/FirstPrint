@@ -47,26 +47,31 @@ function watchReveals(root = document) {
  * on screen.
  */
 function sweepReveals() {
-  for (const el of $$('.reveal:not(.in)')) {
-    if (el.getBoundingClientRect().top < window.innerHeight) {
-      el.style.setProperty('--d', '0ms');
-      el.classList.add('in');
-      revealer?.unobserve(el);
-    }
+  // Measure everything first, then change classes, so the page is laid out once rather than per element.
+  const due = $$('.reveal:not(.in)').filter((el) => el.getBoundingClientRect().top < window.innerHeight);
+  for (const el of due) {
+    el.style.setProperty('--d', '0ms');
+    el.classList.add('in');
+    revealer?.unobserve(el);
   }
 }
 
 if (revealer) {
+  // At most one check per frame, and none once everything has appeared.
   let sweepTimer;
-  addEventListener(
-    'scroll',
-    () => {
-      clearTimeout(sweepTimer);
-      sweepTimer = setTimeout(sweepReveals, 140);
-      requestAnimationFrame(sweepReveals);
-    },
-    { passive: true },
-  );
+  let queued = false;
+  const onScroll = () => {
+    clearTimeout(sweepTimer);
+    sweepTimer = setTimeout(sweepReveals, 140);
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      sweepReveals();
+      if (!$('.reveal:not(.in)')) removeEventListener('scroll', onScroll);
+    });
+  };
+  addEventListener('scroll', onScroll, { passive: true });
 }
 
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);

@@ -1013,6 +1013,12 @@ export function createApiServer(opts: ServerOptions): Server {
   /** Website files that link to the app; their /play/ links are pointed at /app/. */
   const LINKED_SITE_FILES = new Set(['index.html', join('assets', 'site.js'), 'pitch.html', 'whitepaper.html', 'tokenomics.html']);
 
+  /**
+   * Static files, read and compressed once per version of the file. Compressing the 300 KB app script on
+   * every visit would hold up the single server thread that also answers the API.
+   */
+  const staticCache = new Map<string, { mtimeMs: number; size: number; type: string; raw: Buffer; gz: Buffer | null; etag: string }>();
+
   async function serveStatic(res: ServerResponse, root: string, pathname: string, linkToApp = false) {
     const rel = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '');
     let file = join(root, rel === '/' ? 'index.html' : rel);
@@ -1031,20 +1037,43 @@ export function createApiServer(opts: ServerOptions): Server {
       }
     }
     try {
-      let data: Buffer | string = await readFile(file);
-      if (linkToApp && LINKED_SITE_FILES.has(file.slice(root.length + 1))) {
-        data = linkSiteToApp(data.toString('utf8'), APP_PREFIX, file);
+      const st = await stat(file);
+      const key = `${linkToApp ? 'site' : 'app'}:${file}`;
+      let hit = staticCache.get(key);
+      if (!hit || hit.mtimeMs !== st.mtimeMs || hit.size !== st.size) {
+        let data = await readFile(file);
+        if (linkToApp && LINKED_SITE_FILES.has(file.slice(root.length + 1))) {
+          data = Buffer.from(linkSiteToApp(data.toString('utf8'), APP_PREFIX, file));
+        }
+        const type = MIME[extname(file)] ?? 'application/octet-stream';
+        hit = {
+          mtimeMs: st.mtimeMs,
+          size: st.size,
+          type,
+          raw: data,
+          gz: ZIPPABLE.test(type) && data.length >= 1400 ? gzipSync(data, { level: 9 }) : null,
+          etag: `W/"${createHash('sha1').update(data).digest('base64url').slice(0, 22)}"`,
+        };
+        staticCache.set(key, hit);
       }
       // The app routes in the browser, so any path is its page; on the website an unknown address is
       // a 404 (still showing the landing page) so search engines don't index it.
-      const type = MIME[extname(file)] ?? 'application/octet-stream';
-      const z = maybeGzip(res as Negotiated, type, data);
-      res.writeHead(missing && linkToApp ? 404 : 200, {
-        'content-type': type,
+      const status = missing && linkToApp ? 404 : 200;
+      const headers: Record<string, string> = {
+        'content-type': hit.type,
         'cache-control': extname(file) === '.html' ? 'no-cache' : 'public, max-age=300',
-        ...z.headers,
-      });
-      res.end(z.body);
+        etag: hit.etag,
+        vary: 'accept-encoding',
+      };
+      const r = res as Negotiated;
+      // A returning visitor's browser asks "still this version?" and gets a few bytes back instead of the file.
+      if (status === 200 && r.ifNoneMatch && sameEtag(r.ifNoneMatch, hit.etag)) {
+        res.writeHead(304, headers);
+        return res.end();
+      }
+      const zip = r.gzipOk ? hit.gz : null;
+      res.writeHead(status, zip ? { ...headers, 'content-encoding': 'gzip' } : headers);
+      res.end(zip ?? hit.raw);
     } catch {
       send(res, 404, { error: 'not_found', message: 'Not found.' });
     }
@@ -1312,6 +1341,12 @@ function taskInput(b: Record<string, unknown>): Partial<TaskInput> {
 }
 
 /** What the request accepts, noted on the response so send() can compress and answer 304s. */
+/** If-None-Match can list several tags, and a proxy that compresses may have weakened ours (W/). */
+function sameEtag(header: string, etag: string) {
+  const bare = (t: string) => t.trim().replace(/^W\//, '');
+  return header.split(',').some((t) => t.trim() === '*' || bare(t) === bare(etag));
+}
+
 type Negotiated = ServerResponse & { gzipOk?: boolean; ifNoneMatch?: string | null };
 
 const ZIPPABLE = /^(?:text\/|application\/(?:json|javascript|manifest\+json|xml)|image\/svg\+xml)/;
