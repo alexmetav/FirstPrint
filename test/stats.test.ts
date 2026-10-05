@@ -99,3 +99,49 @@ test('stats endpoint: a real market settles into the winner\'s and loser\'s dash
     server.close();
   }
 });
+
+test('PnL cards: a settled prediction has a shareable image and a link preview page; nothing else does', async () => {
+  const clock = new ManualClock(T0);
+  const service = new FirstprintService(openDb(':memory:'), clock, [venue]);
+  const scheduler = new Scheduler(service, async () => {}, { tickMs: 1000 });
+  const server = createApiServer({ service, scheduler, adminKey: null, manualOnly: true, secureCookies: false, publicUrl: 'https://firstprint.fun', webDir: new URL('../web', import.meta.url).pathname });
+  await new Promise<void>((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const a = await service.createUser({ username: 'alice' });
+    const b = await service.createUser({ username: 'bob' });
+    const c = await service.createUser({ username: 'carol' });
+    const id = service.createManualMarket({ symbol: 'XYZ', exchanges: ['exa'], basePrice: 2, closeAt: T0 + HOUR, publish: true });
+    service.placePrediction(id, a.id, 'up', 100);
+    service.placePrediction(id, b.id, 'down', 100);
+    assert.equal((await fetch(`${base}/share/pnl/${id}/alice.png`)).status, 404, 'not settled yet');
+    clock.advance(2 * HOUR);
+    await scheduler.tick();
+    service.resolveManualMarket(id, { finalPrice: 2.5 });
+
+    const card = service.pnlCard(id, 'ALICE');
+    assert.equal(card.won, true);
+    assert.equal(card.profit, 92);
+    assert.deepEqual(card.picks, ['up']);
+    assert.equal(service.pnlCard(id, 'bob').profit, -100);
+
+    const png = await fetch(`${base}/share/pnl/${id}/alice.png`);
+    assert.equal(png.status, 200);
+    assert.equal(png.headers.get('content-type'), 'image/png');
+    assert.match(png.headers.get('cache-control') ?? '', /max-age=86400/);
+    const bytes = new Uint8Array(await png.arrayBuffer());
+    assert.equal(bytes[1], 0x50, 'PNG');
+
+    const page = await (await fetch(`${base}/share/pnl/${id}/alice`)).text();
+    assert.match(page, new RegExp(`<meta property="og:image" content="https://firstprint.fun/share/pnl/${id}/alice.png">`));
+    assert.match(page, /twitter:card" content="summary_large_image"/);
+    assert.match(page, /@alice won \+92 pts on XYZ/);
+    assert.match(page, new RegExp(`url=https://firstprint.fun/app/#/market/${id}`));
+
+    assert.equal((await fetch(`${base}/share/pnl/${id}/carol.png`)).status, 404, 'no prediction');
+    assert.equal((await fetch(`${base}/share/pnl/${id}/nobody`)).status, 404);
+    assert.ok(c);
+  } finally {
+    server.close();
+  }
+});

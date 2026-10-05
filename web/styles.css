@@ -10301,3 +10301,57 @@ svg.viz.viz-narrow {
   border-radius: 10px;
   border: 1px solid var(--line);
 }
+
+/* ===== Shareable PnL card ===== */
+.pnl-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #07080c;
+  aspect-ratio: 1200 / 630;
+}
+.pnl-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.pnl-actions .btn {
+  justify-content: center;
+}
+.my-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.pnl-mini {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-left: 8px;
+  vertical-align: middle;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.pnl-mini:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+.pnl-mini .i {
+  width: 15px;
+  height: 15px;
+}
+.inbox li:has(.pnl-mini) {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}

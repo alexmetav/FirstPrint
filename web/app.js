@@ -1130,6 +1130,14 @@ function cardView(m) {
     </article>`;
 }
 
+/** On a settled market: the player's own points won or lost, with the button to share it. */
+function myResultRow(m) {
+  const mine = (m.mine ?? []).filter((p) => p.stake - (p.refund ?? 0) > 0);
+  if (m.status !== 'resolved' || !mine.length) return '';
+  const profit = mine.reduce((s, p) => s + (p.payout ?? 0) - (p.stake - (p.refund ?? 0)), 0);
+  return `<div class="my-result"><span>Your result <b class="${profit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(profit)} pts</b></span>${pnlButton(m.id, m.symbol, 'btn btn-sm')}</div>`;
+}
+
 /** "You: Up · 250" on a card, so players can see their picks without opening the market. */
 function myPickLine(m) {
   if (!m.mine?.length) return '';
@@ -1411,6 +1419,7 @@ function manualPanel(m) {
         <div><div>Result</div><div class="muted">${yn ? `Target ${fmtPrice(r.basePrice)} · final ${fmtPrice(r.finalPrice)}` : `Start ${fmtPrice(r.basePrice)} → final ${fmtPrice(r.finalPrice)}`}</div></div>
         <div class="now" style="color:${oVar(b, yn)}">${yn ? (r.winningBucket ? oName(b, true) : '–') : fmtPct(r.returnPct)}</div>
       </div>
+      ${myResultRow(m)}
     </div>
     ${
       r.winners?.length
@@ -2039,7 +2048,7 @@ function pastTable(st) {
         <td>${m.buckets.map((b) => outcome(b, m.binary)).join(' ')}</td>
         <td class="hide-sm">${m.winningBucket ? outcome(m.winningBucket, m.binary) : '–'}</td>
         <td class="right num-cell">${fmtNum(m.staked)}</td>
-        <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b></td>
+        <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b>${pnlButton(m.marketId, m.symbol, 'icon-btn pnl-mini', true)}</td>
       </tr>`,
     )
     .join('')}</tbody></table>${refunds}`;
@@ -2105,7 +2114,7 @@ function profileView(p) {
       <div class="section-head"><span class="section-ico">${ico('target')}</span><h2>In play${p.positions.length ? ` <span class="count-badge">${p.positions.length}</span>` : ''}</h2></div>
       ${positions}
     </section>
-    ${pastMarkets(st)}`;
+    ${pastMarkets(st, p.isMe)}`;
 }
 
 const signed = (n) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${fmtNum(Math.abs(n))}`;
@@ -2187,7 +2196,7 @@ function outcomeRecord(byOutcome, title = 'Your picks by outcome') {
 }
 
 /** Every settled market, one row each, newest first. */
-function pastMarkets(st) {
+function pastMarkets(st, mine = false) {
   const rows = st.history;
   return `
     <section class="section panel panel-flush">
@@ -2201,7 +2210,7 @@ function pastMarkets(st) {
                   <td>${m.buckets.map((b) => outcome(b, m.binary)).join(' ')}</td>
                   <td class="hide-sm">${m.winningBucket ? outcome(m.winningBucket, m.binary) : '–'}</td>
                   <td class="right">${fmtNum(m.staked)}</td>
-                  <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b></td>
+                  <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b>${mine ? pnlButton(m.marketId, m.symbol, 'icon-btn pnl-mini', true) : ''}</td>
                 </tr>`,
               )
               .join('')}</tbody></table>`
@@ -2703,6 +2712,8 @@ function renderAuth() {
     html = modalShell('Your results', 'What happened on the markets you predicted.', inboxView());
   } else if (kind === 'win') {
     html = winView(S.win);
+  } else if (kind === 'pnl') {
+    html = modalShell('Share your result', 'Your PnL card for this market. Post it on X, or save the image.', pnlView(S.pnl));
   } else if (kind === 'tour') {
     html = tourView();
   } else if (kind === 'faucet') {
@@ -2856,6 +2867,49 @@ function tickResend() {
 
 // ------------------------------------------------------------------ Results inbox, win popup, first-time tour
 
+// ------------------------------------------------------------------ Shareable PnL card
+
+/** A button that opens the PnL card for one of the player's settled markets. */
+function pnlButton(marketId, symbol, cls, iconOnly = false, label = 'Share your PnL') {
+  if (!S.me?.username || S.api.demo) return '';
+  return `<button class="${cls}" data-action="pnl-open" data-id="${esc(marketId)}" data-symbol="${esc(symbol)}"${iconOnly ? ` aria-label="Share your ${esc(symbol)} PnL" title="Share PnL"` : ''}>${ico('share')}${iconOnly ? '' : esc(label)}</button>`;
+}
+
+function pnlLinks(p) {
+  const path = `/share/pnl/${encodeURIComponent(p.marketId)}/${encodeURIComponent(S.me.username)}`;
+  return { page: `${location.origin}${path}`, png: `${path}.png` };
+}
+
+function pnlView(p) {
+  const l = pnlLinks(p);
+  const text = encodeURIComponent(`My ${p.symbol} call on Firstprint. Think you can call the next listing?`);
+  const file = `firstprint-${String(p.symbol).replace(/[^A-Za-z0-9]/g, '') || 'token'}-pnl.png`;
+  return `
+    <div class="pnl-card"><img src="${esc(l.png)}" alt="Your ${esc(p.symbol)} PnL card" width="1200" height="630" /></div>
+    <div class="pnl-actions">
+      <a class="btn btn-solid" href="https://x.com/intent/post?text=${text}&url=${encodeURIComponent(l.page)}" target="_blank" rel="noopener noreferrer">${ico('x')}Post on X</a>
+      <a class="btn" href="${esc(l.png)}" download="${esc(file)}">${ico('download')}Save image</a>
+      ${navigator.canShare ? `<button class="btn" data-action="pnl-native">${ico('share')}Share…</button>` : ''}
+      <button class="btn" data-action="pnl-copy">${ico('link')}Copy link</button>
+    </div>
+    <p class="fine">The X post shows this card as its preview. Points have no cash value.</p>
+    <button class="btn" style="width:100%;margin-top:6px" data-action="close-modal">Close</button>`;
+}
+
+async function pnlNativeShare() {
+  const p = S.pnl;
+  const l = pnlLinks(p);
+  try {
+    const blob = await (await fetch(l.png)).blob();
+    const file = new File([blob], `firstprint-${p.symbol}.png`, { type: 'image/png' });
+    const data = { files: [file], text: `My ${p.symbol} call on Firstprint`, url: l.page };
+    if (navigator.canShare(data)) await navigator.share(data);
+    else await navigator.share({ text: data.text, url: l.page });
+  } catch (err) {
+    if (err?.name !== 'AbortError') toast('Couldn’t open sharing here. Save the image or copy the link instead.', true);
+  }
+}
+
 /** What one result means for the player, in a sentence. */
 function resultLine(n) {
   const yn = n.outcomes === 'binary';
@@ -2875,6 +2929,7 @@ function inboxView() {
         return `<li class="${n.read ? '' : 'unread'}" style="--c:var(--${r.tone})">
           <span class="inbox-ico">${ico(r.icon)}</span>
           <a href="#/market/${encodeURIComponent(n.marketId)}" data-action="close-modal"><b>${r.title}</b><span>${r.body}</span><small>${fmtAgo(n.at)}</small></a>
+          ${n.status === 'resolved' && n.staked > 0 ? pnlButton(n.marketId, n.symbol, 'icon-btn pnl-mini', true) : ''}
         </li>`;
       })
       .join('')}</ul>
@@ -2934,7 +2989,7 @@ function winView(n) {
         <p class="win-amount">+${fmtNum(n.payout)} <small>pts</small></p>
         <p class="muted">${esc(n.symbol)} settled ${yn ? 'as' : 'in'} ${n.winningBucket ? outcome(n.winningBucket, yn) : 'your pick'}. You staked ${fmtPts(n.staked)}.</p>
         <div class="win-actions">
-          <a class="btn btn-gold btn-lg" href="https://x.com/intent/tweet?text=${text}&url=${url}" target="_blank" rel="noopener noreferrer">${ico('x')}Share on X</a>
+          ${S.me?.username && !S.api.demo ? pnlButton(n.marketId, n.symbol, 'btn btn-gold btn-lg', false, 'Share your win') : `<a class="btn btn-gold btn-lg" href="https://x.com/intent/tweet?text=${text}&url=${url}" target="_blank" rel="noopener noreferrer">${ico('x')}Share on X</a>`}
           <a class="btn btn-lg" href="#/market/${encodeURIComponent(n.marketId)}" data-action="win-close">See the market</a>
         </div>
         <button class="switch" data-action="win-close">Close</button>
@@ -4640,6 +4695,22 @@ document.addEventListener('click', async (e) => {
       return finishTour();
     case 'win-close':
       return closeWin();
+    case 'pnl-open': {
+      const btn = t.closest('[data-action]');
+      S.pnl = { marketId: btn.dataset.id, symbol: btn.dataset.symbol };
+      S.modal = 'pnl';
+      return renderAuth();
+    }
+    case 'pnl-native':
+      return pnlNativeShare();
+    case 'pnl-copy':
+      try {
+        await navigator.clipboard.writeText(pnlLinks(S.pnl).page);
+        toast('Link copied');
+      } catch {
+        toast('Couldn’t copy the link.', true);
+      }
+      return;
     case 'profile-skip':
       return afterProfile();
     case 'claim-tokens':

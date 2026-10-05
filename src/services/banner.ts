@@ -221,3 +221,96 @@ export function renderBanner(kind: BannerKind, m: BannerMarket, logoPng: string 
   });
   return resvg.render().asPng();
 }
+
+// --- PnL cards ----------------------------------------------------------------------
+
+export interface PnlCard {
+  username: string;
+  symbol: string;
+  name: string | null;
+  outcomes: string;
+  picks: string[];
+  winningBucket: string | null;
+  returnPct: number | null;
+  staked: number;
+  payout: number;
+  profit: number;
+  won: boolean;
+}
+
+const PW = 1200;
+const PH = 630;
+
+const outcomeName = (b: string, binary: boolean) => (binary ? (b === 'up' ? 'Yes' : 'No') : (OUTCOME_NAMES[b] ?? b));
+const pts = (n: number) => `${Math.round(n).toLocaleString('en-US')} pts`;
+
+/**
+ * A player's result on one market, sized for X and link previews (1200 × 630): the points won or
+ * lost as the big number, the return on what they staked, what they picked and what happened.
+ */
+export function pnlSvg(c: PnlCard, logoPng: string | null = null) {
+  const binary = c.outcomes === 'binary';
+  const color = c.won ? '#30d158' : '#ff453a';
+  const big = `${c.profit >= 0 ? '+' : '−'}${Math.abs(Math.round(c.profit)).toLocaleString('en-US')}`;
+  const roi = c.staked > 0 ? `${c.profit >= 0 ? '+' : '−'}${Math.abs((c.profit / c.staked) * 100).toFixed(Math.abs(c.profit / c.staked) >= 1 ? 0 : 1)}%` : '';
+  const sym = drawable(c.symbol) ? c.symbol.toUpperCase() : '';
+  const name = drawable((c.name ?? '').trim()) ? (c.name ?? '').trim() : '';
+  const tokenText = sym || name || 'Token';
+  const user = drawable(c.username) ? `@${c.username}` : '';
+  const picked = c.picks.map((b) => outcomeName(b, binary)).join(' + ') || '–';
+  const move = c.returnPct != null ? ` ${c.returnPct >= 0 ? '+' : ''}${(c.returnPct * 100).toFixed(1)}%` : '';
+  const result = c.winningBucket ? `${outcomeName(c.winningBucket, binary)}${move}` : `Settled${move}`;
+  const size = 72;
+  const x = 72;
+  const y = 150;
+  const logo = logoPng
+    ? `<clipPath id="logo"><circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}"/></clipPath>
+       <image href="${logoPng}" x="${x}" y="${y}" width="${size}" height="${size}" clip-path="url(#logo)" preserveAspectRatio="xMidYMid slice"/>`
+    : `<circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}" fill="${avatarColor(tokenText)}"/>
+       <text x="${x + size / 2}" y="${y + size / 2 + 13}" text-anchor="middle" font-size="36" font-weight="700" fill="#ffffff">${esc(tokenText.slice(0, 1))}</text>`;
+  const bigSize = big.length > 7 ? 150 : 180;
+  const em: Record<string, number> = { ',': 0.27, '−': 0.6, '+': 0.6, '1': 0.5 };
+  const bigEnd = x - 6 + [...big].reduce((w, ch) => w + (em[ch] ?? 0.62) * bigSize - 6, 0);
+  const tag = c.won ? 'WON' : 'LOST';
+  const pillW = tag.length * 14 + 62;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${PW}" height="${PH}" viewBox="0 0 ${PW} ${PH}" font-family="Geist">
+    <defs>
+      <radialGradient id="glow" cx="0.9" cy="0" r="0.7"><stop offset="0" stop-color="${color}" stop-opacity="0.14"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></radialGradient>
+    </defs>
+    <rect width="${PW}" height="${PH}" fill="${C.bg}"/>
+    <rect width="${PW}" height="${PH}" fill="url(#glow)"/>
+    ${brand(72, 52)}
+    <g transform="translate(${PW - 72 - pillW},58)">
+      <rect width="${pillW}" height="48" rx="24" fill="${color}" fill-opacity="0.12" stroke="${color}" stroke-opacity="0.5"/>
+      <circle cx="28" cy="24" r="6" fill="${color}"/>
+      <text x="46" y="31" font-family="Geist Mono" font-size="19" font-weight="500" fill="${color}" letter-spacing="2">${tag}</text>
+    </g>
+    ${logo}
+    <text x="${x + size + 22}" y="${y + 50}" font-size="42" font-weight="600" fill="${C.text}" letter-spacing="-0.8">${esc(tokenText)} <tspan fill="${C.muted}" font-weight="400">prediction</tspan></text>
+    <text x="${x - 6}" y="${y + 250}" font-size="${bigSize}" font-weight="700" fill="${color}" letter-spacing="-6">${esc(big)}</text>
+    <text x="${Math.min(bigEnd + 24, 900)}" y="${y + 250}" font-size="44" font-weight="600" fill="${C.text}">pts${roi ? ` <tspan fill="${color}">${esc(roi)}</tspan>` : ''}</text>
+    <line x1="${x}" y1="470" x2="${PW - x}" y2="470" stroke="${C.line}" stroke-width="1.5"/>
+    ${[
+      ['Picked', picked],
+      ['Result', result],
+      ['Staked', pts(c.staked)],
+    ]
+      .map(
+        ([label, value], i) => `<g transform="translate(${x + i * 330},516)">
+        <text font-family="Geist Mono" font-size="16" font-weight="500" fill="${C.muted}" letter-spacing="1.8">${esc(label.toUpperCase())}</text>
+        <text y="42" font-size="28" font-weight="600" fill="${C.text}">${esc(value)}</text>
+      </g>`,
+      )
+      .join('')}
+    <text x="${PW - x}" y="${PH - 30}" text-anchor="end" font-family="Geist Mono" font-size="16" fill="${C.muted}" letter-spacing="1">${esc(user ? `${user} · firstprint.fun` : 'firstprint.fun')}</text>
+  </svg>`;
+}
+
+export function renderPnl(c: PnlCard, logoPng: string | null = null): Uint8Array {
+  const logo = logoPng && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(logoPng) ? logoPng : null;
+  const resvg = new Resvg(pnlSvg(c, logo), {
+    fitTo: { mode: 'width', value: PW },
+    font: { fontFiles: FONTS, loadSystemFonts: false, defaultFontFamily: 'Geist' },
+  });
+  return resvg.render().asPng();
+}

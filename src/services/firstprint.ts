@@ -1847,6 +1847,37 @@ export class FirstprintService {
   }
 
   /**
+   * One player's result on one settled market, for the shareable PnL card. Only what is already
+   * public (the market, the username and their record on the public profile) is included.
+   */
+  pnlCard(marketId: string, username: string) {
+    const u = as<{ id: string; username: string } | undefined>(
+      this.db.prepare('SELECT id, username FROM users WHERE username = ? COLLATE NOCASE').get(String(username ?? '').trim()),
+    );
+    if (!u) throw new AppError(404, 'user_not_found', 'No player with that username.');
+    const h = this.statsFor(u.id).history.find((x) => x.marketId === marketId);
+    if (!h) throw new AppError(404, 'no_result', 'This player has no settled prediction on that market.');
+    const m = this.getMarket(marketId);
+    if (!m.published) throw new AppError(404, 'market_not_found', 'Market not found.');
+    return {
+      username: u.username,
+      marketId,
+      symbol: m.symbol,
+      name: m.name,
+      exchange: m.exchange,
+      outcomes: m.outcomes,
+      picks: h.buckets,
+      winningBucket: h.winningBucket,
+      returnPct: m.result?.returnPct ?? null,
+      staked: h.staked,
+      payout: h.payout,
+      profit: h.profit,
+      won: h.won,
+      settledAt: h.settledAt,
+    };
+  }
+
+  /**
    * A player's public page: username, record and current positions. Usernames and predictions are
    * already public on markets and the leaderboard; email, wallets and X are never included.
    */

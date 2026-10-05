@@ -10,7 +10,7 @@ import type { Mailer } from '../auth/mailer.ts';
 import type { Bucket } from '../engine/engine.ts';
 import { linkSiteToApp } from '../site/links.ts';
 import { fetchImage } from './fetchImage.ts';
-import { drawable, renderBanner } from '../services/banner.ts';
+import { drawable, renderBanner, renderPnl } from '../services/banner.ts';
 import { channelName, type Telegram } from '../services/telegram.ts';
 import type { ChannelPoster } from '../services/channel.ts';
 import { analytics } from '../services/analytics.ts';
@@ -974,6 +974,69 @@ export function createApiServer(opts: ServerOptions): Server {
     });
   }
 
+  // --- Shareable PnL cards ----------------------------------------------------------
+  // /share/pnl/<market>/<username>.png is the card; /share/pnl/<market>/<username> is a page with
+  // that card as its preview image (what X shows for the link), which then opens the market.
+  const pnlCache = new Map<string, Uint8Array>();
+
+  function servePnl(req: IncomingMessage, res: ServerResponse, rawMarket: string, rawUser: string, png: boolean) {
+    let marketId: string;
+    let username: string;
+    try {
+      marketId = decodeURIComponent(rawMarket);
+      username = decodeURIComponent(rawUser);
+    } catch {
+      return send(res, 400, { error: 'bad_path', message: 'Invalid path.' });
+    }
+    let card: ReturnType<FirstprintService['pnlCard']>;
+    try {
+      card = service.pnlCard(marketId, username);
+    } catch (err) {
+      if (err instanceof AppError) {
+        res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
+        return res.end('No result to show.');
+      }
+      throw err;
+    }
+    const key = `${card.marketId}|${card.username.toLowerCase()}`;
+    const enc = (v: string) => encodeURIComponent(v);
+    if (png) {
+      let img = pnlCache.get(key);
+      if (!img) {
+        try {
+          rateLimit(`pnl:${visitor(req)}`, 30, 60_000);
+        } catch {
+          res.writeHead(429, { 'content-type': 'text/plain; charset=utf-8', 'retry-after': '60' });
+          return res.end('Too many requests.');
+        }
+        img = renderPnl(card, service.logoPng(card.marketId));
+        if (pnlCache.size >= 300) pnlCache.delete(pnlCache.keys().next().value!);
+        pnlCache.set(key, img);
+      }
+      // A settled result never changes, so the card can be cached for a day.
+      res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400', 'content-length': img.length });
+      return res.end(req.method === 'HEAD' ? undefined : Buffer.from(img));
+    }
+    const origin = opts.publicUrl ? new URL(opts.publicUrl).origin : `http://${req.headers.host ?? 'localhost'}`;
+    const image = `${origin}/share/pnl/${enc(card.marketId)}/${enc(card.username)}.png`;
+    const market = `${origin}/app/#/market/${enc(card.marketId)}`;
+    const amount = `${Math.abs(Math.round(card.profit)).toLocaleString('en-US')} pts`;
+    const title = card.won ? `@${card.username} won +${amount} on ${card.symbol}` : `@${card.username}’s ${card.symbol} call: −${amount}`;
+    const h = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const desc = 'Predict where newly listed tokens trade on Firstprint. Free points, no deposits.';
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=3600' });
+    return res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${h(title)} · Firstprint</title>
+<meta name="description" content="${h(desc)}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="Firstprint">
+<meta property="og:title" content="${h(title)}"><meta property="og:description" content="${h(desc)}">
+<meta property="og:image" content="${h(image)}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${h(title)}"><meta name="twitter:description" content="${h(desc)}"><meta name="twitter:image" content="${h(image)}">
+<meta http-equiv="refresh" content="0; url=${h(market)}">
+<style>body{margin:0;background:#07080c;color:#f5f5f7;font:16px system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;gap:16px;padding:16px;box-sizing:border-box}img{max-width:100%;border-radius:12px}a{color:#3987e5}</style>
+</head><body><img src="${h(image)}" alt="${h(title)}" width="600" height="315"><a href="${h(market)}">Open the market on Firstprint</a></body></html>`);
+  }
+
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
     res.setHeader('x-content-type-options', 'nosniff');
@@ -985,6 +1048,15 @@ export function createApiServer(opts: ServerOptions): Server {
 
     if (!url.pathname.startsWith('/api/')) {
       if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, { error: 'method_not_allowed' });
+      const share = /^\/share\/pnl\/([^/]+)\/([^/]+?)(\.png)?$/.exec(url.pathname);
+      if (share) {
+        try {
+          return servePnl(req, res, share[1], share[2], Boolean(share[3]));
+        } catch (err) {
+          service.log(`500 GET ${url.pathname}: ${(err as Error).stack ?? err}`);
+          return send(res, 500, { error: 'server_error', message: 'Something went wrong on our side. Try again.' });
+        }
+      }
       try { return await servePage(res, url); }
       catch { return send(res, 400, { error: 'bad_path', message: 'Invalid path.' }); }
     }
