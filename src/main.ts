@@ -37,7 +37,7 @@ else if (process.env.NODE_ENV === 'production') {
 const db = openDb(cfg.dbPath);
 const backup = backupCfg ? new DbBackup(db, cfg.dbPath, backupCfg, log) : null;
 
-const venues: Venue[] = allVenues();
+const venues: Venue[] = allVenues(undefined, { coingeckoKey: process.env.COINGECKO_API_KEY?.trim() || null });
 if (cfg.sim) {
   venues.push(new SimVenue('sim', systemClock, simProfileFromDb(db)));
   log('simulated venue enabled');

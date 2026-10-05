@@ -127,12 +127,6 @@ type ChannelMarket = {
   settleAt: number;
 };
 
-/** "MEXC" or "MEXC +2 more", so a market on many exchanges stays one short line. */
-function exchanges(label: string) {
-  const names = label.split(/,\s*|\s+and\s+/).map((x) => x.trim()).filter(Boolean);
-  return names.length > 2 ? `${names[0]} +${names.length - 1} more` : names.join(' and ');
-}
-
 /** The opening line of every channel post: the $TICKER first, like an exchange listing notice. */
 function head(m: ChannelMarket, tag: string) {
   return `<b>$${esc(m.symbol)}</b>${m.name ? ` · ${esc(m.name)}` : ''}\n${tag}`;
@@ -146,11 +140,11 @@ function cta(label: string, link?: string) {
 
 /** "New market live" post for the public channel. */
 export function marketLiveText(m: ChannelMarket, link?: string) {
-  const where = esc(exchanges(m.exchange));
+  // Exchanges are named on the market page only, not in posts.
   const question =
     m.outcomes === 'binary' && m.basePrice !== null
-      ? `Will $${esc(m.symbol)} be at or above ${price(m.basePrice)} on ${where}?\nYes · No`
-      : `Where will $${esc(m.symbol)} trade on ${where}?\nCrash · Down · Flat · Up · Moon`;
+      ? `Will $${esc(m.symbol)} be at or above ${price(m.basePrice)}?\nYes · No`
+      : `Where will $${esc(m.symbol)} go from here?\nCrash · Down · Flat · Up · Moon`;
   const start = m.basePrice === null ? 'Start price: the opening price at listing' : `Start price: ${price(m.basePrice)}`;
   return `${head(m, `🟢 <b>New market listed</b>${m.basePrice === null ? ' · Upcoming' : ''}`)}
 
@@ -181,7 +175,7 @@ ${players}${r.pool.toLocaleString('en-US')} pts paid to the winners${cta('See th
 
 /** "Closing in an hour" reminder for the public channel. */
 export function closingSoonText(m: ChannelMarket & { pool: number; predictors: number }, link?: string) {
-  const what = m.basePrice === null ? `Lists on ${esc(exchanges(m.exchange))} in about an hour; predictions close when it does.` : 'Predictions close in about an hour.';
+  const what = m.basePrice === null ? 'Starts trading in about an hour; predictions close when it does.' : 'Predictions close in about an hour.';
   const crowd = m.predictors ? `👥 ${m.predictors} predictor${m.predictors === 1 ? '' : 's'} · ${m.pool.toLocaleString('en-US')} pts in the pool` : '👥 No picks yet. Early picks earn more.';
   return `${head(m, '⏳ <b>Last hour to predict</b>')}
 

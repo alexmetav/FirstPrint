@@ -4,6 +4,7 @@
  * assets/fonts. No outside service is involved.
  */
 import { Resvg } from '@resvg/resvg-js';
+import { mascot } from './mascots.ts';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -13,7 +14,7 @@ const FONT_DIR = fileURLToPath(new URL('../../assets/fonts/', import.meta.url));
 const FONTS = ['Geist-Regular.ttf', 'Geist-SemiBold.ttf', 'Geist-Bold.ttf', 'GeistMono-Medium.ttf'].map((f) => FONT_DIR + f).filter((f) => existsSync(f));
 
 const C = { bg: '#07080c', text: '#f5f5f7', muted: '#9a9aa3', line: 'rgba(255,255,255,0.10)', card: 'rgba(255,255,255,0.045)' };
-export const OUTCOME_COLORS: Record<string, string> = { moon: '#ffd60a', up: '#30d158', flat: '#a1a1aa', down: '#ff9f0a', crash: '#ff453a' };
+export const OUTCOME_COLORS: Record<string, string> = { moon: '#7dff3a', up: '#30d158', flat: '#a1a1aa', down: '#ff9f0a', crash: '#ff453a' };
 const OUTCOME_NAMES: Record<string, string> = { moon: 'Moon', up: 'Up', flat: 'Flat', down: 'Down', crash: 'Crash' };
 
 export interface BannerMarket {
@@ -36,12 +37,6 @@ export type BannerKind = 'live' | 'closing' | 'result';
  * Anything else (Chinese, emoji, …) would come out as empty boxes, so it is never put on a banner.
  */
 export const drawable = (s: string) => /^[\x20-\x7e\u00a0-\u024f\u2013\u2014\u2018\u2019\u201c\u201d\u2026\u00b7]*$/.test(s);
-
-/** "MEXC" or "MEXC +2 more", so a market on many exchanges still fits on one line. */
-function exchangeLabel(exchange: string) {
-  const names = exchange.split(/,\s*|\s+and\s+/).map((x) => x.trim()).filter(Boolean);
-  return names.length > 2 ? `${names[0]} +${names.length - 1} more` : names.join(' and ');
-}
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -79,7 +74,7 @@ function brand(x: number, y: number) {
 }
 
 
-/** The token: logo (or a letter avatar), the ticker, and its name and exchange underneath. */
+/** The token: logo (or a letter avatar), the ticker, and its name underneath. Exchanges are named only in the app. */
 function tokenBlock(m: BannerMarket, logoPng: string | null, y: number) {
   const size = 160;
   const x = 80;
@@ -98,14 +93,14 @@ function tokenBlock(m: BannerMarket, logoPng: string | null, y: number) {
   const tx = x + size + 40;
   return `${avatar}
     <text x="${tx}" y="${y + 92}" font-size="${symSize}" font-weight="700" fill="${C.text}" letter-spacing="-2.5">${esc(sym)}</text>
-    <text x="${tx + 3}" y="${y + 142}" font-size="30" fill="${C.muted}">${esc(shortName ? `${shortName} · ` : '')}on ${esc(exchangeLabel(m.exchange))}</text>`;
+    ${shortName && shortName.toUpperCase() !== sym ? `<text x="${tx + 3}" y="${y + 142}" font-size="30" fill="${C.muted}">${esc(shortName)}</text>` : ''}`;
 }
 
 /**
  * Result: a small token line ("MOLT result"), then the price move as the big number in the winning
  * outcome's colour, with the winning outcome beside it.
  */
-function resultHero(m: BannerMarket, logoPng: string | null, won: string, pct: string, color: string) {
+function resultHero(m: BannerMarket, logoPng: string | null, won: string, pct: string, color: string, bucket: string | null) {
   const sym = m.symbol.toUpperCase();
   const size = 64;
   const x = 80;
@@ -116,14 +111,14 @@ function resultHero(m: BannerMarket, logoPng: string | null, won: string, pct: s
     : `<circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}" fill="${avatarColor(sym)}"/>
        <text x="${x + size / 2}" y="${y + size / 2 + 12}" text-anchor="middle" font-size="34" font-weight="700" fill="#ffffff">${esc(sym.slice(0, 1))}</text>`;
   const big = pct || won;
-  const bigSize = big.length > 8 ? 150 : 190;
-  // Where the big number ends (Geist Bold glyph widths, in ems), to put the winning outcome beside it.
-  const em: Record<string, number> = { '.': 0.27, '-': 0.42, '1': 0.5, '+': 0.6, '%': 0.86 };
-  const bigEnd = x - 6 + [...big].reduce((w, ch) => w + (em[ch] ?? 0.62) * bigSize - 6, 0);
+  // Left: the move, big. Right: the winning outcome's character with "Up wins" under it.
+  const bigSize = big.length > 7 ? 150 : big.length > 6 ? 170 : 190;
+  const cx = 1050;
   return `${logo}
     <text x="${x + size + 22}" y="${y + 45}" font-size="40" font-weight="600" fill="${C.text}" letter-spacing="-0.8">${esc(sym)} <tspan fill="${C.muted}" font-weight="400">result</tspan></text>
-    <text x="${x - 6}" y="452" font-size="${bigSize}" font-weight="700" fill="${color}" letter-spacing="-6">${esc(big)}</text>
-    ${pct ? `<text x="${Math.min(bigEnd + 28, 1000)}" y="452" font-size="44" font-weight="600" fill="${C.text}">${esc(won)} <tspan fill="${C.muted}" font-weight="400">wins</tspan></text>` : ''}`;
+    <text x="${x - 6}" y="440" font-size="${bigSize}" font-weight="700" fill="${color}" letter-spacing="-6">${esc(big)}</text>
+    ${bucket ? mascot(bucket, color, cx - 125, 150, 250) : ''}
+    ${pct ? `<text x="${cx}" y="464" text-anchor="middle" font-size="40" font-weight="600" fill="${C.text}">${esc(won)} <tspan fill="${C.muted}" font-weight="400">wins</tspan></text>` : ''}`;
 }
 
 /** "47 min" or "1h 05m": the time left, for the last-hour banner. */
@@ -149,12 +144,12 @@ function closingHero(m: BannerMarket, logoPng: string | null, left: string, colo
     : `<circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}" fill="${avatarColor(sym)}"/>
        <text x="${x + size / 2}" y="${y + size / 2 + 12}" text-anchor="middle" font-size="34" font-weight="700" fill="#ffffff">${esc(sym.slice(0, 1))}</text>`;
   const name = drawable((m.name ?? '').trim()) ? (m.name ?? '').trim() : '';
-  const sub = name && name.toUpperCase() !== sym ? `${name.length > 24 ? `${name.slice(0, 23)}…` : name} · ` : '';
+  const sub = name && name.toUpperCase() !== sym ? (name.length > 28 ? `${name.slice(0, 27)}…` : name) : '';
   const bigSize = left.length > 6 ? 170 : 200;
   const em: Record<string, number> = { ' ': 0.28, h: 0.56, m: 0.86, i: 0.25, n: 0.56 };
   const bigEnd = x - 6 + [...left].reduce((w, ch) => w + (em[ch] ?? 0.62) * bigSize - 6, 0);
   return `${logo}
-    <text x="${x + size + 22}" y="${y + 45}" font-size="40" font-weight="600" fill="${C.text}" letter-spacing="-0.8">${esc(sym)} <tspan fill="${C.muted}" font-weight="400">${esc(sub)}on ${esc(exchangeLabel(m.exchange))}</tspan></text>
+    <text x="${x + size + 22}" y="${y + 45}" font-size="40" font-weight="600" fill="${C.text}" letter-spacing="-0.8">${esc(sym)} <tspan fill="${C.muted}" font-weight="400">${esc(sub)}</tspan></text>
     <text x="${x - 6}" y="452" font-size="${bigSize}" font-weight="700" fill="${color}" letter-spacing="-6">${esc(left)}</text>
     <text x="${Math.min(bigEnd + 28, 960)}" y="452" font-size="44" font-weight="600" fill="${C.text}">left <tspan fill="${C.muted}" font-weight="400">to predict</tspan></text>`;
 }
@@ -212,12 +207,9 @@ export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | n
     const won = r?.winningBucket ? (m.outcomes === 'binary' ? (r.winningBucket === 'up' ? 'Yes' : 'No') : OUTCOME_NAMES[r.winningBucket]) : 'Settled';
     const pct = r?.returnPct != null ? ` ${r.returnPct >= 0 ? '+' : ''}${(r.returnPct * 100).toFixed(1)}%` : '';
     headline = 'Market Settled';
-    items = [
-      ['Predictors', (m.predictors ?? 0).toLocaleString('en-US')],
-      ...(r?.basePrice != null && r?.finalPrice != null ? [['Price', `${price(r.basePrice)} → ${price(r.finalPrice)}`] as [string, string]] : []),
-      ['Paid out', `${(r?.pool ?? 0).toLocaleString('en-US')} pts`],
-    ];
-    resultBody = resultHero(m, logoPng, won, pct.trim(), status.color);
+    // Only the token's price: start → final.
+    items = r?.basePrice != null && r?.finalPrice != null ? [['Price', `${price(r.basePrice)} → ${price(r.finalPrice)}`]] : [];
+    resultBody = resultHero(m, logoPng, won, pct.trim(), status.color, r?.winningBucket ?? null);
   }
   const pillW = status.text.length * 14 + 62;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Geist">
