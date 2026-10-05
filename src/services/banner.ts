@@ -101,6 +101,31 @@ function tokenBlock(m: BannerMarket, logoPng: string | null, y: number) {
     <text x="${tx + 3}" y="${y + 142}" font-size="30" fill="${C.muted}">${esc(shortName ? `${shortName} · ` : '')}on ${esc(exchangeLabel(m.exchange))}</text>`;
 }
 
+/**
+ * Result: a small token line ("MOLT result"), then the price move as the big number in the winning
+ * outcome's colour, with the winning outcome beside it.
+ */
+function resultHero(m: BannerMarket, logoPng: string | null, won: string, pct: string, color: string) {
+  const sym = m.symbol.toUpperCase();
+  const size = 64;
+  const x = 80;
+  const y = 176;
+  const logo = logoPng
+    ? `<clipPath id="logo"><circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}"/></clipPath>
+       <image href="${logoPng}" x="${x}" y="${y}" width="${size}" height="${size}" clip-path="url(#logo)" preserveAspectRatio="xMidYMid slice"/>`
+    : `<circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}" fill="${avatarColor(sym)}"/>
+       <text x="${x + size / 2}" y="${y + size / 2 + 12}" text-anchor="middle" font-size="34" font-weight="700" fill="#ffffff">${esc(sym.slice(0, 1))}</text>`;
+  const big = pct || won;
+  const bigSize = big.length > 8 ? 150 : 190;
+  // Where the big number ends (Geist Bold glyph widths, in ems), to put the winning outcome beside it.
+  const em: Record<string, number> = { '.': 0.27, '-': 0.42, '1': 0.5, '+': 0.6, '%': 0.86 };
+  const bigEnd = x - 6 + [...big].reduce((w, ch) => w + (em[ch] ?? 0.62) * bigSize - 6, 0);
+  return `${logo}
+    <text x="${x + size + 22}" y="${y + 45}" font-size="40" font-weight="600" fill="${C.text}" letter-spacing="-0.8">${esc(sym)} <tspan fill="${C.muted}" font-weight="400">result</tspan></text>
+    <text x="${x - 6}" y="452" font-size="${bigSize}" font-weight="700" fill="${color}" letter-spacing="-6">${esc(big)}</text>
+    ${pct ? `<text x="${Math.min(bigEnd + 28, 1000)}" y="452" font-size="44" font-weight="600" fill="${C.text}">${esc(won)} <tspan fill="${C.muted}" font-weight="400">wins</tspan></text>` : ''}`;
+}
+
 /** Up to three label / value pairs along the bottom, like an exchange listing notice. */
 function facts(items: [string, string][], y: number) {
   return items
@@ -131,6 +156,8 @@ export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | n
         : { text: 'RESULT', color: OUTCOME_COLORS[m.result?.winningBucket ?? 'flat'] ?? '#3987e5' };
   let headline: string;
   let items: [string, string][];
+  // The result banner leads with what happened (the move and who played), not the token again.
+  let resultBody: string | null = null;
   if (kind === 'live') {
     headline = 'New Market Listed';
     items = [
@@ -151,10 +178,11 @@ export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | n
     const pct = r?.returnPct != null ? ` ${r.returnPct >= 0 ? '+' : ''}${(r.returnPct * 100).toFixed(1)}%` : '';
     headline = 'Market Settled';
     items = [
-      ['Outcome', `${won}${pct}`],
+      ['Predictors', (m.predictors ?? 0).toLocaleString('en-US')],
       ...(r?.basePrice != null && r?.finalPrice != null ? [['Price', `${price(r.basePrice)} → ${price(r.finalPrice)}`] as [string, string]] : []),
       ['Paid out', `${(r?.pool ?? 0).toLocaleString('en-US')} pts`],
     ];
+    resultBody = resultHero(m, logoPng, won, pct.trim(), status.color);
   }
   const pillW = status.text.length * 14 + 62;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Geist">
@@ -169,8 +197,11 @@ export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | n
       <circle cx="28" cy="24" r="6" fill="${status.color}"/>
       <text x="46" y="31" font-family="Geist Mono" font-size="19" font-weight="500" fill="${status.color}" letter-spacing="2">${esc(status.text)}</text>
     </g>
-    <text x="80" y="232" font-size="56" font-weight="600" fill="${C.text}" letter-spacing="-1.4">${esc(headline)}</text>
-    ${tokenBlock(m, logoPng, 286)}
+    ${
+      resultBody ??
+      `<text x="80" y="232" font-size="56" font-weight="600" fill="${C.text}" letter-spacing="-1.4">${esc(headline)}</text>
+    ${tokenBlock(m, logoPng, 286)}`
+    }
     <line x1="80" y1="524" x2="${W - 80}" y2="524" stroke="${C.line}" stroke-width="1.5"/>
     ${facts(items, 576)}
     <text x="${W - 80}" y="${H - 34}" text-anchor="end" font-family="Geist Mono" font-size="17" fill="${C.muted}" letter-spacing="1">firstprint.fun</text>
