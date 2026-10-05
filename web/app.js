@@ -929,7 +929,10 @@ function featuredDeck(fallback) {
   const deck = trendingList();
   if (deck.length < 2) return fallback ? featuredView(fallback) : '';
   const on = (S.heroIdx ?? 0) % deck.length;
-  const slide = (m, i) => `<div class="hero-slide${i === on ? ' is-on' : ''}" data-slide="${i}"${i === on ? '' : ' inert'}>${featuredView(m, i)}</div>`;
+  const slide = (m, i) => {
+    const d = (i - on + deck.length) % deck.length;
+    return `<div class="hero-slide${d === 0 ? ' is-on' : ''}${d > 2 ? ' is-far' : ''}" data-slide="${i}" style="--d:${Math.min(d, 3)}"${d === 0 ? '' : ' inert'}>${featuredView(m, i)}</div>`;
+  };
   return `<div class="hero-deck feat-deck has-many" data-hero-deck aria-roledescription="carousel" aria-label="Trending markets">
       <div class="hero-slides">${deck.map(slide).join('')}</div>
       <div class="hero-dots">${deck.map((m, i) => `<button type="button" data-hero-dot="${i}" aria-label="Show ${esc(m.symbol)}" aria-current="${i === on}"></button>`).join('')}</div>
@@ -942,21 +945,28 @@ function heroFlipDone() {
   return left > 0 ? new Promise((r) => setTimeout(r, left)) : Promise.resolve();
 }
 
-/** Shows slide i of the hero deck with a flip. */
+/** Brings slide i to the front of the stack; the old front card drops away to the back. */
 function showHeroSlide(i, animate = true) {
   const deck = $('[data-hero-deck]');
   if (!deck) return;
   const slides = [...deck.querySelectorAll('.hero-slide')];
   if (slides.length < 2) return;
-  const to = ((i % slides.length) + slides.length) % slides.length;
+  const n = slides.length;
+  const to = ((i % n) + n) % n;
+  if (animate) S.heroFlipUntil = Date.now() + 950;
   S.heroIdx = to;
-  if (animate) S.heroFlipUntil = Date.now() + 900;
-  slides.forEach((el, n) => {
-    const was = el.classList.contains('is-on');
-    el.classList.toggle('is-on', n === to);
-    el.classList.toggle('is-out', animate && was && n !== to);
-    el.classList.toggle('is-in', animate && n === to && !was);
-    el.inert = n !== to;
+  slides.forEach((el, k) => {
+    const d = (k - to + n) % n;
+    const leaving = el.classList.contains('is-on') && d !== 0;
+    el.classList.remove('is-out');
+    if (leaving && animate) {
+      void el.offsetWidth;
+      el.classList.add('is-out');
+    }
+    el.classList.toggle('is-on', d === 0);
+    el.classList.toggle('is-far', d > 2);
+    el.style.setProperty('--d', String(Math.min(d, 3)));
+    el.inert = d !== 0;
   });
   deck.querySelectorAll('[data-hero-dot]').forEach((b) => b.setAttribute('aria-current', String(Number(b.dataset.heroDot) === to)));
 }
