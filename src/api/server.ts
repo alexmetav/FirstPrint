@@ -16,11 +16,22 @@ import type { ChannelPoster } from '../services/channel.ts';
 import { analytics } from '../services/analytics.ts';
 import type { RewardsService, TaskInput } from '../services/rewards.ts';
 
+/**
+ * Who may use the admin console: the owner (the ADMIN_KEY, or ADMIN_EMAILS / ADMIN_WALLETS),
+ * team admins (everything but the team), listing managers (tasks, plus reviewing, creating,
+ * editing and publishing markets, but not results, refunds or settings), and tasks only.
+ */
+export type AdminLevel = 'owner' | 'admin' | 'listings' | 'tasks';
+const LEVEL_RANK: Record<AdminLevel, number> = { tasks: 1, listings: 2, admin: 3, owner: 4 };
+
 export interface ServerOptions {
   service: FirstprintService;
   scheduler?: Scheduler;
   live?: LiveFeed;
   adminKey: string | null;
+  /** Signed-in accounts that open the admin console without the key: by verified email or linked wallet. */
+  adminEmails?: string[];
+  adminWallets?: string[];
   /** How many proxies sit between visitors and this server (0 = none). Used to find the visitor's address for rate limits. */
   trustProxyHops?: number;
   /** Google OAuth client ID (public). Enables "Continue with Google". */
@@ -66,7 +77,8 @@ interface Ctx {
   body: () => Promise<Record<string, unknown>>;
   user: () => UserRow;
   optionalUser: () => UserRow | null;
-  requireAdmin: () => void;
+  /** Throws unless the request may use the admin console at this level (default: admin); returns the level. */
+  requireAdmin: (min?: AdminLevel) => AdminLevel;
 }
 
 /**
@@ -218,6 +230,9 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('GET', '/api/me/rewards', ({ user }) => rewardsOn().summary(user().id));
 
+  // The player's Firstprint wallet and every TestFPT transaction made for them, with explorer links.
+  route('GET', '/api/me/chain', ({ user }) => rewardsOn().chainActivity(user().id));
+
   route('POST', '/api/me/x', async ({ req, user, body }) => {
     rateLimit(`x:${visitor(req)}`, 10, 60_000);
     const b = await body();
@@ -267,7 +282,7 @@ export function createApiServer(opts: ServerOptions): Server {
     rateLimit(`emailverify:${visitor(req)}`, 20, 10 * 60_000);
     rateLimit(`emailverify:${String(b.email ?? '').trim().toLowerCase()}`, 10, 10 * 60_000);
     const { user, created } = service.verifyEmailCode(String(b.email ?? ''), String(b.code ?? ''), refOf(b));
-    const session = service.createSession(user.id);
+    const session = service.createSession(user.id, 'email');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
   });
@@ -279,7 +294,7 @@ export function createApiServer(opts: ServerOptions): Server {
     const who = await verifyGoogleIdToken(String(b.credential ?? ''), opts.googleClientId, opts.googleJwks ?? (googleJwks ??= cachedGoogleJwks()));
     if (!who) throw new AppError(401, 'bad_google_token', 'Google sign-in failed. Try again.');
     const { user, created } = service.signInWithVerifiedEmail(who.email, who.name, refOf(b));
-    const session = service.createSession(user.id);
+    const session = service.createSession(user.id, 'google');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
   });
@@ -307,7 +322,7 @@ export function createApiServer(opts: ServerOptions): Server {
       walletName: b.walletName ? String(b.walletName).slice(0, 40) : undefined,
       ref: refOf(b),
     });
-    const session = service.createSession(user.id);
+    const session = service.createSession(user.id, 'wallet');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
   });
@@ -317,7 +332,7 @@ export function createApiServer(opts: ServerOptions): Server {
     rateLimit(`login:${visitor(req)}`, 10, 60_000);
     rateLimit(`login:${String(b.email ?? '').toLowerCase()}`, 10, 10 * 60_000);
     const user = await service.authenticate(String(b.email ?? ''), String(b.password ?? ''));
-    const session = service.createSession(user.id);
+    const session = service.createSession(user.id, 'password');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)) };
   });
@@ -366,9 +381,12 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // --- User routes ----------------------------------------------------------------
 
-  route('GET', '/api/me', ({ user }) => {
+  route('GET', '/api/me', async ({ req, user }) => {
     const u = user();
-    return { ...publicUser(u, service.clock.now(), service.walletsFor(u.id)), unreadNotifications: service.unreadNotifications(u.id) };
+    // Email and Google players get a Firstprint wallet the first time they come back (or sign up).
+    if (opts.rewards) await opts.rewards.ensureWallet(u.id).catch((err: Error) => service.log(`wallet for ${u.id} failed: ${err.message}`));
+    const adminLevel = accountLevel(req, u);
+    return { ...publicUser(u, service.clock.now(), service.walletsFor(u.id)), unreadNotifications: service.unreadNotifications(u.id), isAdmin: adminLevel !== null, adminLevel };
   });
 
   route('GET', '/api/me/notifications', ({ user }) => service.notificationsFor(user().id));
@@ -558,7 +576,7 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // Post one open market to the channel now (e.g. one made before the channel was set up).
   route('POST', '/api/admin/markets/:id/telegram', async ({ req, params, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     try {
       await channelOn().postLive(params.id);
     } catch (err) {
@@ -620,7 +638,7 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('POST', '/api/admin/manual-markets', async ({ req, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     const b = await body();
     const id = service.createManualMarket({ ...manualBody(b), publish: b.publish === true });
     // The banner logo is stored before the channel post (queued for after this request) reads it.
@@ -632,7 +650,7 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('POST', '/api/admin/manual-markets/:id', async ({ req, params, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     const b = await body();
     const patch = Object.fromEntries(Object.entries(manualBody(b)).filter(([, v]) => v !== undefined));
     service.updateManualMarket(params.id, patch);
@@ -644,7 +662,7 @@ export function createApiServer(opts: ServerOptions): Server {
   // The Telegram banner a market would get, drawn from the form before it is saved, so the admin
   // sees exactly what players will see (right logo, right ticker) before publishing.
   route('POST', '/api/admin/banner-preview', async ({ req, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     rateLimit(`banner:${visitor(req)}`, 60, 60_000);
     const b = await body();
     const symbol = String(b.symbol ?? '').trim().toUpperCase();
@@ -680,7 +698,7 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // PNG copy of a market's logo for its Telegram banners (the admin page makes it in the browser).
   route('POST', '/api/admin/markets/:id/logo-png', async ({ params, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     service.setLogoPng(params.id, String((await body()).logoPng ?? ''));
     return { ok: true };
   });
@@ -694,21 +712,21 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('POST', '/api/admin/manual-markets/:id/publish', ({ req, params, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     service.publishMarket(params.id);
     audit(req, 'market_published', params.id);
     return service.getMarket(params.id, undefined, true);
   });
 
   route('POST', '/api/admin/manual-markets/:id/unpublish', ({ req, params, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     service.unpublishMarket(params.id);
     audit(req, 'market_unpublished', params.id);
     return service.getMarket(params.id, undefined, true);
   });
 
   route('POST', '/api/admin/manual-markets/:id/delete', ({ req, params, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     service.deleteDraft(params.id);
     audit(req, 'draft_deleted', params.id);
     return { ok: true };
@@ -740,13 +758,13 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('GET', '/api/admin/detected', ({ url, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     const status = (url.searchParams.get('status') ?? 'pending') as 'pending' | 'approved' | 'ignored' | 'all';
     return { detected: service.detections({ status, limit: 200 }) };
   });
 
   route('POST', '/api/admin/detected/:id/approve', async ({ params, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     const b = await body();
     const marketId = service.approveDetection(Number(params.id), {
       symbol: b.symbol as string | undefined,
@@ -758,7 +776,7 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('POST', '/api/admin/detected/:id/ignore', ({ params, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     service.ignoreDetection(Number(params.id));
     return { ok: true };
   });
@@ -770,9 +788,12 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('GET', '/api/admin/ping', ({ requireAdmin }) => {
-    requireAdmin();
+    const level = requireAdmin('tasks');
+    // Tasks-only team members get just what the Tasks page needs.
+    if (level === 'tasks') return { ok: true, level, manualOnly: opts.manualOnly ?? false };
     return {
       ok: true,
+      level,
       venues: service.venueList(),
       exchanges: service.exchangeSettings(),
       manualOnly: opts.manualOnly ?? false,
@@ -819,12 +840,12 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('GET', '/api/admin/tasks', ({ requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('tasks');
     return { tasks: rewardsOn().listTasksAdmin() };
   });
 
   route('POST', '/api/admin/tasks', async ({ req, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('tasks');
     const b = await body();
     const id = rewardsOn().createTask(taskInput(b) as TaskInput);
     audit(req, 'task_created', id, `${b.kind} ${b.points} pts`);
@@ -832,20 +853,42 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   route('POST', '/api/admin/tasks/:id', async ({ req, params, body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('tasks');
     const b = await body();
     rewardsOn().updateTask(params.id, taskInput(b));
     audit(req, 'task_updated', params.id, JSON.stringify(b).slice(0, 200));
     return { ok: true };
   });
 
+  // Settings → Team: the owner gives people admin or tasks-only access by email or wallet.
+  route('GET', '/api/admin/team', ({ requireAdmin }) => {
+    requireAdmin('owner');
+    return { team: service.teamList() };
+  });
+
+  route('POST', '/api/admin/team', async ({ req, body, requireAdmin }) => {
+    requireAdmin('owner');
+    const b = await body();
+    const team = service.teamAdd({ value: String(b.value ?? ''), role: String(b.role ?? '') });
+    audit(req, 'team_member_added', null, `${String(b.value ?? '').trim().slice(0, 80)} as ${b.role}`);
+    return { team };
+  });
+
+  route('POST', '/api/admin/team/:id/remove', async ({ req, params, requireAdmin }) => {
+    requireAdmin('owner');
+    const gone = service.teamList().find((m) => m.id === Number(params.id));
+    const team = service.teamRemove(Number(params.id));
+    audit(req, 'team_member_removed', null, gone ? gone.value : params.id);
+    return { team };
+  });
+
   route('GET', '/api/admin/log', ({ requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     return { log: service.adminLog(40) };
   });
 
   route('GET', '/api/admin/markets', ({ requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     return { markets: service.adminMarkets() };
   });
 
@@ -870,19 +913,19 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // Live prices for the market form ("Check live price") and warnings for every open market.
   route('POST', '/api/admin/price-check', async ({ body, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     const b = await body();
     return { prices: await service.exchangePrices(String(b.symbol ?? ''), Array.isArray(b.exchanges) ? b.exchanges.map(String) : [], (b.pairs as Record<string, string>) ?? {}) };
   });
 
   route('GET', '/api/admin/market-checks', async ({ requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     return { checks: await service.marketChecks() };
   });
 
   // Copies a logo from a link so the market keeps its own copy (links break when sites change).
   route('GET', '/api/admin/fetch-image', async ({ req, url, requireAdmin }) => {
-    requireAdmin();
+    requireAdmin('listings');
     rateLimit(`img:${visitor(req)}`, 30, 60_000);
     return fetchImage(url.searchParams.get('url') ?? '');
   });
@@ -974,6 +1017,22 @@ export function createApiServer(opts: ServerOptions): Server {
       if (left > 0) streamsByVisitor.set(who, left);
       else streamsByVisitor.delete(who);
     });
+  }
+
+  /**
+   * The admin level of the signed-in account, or null. An email counts only when this session
+   * signed in with an email code or Google, which prove the address (password sign-ins never do);
+   * a wallet counts when linked to the account (proved by signing). ADMIN_EMAILS / ADMIN_WALLETS
+   * are the owner; Settings → Team gives others admin or tasks-only access.
+   */
+  function accountLevel(req: IncomingMessage, u: UserRow | null): AdminLevel | null {
+    if (!u) return null;
+    const via = service.sessionVia(sessionToken(req));
+    const email = u.email && (via === 'email' || via === 'google') ? u.email.toLowerCase() : null;
+    const wallets = service.walletsFor(u.id).map((w) => w.address);
+    if (email && (opts.adminEmails ?? []).includes(email)) return 'owner';
+    if (wallets.some((w) => (opts.adminWallets ?? []).includes(w))) return 'owner';
+    return service.teamRoleFor(email, wallets);
   }
 
   // --- Shareable PnL cards ----------------------------------------------------------
@@ -1090,18 +1149,23 @@ export function createApiServer(opts: ServerOptions): Server {
         if (!u) throw new AppError(401, 'auth_required', 'Log in to continue.');
         return u;
       },
-      requireAdmin: () => {
+      requireAdmin: (min: AdminLevel = 'admin') => {
         // Wrong keys are limited tightly (guessing); the right key gets room for the panel's own traffic.
         const given = String(req.headers['x-admin-key'] ?? '');
-        const ok =
+        const keyOk =
+          Boolean(given) &&
           opts.adminKey &&
           Buffer.byteLength(given) === Buffer.byteLength(opts.adminKey) &&
           timingSafeEqual(Buffer.from(given), Buffer.from(opts.adminKey));
-        if (!ok) {
+        // No key: an owner or team account signed in on this browser.
+        const level: AdminLevel | null = keyOk ? 'owner' : given ? null : accountLevel(req, ctx.optionalUser());
+        if (level && LEVEL_RANK[level] < LEVEL_RANK[min]) throw new AppError(403, 'not_allowed', 'Your team role can’t do this. Ask the owner for more access.');
+        if (!level) {
           rateLimit(`admin-bad:${visitor(req)}`, 20, 60_000);
           throw new AppError(403, 'forbidden', 'Admin key required.');
         }
         rateLimit(`admin:${visitor(req)}`, 600, 60_000);
+        return level;
       },
     };
 

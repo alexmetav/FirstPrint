@@ -101,8 +101,12 @@ export interface MarketRow {
   logo_png?: string | null;
   /** Upcoming token scheduled to open by itself: when trading is due to start (ms). */
   auto_open_at?: number | null;
-  /** The last thing the auto-open check found (shown to the admin). */
+  /** The last thing the auto-open or opening-price check found (shown to the admin). */
   auto_open_note?: string | null;
+  /** When the admin was told the result is due (once per market). */
+  result_alerted_at?: number | null;
+  /** 1 when the opening price couldn't be read from the exchange and the admin was told to add it. */
+  opening_price_failed?: number;
   announced_listing_at: number;
   listing_at: number;
   opened_at: number;
@@ -267,6 +271,8 @@ export class FirstprintService {
   onAnnounce: (kind: 'live' | 'result', marketId: string) => void = () => {};
   /** Markets whose predictions just closed, however the close happened (timer tick or an admin preview). */
   onClosed: (marketIds: string[]) => void = () => {};
+  /** A daily streak claim went through (the rewards service mints it on chain as TestFPT). */
+  onDailyClaimed: (userId: string, day: string, amount: number) => void = () => {};
   private announce(kind: 'live' | 'result', marketId: string) {
     queueMicrotask(() => {
       try {
@@ -573,15 +579,23 @@ export class FirstprintService {
     return this.getUser(userId);
   }
 
-  createSession(userId: string): { token: string; expiresAt: number } {
+  /** `via` is how the user proved who they are; an email only counts for admin access after an email code or Google. */
+  createSession(userId: string, via: 'email' | 'google' | 'wallet' | 'password' | null = null): { token: string; expiresAt: number } {
     const token = randomBytes(32).toString('base64url');
     const now = this.clock.now();
     const expiresAt = now + SESSION_MS;
     this.db
-      .prepare('INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)')
-      .run(sha256(token), userId, expiresAt, now);
+      .prepare('INSERT INTO sessions (token_hash, user_id, expires_at, created_at, via) VALUES (?, ?, ?, ?, ?)')
+      .run(sha256(token), userId, expiresAt, now, via);
     this.db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now);
     return { token, expiresAt };
+  }
+
+  /** How a live session signed in, or null. */
+  sessionVia(token: string): string | null {
+    if (!token) return null;
+    const row = as<{ via: string | null; expires_at: number } | undefined>(this.db.prepare('SELECT via, expires_at FROM sessions WHERE token_hash = ?').get(sha256(token)));
+    return row && row.expires_at >= this.clock.now() ? row.via : null;
   }
 
   userForSession(token: string): UserRow | null {
@@ -626,6 +640,7 @@ export class FirstprintService {
       const reward = dailyReward(nextDay);
       this.db.prepare('UPDATE users SET last_claim_day = ?, streak = ? WHERE id = ?').run(day, nextDay, userId);
       this.credit(userId, reward, 'daily', day);
+      this.onDailyClaimed(userId, day, reward);
       return this.getUser(userId);
     });
   }
@@ -1075,6 +1090,40 @@ export class FirstprintService {
     return as<MarketRow[]>(
       this.db.prepare("SELECT * FROM markets WHERE mode = 'manual' AND status = 'open' AND published = 0 AND auto_open_at IS NOT NULL AND auto_open_at <= ? ORDER BY auto_open_at").all(now),
     );
+  }
+
+  /**
+   * Published upcoming-token markets whose predictions have closed (trading is due) and that still
+   * have no start price: the server reads the opening price from the exchange.
+   */
+  awaitingOpeningPrice(now = this.clock.now()) {
+    return as<MarketRow[]>(
+      this.db
+        .prepare("SELECT * FROM markets WHERE mode = 'manual' AND published = 1 AND status = 'locked' AND base_price IS NULL AND opening_price_failed = 0 AND listing_at <= ? ORDER BY listing_at")
+        .all(now),
+    );
+  }
+
+  /** The opening price could not be read: stop trying, so the admin adds it. */
+  openingPriceFailed(marketId: string, note: string) {
+    this.db.prepare('UPDATE markets SET opening_price_failed = 1, auto_open_note = ? WHERE id = ?').run(note.slice(0, 300), marketId);
+  }
+
+  /**
+   * Upcoming-token markets whose opening price is in and whose result time has come, where the
+   * admin hasn't been asked for the result yet. (Markets with a start price from the start are
+   * announced as soon as predictions close.)
+   */
+  resultAlertsDue(now = this.clock.now()) {
+    return as<MarketRow[]>(
+      this.db
+        .prepare("SELECT * FROM markets WHERE mode = 'manual' AND published = 1 AND status = 'locked' AND result_alerted_at IS NULL AND base_price IS NOT NULL")
+        .all(),
+    ).filter((m) => m.listing_at + parseConfig(m).durationMs <= now);
+  }
+
+  markResultAlerted(marketId: string) {
+    this.db.prepare('UPDATE markets SET result_alerted_at = ? WHERE id = ?').run(this.clock.now(), marketId);
   }
 
   /** Records what the auto-open check found; with giveUp, the schedule is cleared and the market stays a draft. */
@@ -1660,6 +1709,50 @@ export class FirstprintService {
   setAutoListings(enabled: boolean) {
     this.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('auto_listings', enabled ? '1' : '0');
     return this.autoListingsEnabled();
+  }
+
+  // --- Team: admin-console access given from Settings -------------------------------
+
+  teamList() {
+    return as<{ id: number; kind: 'email' | 'wallet'; value: string; role: 'admin' | 'listings' | 'tasks'; added_at: number }[]>(
+      this.db.prepare('SELECT id, kind, value, role, added_at FROM team_members ORDER BY added_at').all(),
+    ).map((r) => ({ id: r.id, kind: r.kind, value: r.value, role: r.role, addedAt: r.added_at }));
+  }
+
+  /** Gives an email or a Solana wallet admin, listings (markets and tasks) or tasks-only access; adding it again changes the role. */
+  teamAdd(input: { value: string; role: string }) {
+    const raw = String(input.value ?? '').trim();
+    const role = (['admin', 'listings', 'tasks'] as const).find((r) => r === input.role) ?? null;
+    if (!role) throw new AppError(400, 'bad_role', 'Choose a role: Admin, Listings and tasks, or Tasks only.');
+    let kind: 'email' | 'wallet';
+    let value: string;
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
+      kind = 'email';
+      value = raw.toLowerCase();
+    } else if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(raw)) {
+      kind = 'wallet';
+      value = raw;
+    } else throw new AppError(400, 'bad_member', 'Enter an email address or a Solana wallet address.');
+    this.db
+      .prepare('INSERT INTO team_members (kind, value, role, added_at) VALUES (?, ?, ?, ?) ON CONFLICT(value) DO UPDATE SET role = excluded.role')
+      .run(kind, value, role, this.clock.now());
+    return this.teamList();
+  }
+
+  teamRemove(id: number) {
+    this.db.prepare('DELETE FROM team_members WHERE id = ?').run(Number(id));
+    return this.teamList();
+  }
+
+  /** The strongest team role for an account: by email (when proved this session) or by a linked wallet. */
+  teamRoleFor(email: string | null, wallets: string[]): 'admin' | 'listings' | 'tasks' | null {
+    const values = [...(email ? [email.toLowerCase()] : []), ...wallets];
+    if (!values.length) return null;
+    const rows = as<{ role: string }[]>(
+      this.db.prepare(`SELECT role FROM team_members WHERE value IN (${values.map(() => '?').join(', ')})`).all(...values),
+    );
+    for (const role of ['admin', 'listings', 'tasks'] as const) if (rows.some((r) => r.role === role)) return role;
+    return null;
   }
 
   // --- Public Telegram channel ------------------------------------------------------

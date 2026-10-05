@@ -16,9 +16,9 @@ export function openDb(path: string): DB {
 
 /** Adds columns introduced after a database was first created. */
 function migrate(db: DB) {
+  const cols = (table: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
   const ensure = (table: string, column: string, ddl: string) => {
-    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
-    if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+    if (!cols(table).includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
   };
   ensure('users', 'needs_username', "needs_username INTEGER NOT NULL DEFAULT 0");
   ensure('markets', 'kind', "kind TEXT NOT NULL DEFAULT 'listing'");
@@ -31,9 +31,52 @@ function migrate(db: DB) {
   ensure('users', 'streak', 'streak INTEGER NOT NULL DEFAULT 0');
   ensure('markets', 'announced_at', 'announced_at INTEGER');
   ensure('markets', 'logo_png', 'logo_png TEXT');
+  // How a session signed in (email, google, wallet, password): only verified emails count for admin access.
+  ensure('sessions', 'via', 'via TEXT');
   // Upcoming tokens the admin scheduled to open by themselves when trading starts.
   ensure('markets', 'auto_open_at', 'auto_open_at INTEGER');
   ensure('markets', 'auto_open_note', 'auto_open_note TEXT');
+  // Upcoming markets get their opening price from the exchange; the admin is asked for the result
+  // only when it is due. Markets already past their close were alerted then, so they count as done.
+  if (!cols('markets').includes('result_alerted_at')) {
+    db.exec('ALTER TABLE markets ADD COLUMN result_alerted_at INTEGER');
+    db.exec("UPDATE markets SET result_alerted_at = created_at WHERE status != 'open' AND base_price IS NOT NULL");
+  }
+  // Firstprint wallets made for players who sign up without one (key sealed, see solana/vault.ts).
+  db.exec(`CREATE TABLE IF NOT EXISTS embedded_wallets (
+    user_id TEXT PRIMARY KEY REFERENCES users(id),
+    address TEXT NOT NULL UNIQUE,
+    secret_sealed TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  )`);
+  // TestFPT the server mints on its own (daily streak), one row per transaction, so each can be
+  // retried safely and shown with its explorer link.
+  db.exec(`CREATE TABLE IF NOT EXISTS chain_mints (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    wallet TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    amount INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('queued', 'submitted', 'confirmed', 'failed')),
+    signature TEXT,
+    last_valid_height INTEGER,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    UNIQUE (user_id, kind, ref)
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS chain_mints_status ON chain_mints(status)');
+  // People the owner gave admin-console access from Settings → Team (by email or wallet).
+  db.exec(`CREATE TABLE IF NOT EXISTS team_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL CHECK (kind IN ('email', 'wallet')),
+    value TEXT NOT NULL UNIQUE,
+    role TEXT NOT NULL CHECK (role IN ('admin', 'listings', 'tasks')),
+    added_at INTEGER NOT NULL
+  )`);
+  ensure('markets', 'opening_price_failed', 'opening_price_failed INTEGER NOT NULL DEFAULT 0');
   ensure('markets', 'reminded_at', 'reminded_at INTEGER');
   ensure('users', 'x_username', 'x_username TEXT');
   ensure('users', 'referral_code', 'referral_code TEXT');

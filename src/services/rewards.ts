@@ -14,8 +14,10 @@ import { address, type Address, type KeyPairSigner, type Signature } from '@sola
 import { AppError, type FirstprintService } from './firstprint.ts';
 import { tx } from '../db/db.ts';
 import { isSolanaAddress } from '../solana/base58.ts';
+import { WalletVault } from '../solana/vault.ts';
 import {
   buildClaimTransaction,
+  buildServerMint,
   checkSignedClaim,
   createTestFptMint,
   explorerAddress,
@@ -79,6 +81,29 @@ export interface TokenOptions {
   authoritySecret?: string | null;
   /** Mint address from the environment (overrides the stored one). */
   mint?: string | null;
+  /** WALLET_ENCRYPTION_KEY: with it, players without a wallet get a Firstprint wallet. */
+  walletKey?: string | null;
+}
+
+/** Below this the mint authority stops sending (it pays every fee and new token account). */
+export const MIN_AUTHORITY_LAMPORTS = 10_000_000n;
+/** A server mint is tried this many times before it is marked failed. */
+const MAX_MINT_ATTEMPTS = 5;
+export const EMBEDDED_WALLET_NAME = 'Firstprint wallet';
+
+interface MintRow {
+  id: string;
+  user_id: string;
+  wallet: string;
+  kind: string;
+  ref: string;
+  amount: number;
+  status: 'queued' | 'submitted' | 'confirmed' | 'failed';
+  signature: string | null;
+  last_valid_height: number | null;
+  attempts: number;
+  error: string | null;
+  created_at: number;
 }
 
 const as = <T>(v: unknown) => v as T;
@@ -90,6 +115,9 @@ export class RewardsService {
   private siteUrl: string;
   private authority: KeyPairSigner | null = null;
   private mint: Address | null = null;
+  private vault: WalletVault | null = null;
+  /** The chain work in progress, so overlapping calls share one run instead of racing. */
+  private chainRun: Promise<void> | null = null;
   /** How long submitClaim waits for confirmation before answering "still confirming". */
   confirmWaitMs = 20_000;
 
@@ -99,6 +127,8 @@ export class RewardsService {
     this.siteUrl = siteUrl.replace(/\/+$/, '');
     service.rewardsOnChain = () => this.ready();
     service.onPredicted = (userId) => this.onPredicted(userId);
+    service.onDailyClaimed = (userId, day, amount) => this.queueMint(userId, 'daily', day, amount);
+    if (token?.walletKey) this.vault = new WalletVault(token.walletKey);
   }
 
   private get db() {
@@ -167,6 +197,9 @@ export class RewardsService {
       mint: this.mint,
       mintUrl: this.mint ? explorerAddress(this.mint, token.cluster) : null,
       faucetUrl: FAUCET_URL,
+      walletsOn: this.walletsOn(),
+      lowFunds: balance !== null && balance * 1e9 < Number(MIN_AUTHORITY_LAMPORTS),
+      chain: this.chainCounts(),
     };
   }
 
@@ -212,6 +245,229 @@ export class RewardsService {
     this.mint = mint;
     this.service.log(`TestFPT created: ${mint}`);
     return this.tokenStatus();
+  }
+
+  // --- Firstprint wallets and server-paid mints ----------------------------------------------
+
+  /** True when players without a wallet get one made for them. */
+  walletsOn() {
+    return Boolean(this.vault);
+  }
+
+  embeddedAddress(userId: string): string | null {
+    return as<{ address: string } | undefined>(this.db.prepare('SELECT address FROM embedded_wallets WHERE user_id = ?').get(userId))?.address ?? null;
+  }
+
+  /**
+   * Gives a player with no wallet a Firstprint wallet (email and Google sign-ups). Its key is sealed
+   * in the database; the server signs for it only where Firstprint needs to (none yet: minting needs
+   * no owner signature). Returns the address, or null when the player already has a wallet.
+   */
+  async ensureWallet(userId: string): Promise<string | null> {
+    if (!this.vault) return null;
+    if (this.service.walletsFor(userId).length) return null;
+    const secret = await newAuthoritySecret();
+    const signer = await signerFromSecret(secret);
+    const now = this.now();
+    tx(this.db, () => {
+      if (this.service.walletsFor(userId).length) return;
+      this.db.prepare('INSERT INTO embedded_wallets (user_id, address, secret_sealed, created_at) VALUES (?, ?, ?, ?)').run(userId, signer.address, this.vault!.seal(secret), now);
+      this.db.prepare('INSERT INTO wallets (address, user_id, wallet_name, verified_at) VALUES (?, ?, ?, ?)').run(signer.address, userId, EMBEDDED_WALLET_NAME, now);
+    });
+    this.service.log(`firstprint wallet made for ${userId}: ${signer.address}`);
+    // Their welcome bonus goes to the new wallet straight away.
+    void this.runChain().catch(() => {});
+    return this.embeddedAddress(userId);
+  }
+
+  /** Where server mints go: the Firstprint wallet, or else the first wallet the player linked. */
+  private payoutWallet(userId: string): string | null {
+    return this.embeddedAddress(userId) ?? this.service.walletsFor(userId)[0]?.address ?? null;
+  }
+
+  /** Queues a server-paid mint (inside the caller's transaction). Nothing happens without TestFPT or a wallet. */
+  private queueMint(userId: string, kind: string, ref: string, amount: number) {
+    if (!this.ready() || amount <= 0) return;
+    const wallet = this.payoutWallet(userId);
+    if (!wallet) return;
+    this.db
+      .prepare("INSERT OR IGNORE INTO chain_mints (id, user_id, wallet, kind, ref, amount, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)")
+      .run(randomUUID(), userId, wallet, kind, ref, amount, this.now(), this.now());
+  }
+
+  /**
+   * The background chain work, every few seconds: sends queued mints and checks sent ones; claims
+   * the rewards of players with a Firstprint wallet by itself; and settles claims still confirming.
+   */
+  runChain(): Promise<void> {
+    if (!this.ready() || !this.token) return Promise.resolve();
+    this.chainRun ??= this.chainWork().finally(() => (this.chainRun = null));
+    return this.chainRun;
+  }
+
+  private async chainWork() {
+    const token = this.token!;
+    let funded = true;
+    try {
+      funded = (await token.chain.balance(this.authority!.address)) >= MIN_AUTHORITY_LAMPORTS;
+    } catch {
+      return; // network down: try again next time
+    }
+    for (const m of as<MintRow[]>(this.db.prepare("SELECT * FROM chain_mints WHERE status = 'submitted' ORDER BY created_at LIMIT 50").all())) await this.checkMint(m);
+    if (funded) {
+      for (const m of as<MintRow[]>(this.db.prepare("SELECT * FROM chain_mints WHERE status = 'queued' ORDER BY created_at LIMIT 20").all())) await this.sendMint(m);
+      const owed = as<{ user_id: string }[]>(
+        this.db
+          .prepare(
+            `SELECT DISTINCT r.user_id FROM rewards r JOIN embedded_wallets e ON e.user_id = r.user_id
+             WHERE r.claim_id IS NULL AND NOT EXISTS (SELECT 1 FROM claims c WHERE c.user_id = r.user_id AND c.status IN ('pending', 'submitted')) LIMIT 20`,
+          )
+          .all(),
+      );
+      for (const { user_id } of owed) {
+        try {
+          await this.serverClaim(user_id);
+        } catch (err) {
+          this.service.log(`auto-claim for ${user_id} failed: ${(err as Error).message}`);
+        }
+      }
+    }
+    for (const c of as<{ id: string; user_id: string }[]>(this.db.prepare("SELECT id, user_id FROM claims WHERE status = 'submitted' LIMIT 50").all())) {
+      await this.refreshClaim(c.user_id, c.id).catch(() => {});
+    }
+  }
+
+  private async sendMint(m: MintRow) {
+    const token = this.token!;
+    let built;
+    try {
+      built = await buildServerMint(token.chain, this.authority!, this.mint!, address(m.wallet), BigInt(m.amount));
+    } catch (err) {
+      return this.mintFailed(m, `couldn’t prepare: ${(err as Error).message.slice(0, 120)}`);
+    }
+    // Recorded before sending, so a crash after sending can be reconciled instead of minting twice.
+    this.db
+      .prepare("UPDATE chain_mints SET status = 'submitted', signature = ?, last_valid_height = ?, attempts = attempts + 1, updated_at = ? WHERE id = ? AND status = 'queued'")
+      .run(built.signature, Number(built.lastValidBlockHeight), this.now(), m.id);
+    try {
+      await token.chain.send(built.transaction);
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (/simulation failed|insufficient|custom program error|invalid|blockhash not found/i.test(msg)) {
+        return this.mintFailed({ ...m, attempts: m.attempts + 1 }, msg.slice(0, 160));
+      }
+      // A timeout may still land: the status check settles it.
+    }
+    await this.checkMint(as<MintRow>(this.db.prepare('SELECT * FROM chain_mints WHERE id = ?').get(m.id)));
+  }
+
+  private async checkMint(m: MintRow) {
+    const token = this.token!;
+    if (m.status !== 'submitted' || !m.signature) return;
+    let status;
+    try {
+      status = await token.chain.status(m.signature as Signature);
+    } catch {
+      return;
+    }
+    if (status === 'confirmed') {
+      this.db.prepare("UPDATE chain_mints SET status = 'confirmed', error = NULL, updated_at = ? WHERE id = ?").run(this.now(), m.id);
+    } else if (status === 'failed') {
+      this.mintFailed(m, 'failed on chain');
+    } else {
+      // Still unknown after its blockhash expired: it can never land, so it is safe to send again.
+      try {
+        if (m.last_valid_height !== null && (await token.chain.blockHeight()) > BigInt(m.last_valid_height)) this.mintFailed(m, 'not confirmed in time');
+      } catch {
+        /* keep waiting */
+      }
+    }
+  }
+
+  /** Back to the queue for another try, or failed for good after a few. */
+  private mintFailed(m: MintRow, error: string) {
+    const final = m.attempts >= MAX_MINT_ATTEMPTS;
+    this.db.prepare('UPDATE chain_mints SET status = ?, error = ?, updated_at = ? WHERE id = ?').run(final ? 'failed' : 'queued', error, this.now(), m.id);
+    if (final) this.service.log(`mint ${m.id} (${m.kind} for ${m.user_id}) failed: ${error}`);
+  }
+
+  /**
+   * Claims every unclaimed reward of a player with a Firstprint wallet, signed and paid by the
+   * server (no wallet pop-up). Points are added once it is confirmed, as with any claim.
+   */
+  private async serverClaim(userId: string) {
+    const token = this.token!;
+    const wallet = this.embeddedAddress(userId);
+    if (!wallet) return;
+    const rows = as<{ id: number; amount: number }[]>(this.db.prepare('SELECT id, amount FROM rewards WHERE user_id = ? AND claim_id IS NULL').all(userId));
+    const amount = rows.reduce((sum, r) => sum + r.amount, 0);
+    if (!amount) return;
+    const built = await buildServerMint(token.chain, this.authority!, this.mint!, address(wallet), BigInt(amount));
+    const id = randomUUID();
+    tx(this.db, () => {
+      const reserve = this.db.prepare('UPDATE rewards SET claim_id = ? WHERE id = ? AND claim_id IS NULL');
+      let reserved = 0;
+      for (const r of rows) reserved += Number(reserve.run(id, r.id).changes);
+      if (reserved !== rows.length) throw new Error('rewards changed while claiming');
+      this.db
+        .prepare(
+          `INSERT INTO claims (id, user_id, wallet, amount, status, message, last_valid_height, signature, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'submitted', '', ?, ?, ?, ?)`,
+        )
+        .run(id, userId, wallet, amount, Number(built.lastValidBlockHeight), built.signature, this.now(), this.now());
+    });
+    try {
+      await token.chain.send(built.transaction);
+    } catch (err) {
+      if (/simulation failed|insufficient|custom program error|invalid|blockhash not found/i.test((err as Error).message)) {
+        this.closeClaim(id, 'failed', `The network rejected it: ${(err as Error).message.slice(0, 160)}`);
+        return;
+      }
+    }
+    await this.refreshClaim(userId, id);
+  }
+
+  /** The player's on-chain record: their Firstprint wallet and every TestFPT transaction for them. */
+  chainActivity(userId: string) {
+    const cluster = this.token?.cluster ?? null;
+    const url = (sig: string | null) => (sig && cluster ? explorerTx(sig, cluster) : null);
+    const wallet = this.embeddedAddress(userId);
+    const mints = as<MintRow[]>(this.db.prepare('SELECT * FROM chain_mints WHERE user_id = ? ORDER BY created_at DESC LIMIT 30').all(userId)).map((m) => ({
+      kind: m.kind,
+      amount: m.amount,
+      wallet: m.wallet,
+      status: m.status,
+      at: m.created_at,
+      explorerUrl: m.status === 'confirmed' ? url(m.signature) : null,
+    }));
+    const claims = as<ClaimRow[]>(this.db.prepare('SELECT * FROM claims WHERE user_id = ? ORDER BY created_at DESC LIMIT 30').all(userId)).map((c) => ({
+      kind: 'claim',
+      amount: c.amount,
+      wallet: c.wallet,
+      status: c.status,
+      at: c.created_at,
+      explorerUrl: c.status === 'confirmed' ? url(c.signature) : null,
+    }));
+    return {
+      onChain: this.ready(),
+      cluster,
+      wallet,
+      walletUrl: wallet && cluster ? explorerAddress(wallet, cluster) : null,
+      mint: this.mint,
+      activity: [...mints, ...claims].sort((a, b) => b.at - a.at).slice(0, 30),
+    };
+  }
+
+  /** Counts for the admin page. */
+  chainCounts() {
+    const n = (sql: string) => as<{ n: number }>(this.db.prepare(sql).get()).n;
+    return {
+      wallets: n('SELECT COUNT(*) AS n FROM embedded_wallets'),
+      mintsConfirmed: n("SELECT COUNT(*) AS n FROM chain_mints WHERE status = 'confirmed'"),
+      mintsWaiting: n("SELECT COUNT(*) AS n FROM chain_mints WHERE status IN ('queued', 'submitted')"),
+      mintsFailed: n("SELECT COUNT(*) AS n FROM chain_mints WHERE status = 'failed'"),
+      claimsConfirmed: n("SELECT COUNT(*) AS n FROM claims WHERE status = 'confirmed'"),
+    };
   }
 
   // --- Rewards ----------------------------------------------------------------------
@@ -276,6 +532,8 @@ export class RewardsService {
       mintUrl: this.mint && this.token ? explorerAddress(this.mint, this.token.cluster) : null,
       faucetUrl: FAUCET_URL,
       claimable,
+      // A Firstprint wallet: rewards are sent to it by the server, no claim or fee needed.
+      firstprintWallet: this.embeddedAddress(userId),
       welcomeClaimed: welcome ? welcome.claim_id !== null && this.isClaimed(welcome.claim_id) : true,
       xUsername: user.x_username,
       xConnectPoints: X_CONNECT_POINTS,

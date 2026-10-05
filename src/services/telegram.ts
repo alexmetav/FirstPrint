@@ -127,29 +127,65 @@ type ChannelMarket = {
   settleAt: number;
 };
 
-/** "New market live" post for the public channel. */
-export function marketLiveText(m: ChannelMarket) {
-  const title = `${esc(m.symbol)}${m.name ? ` (${esc(m.name)})` : ''}`;
-  const question =
-    m.outcomes === 'binary' && m.basePrice !== null
-      ? `Will ${esc(m.symbol)} be at or above ${price(m.basePrice)} on ${esc(m.exchange)}?`
-      : `Where will ${esc(m.symbol)} trade on ${esc(m.exchange)}? Crash, Down, Flat, Up or Moon.`;
-  const start = m.basePrice === null ? `Lists on ${esc(m.exchange)} around ${utc(m.closeAt)}. The opening price is the start price.` : `Start price: ${price(m.basePrice)}`;
-  return `🟢 <b>New market: ${title}</b>\n${question}\n\n${start}\nPredictions close: ${utc(m.closeAt)}\nResult: ${utc(m.settleAt)}\n\nFree to play with points. Early picks earn more.`;
+/** "MEXC" or "MEXC +2 more", so a market on many exchanges stays one short line. */
+function exchanges(label: string) {
+  const names = label.split(/,\s*|\s+and\s+/).map((x) => x.trim()).filter(Boolean);
+  return names.length > 2 ? `${names[0]} +${names.length - 1} more` : names.join(' and ');
 }
 
-/** "Result is in" post for the public channel. */
-export function marketResultText(m: ChannelMarket & { result: { winningBucket: string | null; returnPct: number | null; basePrice: number | null; finalPrice: number | null; pool: number } | null }) {
+/** The opening line of every channel post: the $TICKER first, like an exchange listing notice. */
+function head(m: ChannelMarket, tag: string) {
+  return `<b>$${esc(m.symbol)}</b>${m.name ? ` · ${esc(m.name)}` : ''}\n${tag}`;
+}
+
+/** The last line: the market link, so a tap from Telegram goes straight to predicting. */
+function cta(label: string, link?: string) {
+  // A link tag, so the whole address (with its #/market/… part) is always the tap target.
+  return link ? `\n\n👉 <b>${label}:</b> <a href="${esc(link).replace(/"/g, '&quot;')}">${esc(link)}</a>` : '';
+}
+
+/** "New market live" post for the public channel. */
+export function marketLiveText(m: ChannelMarket, link?: string) {
+  const where = esc(exchanges(m.exchange));
+  const question =
+    m.outcomes === 'binary' && m.basePrice !== null
+      ? `Will $${esc(m.symbol)} be at or above ${price(m.basePrice)} on ${where}?\nYes · No`
+      : `Where will $${esc(m.symbol)} trade on ${where}?\nCrash · Down · Flat · Up · Moon`;
+  const start = m.basePrice === null ? 'Start price: the opening price at listing' : `Start price: ${price(m.basePrice)}`;
+  return `${head(m, `🟢 <b>New market listed</b>${m.basePrice === null ? ' · Upcoming' : ''}`)}
+
+${question}
+
+💲 ${start}
+⏰ Predictions close: ${utc(m.closeAt)}
+🏁 Result: ${utc(m.settleAt)}
+
+Free to play with points. Early picks earn more.${cta('Predict now', link)}`;
+}
+
+/** "Result is in" post for the public channel: the move and the players first. */
+export function marketResultText(
+  m: ChannelMarket & { predictors?: number; result: { winningBucket: string | null; returnPct: number | null; basePrice: number | null; finalPrice: number | null; pool: number } | null },
+  link?: string,
+) {
   const r = m.result;
   if (!r || !r.winningBucket) return null;
   const won = m.outcomes === 'binary' ? (r.winningBucket === 'up' ? 'Yes' : 'No') : OUTCOME[r.winningBucket] ?? r.winningBucket;
-  const move = r.basePrice !== null && r.finalPrice !== null ? `${price(r.basePrice)} → ${price(r.finalPrice)}${r.returnPct !== null ? ` (${r.returnPct >= 0 ? '+' : ''}${(r.returnPct * 100).toFixed(1)}%)` : ''}` : '';
-  return `🏁 <b>${esc(m.symbol)} result: ${won}</b>\n${move}\nPool of ${r.pool.toLocaleString('en-US')} pts paid to the winners.`;
+  const pct = r.returnPct !== null ? ` · ${r.returnPct >= 0 ? '+' : ''}${(r.returnPct * 100).toFixed(1)}%` : '';
+  const move = r.basePrice !== null && r.finalPrice !== null ? `\n📈 ${price(r.basePrice)} → ${price(r.finalPrice)}` : '';
+  const players = m.predictors ? `👥 ${m.predictors.toLocaleString('en-US')} predictor${m.predictors === 1 ? '' : 's'} · ` : '👥 ';
+  return `${head(m, `🏁 <b>Result: ${won} wins${pct}</b>`)}
+${move}
+${players}${r.pool.toLocaleString('en-US')} pts paid to the winners${cta('See the result', link)}`;
 }
 
 /** "Closing in an hour" reminder for the public channel. */
-export function closingSoonText(m: ChannelMarket & { pool: number; predictors: number }) {
-  const what = m.basePrice === null ? `${esc(m.symbol)} lists on ${esc(m.exchange)} in about an hour, and predictions close when it does.` : `Predictions on ${esc(m.symbol)} close in about an hour.`;
-  const crowd = m.predictors ? `${m.predictors} predictor${m.predictors === 1 ? '' : 's'}, ${m.pool.toLocaleString('en-US')} pts in the pool so far.` : 'Nobody has picked yet: be the first, early picks earn more.';
-  return `⏳ <b>Last hour: ${esc(m.symbol)}${m.name ? ` (${esc(m.name)})` : ''}</b>\n${what}\n${crowd}\nCloses: ${utc(m.closeAt)}`;
+export function closingSoonText(m: ChannelMarket & { pool: number; predictors: number }, link?: string) {
+  const what = m.basePrice === null ? `Lists on ${esc(exchanges(m.exchange))} in about an hour; predictions close when it does.` : 'Predictions close in about an hour.';
+  const crowd = m.predictors ? `👥 ${m.predictors} predictor${m.predictors === 1 ? '' : 's'} · ${m.pool.toLocaleString('en-US')} pts in the pool` : '👥 No picks yet. Early picks earn more.';
+  return `${head(m, '⏳ <b>Last hour to predict</b>')}
+
+${what}
+⏰ Closes: ${utc(m.closeAt)}
+${crowd}${cta('Predict now', link)}`;
 }

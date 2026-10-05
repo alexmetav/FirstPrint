@@ -35,6 +35,16 @@ services:
       # Render creates a random key. Read it in the dashboard (Environment) to open /#/admin.
       - key: ADMIN_KEY
         generateValue: true
+      # Optional: sign in with these instead of pasting the key. Emails (comma-separated) count when
+      # signed in with Google or an email code; wallets (Solana addresses) when linked to the account.
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: ADMIN_WALLETS
+        sync: false
+      # Seals the keys of the Firstprint wallets made for email and Google players. Render makes it
+      # once; never change or delete it, or those wallets can no longer be used.
+      - key: WALLET_ENCRYPTION_KEY
+        generateValue: true
       # The address people type in the browser, e.g. https://firstprint.fun (no trailing slash).
       - key: PUBLIC_URL
         sync: false

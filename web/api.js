@@ -89,6 +89,7 @@ export function createApi(baseUrl = '') {
     walletChallenge: (address) => request(`/api/auth/wallet/challenge?address=${encodeURIComponent(address)}`),
     walletVerify: (body) => post('/api/auth/wallet/verify', { ...body, ref: referralCode() }),
     rewards: () => request('/api/me/rewards'),
+    chain: () => request('/api/me/chain'),
     connectX: (username) => post('/api/me/x', { username }),
     startTask: (t) => post(`/api/tasks/${id(t)}/start`),
     verifyTask: (t) => post(`/api/tasks/${id(t)}/verify`),
@@ -123,7 +124,8 @@ export function createAdminApi(key, baseUrl = '') {
   async function request(path, init = {}) {
     let res;
     try {
-      res = await fetch(baseUrl + path, { ...init, headers: { 'content-type': 'application/json', 'x-admin-key': key } });
+      // No key: the server checks the signed-in account instead (an admin email or wallet).
+      res = await fetch(baseUrl + path, { ...init, headers: { 'content-type': 'application/json', ...(key ? { 'x-admin-key': key } : {}) } });
     } catch {
       throw new ApiError(0, 'offline', 'Can’t reach the server.');
     }
@@ -171,6 +173,9 @@ export function createAdminApi(key, baseUrl = '') {
     token: () => request('/api/admin/token'),
     tokenStep: (step) => post(`/api/admin/token/${encodeURIComponent(step)}`),
     tasks: () => request('/api/admin/tasks'),
+    team: () => request('/api/admin/team'),
+    teamAdd: (value, role) => post('/api/admin/team', { value, role }),
+    teamRemove: (id) => post(`/api/admin/team/${encodeURIComponent(id)}/remove`),
     createTask: (body) => post('/api/admin/tasks', body),
     updateTask: (id, body) => post(`/api/admin/tasks/${encodeURIComponent(id)}`, body),
   };

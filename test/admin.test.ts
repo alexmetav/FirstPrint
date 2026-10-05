@@ -160,3 +160,118 @@ test('HTTP admin: ping, create live market, list, cancel', async () => {
     server.close();
   }
 });
+
+test('admin by account: an ADMIN_EMAILS email signed in by code or Google, or a linked ADMIN_WALLETS wallet, opens the console without the key', async () => {
+  const { createApiServer } = await import('../src/api/server.ts');
+  const db = openDb(':memory:');
+  const service = new FirstprintService(db, new ManualClock(Date.now()), []);
+  const WALLET = '7RSEwQz5qQ8mU2J6dYzW1bq3rF1kV9cX2nL4pT8hLF37';
+  const server = createApiServer({
+    service,
+    adminKey: 'k'.repeat(32),
+    adminEmails: ['boss@example.com'],
+    adminWallets: [WALLET],
+    secureCookies: false,
+    webDir: new URL('../web', import.meta.url).pathname,
+  });
+  await new Promise<void>((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const as = (token: string | null, key?: string) =>
+    fetch(`${base}/api/admin/ping`, { headers: { ...(token ? { cookie: `fp_session=${token}` } : {}), ...(key !== undefined ? { 'x-admin-key': key } : {}) } }).then((r) => r.status);
+  const me = (token: string) => fetch(`${base}/api/me`, { headers: { cookie: `fp_session=${token}` } }).then((r) => r.json());
+  try {
+    const boss = await service.createUser({ username: 'boss', email: 'Boss@Example.com' });
+    const other = await service.createUser({ username: 'other', email: 'other@example.com' });
+    const byCode = service.createSession(boss.id, 'email').token;
+    const byGoogle = service.createSession(boss.id, 'google').token;
+    const byPassword = service.createSession(boss.id, 'password').token;
+
+    assert.equal(await as(byCode), 200);
+    assert.equal(await as(byGoogle), 200);
+    assert.equal((await me(byCode)).isAdmin, true);
+    assert.equal(await as(byPassword), 403, 'a password sign-in never proved the email');
+    assert.equal(await as(service.createSession(other.id, 'email').token), 403);
+    assert.equal(await as(null), 403);
+    assert.equal(await as(byCode, 'wrong-key'), 403, 'a wrong key is still refused');
+    assert.equal(await as(null, 'k'.repeat(32)), 200, 'the key keeps working');
+
+    db.prepare('INSERT INTO wallets (address, user_id, verified_at) VALUES (?, ?, ?)').run(WALLET, other.id, Date.now());
+    const walletSession = service.createSession(other.id, 'wallet').token;
+    assert.equal(await as(walletSession), 200, 'linked admin wallet');
+    assert.equal((await me(walletSession)).isAdmin, true);
+  } finally {
+    server.close();
+  }
+});
+
+test('team: the owner gives admin or tasks-only access by email or wallet from Settings, and can take it back', async () => {
+  const { createApiServer } = await import('../src/api/server.ts');
+  const db = openDb(':memory:');
+  const service = new FirstprintService(db, new ManualClock(Date.now()), []);
+  const KEY = 'k'.repeat(32);
+  const WALLET = '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin';
+  const server = createApiServer({ service, adminKey: KEY, secureCookies: false, webDir: new URL('../web', import.meta.url).pathname });
+  await new Promise<void>((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const call = (path: string, who: { token?: string; key?: string }, body?: unknown) =>
+    fetch(`${base}${path}`, {
+      method: body ? 'POST' : 'GET',
+      headers: { 'content-type': 'application/json', ...(who.token ? { cookie: `fp_session=${who.token}` } : {}), ...(who.key ? { 'x-admin-key': who.key } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  try {
+    const helper = await service.createUser({ username: 'helper', email: 'helper@example.com' });
+    const ops = await service.createUser({ username: 'ops' });
+    db.prepare('INSERT INTO wallets (address, user_id, verified_at) VALUES (?, ?, ?)').run(WALLET, ops.id, Date.now());
+    const h = { token: service.createSession(helper.id, 'email').token };
+    const o = { token: service.createSession(ops.id, 'wallet').token };
+    const owner = { key: KEY };
+
+    assert.equal((await call('/api/admin/ping', h)).status, 403, 'nobody yet');
+    assert.equal((await call('/api/admin/team', owner, { value: 'Helper@Example.com', role: 'tasks' })).status, 200);
+    assert.equal((await call('/api/admin/team', owner, { value: WALLET, role: 'admin' })).status, 200);
+    assert.equal((await call('/api/admin/team', owner, { value: 'not an address', role: 'tasks' })).status, 400);
+
+    // Tasks only: the Tasks page and nothing else.
+    const ping = await (await call('/api/admin/ping', h)).json();
+    assert.equal(ping.level, 'tasks');
+    assert.equal(ping.exchanges, undefined, 'no settings for tasks-only members');
+    assert.notEqual((await call('/api/admin/tasks', h)).status, 403, 'allowed (tasks are off in this test server, so 404)');
+    assert.equal((await call('/api/admin/markets', h)).status, 403);
+    assert.equal((await call('/api/admin/team', h)).status, 403);
+    assert.equal((await (await call('/api/me', h)).json()).adminLevel, 'tasks');
+    // A password sign-in never proves the email.
+    assert.equal((await call('/api/admin/ping', { token: service.createSession(helper.id, 'password').token })).status, 403);
+
+    // Admin by wallet: everything but the team.
+    assert.equal((await (await call('/api/admin/ping', o)).json()).level, 'admin');
+    assert.equal((await call('/api/admin/markets', o)).status, 200);
+    assert.equal((await call('/api/admin/team', o)).status, 403);
+    assert.equal((await call('/api/admin/team', o, { value: 'x@example.com', role: 'admin' })).status, 403, 'admins can’t add people');
+
+    // Listings + tasks: review, create, edit and publish markets; not results, refunds or settings.
+    await call('/api/admin/team', owner, { value: 'helper@example.com', role: 'listings' });
+    assert.equal((await (await call('/api/admin/ping', h)).json()).level, 'listings');
+    assert.equal((await call('/api/admin/markets', h)).status, 200);
+    assert.equal((await call('/api/admin/detected', h)).status, 200);
+    const created = await call('/api/admin/manual-markets', h, { symbol: 'TEAM', exchanges: [], basePrice: 1, closeAt: Date.now() + 3_600_000 });
+    assert.notEqual(created.status, 403, 'may create markets (this one fails validation: no exchanges)');
+    assert.notEqual((await call('/api/admin/manual-markets/x/publish', h, {})).status, 403);
+    assert.notEqual((await call('/api/admin/manual-markets/x/unpublish', h, {})).status, 403);
+    assert.equal((await call('/api/admin/manual-markets/x/resolve', h, { finalPrice: 1 })).status, 403, 'results stay with admins');
+    assert.equal((await call('/api/admin/markets/x/cancel', h, {})).status, 403, 'refunds stay with admins');
+    assert.equal((await call('/api/admin/auto-listings', h, { enabled: false })).status, 403, 'settings stay with admins');
+    assert.equal((await call('/api/admin/analytics', h)).status, 403);
+
+    // Adding again changes the role; removing takes access away.
+    await call('/api/admin/team', owner, { value: 'helper@example.com', role: 'admin' });
+    assert.equal((await call('/api/admin/markets', h)).status, 200);
+    const { team } = await (await call('/api/admin/team', owner)).json();
+    assert.equal(team.length, 2);
+    for (const m of team) await call(`/api/admin/team/${m.id}/remove`, owner, {});
+    assert.equal((await call('/api/admin/ping', h)).status, 403);
+    assert.equal((await call('/api/admin/ping', o)).status, 403);
+  } finally {
+    server.close();
+  }
+});

@@ -81,7 +81,7 @@ export class ChannelPoster {
     if (!this.telegram || !channel) throw new Error('No player channel is set.');
     const m = this.service.getMarket(id, undefined, true);
     if (!m.published || m.status !== 'open') throw new Error('Only open, published markets can be posted.');
-    await this.post(channel, this.bannerFor('live', id, m), marketLiveText(m), { text: 'Predict now', url: this.link(id) });
+    await this.post(channel, this.bannerFor('live', id, m), marketLiveText(m, this.link(id)), { text: 'Predict now', url: this.link(id) });
     this.service.markAnnounced(id);
   }
 
@@ -89,7 +89,7 @@ export class ChannelPoster {
     const channel = this.channel;
     if (!this.telegram || !channel) return;
     const m = this.service.getMarket(id);
-    const text = marketResultText(m);
+    const text = marketResultText(m, this.link(id));
     if (text) await this.post(channel, this.bannerFor('result', id, m), text, { text: 'See the result', url: this.link(id) });
   }
 
@@ -112,7 +112,7 @@ export class ChannelPoster {
       // Marked only once Telegram accepts it, so a failed send is tried again on the next minute.
       this.later(async () => {
         try {
-          await this.post(channel, this.bannerFor('closing', id, m), closingSoonText(m), { text: 'Predict now', url: this.link(id) });
+          await this.post(channel, this.bannerFor('closing', id, m), closingSoonText(m, this.link(id)), { text: 'Predict now', url: this.link(id) });
           this.service.markReminded(id);
         } finally {
           this.reminding.delete(id);

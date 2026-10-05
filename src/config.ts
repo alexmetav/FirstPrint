@@ -2,6 +2,10 @@ export interface AppConfig {
   port: number;
   dbPath: string;
   adminKey: string | null;
+  /** Emails that open the admin console when signed in with Google or an email code (no key needed). */
+  adminEmails: string[];
+  /** Solana wallet addresses that open the admin console when linked to the signed-in account. */
+  adminWallets: string[];
   secureCookies: boolean;
   publicUrl: string | null;
   solanaChain: 'mainnet' | 'devnet' | 'testnet';
@@ -44,6 +48,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: Number(env.PORT ?? 8787),
     dbPath: env.DB_PATH ?? './data/firstprint.db',
     adminKey: env.ADMIN_KEY || null,
+    adminEmails: (env.ADMIN_EMAILS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s)),
+    adminWallets: (env.ADMIN_WALLETS ?? '').split(',').map((s) => s.trim()).filter((s) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s)),
     secureCookies: env.SECURE_COOKIES ? env.SECURE_COOKIES === '1' : production,
     publicUrl: env.PUBLIC_URL || null,
     solanaChain: ['mainnet', 'devnet', 'testnet'].includes(chain) ? chain : 'mainnet',
