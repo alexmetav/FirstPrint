@@ -226,3 +226,81 @@ test('banners: each market gets its own PNG for new market, last hour and result
   assert.match(bannerSvg('live', { ...m, exchange: 'Binance, MEXC, Bybit, OKX, Gate, Bitget, and KuCoin' }), /on Binance \+6 more/);
   assert.match(bannerSvg('live', { ...m, exchange: 'MEXC and Gate' }), /on MEXC and Gate/);
 });
+
+test('channel: a logo the browser could not copy is fetched and kept by the server; a broken logo never costs the banner', async () => {
+  const { openDb } = await import('../src/db/db.ts');
+  const { ManualClock } = await import('../src/clock.ts');
+  const { FirstprintService } = await import('../src/services/firstprint.ts');
+  const { ChannelPoster } = await import('../src/services/channel.ts');
+  const { readFileSync } = await import('node:fs');
+  const T0 = Date.UTC(2026, 9, 5, 8);
+  const boom = async () => {
+    throw new Error('no exchange calls');
+  };
+  const service = new FirstprintService(openDb(':memory:'), new ManualClock(T0), [{ id: 'mexc', name: 'MEXC', pair: (b: string) => `${b}USDT`, fetchTicker: boom, fetchCandles: boom, listPairs: boom }]);
+  service.setSetting('telegram_channel', 'firstprintfun');
+  const photos: Uint8Array[] = [];
+  const { t } = fakeTelegram([]);
+  t.sendTo = async () => {};
+  t.sendPhotoTo = async (_chat: string, png: Uint8Array) => void photos.push(png);
+  const channel = new ChannelPoster(service, t, 'https://x/app/', () => {}, 0);
+  const fetched: string[] = [];
+  const mark = readFileSync(new URL('../brand/logo-mark.png', import.meta.url)).toString('base64');
+  channel.fetchLogo = async (url) => {
+    fetched.push(url);
+    return { contentType: 'image/png', data: mark };
+  };
+  const id = service.createManualMarket({ symbol: 'PNT', exchanges: ['mexc'], basePrice: 1, closeAt: T0 + 5 * 3_600_000, resultAt: T0 + 30 * 3_600_000, publish: true, logoUrl: 'https://cdn.example/pnt.png' });
+  assert.equal(service.logoPng(id), null, 'no PNG copy from the browser');
+  await channel.postLive(id);
+  assert.deepEqual(fetched, ['https://cdn.example/pnt.png']);
+  assert.match(service.logoPng(id) ?? '', /^data:image\/png;base64,/, 'the copy is kept');
+  await channel.postLive(id);
+  assert.equal(fetched.length, 1, 'fetched once');
+  assert.equal(photos.length, 2);
+
+  // A stored logo that won't render: the banner is still drawn, with the letter.
+  service.setLogoPng(id, 'data:image/png;base64,AAAA');
+  await channel.postLive(id);
+  assert.equal(photos.length, 3);
+  assert.ok(photos[2].length > 1000, 'a real banner, not the fixed one or nothing');
+});
+
+test('discover: CoinGecko trending is read (prices as numbers or text) and cached; errors are plain', async () => {
+  const { openDb } = await import('../src/db/db.ts');
+  const { ManualClock } = await import('../src/clock.ts');
+  const { FirstprintService, AppError } = await import('../src/services/firstprint.ts');
+  const { Discover } = await import('../src/services/discover.ts');
+  const clock = new ManualClock(Date.UTC(2026, 9, 5, 8));
+  const boom = async () => {
+    throw new Error('no exchange calls');
+  };
+  const service = new FirstprintService(openDb(':memory:'), clock, [{ id: 'mexc', name: 'MEXC', pair: (b: string) => `${b}USDT`, fetchTicker: boom, fetchCandles: boom, listPairs: boom }]);
+  let calls = 0;
+  let status = 200;
+  const fetchImpl = (async () => {
+    calls++;
+    return new Response(
+      JSON.stringify({
+        coins: [
+          { item: { id: 'pengu', slug: 'pudgy-penguins', symbol: 'pengu', name: 'Pudgy Penguins', market_cap_rank: 80, large: 'https://img/pengu.png', data: { price: 0.0321, price_change_percentage_24h: { usd: 12.5 } } } },
+          { item: { id: 'x', symbol: 'xyz', name: 'XYZ', data: { price: '$1.25' } } },
+          { item: { id: 'bad', symbol: '', name: '' } },
+        ],
+      }),
+      { status, headers: { 'content-type': 'application/json' } },
+    );
+  }) as typeof fetch;
+  const d = new Discover(service, { fetchImpl });
+  const out = await d.trending();
+  assert.equal(out.coins.length, 2);
+  assert.deepEqual(out.coins[0], { id: 'pengu', symbol: 'PENGU', name: 'Pudgy Penguins', logo: 'https://img/pengu.png', priceUsd: 0.0321, change24h: 0.125, rank: 80, url: 'https://www.coingecko.com/en/coins/pudgy-penguins' });
+  assert.equal(out.coins[1].priceUsd, 1.25);
+  await d.trending();
+  assert.equal(calls, 1, 'cached');
+  clock.advance(6 * 60_000);
+  status = 429;
+  await assert.rejects(d.trending(), (e: unknown) => e instanceof AppError && e.code === 'rate_limited');
+  await assert.rejects(d.exchangeListings('nope'), (e: unknown) => e instanceof AppError && e.code === 'unknown_exchange');
+  assert.deepEqual(await d.exchangeListings('mexc'), { listings: [] });
+});

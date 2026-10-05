@@ -11423,3 +11423,78 @@ svg.viz.viz-narrow {
   color: var(--crash);
   background: color-mix(in srgb, var(--crash) 14%, transparent);
 }
+
+/* ===== Admin → Find tokens ===== */
+.discover {
+  display: grid;
+  gap: 16px;
+}
+.discover .section-head {
+  align-items: center;
+}
+.discover .section-head > .btn {
+  margin-left: auto;
+}
+.disc-ex {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 14px;
+}
+.disc-ex-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.disc-ex-item .btn {
+  border: 0;
+}
+.disc-ex-item.on {
+  border-color: color-mix(in srgb, var(--brand, #0a84ff) 60%, transparent);
+  background: color-mix(in srgb, var(--brand, #0a84ff) 10%, transparent);
+}
+.disc-ex-item .icon-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--muted);
+}
+.disc-ex-item .icon-btn .i {
+  width: 14px;
+  height: 14px;
+}
+.disc-table td {
+  vertical-align: middle;
+}
+.disc-table td small {
+  display: block;
+  font-size: 12px;
+}
+.disc-tok {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.disc-tok img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.disc-chg {
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.disc-chg.up { color: var(--up); }
+.disc-chg.down { color: var(--crash); }
+.disc-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

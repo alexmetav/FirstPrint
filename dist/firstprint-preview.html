@@ -11454,6 +11454,81 @@ svg.viz.viz-narrow {
   background: color-mix(in srgb, var(--crash) 14%, transparent);
 }
 
+/* ===== Admin → Find tokens ===== */
+.discover {
+  display: grid;
+  gap: 16px;
+}
+.discover .section-head {
+  align-items: center;
+}
+.discover .section-head > .btn {
+  margin-left: auto;
+}
+.disc-ex {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 14px;
+}
+.disc-ex-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.disc-ex-item .btn {
+  border: 0;
+}
+.disc-ex-item.on {
+  border-color: color-mix(in srgb, var(--brand, #0a84ff) 60%, transparent);
+  background: color-mix(in srgb, var(--brand, #0a84ff) 10%, transparent);
+}
+.disc-ex-item .icon-btn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: var(--muted);
+}
+.disc-ex-item .icon-btn .i {
+  width: 14px;
+  height: 14px;
+}
+.disc-table td {
+  vertical-align: middle;
+}
+.disc-table td small {
+  display: block;
+  font-size: 12px;
+}
+.disc-tok {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.disc-tok img {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.disc-chg {
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.disc-chg.up { color: var(--up); }
+.disc-chg.down { color: var(--crash); }
+.disc-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 </style>
   </head>
   <body>
@@ -12103,6 +12178,8 @@ function createAdminApi(key, baseUrl = '') {
     analytics: (days = 30) => request(`/api/admin/analytics?days=${days}`),
     analyticsShare: (enabled) => post('/api/admin/analytics/share', { enabled }),
     priceCheck: (body) => post('/api/admin/price-check', body),
+    trending: () => request('/api/admin/discover/trending'),
+    exchangeNew: (venue) => request(`/api/admin/discover/exchange?venue=${encodeURIComponent(venue)}`),
     marketChecks: () => request('/api/admin/market-checks'),
     fetchImage: (url) => request(`/api/admin/fetch-image?url=${encodeURIComponent(url)}`),
     setStartPrice: (id, basePrice) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/start-price`, { basePrice }),
@@ -16765,6 +16842,7 @@ const ADMIN_TABS = [
   ['overview', 'grid', 'Overview', 'What needs your attention and how Firstprint is doing.'],
   ['markets', 'list', 'Markets', 'Post results, publish drafts, edit or cancel markets.'],
   ['analytics', 'chart', 'Analytics', 'Players, activity and markets. Share a read-only link with partners.'],
+  ['discover', 'search', 'Find tokens', 'New listings on each exchange and what is trending, with prices. Make a market in one click.'],
   ['create', 'plusCircle', 'Create market', 'Save a draft, check it, then publish. Users only see published markets.'],
   ['token', 'token', 'TestFPT token', 'The on-chain token players claim their points as.'],
   ['tasks', 'sparkles', 'Tasks', 'Tasks players complete on X for points.'],
@@ -16776,7 +16854,7 @@ const ADMIN_TABS = [
 const ADMIN_RANK = { tasks: 1, listings: 2, admin: 3, owner: 4 };
 const canAdmin = (level) => (ADMIN_RANK[A.info?.level] ?? ADMIN_RANK.owner) >= ADMIN_RANK[level];
 /** The role each admin tab needs. Listing managers see markets, listings and tasks; not results, analytics, token or settings. */
-const TAB_LEVEL = { overview: 'listings', markets: 'listings', create: 'listings', tasks: 'tasks', activity: 'listings' };
+const TAB_LEVEL = { overview: 'listings', markets: 'listings', discover: 'listings', create: 'listings', tasks: 'tasks', activity: 'listings' };
 const adminTabs = () => ADMIN_TABS.filter(([id]) => canAdmin(TAB_LEVEL[id] ?? 'admin'));
 
 async function renderAdmin() {
@@ -16867,8 +16945,9 @@ async function renderAdmin() {
   }
   else if (tab === 'create') body = `<section class="panel" id="admin-market-section">
       <div class="section-head"><span class="section-ico">${ico(editing ? 'edit' : 'plusCircle')}</span><div><h2>${editing ? `Edit ${esc(editing.symbol)} market` : review ? `Review ${esc(review.symbol)} from ${esc(review.exchangeName)}` : 'New market'}</h2><p class="muted">${review ? 'Check the start price and times, add the logo and a description, then publish.' : 'When the close time passes, the market waits in Markets for your result.'}</p></div></div>
-      ${marketForm(editing, review ? reviewPrefill(review) : null)}
+      ${marketForm(editing, review ? reviewPrefill(review) : editing ? null : A.prefill)}
     </section>`;
+  else if (tab === 'discover') body = discoverView();
   else if (tab === 'token') body = tokenAdminSection(token) || `<div class="empty"><p>TestFPT isn’t available on this server.</p></div>`;
   else if (tab === 'tasks') body = tasksAdminSection(tasks);
   else if (tab === 'settings')
@@ -16967,7 +17046,7 @@ function afterAdminRender() {
   const link = form?.querySelector('[data-logo-link]')?.value.trim();
   if (form && link && /^https:\/\//i.test(link)) copyLogo(form, link);
   // A listing from the review queue: show its live price straight away.
-  if (form?.querySelector('[name=detectionId]')) runPriceCheck();
+  if (form?.querySelector('[name=detectionId]') || (A.prefill && !form?.dataset.id)) runPriceCheck();
   if (form && form.querySelector('[name=symbol]')?.value.trim()) runBannerPreview();
   if (form?.querySelector('[data-auto-open]')) syncAutoOpen(form);
 }
@@ -17423,11 +17502,11 @@ function marketForm(m, pre = null) {
       <div class="logo-field" style="grid-column:1/-1">
         <span class="field-label">Token logo (optional)</span>
         <div class="logo-row">
-          <span class="logo-preview" data-logo-preview>${m?.logoUrl ? `<img src="${esc(m.logoUrl)}" alt="" referrerpolicy="no-referrer" />` : ico('image')}</span>
-          <input type="hidden" name="logoUrl" value="${esc(m?.logoUrl ?? '')}" />
-          <input class="logo-link" data-logo-link type="url" inputmode="url" placeholder="Paste an image link (https://…)" value="${m?.logoUrl && !m.logoUrl.startsWith('data:') ? esc(m.logoUrl) : ''}" autocomplete="off" />
+          <span class="logo-preview" data-logo-preview>${v?.logoUrl ? `<img src="${esc(v.logoUrl)}" alt="" referrerpolicy="no-referrer" />` : ico('image')}</span>
+          <input type="hidden" name="logoUrl" value="${esc(v?.logoUrl ?? '')}" />
+          <input class="logo-link" data-logo-link type="url" inputmode="url" placeholder="Paste an image link (https://…)" value="${v?.logoUrl && !v.logoUrl.startsWith('data:') ? esc(v.logoUrl) : ''}" autocomplete="off" />
           <label class="btn btn-sm logo-upload">${ico('upload')}Upload<input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-logo-file hidden /></label>
-          <button class="btn btn-sm" type="button" data-action="logo-clear"${m?.logoUrl ? '' : ' hidden'}>Remove</button>
+          <button class="btn btn-sm" type="button" data-action="logo-clear"${v?.logoUrl ? '' : ' hidden'}>Remove</button>
         </div>
         <small class="logo-status" data-logo-status></small>
         <small class="muted">Square images look best. Pasted links and uploads are saved as a 128 × 128 copy, so the logo keeps working even if the link changes. Tip: on CoinGecko, right-click the token's logo and choose “Copy image address”.</small>
@@ -17556,6 +17635,161 @@ async function fillLivePrice(el) {
     el.disabled = false;
     el.innerHTML = label;
   }
+}
+
+// --- Find tokens: new exchange listings and what is trending, ready to become markets ---------
+
+/** Where each exchange (and the two big trackers) list their new tokens, for checking by hand. */
+const LISTING_PAGES = {
+  binance: 'https://www.binance.com/en/support/announcement/list/48',
+  bybit: 'https://announcements.bybit.com/en/?category=new_crypto',
+  okx: 'https://www.okx.com/help/section/announcements-new-listings',
+  mexc: 'https://www.mexc.com/newlisting',
+  gate: 'https://www.gate.io/announcements/newlisted',
+  bitget: 'https://www.bitget.com/support/sections/5955813039257',
+  kucoin: 'https://www.kucoin.com/announcement/new-listings',
+};
+const TRACKER_PAGES = [
+  ['CoinGecko · Trending', 'https://www.coingecko.com/en/highlights/trending-crypto'],
+  ['CoinGecko · New coins', 'https://www.coingecko.com/en/new-cryptocurrencies'],
+  ['CoinMarketCap · Trending', 'https://coinmarketcap.com/trending-cryptocurrencies/'],
+  ['CoinMarketCap · New coins', 'https://coinmarketcap.com/new/'],
+];
+/** A trending token gets a longer market: predictions open for 3 days, the result after 15. */
+const TRENDING_CLOSE_DAYS = 3;
+const TRENDING_RESULT_DAYS = 15;
+
+async function loadDiscover(key, fetcher) {
+  A.discover = { ...(A.discover ?? {}), [key]: { loading: true } };
+  if (A.tab === 'discover') $('#discover-root').outerHTML = discoverView();
+  try {
+    const data = await fetcher();
+    A.discover[key] = { data, at: Date.now() };
+  } catch (err) {
+    A.discover[key] = { error: err.message };
+  }
+  if (A.tab === 'discover' && $('#discover-root')) $('#discover-root').outerHTML = discoverView();
+}
+
+const pctChip = (r) => (r == null ? '' : `<span class="disc-chg ${r >= 0 ? 'up' : 'down'}">${r >= 0 ? '+' : '−'}${Math.abs(r * 100).toFixed(1)}%</span>`);
+const usd = (n) => (n == null ? '–' : fmtPrice(n));
+
+function discoverView() {
+  const d = A.discover ?? {};
+  const exchanges = A.info.exchanges ?? [];
+  const venue = A.discoverVenue;
+  const ex = venue ? d[`ex:${venue}`] : null;
+  const exName = exchanges.find((e) => e.id === venue)?.name ?? venue;
+  const tr = d.trending;
+  const exRows = (ex?.data?.listings ?? [])
+    .map((l, i) => {
+      const chg = l.openPrice && l.price ? l.price / l.openPrice - 1 : null;
+      return `<tr>
+        <td><b>${esc(l.symbol)}</b>${l.name ? `<small class="muted">${esc(l.name)}</small>` : ''}</td>
+        <td class="hide-sm">${l.listingAt ? `${fmtDate(l.listingAt)}${l.listingAt > Date.now() ? ` · in ${until(l.listingAt)}` : ''}` : '<span class="muted">Not published</span>'}</td>
+        <td class="right num-cell">${usd(l.openPrice)}</td>
+        <td class="right num-cell">${usd(l.price)} ${pctChip(chg)}</td>
+        <td class="right">${l.marketId ? `<button class="btn btn-sm" data-action="admin-edit" data-id="${esc(l.marketId)}">Has a market</button>` : `<button class="btn btn-sm btn-gold" data-action="admin-discover-make" data-src="ex" data-i="${i}">Make market</button>`}</td>
+      </tr>`;
+    })
+    .join('');
+  const trRows = (tr?.data?.coins ?? [])
+    .map(
+      (c, i) => `<tr>
+        <td><span class="disc-tok">${c.logo ? `<img src="${esc(c.logo)}" alt="" referrerpolicy="no-referrer" loading="lazy" />` : ''}<span><b>${esc(c.symbol)}</b><small class="muted">${esc(c.name)}${c.rank ? ` · #${c.rank}` : ''}</small></span></span></td>
+        <td class="right num-cell">${usd(c.priceUsd)}</td>
+        <td class="right hide-sm">${pctChip(c.change24h)}</td>
+        <td class="right"><a class="btn btn-sm" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}</a> <button class="btn btn-sm btn-gold" data-action="admin-discover-make" data-src="cg" data-i="${i}">Make market</button></td>
+      </tr>`,
+    )
+    .join('');
+  const state = (s, empty) => (!s ? '' : s.loading ? '<p class="muted">Loading…</p>' : s.error ? `<p class="form-error">${esc(s.error)}</p>` : empty);
+  return `<div id="discover-root" class="discover">
+    <section class="panel">
+      <div class="section-head"><span class="section-ico">${ico('zap')}</span><div><h2>New on exchanges</h2><p class="muted">Pick an exchange to see what it listed this week, with the opening price and the price now. The arrow opens its own listings page.</p></div></div>
+      <div class="disc-ex">${exchanges
+        .map(
+          (e) => `<span class="disc-ex-item${venue === e.id ? ' on' : ''}"><button class="btn btn-sm" data-action="admin-discover-exchange" data-venue="${esc(e.id)}"${venue === e.id ? ' aria-pressed="true"' : ''}>${esc(e.name)}</button>${LISTING_PAGES[e.id] ? `<a class="icon-btn" href="${LISTING_PAGES[e.id]}" target="_blank" rel="noopener noreferrer" aria-label="${esc(e.name)} listings page">${ico('external')}</a>` : ''}</span>`,
+        )
+        .join('')}</div>
+      ${
+        ex
+          ? state(ex, exRows
+            ? `<div class="table-scroll"><table class="table disc-table"><thead><tr><th>${esc(exName)}</th><th class="hide-sm">Trading starts</th><th class="right">Open</th><th class="right">Now</th><th></th></tr></thead><tbody>${exRows}</tbody></table></div>`
+            : `<p class="muted">Nothing found on ${esc(exName)} this week. New listings are checked every few minutes on the exchanges switched on in Settings; use the arrow to check its page by hand.</p>`)
+          : ''
+      }
+    </section>
+    <section class="panel">
+      <div class="section-head"><span class="section-ico">${ico('flame')}</span><div><h2>Trending now</h2><p class="muted">The tokens trending on CoinGecko, with their price. “Make market” checks which of your exchanges trade it and fills in a ${TRENDING_RESULT_DAYS}-day market.</p></div><button class="btn btn-sm" data-action="admin-discover-trending">${ico('refresh')}${tr?.data ? 'Refresh' : 'Fetch trending'}</button></div>
+      ${state(tr, trRows ? `<div class="table-scroll"><table class="table disc-table"><thead><tr><th>Token</th><th class="right">Price</th><th class="right hide-sm">24h</th><th></th></tr></thead><tbody>${trRows}</tbody></table></div><p class="fine">From CoinGecko${tr?.data ? `, ${fmtAgo(tr.data.fetchedAt)}` : ''}.</p>` : '<p class="muted">CoinGecko returned no tokens.</p>')}
+    </section>
+    <section class="panel">
+      <div class="section-head"><span class="section-ico">${ico('external')}</span><div><h2>Look by hand</h2><p class="muted">CoinMarketCap needs a paid key for this data, so it opens in a new tab.</p></div></div>
+      <div class="disc-links">${TRACKER_PAGES.map(([label, href]) => `<a class="btn btn-sm" href="${href}" target="_blank" rel="noopener noreferrer">${esc(label)} ${ico('external')}</a>`).join('')}</div>
+    </section>
+  </div>`;
+}
+
+/** Fills the Create market form from a found token, after checking which exchanges trade it now. */
+async function makeFromDiscovery(el) {
+  const i = Number(el.dataset.i);
+  const now = Date.now();
+  const hour = 3_600_000;
+  const roundHour = (t) => Math.ceil(t / hour) * hour;
+  let pre;
+  if (el.dataset.src === 'ex') {
+    const l = A.discover?.[`ex:${A.discoverVenue}`]?.data?.listings?.[i];
+    if (!l) return;
+    const upcoming = Boolean(l.listingAt && l.listingAt > now);
+    const closeAt = upcoming ? l.listingAt : roundHour(now + 24 * hour);
+    pre = {
+      symbol: l.symbol,
+      name: l.name ?? '',
+      venues: [{ id: l.exchange }],
+      basePrice: upcoming ? null : l.price ?? '',
+      closeAt,
+      settleAt: closeAt + 72 * hour,
+      listingStart: upcoming ? l.listingAt : null,
+      note: `New on ${l.exchangeName}. The start price is the ${l.exchangeName} ${l.symbol}/USDT price when predictions open, and the result is its price at the result time.`,
+    };
+  } else {
+    const c = A.discover?.trending?.data?.coins?.[i];
+    if (!c) return;
+    el.disabled = true;
+    el.textContent = 'Checking exchanges…';
+    const ids = (A.info.exchanges ?? []).filter((e) => e.enabled).map((e) => e.id);
+    let found = [];
+    try {
+      const { prices } = await A.api.priceCheck({ symbol: c.symbol, exchanges: ids });
+      found = prices.filter((p) => p.price != null);
+    } catch {
+      /* fall through: no exchange found */
+    }
+    if (!found.length) {
+      el.disabled = false;
+      el.textContent = 'Make market';
+      return toast(`${c.symbol} doesn’t trade on your exchanges right now (or the ticker differs there). Open CoinGecko to see where it trades.`, true);
+    }
+    const sorted = found.map((p) => p.price).sort((a, b) => a - b);
+    const closeAt = roundHour(now + TRENDING_CLOSE_DAYS * 24 * hour);
+    pre = {
+      symbol: c.symbol,
+      name: c.name,
+      logoUrl: c.logo ?? '',
+      venues: found.map((p) => ({ id: p.id })),
+      basePrice: sorted[Math.floor((sorted.length - 1) / 2)],
+      closeAt,
+      settleAt: roundHour(now + TRENDING_RESULT_DAYS * 24 * hour),
+      note: `Trending on CoinGecko. Where will ${c.symbol} be in ${TRENDING_RESULT_DAYS} days? The start price is the price on ${found.map((p) => p.name).join(', ')} when the market opened; the result is the price there at the result time.`,
+    };
+  }
+  A.prefill = pre;
+  A.review = null;
+  A.edit = null;
+  A.tab = 'create';
+  await renderAdmin();
+  window.scrollTo({ top: 0 });
 }
 
 /** Starting values for a market made from a detected listing. */
@@ -17769,6 +18003,7 @@ async function onAdminAction(action, el) {
       if (A.tab !== 'create') {
         A.edit = null;
         A.review = null;
+        A.prefill = null;
       }
       await renderAdmin();
       return window.scrollTo({ top: 0 });
@@ -18010,8 +18245,16 @@ async function onAdminAction(action, el) {
       await A.api.telegramDisconnect().catch((err) => toast(err.message, true));
       A.info = await A.api.ping();
       return renderAdmin();
+    case 'admin-discover-trending':
+      return loadDiscover('trending', () => A.api.trending());
+    case 'admin-discover-exchange':
+      A.discoverVenue = el.dataset.venue;
+      return loadDiscover(`ex:${el.dataset.venue}`, () => A.api.exchangeNew(el.dataset.venue));
+    case 'admin-discover-make':
+      return makeFromDiscovery(el);
     case 'admin-edit-cancel':
       A.review = null;
+      A.prefill = null;
       A.edit = null;
       A.tab = 'markets';
       return renderAdmin();
@@ -18150,6 +18393,7 @@ async function submitAdminMarket(form, intent) {
     if (id && intent === 'publish') m = await A.api.publish(id);
     A.edit = null;
     A.review = null;
+    A.prefill = null;
     A.tab = 'markets';
     toast(m.published ? `${m.symbol} market is live` : m.autoOpenAt ? `${m.symbol} scheduled: it opens by itself when trading starts` : `${m.symbol} saved as a draft`);
   } catch (err) {

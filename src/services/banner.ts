@@ -126,6 +126,39 @@ function resultHero(m: BannerMarket, logoPng: string | null, won: string, pct: s
     ${pct ? `<text x="${Math.min(bigEnd + 28, 1000)}" y="452" font-size="44" font-weight="600" fill="${C.text}">${esc(won)} <tspan fill="${C.muted}" font-weight="400">wins</tspan></text>` : ''}`;
 }
 
+/** "47 min" or "1h 05m": the time left, for the last-hour banner. */
+function timeLeft(ms: number) {
+  const min = Math.max(1, Math.round(ms / 60_000));
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  return `${h}h ${String(min % 60).padStart(2, '0')}m`;
+}
+
+/**
+ * Last hour: the small token line (logo, ticker, "closing soon"), then the time left as the big
+ * number, so the post reads at a glance as "47 min left to predict".
+ */
+function closingHero(m: BannerMarket, logoPng: string | null, left: string, color: string) {
+  const sym = m.symbol.toUpperCase();
+  const size = 64;
+  const x = 80;
+  const y = 176;
+  const logo = logoPng
+    ? `<clipPath id="logo"><circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}"/></clipPath>
+       <image href="${logoPng}" x="${x}" y="${y}" width="${size}" height="${size}" clip-path="url(#logo)" preserveAspectRatio="xMidYMid slice"/>`
+    : `<circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}" fill="${avatarColor(sym)}"/>
+       <text x="${x + size / 2}" y="${y + size / 2 + 12}" text-anchor="middle" font-size="34" font-weight="700" fill="#ffffff">${esc(sym.slice(0, 1))}</text>`;
+  const name = drawable((m.name ?? '').trim()) ? (m.name ?? '').trim() : '';
+  const sub = name && name.toUpperCase() !== sym ? `${name.length > 24 ? `${name.slice(0, 23)}…` : name} · ` : '';
+  const bigSize = left.length > 6 ? 170 : 200;
+  const em: Record<string, number> = { ' ': 0.28, h: 0.56, m: 0.86, i: 0.25, n: 0.56 };
+  const bigEnd = x - 6 + [...left].reduce((w, ch) => w + (em[ch] ?? 0.62) * bigSize - 6, 0);
+  return `${logo}
+    <text x="${x + size + 22}" y="${y + 45}" font-size="40" font-weight="600" fill="${C.text}" letter-spacing="-0.8">${esc(sym)} <tspan fill="${C.muted}" font-weight="400">${esc(sub)}on ${esc(exchangeLabel(m.exchange))}</tspan></text>
+    <text x="${x - 6}" y="452" font-size="${bigSize}" font-weight="700" fill="${color}" letter-spacing="-6">${esc(left)}</text>
+    <text x="${Math.min(bigEnd + 28, 960)}" y="452" font-size="44" font-weight="600" fill="${C.text}">left <tspan fill="${C.muted}" font-weight="400">to predict</tspan></text>`;
+}
+
 /** Up to three label / value pairs along the bottom, like an exchange listing notice. */
 function facts(items: [string, string][], y: number) {
   return items
@@ -144,7 +177,7 @@ function facts(items: [string, string][], y: number) {
  * exchange listing notice: the status, one plain headline, the token, and the key facts.
  * No slogans.
  */
-export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | null = null) {
+export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | null = null, now = Date.now()) {
   const upcoming = m.basePrice === null;
   const status =
     kind === 'live'
@@ -166,12 +199,14 @@ export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | n
       ['Result', utc(m.settleAt)],
     ];
   } else if (kind === 'closing') {
+    // The time left is the story here, not the token: it leads, big, in the status colour.
     headline = 'Last Hour to Predict';
     items = [
       ['Predictions close', utc(m.closeAt)],
       ['Predictors', (m.predictors ?? 0).toLocaleString('en-US')],
       ['Pool', `${(m.pool ?? 0).toLocaleString('en-US')} pts`],
     ];
+    resultBody = closingHero(m, logoPng, timeLeft(m.closeAt - now), status.color);
   } else {
     const r = m.result;
     const won = r?.winningBucket ? (m.outcomes === 'binary' ? (r.winningBucket === 'up' ? 'Yes' : 'No') : OUTCOME_NAMES[r.winningBucket]) : 'Settled';
@@ -212,14 +247,38 @@ export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | n
  * Renders a market's banner to PNG bytes. Throws for a ticker the font can't draw (such as
  * 币安人生), so the caller sends the fixed banner or plain text instead of a broken image.
  */
-export function renderBanner(kind: BannerKind, m: BannerMarket, logoPng: string | null = null): Uint8Array {
+export function renderBanner(kind: BannerKind, m: BannerMarket, logoPng: string | null = null, now = Date.now()): Uint8Array {
   if (!drawable(m.symbol)) throw new Error(`the banner font can't draw the ticker ${m.symbol}`);
   const logo = logoPng && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(logoPng) ? logoPng : null;
-  const resvg = new Resvg(bannerSvg(kind, m, logo), {
+  const resvg = new Resvg(bannerSvg(kind, m, logo, now), {
     fitTo: { mode: 'width', value: W },
     font: { fontFiles: FONTS, loadSystemFonts: false, defaultFontFamily: 'Geist' },
   });
   return resvg.render().asPng();
+}
+
+/**
+ * Turns any logo (PNG, JPEG, GIF, WebP or SVG, as base64) into a 256 × 256 PNG data URL for the
+ * banners, so a logo the admin's browser couldn't copy still shows. Null if it can't be drawn.
+ */
+export function logoToPng(contentType: string, base64: string): string | null {
+  try {
+    const size = 256;
+    let svg: string;
+    if (contentType === 'image/svg+xml') {
+      svg = Buffer.from(base64, 'base64').toString('utf8');
+    } else {
+      if (!/^image\/(png|jpeg|jpg|gif|webp)$/.test(contentType)) return null;
+      svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"><image href="data:${contentType};base64,${base64}" width="${size}" height="${size}" preserveAspectRatio="xMidYMid slice"/></svg>`;
+    }
+    const png = new Resvg(svg, { fitTo: { mode: 'width', value: size }, font: { loadSystemFonts: false } }).render().asPng();
+    // A blank render (the image didn't decode) is no better than the letter.
+    if (png.length < 400) return null;
+    const url = `data:image/png;base64,${Buffer.from(png).toString('base64')}`;
+    return url.length <= 300_000 ? url : null;
+  } catch {
+    return null;
+  }
 }
 
 // --- PnL cards ----------------------------------------------------------------------

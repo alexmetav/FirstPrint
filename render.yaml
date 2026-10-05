@@ -41,6 +41,9 @@ services:
         sync: false
       - key: ADMIN_WALLETS
         sync: false
+      # Optional: a free CoinGecko demo key for Admin → Find tokens (works without one, with a lower rate limit).
+      - key: COINGECKO_API_KEY
+        sync: false
       # Seals the keys of the Firstprint wallets made for email and Google players. Render makes it
       # once; never change or delete it, or those wallets can no longer be used.
       - key: WALLET_ENCRYPTION_KEY

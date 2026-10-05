@@ -10,6 +10,7 @@ import type { Mailer } from '../auth/mailer.ts';
 import type { Bucket } from '../engine/engine.ts';
 import { linkSiteToApp } from '../site/links.ts';
 import { fetchImage } from './fetchImage.ts';
+import { Discover } from '../services/discover.ts';
 import { drawable, renderBanner, renderPnl } from '../services/banner.ts';
 import { channelName, type Telegram } from '../services/telegram.ts';
 import type { ChannelPoster } from '../services/channel.ts';
@@ -26,6 +27,8 @@ const LEVEL_RANK: Record<AdminLevel, number> = { tasks: 1, listings: 2, admin: 3
 
 export interface ServerOptions {
   service: FirstprintService;
+  /** Finds tokens for new markets (CoinGecko trending, new exchange listings). Made from the service if not given. */
+  discover?: Discover;
   scheduler?: Scheduler;
   live?: LiveFeed;
   adminKey: string | null;
@@ -928,6 +931,20 @@ export function createApiServer(opts: ServerOptions): Server {
     requireAdmin('listings');
     rateLimit(`img:${visitor(req)}`, 30, 60_000);
     return fetchImage(url.searchParams.get('url') ?? '');
+  });
+
+  // Finding tokens to list: what is trending on CoinGecko, and what just listed on an exchange.
+  const discover = opts.discover ?? new Discover(service);
+  route('GET', '/api/admin/discover/trending', async ({ req, requireAdmin }) => {
+    requireAdmin('listings');
+    rateLimit(`discover:${visitor(req)}`, 20, 60_000);
+    return discover.trending();
+  });
+
+  route('GET', '/api/admin/discover/exchange', async ({ req, url, requireAdmin }) => {
+    requireAdmin('listings');
+    rateLimit(`discover:${visitor(req)}`, 20, 60_000);
+    return discover.exchangeListings(url.searchParams.get('venue') ?? '');
   });
 
   route('GET', '/api/admin/exchanges/check', async ({ requireAdmin }) => {
