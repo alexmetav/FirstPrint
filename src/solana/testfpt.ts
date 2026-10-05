@@ -35,6 +35,7 @@ import {
   type Transaction,
 } from '@solana/kit';
 import { getCreateAccountInstruction } from '@solana-program/system';
+import { AccountRole } from '@solana/kit';
 import {
   TOKEN_2022_PROGRAM_ADDRESS,
   extension,
@@ -45,6 +46,7 @@ import {
   getMintToCheckedInstruction,
   getPostInitializeInstructionsForMintExtensions,
   getPreInitializeInstructionsForMintExtensions,
+  getTransferCheckedInstruction,
 } from '@solana-program/token-2022';
 import { base58Decode, base58Encode } from './base58.ts';
 import { verifyEd25519 } from './siws.ts';
@@ -67,6 +69,8 @@ export interface Chain {
   send(wire: Base64EncodedWireTransaction): Promise<Signature>;
   status(sig: Signature): Promise<ChainStatus>;
   airdrop(addr: Address, amountLamports: bigint): Promise<Signature>;
+  /** TestFPT (or any Token-2022 token) held by `owner`; 0 when they have no token account yet. */
+  tokenBalance(owner: Address, mint: Address): Promise<bigint>;
 }
 
 export const rpcUrlFor = (cluster: Cluster) => `https://api.${cluster}.solana.com`;
@@ -94,6 +98,16 @@ export function rpcChain(url: string): Chain {
       return s.confirmationStatus === 'confirmed' || s.confirmationStatus === 'finalized' ? 'confirmed' : 'unknown';
     },
     airdrop: (addr, amount) => rpc.requestAirdrop(addr, lamports(amount)).send(),
+    async tokenBalance(owner, mint) {
+      const [ata] = await findAssociatedTokenPda({ owner, mint, tokenProgram: TOKEN_2022_PROGRAM_ADDRESS });
+      try {
+        const { value } = await rpc.getTokenAccountBalance(ata, { commitment: 'confirmed' }).send();
+        return BigInt(value.amount);
+      } catch (err) {
+        if (/could not find account|invalid param|not a token account/i.test((err as Error).message)) return 0n;
+        throw err;
+      }
+    },
   };
 }
 
@@ -253,6 +267,58 @@ export async function buildServerMint(chain: Chain, authority: KeyPairSigner, mi
         ],
         m,
       ),
+    (m) => signTransactionMessageWithSigners(m),
+  );
+  const wire = getBase64EncodedWireTransaction(tx);
+  return { transaction: wire, signature: transactionId(wire), lastValidBlockHeight };
+}
+
+/** The SPL Memo program: a short readable note on a transaction ("firstprint:stake:…"), shown by explorers. */
+export const MEMO_PROGRAM_ADDRESS = address('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+
+function memoInstruction(text: string, signer: Address) {
+  return {
+    programAddress: MEMO_PROGRAM_ADDRESS,
+    accounts: [{ address: signer, role: AccountRole.READONLY_SIGNER }],
+    data: new TextEncoder().encode(text.slice(0, 200)),
+  };
+}
+
+/**
+ * A TestFPT movement the server sends, always paying the fee:
+ * - stake: from a Firstprint wallet (its key, unsealed for this) into the escrow, the mint
+ *   authority's own token account; `topUp` is minted to the wallet first when it holds less than
+ *   the stake (points it earned before its TestFPT was on chain).
+ * - payout / refund: from the escrow to a player's wallet; `topUp` is minted to the escrow first
+ *   when it holds less (stakes made before predictions were on chain).
+ */
+export type Movement =
+  | { kind: 'stake'; from: KeyPairSigner; amount: bigint; topUp: bigint }
+  | { kind: 'payout'; to: Address; amount: bigint; topUp: bigint };
+
+export async function buildServerTransfer(chain: Chain, authority: KeyPairSigner, mint: Address, move: Movement, memo: string): Promise<ServerMint> {
+  const tokenProgram = TOKEN_2022_PROGRAM_ADDRESS;
+  const [escrow] = await findAssociatedTokenPda({ owner: authority.address, mint, tokenProgram });
+  const owner = move.kind === 'stake' ? move.from.address : move.to;
+  const [ata] = await findAssociatedTokenPda({ owner, mint, tokenProgram });
+  const ix = [
+    getCreateAssociatedTokenIdempotentInstruction({ payer: authority, ata: escrow, owner: authority.address, mint, tokenProgram }),
+    getCreateAssociatedTokenIdempotentInstruction({ payer: authority, ata, owner, mint, tokenProgram }),
+  ];
+  if (move.kind === 'stake') {
+    if (move.topUp > 0n) ix.push(getMintToCheckedInstruction({ mint, token: ata, mintAuthority: authority, amount: move.topUp, decimals: TOKEN_DECIMALS }, { programAddress: tokenProgram }) as never);
+    ix.push(getTransferCheckedInstruction({ source: ata, mint, destination: escrow, authority: move.from, amount: move.amount, decimals: TOKEN_DECIMALS }, { programAddress: tokenProgram }) as never);
+  } else {
+    if (move.topUp > 0n) ix.push(getMintToCheckedInstruction({ mint, token: escrow, mintAuthority: authority, amount: move.topUp, decimals: TOKEN_DECIMALS }, { programAddress: tokenProgram }) as never);
+    ix.push(getTransferCheckedInstruction({ source: escrow, mint, destination: ata, authority, amount: move.amount, decimals: TOKEN_DECIMALS }, { programAddress: tokenProgram }) as never);
+  }
+  ix.push(memoInstruction(memo, authority.address) as never);
+  const { blockhash, lastValidBlockHeight } = await chain.latestBlockhash();
+  const tx = await pipe(
+    createTransactionMessage({ version: 0 }),
+    (m) => setTransactionMessageFeePayerSigner(authority, m),
+    (m) => setTransactionMessageLifetimeUsingBlockhash({ blockhash, lastValidBlockHeight }, m),
+    (m) => appendTransactionMessageInstructions(ix, m),
     (m) => signTransactionMessageWithSigners(m),
   );
   const wire = getBase64EncodedWireTransaction(tx);

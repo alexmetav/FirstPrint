@@ -68,6 +68,8 @@ function migrate(db: DB) {
     UNIQUE (user_id, kind, ref)
   )`);
   db.exec('CREATE INDEX IF NOT EXISTS chain_mints_status ON chain_mints(status)');
+  // Stakes, payouts and refunds on chain: the prediction they belong to (for the memo and the market).
+  ensure('chain_mints', 'subject', 'subject TEXT');
   // People the owner gave admin-console access from Settings → Team (by email or wallet).
   db.exec(`CREATE TABLE IF NOT EXISTS team_members (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -18,6 +18,8 @@ import { WalletVault } from '../solana/vault.ts';
 import {
   buildClaimTransaction,
   buildServerMint,
+  buildServerTransfer,
+  sendAndConfirm,
   checkSignedClaim,
   createTestFptMint,
   explorerAddress,
@@ -104,6 +106,7 @@ interface MintRow {
   attempts: number;
   error: string | null;
   created_at: number;
+  subject: string | null;
 }
 
 const as = <T>(v: unknown) => v as T;
@@ -116,8 +119,9 @@ export class RewardsService {
   private authority: KeyPairSigner | null = null;
   private mint: Address | null = null;
   private vault: WalletVault | null = null;
-  /** The chain work in progress, so overlapping calls share one run instead of racing. */
+  /** The chain work in progress, so overlapping calls don't race; a call during a run gets one more run after it. */
   private chainRun: Promise<void> | null = null;
+  private chainNext: Promise<void> | null = null;
   /** How long submitClaim waits for confirmation before answering "still confirming". */
   confirmWaitMs = 20_000;
 
@@ -128,6 +132,7 @@ export class RewardsService {
     service.rewardsOnChain = () => this.ready();
     service.onPredicted = (userId) => this.onPredicted(userId);
     service.onDailyClaimed = (userId, day, amount) => this.queueMint(userId, 'daily', day, amount);
+    service.onLedger = (userId, delta, reason, ref, ledgerId) => this.onLedger(userId, delta, reason, ref, ledgerId);
     if (token?.walletKey) this.vault = new WalletVault(token.walletKey);
   }
 
@@ -285,14 +290,25 @@ export class RewardsService {
     return this.embeddedAddress(userId) ?? this.service.walletsFor(userId)[0]?.address ?? null;
   }
 
-  /** Queues a server-paid mint (inside the caller's transaction). Nothing happens without TestFPT or a wallet. */
-  private queueMint(userId: string, kind: string, ref: string, amount: number) {
-    if (!this.ready() || amount <= 0) return;
-    const wallet = this.payoutWallet(userId);
-    if (!wallet) return;
+  /** Queues a server-paid chain transaction (inside the caller's transaction). Nothing happens without TestFPT or a wallet. */
+  private queueMint(userId: string, kind: string, ref: string, amount: number, wallet = this.payoutWallet(userId), subject: string | null = null) {
+    if (!this.ready() || amount <= 0 || !wallet) return;
     this.db
-      .prepare("INSERT OR IGNORE INTO chain_mints (id, user_id, wallet, kind, ref, amount, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)")
-      .run(randomUUID(), userId, wallet, kind, ref, amount, this.now(), this.now());
+      .prepare("INSERT OR IGNORE INTO chain_mints (id, user_id, wallet, kind, ref, amount, status, subject, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)")
+      .run(randomUUID(), userId, wallet, kind, ref, amount, subject, this.now(), this.now());
+  }
+
+  /**
+   * Predictions on chain, for players with a Firstprint wallet: each stake moves TestFPT from their
+   * wallet to the escrow, and each payout or refund moves it back, every one its own transaction.
+   * (Players with their own wallet would have to sign each prediction, so theirs stay as points.)
+   */
+  private onLedger(userId: string, delta: number, reason: string, ref: string | null, ledgerId: number) {
+    if (!['stake', 'payout', 'refund'].includes(reason) || !ref) return;
+    if (reason === 'stake' ? delta >= 0 : delta <= 0) return;
+    const wallet = this.embeddedAddress(userId);
+    if (!wallet) return;
+    this.queueMint(userId, reason, `L${ledgerId}`, Math.abs(delta), wallet, ref);
   }
 
   /**
@@ -301,7 +317,14 @@ export class RewardsService {
    */
   runChain(): Promise<void> {
     if (!this.ready() || !this.token) return Promise.resolve();
-    this.chainRun ??= this.chainWork().finally(() => (this.chainRun = null));
+    if (this.chainRun) {
+      this.chainNext ??= this.chainRun.then(() => {
+        this.chainNext = null;
+        return this.runChain();
+      });
+      return this.chainNext;
+    }
+    this.chainRun = this.chainWork().finally(() => (this.chainRun = null));
     return this.chainRun;
   }
 
@@ -315,7 +338,7 @@ export class RewardsService {
     }
     for (const m of as<MintRow[]>(this.db.prepare("SELECT * FROM chain_mints WHERE status = 'submitted' ORDER BY created_at LIMIT 50").all())) await this.checkMint(m);
     if (funded) {
-      for (const m of as<MintRow[]>(this.db.prepare("SELECT * FROM chain_mints WHERE status = 'queued' ORDER BY created_at LIMIT 20").all())) await this.sendMint(m);
+      // Rewards first (the welcome bonus funds a new wallet), then stakes, payouts and mints in order.
       const owed = as<{ user_id: string }[]>(
         this.db
           .prepare(
@@ -331,29 +354,56 @@ export class RewardsService {
           this.service.log(`auto-claim for ${user_id} failed: ${(err as Error).message}`);
         }
       }
+      for (const m of as<MintRow[]>(this.db.prepare("SELECT * FROM chain_mints WHERE status = 'queued' ORDER BY created_at LIMIT 20").all())) await this.sendMint(m);
     }
     for (const c of as<{ id: string; user_id: string }[]>(this.db.prepare("SELECT id, user_id FROM claims WHERE status = 'submitted' LIMIT 50").all())) {
       await this.refreshClaim(c.user_id, c.id).catch(() => {});
     }
   }
 
+  /** The memo on a stake, payout or refund: which market, and for a stake which outcome. */
+  private memoFor(m: MintRow) {
+    const p = m.subject
+      ? as<{ market_id: string; bucket: string } | undefined>(this.db.prepare('SELECT market_id, bucket FROM predictions WHERE id = ?').get(m.subject))
+      : undefined;
+    return m.kind === 'stake' ? `firstprint:stake:${p?.market_id ?? '?'}:${p?.bucket ?? '?'}` : `firstprint:${m.kind}:${p?.market_id ?? '?'}`;
+  }
+
+  private async buildOp(m: MintRow) {
+    const token = this.token!;
+    const amount = BigInt(m.amount);
+    if (m.kind === 'stake') {
+      const sealed = as<{ secret_sealed: string } | undefined>(this.db.prepare('SELECT secret_sealed FROM embedded_wallets WHERE address = ?').get(m.wallet))?.secret_sealed;
+      if (!sealed || !this.vault) throw new Error('the Firstprint wallet key is not available');
+      const from = await signerFromSecret(this.vault.open(sealed));
+      const held = await token.chain.tokenBalance(from.address, this.mint!);
+      return buildServerTransfer(token.chain, this.authority!, this.mint!, { kind: 'stake', from, amount, topUp: held < amount ? amount - held : 0n }, this.memoFor(m));
+    }
+    if (m.kind === 'payout' || m.kind === 'refund') {
+      const held = await token.chain.tokenBalance(this.authority!.address, this.mint!);
+      return buildServerTransfer(token.chain, this.authority!, this.mint!, { kind: 'payout', to: address(m.wallet), amount, topUp: held < amount ? amount - held : 0n }, this.memoFor(m));
+    }
+    return buildServerMint(token.chain, this.authority!, this.mint!, address(m.wallet), amount);
+  }
+
   private async sendMint(m: MintRow) {
     const token = this.token!;
     let built;
     try {
-      built = await buildServerMint(token.chain, this.authority!, this.mint!, address(m.wallet), BigInt(m.amount));
+      built = await this.buildOp(m);
     } catch (err) {
-      return this.mintFailed(m, `couldn’t prepare: ${(err as Error).message.slice(0, 120)}`);
+      return this.mintFailed({ ...m, attempts: m.attempts + 1 }, `couldn’t prepare: ${(err as Error).message.slice(0, 120)}`);
     }
-    // Recorded before sending, so a crash after sending can be reconciled instead of minting twice.
+    // Recorded before sending, so a crash after sending can be reconciled instead of sending twice.
     this.db
       .prepare("UPDATE chain_mints SET status = 'submitted', signature = ?, last_valid_height = ?, attempts = attempts + 1, updated_at = ? WHERE id = ? AND status = 'queued'")
       .run(built.signature, Number(built.lastValidBlockHeight), this.now(), m.id);
     try {
-      await token.chain.send(built.transaction);
+      // Each waits for confirmation, so the next one reads balances that include it.
+      await sendAndConfirm(token.chain, built.transaction, 30_000);
     } catch (err) {
       const msg = (err as Error).message;
-      if (/simulation failed|insufficient|custom program error|invalid|blockhash not found/i.test(msg)) {
+      if (/simulation failed|insufficient|custom program error|invalid|blockhash not found|failed on chain/i.test(msg)) {
         return this.mintFailed({ ...m, attempts: m.attempts + 1 }, msg.slice(0, 160));
       }
       // A timeout may still land: the status check settles it.
@@ -417,9 +467,9 @@ export class RewardsService {
         .run(id, userId, wallet, amount, Number(built.lastValidBlockHeight), built.signature, this.now(), this.now());
     });
     try {
-      await token.chain.send(built.transaction);
+      await sendAndConfirm(token.chain, built.transaction, 30_000);
     } catch (err) {
-      if (/simulation failed|insufficient|custom program error|invalid|blockhash not found/i.test((err as Error).message)) {
+      if (/simulation failed|insufficient|custom program error|invalid|blockhash not found|failed on chain/i.test((err as Error).message)) {
         this.closeClaim(id, 'failed', `The network rejected it: ${(err as Error).message.slice(0, 160)}`);
         return;
       }
@@ -432,9 +482,18 @@ export class RewardsService {
     const cluster = this.token?.cluster ?? null;
     const url = (sig: string | null) => (sig && cluster ? explorerTx(sig, cluster) : null);
     const wallet = this.embeddedAddress(userId);
+    const symbolOf = (predictionId: string | null) =>
+      predictionId
+        ? (as<{ symbol: string; market_id: string } | undefined>(
+            this.db.prepare('SELECT m.symbol, p.market_id FROM predictions p JOIN markets m ON m.id = p.market_id WHERE p.id = ?').get(predictionId),
+          ) ?? null)
+        : null;
     const mints = as<MintRow[]>(this.db.prepare('SELECT * FROM chain_mints WHERE user_id = ? ORDER BY created_at DESC LIMIT 30').all(userId)).map((m) => ({
       kind: m.kind,
-      amount: m.amount,
+      // A stake leaves the wallet; everything else arrives in it.
+      amount: m.kind === 'stake' ? -m.amount : m.amount,
+      symbol: symbolOf(m.subject)?.symbol ?? null,
+      marketId: symbolOf(m.subject)?.market_id ?? null,
       wallet: m.wallet,
       status: m.status,
       at: m.created_at,
@@ -443,6 +502,8 @@ export class RewardsService {
     const claims = as<ClaimRow[]>(this.db.prepare('SELECT * FROM claims WHERE user_id = ? ORDER BY created_at DESC LIMIT 30').all(userId)).map((c) => ({
       kind: 'claim',
       amount: c.amount,
+      symbol: null,
+      marketId: null,
       wallet: c.wallet,
       status: c.status,
       at: c.created_at,

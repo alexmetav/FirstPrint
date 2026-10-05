@@ -271,6 +271,11 @@ export class FirstprintService {
   onAnnounce: (kind: 'live' | 'result', marketId: string) => void = () => {};
   /** Markets whose predictions just closed, however the close happened (timer tick or an admin preview). */
   onClosed: (marketIds: string[]) => void = () => {};
+  /**
+   * Every points movement, inside its transaction (the rewards service mirrors stakes, payouts and
+   * refunds on chain as TestFPT). `ledgerId` is the ledger row, unique per movement.
+   */
+  onLedger: (userId: string, delta: number, reason: string, ref: string | null, ledgerId: number) => void = () => {};
   /** A daily streak claim went through (the rewards service mints it on chain as TestFPT). */
   onDailyClaimed: (userId: string, day: string, amount: number) => void = () => {};
   private announce(kind: 'live' | 'result', marketId: string) {
@@ -310,9 +315,10 @@ export class FirstprintService {
       .prepare('UPDATE users SET points = points + ? WHERE id = ? AND points + ? >= 0')
       .run(delta, userId, delta);
     if (res.changes !== 1) throw new AppError(400, 'insufficient_points', 'Not enough points for this prediction.');
-    this.db
+    const row = this.db
       .prepare('INSERT INTO ledger (user_id, delta, reason, ref, created_at) VALUES (?, ?, ?, ?, ?)')
       .run(userId, delta, reason, ref, this.clock.now());
+    this.onLedger(userId, delta, reason, ref, Number(row.lastInsertRowid));
   }
 
   /**
