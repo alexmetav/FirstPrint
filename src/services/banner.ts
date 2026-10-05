@@ -14,7 +14,7 @@ const FONT_DIR = fileURLToPath(new URL('../../assets/fonts/', import.meta.url));
 const FONTS = ['Geist-Regular.ttf', 'Geist-SemiBold.ttf', 'Geist-Bold.ttf', 'GeistMono-Medium.ttf'].map((f) => FONT_DIR + f).filter((f) => existsSync(f));
 
 const C = { bg: '#07080c', text: '#f5f5f7', muted: '#9a9aa3', line: 'rgba(255,255,255,0.10)', card: 'rgba(255,255,255,0.045)' };
-export const OUTCOME_COLORS: Record<string, string> = { moon: '#ffd60a', up: '#30d158', flat: '#a1a1aa', down: '#ff9f0a', crash: '#ff453a' };
+export const OUTCOME_COLORS: Record<string, string> = { moon: '#7dff3a', up: '#30d158', flat: '#a1a1aa', down: '#ff9f0a', crash: '#ff453a' };
 const OUTCOME_NAMES: Record<string, string> = { moon: 'Moon', up: 'Up', flat: 'Flat', down: 'Down', crash: 'Crash' };
 
 export interface BannerMarket {
@@ -111,13 +111,14 @@ function resultHero(m: BannerMarket, logoPng: string | null, won: string, pct: s
     : `<circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}" fill="${avatarColor(sym)}"/>
        <text x="${x + size / 2}" y="${y + size / 2 + 12}" text-anchor="middle" font-size="34" font-weight="700" fill="#ffffff">${esc(sym.slice(0, 1))}</text>`;
   const big = pct || won;
-  // The big number stays clear of the character on the right.
-  const bigSize = big.length > 7 ? 140 : big.length > 6 ? 160 : 180;
+  // Left: the move, big. Right: the winning outcome's character with "Up wins" under it.
+  const bigSize = big.length > 7 ? 150 : big.length > 6 ? 170 : 190;
+  const cx = 1050;
   return `${logo}
     <text x="${x + size + 22}" y="${y + 45}" font-size="40" font-weight="600" fill="${C.text}" letter-spacing="-0.8">${esc(sym)} <tspan fill="${C.muted}" font-weight="400">result</tspan></text>
-    <text x="${x - 6}" y="410" font-size="${bigSize}" font-weight="700" fill="${color}" letter-spacing="-6">${esc(big)}</text>
-    ${pct ? `<text x="${x}" y="476" font-size="44" font-weight="600" fill="${C.text}">${esc(won)} <tspan fill="${C.muted}" font-weight="400">wins</tspan></text>` : ''}
-    ${bucket ? mascot(bucket, color, 880, 168, 320) : ''}`;
+    <text x="${x - 6}" y="440" font-size="${bigSize}" font-weight="700" fill="${color}" letter-spacing="-6">${esc(big)}</text>
+    ${bucket ? mascot(bucket, color, cx - 125, 150, 250) : ''}
+    ${pct ? `<text x="${cx}" y="464" text-anchor="middle" font-size="40" font-weight="600" fill="${C.text}">${esc(won)} <tspan fill="${C.muted}" font-weight="400">wins</tspan></text>` : ''}`;
 }
 
 /** "47 min" or "1h 05m": the time left, for the last-hour banner. */
