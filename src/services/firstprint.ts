@@ -192,6 +192,17 @@ export interface ResolveInput {
 
 const MIN_MS = 60_000;
 
+/**
+ * Token symbols: letters and digits in any script, so tickers like 币安人生 (listed on MEXC) work too.
+ * Latin-only symbols need at least 2 characters; a single Chinese character can be a whole ticker.
+ */
+export function validSymbol(symbol: string) {
+  return /^[\p{L}\p{N}]{1,15}$/u.test(symbol) && (symbol.length >= 2 || /[^\x00-\x7f]/.test(symbol));
+}
+const SYMBOL_RULE = 'Token symbol must be 1–15 letters or digits with no spaces, e.g. SOL or 币安人生.';
+/** Market ids stay plain ASCII so links never need decoding; a non-Latin symbol becomes "token". */
+const idSlug = (symbol: string) => symbol.toLowerCase().replace(/[^a-z0-9]/g, '') || 'token';
+
 /** Market lengths for live test markets on tokens that already trade. */
 export const LIVE_PRESETS: Record<string, { label: string; config: Partial<MarketConfig> }> = {
   quick: { label: '15 minutes', config: { baselineMs: 3 * MIN_MS, durationMs: 15 * MIN_MS, settleWindowMs: 3 * MIN_MS, minTrades: 1, minCoverage: 0.5 } },
@@ -614,7 +625,7 @@ export class FirstprintService {
 
   createMarket(input: CreateMarketInput): string {
     const symbol = String(input.symbol ?? '').toUpperCase();
-    if (!/^[A-Z0-9]{2,15}$/.test(symbol)) throw new AppError(400, 'bad_symbol', 'Symbol must be 2–15 letters or digits.');
+    if (!validSymbol(symbol)) throw new AppError(400, 'bad_symbol', SYMBOL_RULE);
     if (!input.exchange) throw new AppError(400, 'bad_exchange', 'Exchange is required.');
     if (!Array.isArray(input.venues) || input.venues.length === 0) {
       throw new AppError(400, 'bad_venues', 'At least one price venue is required.');
@@ -633,7 +644,7 @@ export class FirstprintService {
       throw new AppError(400, 'bad_listing_time', 'Announced listing time is required.');
     }
 
-    const id = `${symbol.toLowerCase()}-${input.exchange.toLowerCase()}-${randomUUID().slice(0, 6)}`;
+    const id = `${idSlug(symbol)}-${input.exchange.toLowerCase()}-${randomUUID().slice(0, 6)}`;
     this.db
       .prepare(
         `INSERT INTO markets (id, symbol, name, exchange, venues, source_url, announced_listing_at, listing_at,
@@ -667,7 +678,7 @@ export class FirstprintService {
    */
   async createLiveMarket(input: { symbol: string; name?: string; exchanges?: string[]; startsInMs?: number; preset?: string }) {
     const symbol = String(input.symbol ?? '').trim().toUpperCase();
-    if (!/^[A-Z0-9]{2,15}$/.test(symbol)) throw new AppError(400, 'bad_symbol', 'Symbol must be 2–15 letters or digits, e.g. SOL.');
+    if (!validSymbol(symbol)) throw new AppError(400, 'bad_symbol', SYMBOL_RULE);
     const preset = LIVE_PRESETS[input.preset ?? 'quick'];
     if (!preset) throw new AppError(400, 'bad_preset', `Length must be one of: ${Object.keys(LIVE_PRESETS).join(', ')}.`);
     const startsInMs = Math.max(MIN_MS, Math.min(24 * 60 * MIN_MS, Number(input.startsInMs ?? 2 * MIN_MS)));
@@ -763,7 +774,7 @@ export class FirstprintService {
   /** Live price of a symbol on each chosen exchange; price is null where it doesn't trade or the exchange didn't answer. */
   async exchangePrices(symbol: string, exchanges: string[], pairs: Record<string, string> = {}) {
     const sym = String(symbol ?? '').trim().toUpperCase();
-    if (!/^[A-Z0-9]{2,15}$/.test(sym)) throw new AppError(400, 'bad_symbol', 'Token symbol must be 2–15 letters or digits.');
+    if (!validSymbol(sym)) throw new AppError(400, 'bad_symbol', SYMBOL_RULE);
     const ids = [...new Set((exchanges ?? []).map(String))].filter((id) => this.venues.has(id) && id !== 'sim').slice(0, 10);
     return Promise.all(
       ids.map(async (id) => {
@@ -923,7 +934,7 @@ export class FirstprintService {
 
   private manualFields(input: ManualMarketInput, now: number) {
     const symbol = String(input.symbol ?? '').trim().toUpperCase();
-    if (!/^[A-Z0-9]{2,15}$/.test(symbol)) throw new AppError(400, 'bad_symbol', 'Token symbol must be 2–15 letters or digits.');
+    if (!validSymbol(symbol)) throw new AppError(400, 'bad_symbol', SYMBOL_RULE);
     const exchanges = [...new Set((input.exchanges ?? []).map(String))];
     if (exchanges.length === 0) throw new AppError(400, 'bad_exchanges', 'Choose at least one exchange.');
     const off = this.disabledExchanges();
@@ -961,7 +972,7 @@ export class FirstprintService {
     const now = this.clock.now();
     const f = this.manualFields(input, now);
     if (f.closeAt <= now) throw new AppError(400, 'bad_close_time', 'Prediction close time must be in the future.');
-    const id = `${f.symbol.toLowerCase()}-m-${randomUUID().slice(0, 6)}`;
+    const id = `${idSlug(f.symbol)}-m-${randomUUID().slice(0, 6)}`;
     this.db
       .prepare(
         `INSERT INTO markets (id, symbol, name, exchange, venues, source_url, announced_listing_at, listing_at,
