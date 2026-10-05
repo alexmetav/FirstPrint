@@ -11069,7 +11069,8 @@ svg.viz.viz-narrow {
   position: absolute;
   inset: 0 auto 0 0;
   z-index: -1;
-  width: var(--share, 0%);
+  /* Stops short of the pick button: the share fills only the name and percentage. */
+  width: calc((100% - 92px) * var(--sf, 0));
   background: color-mix(in srgb, var(--c) 13%, transparent);
   border-radius: inherit;
   transition: width 0.8s var(--ease-out, ease);
@@ -11080,7 +11081,7 @@ svg.viz.viz-narrow {
   position: absolute;
   inset: 0 auto 0 0;
   z-index: -1;
-  width: var(--share, 0%);
+  width: calc((100% - 92px) * var(--sf, 0));
   background: linear-gradient(100deg, transparent 0%, color-mix(in srgb, var(--c) 22%, transparent) 50%, transparent 100%);
   background-size: 200% 100%;
   background-repeat: no-repeat;
@@ -11160,4 +11161,40 @@ svg.viz.viz-narrow {
   .mcard .o-row::after {
     display: none;
   }
+}
+
+.mcard .o-row .qp-sm {
+  width: 76px;
+  justify-content: center;
+}
+.foot-l {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.card-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.card-timer .i {
+  width: 12px;
+  height: 12px;
+}
+.card-timer.today {
+  color: var(--down);
+  background: color-mix(in srgb, var(--down) 12%, transparent);
+}
+.card-timer.urgent {
+  color: var(--crash);
+  background: color-mix(in srgb, var(--crash) 14%, transparent);
 }
