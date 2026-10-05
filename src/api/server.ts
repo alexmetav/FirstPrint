@@ -947,7 +947,7 @@ export function createApiServer(opts: ServerOptions): Server {
   const siteRoot = opts.siteDir ? resolve(opts.siteDir) : null;
   const APP_PREFIX = '/app';
   /** Website files that link to the app; their /play/ links are pointed at /app/. */
-  const LINKED_SITE_FILES = new Set(['index.html', join('assets', 'site.js')]);
+  const LINKED_SITE_FILES = new Set(['index.html', join('assets', 'site.js'), 'pitch.html', 'whitepaper.html', 'tokenomics.html']);
 
   async function serveStatic(res: ServerResponse, root: string, pathname: string, linkToApp = false) {
     const rel = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '');
@@ -957,7 +957,9 @@ export function createApiServer(opts: ServerOptions): Server {
       const s = await stat(file);
       if (s.isDirectory()) file = join(file, 'index.html');
     } catch {
-      file = join(root, 'index.html'); // SPA fallback
+      // Clean page addresses (/pitch → pitch.html), then the SPA fallback.
+      const page = extname(file) ? null : `${file}.html`;
+      file = page && (await stat(page).then((s) => s.isFile(), () => false)) ? page : join(root, 'index.html');
     }
     try {
       let data: Buffer | string = await readFile(file);
