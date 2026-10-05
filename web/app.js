@@ -36,6 +36,8 @@ const S = {
   skew: 0,
   route: { name: 'home' },
   filter: 'trending',
+  sort: 'predictors',
+  heroIdx: 0,
   lbPeriod: 'week',
   query: '',
   exchange: 'all',
@@ -170,7 +172,7 @@ async function loadHome() {
   const [open, live, settled] = await Promise.all(['open', 'live', 'settled'].map((f) => S.api.markets(f)));
   syncClock(open.serverTime);
   S.lists = { open: open.markets, live: live.markets, settled: settled.markets };
-  const featured = [...S.lists.open].sort(byTrending)[0];
+  const featured = featuredMarket();
   const [odds, leaders] = await Promise.all([
     featured && S.api.odds ? S.api.odds(featured.id).catch(() => null) : null,
     S.api.leaderboard ? S.api.leaderboard('week').catch(() => null) : null,
@@ -783,11 +785,11 @@ function renderDemoBar() {
 
 // ------------------------------------------------------------------ Home
 
-/** Home tabs: three ways to sort open markets, then markets waiting for a result and settled ones. */
+/** Home tabs: the top open markets, the newest, every open market with a sort, then waiting and settled ones. */
 const HOME_TABS = [
   ['trending', 'flame', 'Trending'],
-  ['ending', 'clock', 'Ending soon'],
   ['new', 'sparkles', 'New'],
+  ['all', 'grid', 'All markets'],
   ['live', 'history', 'Awaiting result'],
   ['settled', 'checkCircle', 'Settled'],
 ];
@@ -795,15 +797,34 @@ const HOME_TABS = [
 /** Most points staked in the last day first, then the most predictors and the biggest pool. */
 const byTrending = (a, b) => (b.volume24h ?? 0) - (a.volume24h ?? 0) || b.predictors - a.predictors || b.pool - a.pool;
 
+/** How many markets Trending (and the hero carousel) shows. */
+const TRENDING_MAX = 10;
+
+/** The most active open markets that people are predicting on, at most ten. */
+const trendingList = () => S.lists.open.filter((m) => m.predictors > 0).sort(byTrending).slice(0, TRENDING_MAX);
+
+/** The market shown big on the home page: the top trending one, or the newest open one. */
+const featuredMarket = () => trendingList()[0] ?? [...S.lists.open].sort((a, b) => b.openedAt - a.openedAt)[0];
+
+/** Sort choices for the All markets tab. */
+const ALL_SORTS = [
+  ['predictors', 'Most predictors', (a, b) => b.predictors - a.predictors || b.pool - a.pool],
+  ['pool', 'Biggest pool', (a, b) => b.pool - a.pool || b.predictors - a.predictors],
+  ['active', 'Most active (24h)', byTrending],
+  ['newest', 'Newest', (a, b) => b.openedAt - a.openedAt],
+  ['oldest', 'Oldest', (a, b) => a.openedAt - b.openedAt],
+  ['ending', 'Ending soon', (a, b) => a.closeAt - b.closeAt],
+];
+
 const venuesOf = (m) => (m.venues?.length ? m.venues.map((v) => v.name) : [m.exchange]);
 
 function tabList(tab) {
   if (tab === 'live') return [...S.lists.live];
   if (tab === 'settled') return [...S.lists.settled];
   const open = [...S.lists.open];
-  if (tab === 'ending') return open.sort((a, b) => a.closeAt - b.closeAt);
   if (tab === 'new') return open.sort((a, b) => b.openedAt - a.openedAt);
-  return open.sort(byTrending);
+  if (tab === 'all') return open.sort((ALL_SORTS.find(([id]) => id === S.sort) ?? ALL_SORTS[0])[2]);
+  return trendingList();
 }
 
 /** The cards under the tabs: the chosen tab, or every market matching the search. */
@@ -824,11 +845,11 @@ function marketResults() {
 function homeView() {
   const tnCard = startChecklist();
   if (!HOME_TABS.some(([id]) => id === S.filter)) S.filter = 'trending';
-  const featured = [...S.lists.open].sort(byTrending)[0];
-  const count = (id) => (id === 'live' ? S.lists.live.length : id === 'settled' ? S.lists.settled.length : S.lists.open.length);
+  const featured = featuredMarket();
+  const count = (id) => (id === 'live' ? S.lists.live.length : id === 'settled' ? S.lists.settled.length : id === 'trending' ? trendingList().length : S.lists.open.length);
   const base = tabList(S.filter);
   const shown = base.filter((m) => S.exchange === 'all' || !S.exchange || venuesOf(m).includes(S.exchange));
-  const onlyFeatured = !S.query && featured && ['trending', 'ending', 'new'].includes(S.filter) && shown.length === 1 && shown[0].id === featured.id;
+  const onlyFeatured = !S.query && featured && ['trending', 'new', 'all'].includes(S.filter) && shown.length === 1 && shown[0].id === featured.id;
   const exchanges = [...new Set([...S.lists.open, ...S.lists.live, ...S.lists.settled].flatMap(venuesOf))].sort();
   // Only exchanges that have markets in this tab (plus the one currently chosen).
   const exList = exchanges.map((e) => [e, base.filter((m) => venuesOf(m).includes(e)).length]).filter(([e, n]) => n > 0 || S.exchange === e);
@@ -841,6 +862,7 @@ function homeView() {
     <div class="home">
       <aside class="home-side" aria-label="Filter markets">
         <div class="side-group">${HOME_TABS.map(filterBtn).join('')}</div>
+        <p class="side-soon" title="Creating your own market is coming soon">${ico('plusCircle')}<span>Create a market</span><span class="soon">Soon</span></p>
         ${exList.length > 1 ? `<div class="side-label">Exchanges</div><div class="side-group">${exBtn('all', 'All exchanges', base.length)}${exList.map(([e, n]) => exBtn(e, e, n)).join('')}</div>` : ''}
       </aside>
       <div class="home-main">
@@ -848,6 +870,7 @@ function homeView() {
         <div class="home-head">
           ${onlyFeatured ? '' : `<h2>${S.query ? 'Search results' : (HOME_TABS.find(([id]) => id === S.filter)?.[2] ?? 'Markets')}</h2>`}
           ${S.exchange && S.exchange !== 'all' ? `<button class="chip chip-sm" data-exchange="all">${esc(S.exchange)} ${ico('cross')}</button>` : ''}
+          ${S.filter === 'all' && !S.query && !onlyFeatured ? `<label class="select home-sort">Sort <select id="market-sort">${ALL_SORTS.map(([id, label]) => `<option value="${id}"${id === (S.sort ?? 'predictors') ? ' selected' : ''}>${label}</option>`).join('')}</select></label>` : ''}
         </div>
         <div id="market-results">${onlyFeatured ? '<p class="home-note">This is the only open market right now. New markets show up here as soon as they open.</p>' : marketResults()}</div>
       </div>
@@ -870,6 +893,7 @@ function homeHero(showLive = true) {
     best >= 1 ? ['Top payout now', `${best.toFixed(1)}×`] : null,
   ].filter(Boolean);
   const next = [...open].filter((m) => m.phase !== 'awaiting_result').sort((a, b) => a.closeAt - b.closeAt)[0];
+  const deck = trendingList();
   return `
     <section class="home-hero" aria-labelledby="hero-title">
       <svg class="hero-art" viewBox="0 0 1200 320" preserveAspectRatio="none" aria-hidden="true">
@@ -888,7 +912,9 @@ function homeHero(showLive = true) {
         ${stats.length ? `<dl class="hero-stats">${stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
       </div>
       ${
-        next
+        deck.length
+          ? heroDeck(deck)
+          : next
           ? `<a class="hero-next" href="#/market/${encodeURIComponent(next.id)}">
         <span class="hero-next-head"><span>Closing next</span><span class="st st-live"><i aria-hidden="true"></i>Open</span></span>
         <span class="hero-next-id">${tokenAvatar(next, 'avatar-md')}<span><b>${esc(next.symbol)}</b>${next.name ? `<small>${esc(next.name)}</small>` : ''}</span></span>
@@ -898,6 +924,45 @@ function homeHero(showLive = true) {
           : ''
       }
     </section>`;
+}
+
+/** The trending markets as cards that flip one by one in the hero; S.heroIdx keeps the place across refreshes. */
+function heroDeck(deck) {
+  const on = (S.heroIdx ?? 0) % deck.length;
+  const slide = (m, i) => `<a class="hero-next hero-slide${i === on ? ' is-on' : ''}" href="#/market/${encodeURIComponent(m.id)}" data-slide="${i}"${i === on ? '' : ' aria-hidden="true" tabindex="-1"'}>
+        <span class="hero-next-head"><span>${ico('flame')}Trending #${i + 1}</span>${m.phase === 'pre_listing' || isUpcoming(m) ? '<span class="st st-soon"><i aria-hidden="true"></i>Upcoming</span>' : '<span class="st st-live"><i aria-hidden="true"></i>Open</span>'}</span>
+        <span class="hero-next-id">${tokenAvatar(m, 'avatar-md')}<span><b>${esc(m.symbol)}</b>${m.name ? `<small>${esc(m.name)}</small>` : ''}</span></span>
+        <span class="hero-next-facts"><span><small>Predictors</small><b>${fmtNum(m.predictors)}</b></span><span><small>Pool</small><b>${fmtNum(m.pool || 0)} pts</b></span><span class="hero-next-close"><small>Predictions close</small><b>${fmtDate(m.closeAt)}</b><small>in ${until(m.closeAt)}</small></span></span>
+        <span class="btn btn-gold btn-sm">Predict ${ico('arrowRight')}</span>
+      </a>`;
+  return `<div class="hero-deck" data-hero-deck aria-roledescription="carousel" aria-label="Trending markets">
+      <div class="hero-slides">${deck.map(slide).join('')}</div>
+      ${deck.length > 1 ? `<div class="hero-dots">${deck.map((m, i) => `<button type="button" data-hero-dot="${i}" aria-label="Show ${esc(m.symbol)}" aria-current="${i === on}"></button>`).join('')}</div>` : ''}
+    </div>`;
+}
+
+/** Shows slide i of the hero deck with a flip. */
+function showHeroSlide(i, animate = true) {
+  const deck = $('[data-hero-deck]');
+  if (!deck) return;
+  const slides = [...deck.querySelectorAll('.hero-slide')];
+  if (slides.length < 2) return;
+  const to = ((i % slides.length) + slides.length) % slides.length;
+  S.heroIdx = to;
+  slides.forEach((el, n) => {
+    const was = el.classList.contains('is-on');
+    el.classList.toggle('is-on', n === to);
+    el.classList.toggle('is-out', animate && was && n !== to);
+    el.classList.toggle('is-in', animate && n === to && !was);
+    if (n === to) {
+      el.removeAttribute('aria-hidden');
+      el.removeAttribute('tabindex');
+    } else {
+      el.setAttribute('aria-hidden', 'true');
+      el.setAttribute('tabindex', '-1');
+    }
+  });
+  deck.querySelectorAll('[data-hero-dot]').forEach((b) => b.setAttribute('aria-current', String(Number(b.dataset.heroDot) === to)));
 }
 
 /** Right column: this week's best players, ways to earn, and the daily claim. */
@@ -4746,6 +4811,11 @@ document.addEventListener('click', async (e) => {
   const walletBtn = t.closest('[data-wallet]');
   if (walletBtn) return walletFlow(walletBtn.dataset.purpose, listWallets()[Number(walletBtn.dataset.wallet)]);
 
+  const heroDot = t.closest('[data-hero-dot]')?.dataset.heroDot;
+  if (heroDot != null) {
+    S.heroPausedUntil = Date.now() + 8000;
+    return showHeroSlide(Number(heroDot));
+  }
   if (filter) {
     S.filter = filter;
     S.query = '';
@@ -5112,6 +5182,11 @@ document.addEventListener('change', (e) => {
   if (e.target.name === 'kind' && e.target.closest('#admin-task')) {
     e.target.closest('form').querySelector('[name=target]').placeholder = TASK_TARGET_HINT[e.target.value] ?? '';
   }
+  if (e.target.id === 'market-sort') {
+    S.sort = e.target.value;
+    const out = $('#market-results');
+    if (out) out.innerHTML = marketResults();
+  }
   if (e.target.id === 'exchange-filter') {
     S.exchange = e.target.value;
     $('#view').innerHTML = homeView();
@@ -5157,6 +5232,14 @@ setInterval(() => {
 setInterval(() => {
   if (!document.hidden) refresh();
 }, 8000);
+
+// The hero's trending cards flip every few seconds, unless the visitor is pointing at them or prefers less motion.
+const calmMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+setInterval(() => {
+  const deck = $('[data-hero-deck]');
+  if (!deck || document.hidden || deck.matches(':hover, :focus-within') || Date.now() < (S.heroPausedUntil ?? 0)) return;
+  showHeroSlide((S.heroIdx ?? 0) + 1, !calmMotion?.matches);
+}, 4000);
 
 // ------------------------------------------------------------------ Boot
 
