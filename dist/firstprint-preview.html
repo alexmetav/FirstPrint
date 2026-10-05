@@ -8790,11 +8790,34 @@ p,
   align-self: center;
 }
 .hero-slides {
+  position: relative;
   display: grid;
-  perspective: 900px;
+  perspective: 1100px;
+  isolation: isolate;
+}
+.hero-deck.has-many .hero-slides {
+  margin-bottom: 14px;
+}
+/* Two cards peeking out underneath, so it reads as a deck. */
+.hero-deck.has-many .hero-slides::before,
+.hero-deck.has-many .hero-slides::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  transform: translateY(8px) scale(0.96);
+  z-index: 0;
+}
+.hero-deck.has-many .hero-slides::after {
+  transform: translateY(16px) scale(0.92);
+  opacity: 0.6;
+  z-index: -1;
 }
 .hero-slide {
   grid-area: 1 / 1;
+  z-index: 1;
   visibility: hidden;
   backface-visibility: hidden;
   transform-origin: 50% 50%;
@@ -8804,18 +8827,22 @@ p,
   visibility: visible;
 }
 .hero-slide.is-in {
-  animation: hero-flip-in 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: hero-flip-in 0.55s cubic-bezier(0.2, 0.75, 0.25, 1) 0.3s both;
 }
 .hero-slide.is-out {
-  animation: hero-flip-out 0.4s ease-in both;
+  z-index: 2;
+  animation: hero-flip-out 0.3s ease-in both;
   pointer-events: none;
 }
 @keyframes hero-flip-in {
-  from {
+  0% {
     opacity: 0;
-    transform: rotateX(-80deg) translateY(12px);
+    transform: rotateY(-90deg) scale(0.94);
   }
-  to {
+  60% {
+    opacity: 1;
+  }
+  100% {
     opacity: 1;
     transform: none;
   }
@@ -8823,7 +8850,7 @@ p,
 @keyframes hero-flip-out {
   to {
     opacity: 0;
-    transform: rotateX(80deg) translateY(-12px);
+    transform: rotateY(90deg) scale(0.94);
     visibility: hidden;
   }
 }
@@ -10623,6 +10650,44 @@ svg.viz.viz-narrow {
 }
 .dash-wallets button.dw-link:hover {
   color: var(--text);
+}
+
+/* Card footer: status, pool and exchange on one line, the time on its own line, never spilling out. */
+.mcard .card-foot {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  row-gap: 4px;
+}
+.mcard .card-foot .when {
+  flex: 1 0 100%;
+  margin-left: 0;
+  padding-left: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mcard .card-foot .card-ex {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+/* Featured facts: two tidy columns, dates kept on one line with the countdown underneath. */
+.feat-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, max-content));
+  gap: 14px 40px;
+}
+.feat-facts dd {
+  white-space: nowrap;
+}
+.feat-facts .feat-sub {
+  display: block;
+  margin: 2px 0 0;
+}
+@media (max-width: 380px) {
+  .feat-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 </style>
@@ -12684,6 +12749,7 @@ async function loadRoute() {
   try {
     if (S.route.name === 'home') {
       await loadHome();
+      await heroFlipDone();
       view.innerHTML = homeView();
     } else if (S.route.name === 'market') {
       await loadMarket(S.route.id);
@@ -13345,10 +13411,16 @@ function heroDeck(deck) {
         <span class="hero-next-facts"><span><small>Predictors</small><b>${fmtNum(m.predictors)}</b></span><span><small>Pool</small><b>${fmtNum(m.pool || 0)} pts</b></span><span class="hero-next-close"><small>Predictions close</small><b>${fmtDate(m.closeAt)}</b><small>in ${until(m.closeAt)}</small></span></span>
         <span class="btn btn-gold btn-sm">Predict ${ico('arrowRight')}</span>
       </a>`;
-  return `<div class="hero-deck" data-hero-deck aria-roledescription="carousel" aria-label="Trending markets">
+  return `<div class="hero-deck${deck.length > 1 ? ' has-many' : ''}" data-hero-deck aria-roledescription="carousel" aria-label="Trending markets">
       <div class="hero-slides">${deck.map(slide).join('')}</div>
       ${deck.length > 1 ? `<div class="hero-dots">${deck.map((m, i) => `<button type="button" data-hero-dot="${i}" aria-label="Show ${esc(m.symbol)}" aria-current="${i === on}"></button>`).join('')}</div>` : ''}
     </div>`;
+}
+
+/** Resolves once the hero card has finished flipping, so a live redraw doesn't cut the animation short. */
+function heroFlipDone() {
+  const left = (S.heroFlipUntil ?? 0) - Date.now();
+  return left > 0 ? new Promise((r) => setTimeout(r, left)) : Promise.resolve();
 }
 
 /** Shows slide i of the hero deck with a flip. */
@@ -13359,6 +13431,7 @@ function showHeroSlide(i, animate = true) {
   if (slides.length < 2) return;
   const to = ((i % slides.length) + slides.length) % slides.length;
   S.heroIdx = to;
+  if (animate) S.heroFlipUntil = Date.now() + 900;
   slides.forEach((el, n) => {
     const was = el.classList.contains('is-on');
     el.classList.toggle('is-on', n === to);
@@ -13581,7 +13654,7 @@ function cardView(m) {
   let when;
   if (m.phase === 'pre_listing') when = `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}`;
   else if (upcoming) when = `Lists ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
-  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Predictions close ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
+  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Closes ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
   else if (m.phase === 'running') when = `Result in ${until(m.settleAt)}`;
   else if (m.phase === 'awaiting_result') when = 'Awaiting result';
   else when = fmtDate(m.settleAt);
@@ -15714,7 +15787,7 @@ function onLive(type, data) {
       if (hit && !homeRenderTimer && !busy) {
         homeRenderTimer = setTimeout(() => {
           homeRenderTimer = null;
-          if (S.route.name === 'home') $('#view').innerHTML = homeView();
+          heroFlipDone().then(() => S.route.name === 'home' && ($('#view').innerHTML = homeView()));
         }, 2_000);
       }
     }
@@ -17649,7 +17722,7 @@ setInterval(() => {
   const deck = $('[data-hero-deck]');
   if (!deck || document.hidden || deck.matches(':hover, :focus-within') || Date.now() < (S.heroPausedUntil ?? 0)) return;
   showHeroSlide((S.heroIdx ?? 0) + 1, !calmMotion?.matches);
-}, 4000);
+}, 3500);
 
 // ------------------------------------------------------------------ Boot
 

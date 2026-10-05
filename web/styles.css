@@ -8760,11 +8760,34 @@ p,
   align-self: center;
 }
 .hero-slides {
+  position: relative;
   display: grid;
-  perspective: 900px;
+  perspective: 1100px;
+  isolation: isolate;
+}
+.hero-deck.has-many .hero-slides {
+  margin-bottom: 14px;
+}
+/* Two cards peeking out underneath, so it reads as a deck. */
+.hero-deck.has-many .hero-slides::before,
+.hero-deck.has-many .hero-slides::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+  transform: translateY(8px) scale(0.96);
+  z-index: 0;
+}
+.hero-deck.has-many .hero-slides::after {
+  transform: translateY(16px) scale(0.92);
+  opacity: 0.6;
+  z-index: -1;
 }
 .hero-slide {
   grid-area: 1 / 1;
+  z-index: 1;
   visibility: hidden;
   backface-visibility: hidden;
   transform-origin: 50% 50%;
@@ -8774,18 +8797,22 @@ p,
   visibility: visible;
 }
 .hero-slide.is-in {
-  animation: hero-flip-in 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: hero-flip-in 0.55s cubic-bezier(0.2, 0.75, 0.25, 1) 0.3s both;
 }
 .hero-slide.is-out {
-  animation: hero-flip-out 0.4s ease-in both;
+  z-index: 2;
+  animation: hero-flip-out 0.3s ease-in both;
   pointer-events: none;
 }
 @keyframes hero-flip-in {
-  from {
+  0% {
     opacity: 0;
-    transform: rotateX(-80deg) translateY(12px);
+    transform: rotateY(-90deg) scale(0.94);
   }
-  to {
+  60% {
+    opacity: 1;
+  }
+  100% {
     opacity: 1;
     transform: none;
   }
@@ -8793,7 +8820,7 @@ p,
 @keyframes hero-flip-out {
   to {
     opacity: 0;
-    transform: rotateX(80deg) translateY(-12px);
+    transform: rotateY(90deg) scale(0.94);
     visibility: hidden;
   }
 }
@@ -10593,4 +10620,42 @@ svg.viz.viz-narrow {
 }
 .dash-wallets button.dw-link:hover {
   color: var(--text);
+}
+
+/* Card footer: status, pool and exchange on one line, the time on its own line, never spilling out. */
+.mcard .card-foot {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  row-gap: 4px;
+}
+.mcard .card-foot .when {
+  flex: 1 0 100%;
+  margin-left: 0;
+  padding-left: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mcard .card-foot .card-ex {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+/* Featured facts: two tidy columns, dates kept on one line with the countdown underneath. */
+.feat-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, max-content));
+  gap: 14px 40px;
+}
+.feat-facts dd {
+  white-space: nowrap;
+}
+.feat-facts .feat-sub {
+  display: block;
+  margin: 2px 0 0;
+}
+@media (max-width: 380px) {
+  .feat-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

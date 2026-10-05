@@ -274,6 +274,7 @@ async function loadRoute() {
   try {
     if (S.route.name === 'home') {
       await loadHome();
+      await heroFlipDone();
       view.innerHTML = homeView();
     } else if (S.route.name === 'market') {
       await loadMarket(S.route.id);
@@ -935,10 +936,16 @@ function heroDeck(deck) {
         <span class="hero-next-facts"><span><small>Predictors</small><b>${fmtNum(m.predictors)}</b></span><span><small>Pool</small><b>${fmtNum(m.pool || 0)} pts</b></span><span class="hero-next-close"><small>Predictions close</small><b>${fmtDate(m.closeAt)}</b><small>in ${until(m.closeAt)}</small></span></span>
         <span class="btn btn-gold btn-sm">Predict ${ico('arrowRight')}</span>
       </a>`;
-  return `<div class="hero-deck" data-hero-deck aria-roledescription="carousel" aria-label="Trending markets">
+  return `<div class="hero-deck${deck.length > 1 ? ' has-many' : ''}" data-hero-deck aria-roledescription="carousel" aria-label="Trending markets">
       <div class="hero-slides">${deck.map(slide).join('')}</div>
       ${deck.length > 1 ? `<div class="hero-dots">${deck.map((m, i) => `<button type="button" data-hero-dot="${i}" aria-label="Show ${esc(m.symbol)}" aria-current="${i === on}"></button>`).join('')}</div>` : ''}
     </div>`;
+}
+
+/** Resolves once the hero card has finished flipping, so a live redraw doesn't cut the animation short. */
+function heroFlipDone() {
+  const left = (S.heroFlipUntil ?? 0) - Date.now();
+  return left > 0 ? new Promise((r) => setTimeout(r, left)) : Promise.resolve();
 }
 
 /** Shows slide i of the hero deck with a flip. */
@@ -949,6 +956,7 @@ function showHeroSlide(i, animate = true) {
   if (slides.length < 2) return;
   const to = ((i % slides.length) + slides.length) % slides.length;
   S.heroIdx = to;
+  if (animate) S.heroFlipUntil = Date.now() + 900;
   slides.forEach((el, n) => {
     const was = el.classList.contains('is-on');
     el.classList.toggle('is-on', n === to);
@@ -1171,7 +1179,7 @@ function cardView(m) {
   let when;
   if (m.phase === 'pre_listing') when = `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}`;
   else if (upcoming) when = `Lists ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
-  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Predictions close ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
+  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Closes ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
   else if (m.phase === 'running') when = `Result in ${until(m.settleAt)}`;
   else if (m.phase === 'awaiting_result') when = 'Awaiting result';
   else when = fmtDate(m.settleAt);
@@ -3304,7 +3312,7 @@ function onLive(type, data) {
       if (hit && !homeRenderTimer && !busy) {
         homeRenderTimer = setTimeout(() => {
           homeRenderTimer = null;
-          if (S.route.name === 'home') $('#view').innerHTML = homeView();
+          heroFlipDone().then(() => S.route.name === 'home' && ($('#view').innerHTML = homeView()));
         }, 2_000);
       }
     }
@@ -5239,7 +5247,7 @@ setInterval(() => {
   const deck = $('[data-hero-deck]');
   if (!deck || document.hidden || deck.matches(':hover, :focus-within') || Date.now() < (S.heroPausedUntil ?? 0)) return;
   showHeroSlide((S.heroIdx ?? 0) + 1, !calmMotion?.matches);
-}, 4000);
+}, 3500);
 
 // ------------------------------------------------------------------ Boot
 
