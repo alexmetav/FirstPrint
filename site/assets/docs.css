@@ -84,7 +84,7 @@ svg {
   height: 3px;
   border-radius: 2px;
 }
-.doc-mark i:nth-child(1) { background: var(--warn); width: 100%; }
+.doc-mark i:nth-child(1) { background: var(--moon); width: 100%; }
 .doc-mark i:nth-child(2) { background: var(--up); width: 80%; }
 .doc-mark i:nth-child(3) { background: var(--flat); width: 60%; }
 .doc-mark i:nth-child(4) { background: var(--down); width: 80%; }

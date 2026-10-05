@@ -598,6 +598,20 @@ export function createApiServer(opts: ServerOptions): Server {
     return { count };
   });
 
+  // One post with every open market: "12 markets live", soonest to close first.
+  route('POST', '/api/admin/telegram/post-summary', async ({ req, requireAdmin }) => {
+    requireAdmin('listings');
+    let count: number;
+    try {
+      count = await channelOn().postSummary();
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw new AppError(502, 'telegram_failed', (err as Error).message);
+    }
+    audit(req, 'telegram_posted_summary', null, `${count} markets`);
+    return { count };
+  });
+
   route('POST', '/api/admin/telegram/disconnect', async ({ req, requireAdmin }) => {
     requireAdmin();
     telegramOn().setChat(null);

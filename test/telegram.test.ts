@@ -44,7 +44,7 @@ test('telegram: alert texts', () => {
   assert.match(text, /New MEXC listing: AGENCY \(Agency &lt;AI&gt;\)/);
   assert.match(text, /Trading starts 2026-10-05 11:30 UTC \(in 1h 30m\)/);
   assert.match(newListingText({ symbol: 'X', name: null, exchangeName: 'MEXC', listingAt: now - 20 * 60_000 }, 'u', now), /Trading started .* \(20m ago\)/);
-  assert.match(resultDueText({ symbol: 'PNT', basePrice: null, pool: 1500, predictors: 3 }, 'u'), /no start price yet[\s\S]*1,500 pts from 3 predictors/);
+  assert.match(resultDueText({ symbol: 'PNT', basePrice: null, pool: 1500, predictors: 3 }, 'u'), /no start price yet[\s\S]*1,500 pts from 3 participants/);
 });
 
 test('telegram: channel names and channel posts', async () => {
@@ -71,7 +71,7 @@ test('telegram: channel names and channel posts', async () => {
   const res = marketResultText({ ...base, predictors: 23, result: { winningBucket: 'up', returnPct: 0.234, basePrice: 0.0421, finalPrice: 0.052, pool: 1500 } }, link);
   assert.match(res!, /^<b>\$AGENCY<\/b> · Agency\n🏁 <b>Result: Up wins · \+23\.4%<\/b>/);
   assert.match(res!, /\$0\.0421 → \$0\.052/);
-  assert.match(res!, /23 predictors · 1,500 pts paid to the winners/);
+  assert.match(res!, /23 participants · 1,500 pts paid to the winners/);
   assert.match(res!, /See the result:/);
   assert.equal(marketResultText({ ...base, result: null }), null);
 });
@@ -109,6 +109,10 @@ test('channel: posts open markets not posted yet, then a single last-hour remind
   assert.equal(channel.postAllOpen(), 0, 'already posted');
   assert.equal(channel.postAllOpen(true), 2, 'posting again includes posted ones');
   await channel.later(async () => {});
+  posts.splice(2);
+  // "Markets live" summary: one post with the count, its own banner, soonest to close first.
+  assert.equal(await channel.postSummary(), 2);
+  assert.match(posts[2], /^@firstprintfun \[banner ok\] 🟢 <b>2 markets live on Firstprint<\/b>/);
   posts.splice(2);
 
   clock.advance(4 * HOUR + 10 * 60_000); // LONG closes in 50 minutes
@@ -216,7 +220,7 @@ test('banners: each market gets its own PNG for new market, last hour and result
   const res = bannerSvg('result', { ...m, predictors: 23, result: { winningBucket: 'up', returnPct: 0.234, basePrice: 1, finalPrice: 1.234, pool: 1450 } });
   assert.match(res, />\+23\.4%</, 'the move is the headline');
   assert.match(res, /\$1 → \$1\.234/, 'the price is the only fact');
-  assert.doesNotMatch(res, /PREDICTORS|PAID OUT/, 'no predictors or payout on the result banner');
+  assert.doesNotMatch(res, /PARTICIPANTS|PREDICTORS|PAID OUT/, 'no participants or payout on the result banner');
   assert.doesNotMatch(res, /New Market Listed/);
   assert.match(svg, /Agency &lt;x&gt;/, 'names are escaped');
   assert.match(svg, /5 Oct, 12:00 UTC/);
@@ -310,4 +314,22 @@ test('discover: CoinGecko trending is read (prices as numbers or text) and cache
   await assert.rejects(d.trending(), (e: unknown) => e instanceof AppError && e.code === 'rate_limited');
   await assert.rejects(d.exchangeListings('nope'), (e: unknown) => e instanceof AppError && e.code === 'unknown_exchange');
   assert.deepEqual(await d.exchangeListings('mexc'), { listings: [] });
+});
+
+test('summary post: the count, soonest to close first, real numbers only', async () => {
+  const { liveSummaryText } = await import('../src/services/telegram.ts');
+  const { summaryBannerSvg } = await import('../src/services/banner.ts');
+  const now = Date.UTC(2026, 9, 5, 12);
+  const H = 3_600_000;
+  const ms = Array.from({ length: 12 }, (_, i) => ({ symbol: `T${i}`, closeAt: now + (12 - i) * H, participants: i }));
+  const text = liveSummaryText(ms, 'https://x/app/#/', now)!;
+  assert.match(text, /^🟢 <b>12 markets live on Firstprint<\/b>/);
+  assert.match(text, /• <b>\$T11<\/b> · closes in 1h\n• <b>\$T10<\/b> · closes in 2h/, 'soonest first');
+  assert.match(text, /…and 2 more/);
+  assert.match(text, /66 participants so far/);
+  assert.equal(liveSummaryText([], 'u', now), null);
+  const svg = summaryBannerSvg(ms.map((m) => ({ symbol: m.symbol, logoPng: null })), { count: 12, next: ms[11], pool: 5000, participants: 66 }, now);
+  assert.match(svg, />12</);
+  assert.match(svg, /\+6</, 'six logos, then +6');
+  assert.match(svg, /T11 · in 1h 00m/);
 });

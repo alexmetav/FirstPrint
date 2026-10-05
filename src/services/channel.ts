@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { FirstprintService } from './firstprint.ts';
-import { closingSoonText, marketLiveText, marketResultText, type Telegram } from './telegram.ts';
-import { logoToPng, renderBanner, type BannerKind } from './banner.ts';
+import { closingSoonText, liveSummaryText, marketLiveText, marketResultText, type Telegram } from './telegram.ts';
+import { logoToPng, renderBanner, renderSummaryBanner, type BannerKind } from './banner.ts';
 import { fetchImage } from '../api/fetchImage.ts';
 
 /** Telegram allows about 20 posts a minute to one channel; stay well under it. */
@@ -134,6 +134,32 @@ export class ChannelPoster {
     const ids = this.service.channelMarkets(!again).slice(0, 20);
     ids.forEach((id, i) => this.later(() => this.postLive(id), i === 0 ? 0 : this.gapMs));
     return ids.length;
+  }
+
+  /**
+   * "N markets live" post: every open market, soonest to close first, with their logos on the
+   * banner. Throws if there is no channel or nothing is open.
+   */
+  async postSummary(): Promise<number> {
+    const channel = this.channel;
+    if (!this.telegram || !channel) throw new Error('No player channel is set.');
+    const now = this.service.clock.now();
+    const open = this.service
+      .listMarkets('open')
+      .filter((m) => m.status === 'open' && m.closeAt > now)
+      .sort((a, b) => a.closeAt - b.closeAt);
+    const link = `${this.appUrl}#/`;
+    const text = liveSummaryText(open.map((m) => ({ symbol: m.symbol, closeAt: m.closeAt, participants: m.predictors })), link, now);
+    if (!text) throw new Error('There are no open markets to post.');
+    let banner: Uint8Array | null = null;
+    try {
+      const tokens = await Promise.all(open.slice(0, 6).map(async (m) => ({ symbol: m.symbol, logoPng: await this.logoFor(m.id) })));
+      banner = renderSummaryBanner(tokens, { count: open.length, next: { symbol: open[0].symbol, closeAt: open[0].closeAt }, pool: open.reduce((n, m) => n + m.pool, 0), participants: open.reduce((n, m) => n + m.predictors, 0) }, now);
+    } catch (err) {
+      this.log(`summary banner could not be drawn: ${(err as Error).message}`);
+    }
+    await this.post(channel, banner, text, { text: 'Predict now', url: link });
+    return open.length;
   }
 
   /** Last-hour reminders for markets about to close. Called every minute. */

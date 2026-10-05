@@ -60,7 +60,7 @@ function avatarColor(symbol: string) {
 
 function brand(x: number, y: number) {
   const bars = [
-    [40, '#ffc53d'],
+    [40, '#7dff3a'],
     [30, '#3fd69a'],
     [20, '#9faac0'],
     [30, '#ff8a5c'],
@@ -198,7 +198,7 @@ export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | n
     headline = 'Last Hour to Predict';
     items = [
       ['Predictions close', utc(m.closeAt)],
-      ['Predictors', (m.predictors ?? 0).toLocaleString('en-US')],
+      ['Participants', (m.predictors ?? 0).toLocaleString('en-US')],
       ['Pool', `${(m.pool ?? 0).toLocaleString('en-US')} pts`],
     ];
     resultBody = closingHero(m, logoPng, timeLeft(m.closeAt - now), status.color);
@@ -233,6 +233,69 @@ export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | n
     ${facts(items, 576)}
     <text x="${W - 80}" y="${H - 34}" text-anchor="end" font-family="Geist Mono" font-size="17" fill="${C.muted}" letter-spacing="1">firstprint.fun</text>
   </svg>`;
+}
+
+/** "3d 4h", "5h 20m" or "12 min": time left for anything up to weeks away. */
+function longLeft(ms: number) {
+  const min = Math.max(1, Math.round(ms / 60_000));
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h ${String(min % 60).padStart(2, '0')}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
+
+/**
+ * The "markets live" banner: the count big, the tokens' logos in a row, and when the next one
+ * closes. Tickers the font can't draw are left out of the row.
+ */
+export function summaryBannerSvg(tokens: { symbol: string; logoPng: string | null }[], stats: { count: number; next: { symbol: string; closeAt: number } | null; pool: number; participants: number }, now = Date.now()) {
+  const green = OUTCOME_COLORS.up;
+  const shown = tokens.filter((t) => drawable(t.symbol)).slice(0, 6);
+  const size = 104;
+  const gap = 28;
+  const row = shown
+    .map((t, i) => {
+      const x = 80 + i * (size + gap);
+      const y = 300;
+      const sym = t.symbol.toUpperCase();
+      const logo = t.logoPng && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(t.logoPng) ? t.logoPng : null;
+      const face = logo
+        ? `<clipPath id="tk${i}"><circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}"/></clipPath><image href="${logo}" x="${x}" y="${y}" width="${size}" height="${size}" clip-path="url(#tk${i})" preserveAspectRatio="xMidYMid slice"/>`
+        : `<circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}" fill="${avatarColor(sym)}"/><text x="${x + size / 2}" y="${y + size / 2 + 18}" text-anchor="middle" font-size="52" font-weight="700" fill="#ffffff">${esc(sym.slice(0, 1))}</text>`;
+      const label = sym.length > 7 ? `${sym.slice(0, 6)}…` : sym;
+      return `${face}<text x="${x + size / 2}" y="${y + size + 40}" text-anchor="middle" font-size="24" font-weight="600" fill="${C.text}">${esc(label)}</text>`;
+    })
+    .join('');
+  const more = stats.count > shown.length ? `<text x="${80 + shown.length * (size + gap) + 4}" y="${300 + size / 2 + 12}" font-size="34" font-weight="600" fill="${C.muted}">+${stats.count - shown.length}</text>` : '';
+  const items: [string, string][] = [
+    ['Participants', stats.participants.toLocaleString('en-US')],
+    ...(stats.next ? [['Closing next', `${drawable(stats.next.symbol) ? `${stats.next.symbol.toUpperCase()} · ` : ''}in ${timeLeft(stats.next.closeAt - now)}`] as [string, string]] : []),
+    ['In play', `${stats.pool.toLocaleString('en-US')} pts`],
+  ];
+  const pillText = 'LIVE NOW';
+  const pillW = pillText.length * 14 + 62;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Geist">
+    <defs><radialGradient id="glow" cx="0.9" cy="0" r="0.6"><stop offset="0" stop-color="${green}" stop-opacity="0.12"/><stop offset="1" stop-color="${green}" stop-opacity="0"/></radialGradient></defs>
+    <rect width="${W}" height="${H}" fill="${C.bg}"/>
+    <rect width="${W}" height="${H}" fill="url(#glow)"/>
+    ${brand(80, 64)}
+    <g transform="translate(${W - 80 - pillW},70)">
+      <rect width="${pillW}" height="48" rx="24" fill="${green}" fill-opacity="0.12" stroke="${green}" stroke-opacity="0.5"/>
+      <circle cx="28" cy="24" r="6" fill="${green}"/>
+      <text x="46" y="31" font-family="Geist Mono" font-size="19" font-weight="500" fill="${green}" letter-spacing="2">${pillText}</text>
+    </g>
+    <text x="74" y="250" font-size="110" font-weight="700" fill="${green}" letter-spacing="-4">${stats.count}</text>
+    <text x="${80 + String(stats.count).length * 62 + 26}" y="250" font-size="60" font-weight="600" fill="${C.text}" letter-spacing="-1.5">market${stats.count === 1 ? '' : 's'} live <tspan fill="${C.muted}" font-weight="400">· pick yours</tspan></text>
+    ${row}${more}
+    <line x1="80" y1="524" x2="${W - 80}" y2="524" stroke="${C.line}" stroke-width="1.5"/>
+    ${facts(items, 576)}
+    <text x="${W - 80}" y="${H - 34}" text-anchor="end" font-family="Geist Mono" font-size="17" fill="${C.muted}" letter-spacing="1">firstprint.fun</text>
+  </svg>`;
+}
+
+export function renderSummaryBanner(...args: Parameters<typeof summaryBannerSvg>): Uint8Array {
+  const resvg = new Resvg(summaryBannerSvg(...args), { fitTo: { mode: 'width', value: W }, font: { fontFiles: FONTS, loadSystemFonts: false, defaultFontFamily: 'Geist' } });
+  return resvg.render().asPng();
 }
 
 /**

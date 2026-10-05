@@ -154,6 +154,7 @@ export function createAdminApi(key, baseUrl = '') {
     setLogoPng: (id, logoPng) => post(`/api/admin/markets/${encodeURIComponent(id)}/logo-png`, { logoPng }),
     telegramPost: (id) => post(`/api/admin/markets/${encodeURIComponent(id)}/telegram`),
     telegramPostOpen: (again = false) => post('/api/admin/telegram/post-open', { again }),
+    telegramPostSummary: () => post('/api/admin/telegram/post-summary'),
     telegramDisconnect: () => post('/api/admin/telegram/disconnect'),
     setAutoListings: (enabled) => post('/api/admin/auto-listings', { enabled }),
     setExchange: (id, enabled) => post(`/api/admin/exchanges/${encodeURIComponent(id)}`, { enabled }),

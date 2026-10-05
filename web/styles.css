@@ -237,7 +237,7 @@ h3 {
   height: 3px;
   border-radius: 2px;
 }
-.wordmark .mark i:nth-child(1) { background: var(--warn); width: 100%; }
+.wordmark .mark i:nth-child(1) { background: var(--moon); width: 100%; }
 .wordmark .mark i:nth-child(2) { background: var(--up); width: 80%; }
 .wordmark .mark i:nth-child(3) { background: var(--flat); width: 60%; }
 .wordmark .mark i:nth-child(4) { background: var(--down); width: 80%; }
@@ -5212,7 +5212,7 @@ main,
   height: 3px;
   border-radius: 2px;
 }
-.wordmark .mark i:nth-child(1) { width: 20px; background: #ffd60a; }
+.wordmark .mark i:nth-child(1) { width: 20px; background: var(--moon); }
 .wordmark .mark i:nth-child(2) { width: 15px; background: #30d158; }
 .wordmark .mark i:nth-child(3) { width: 10px; background: #8e8e93; }
 .wordmark .mark i:nth-child(4) { width: 15px; background: #ff9f0a; }
@@ -12109,4 +12109,9 @@ svg.viz.viz-narrow {
 .disc-made .i {
   width: 15px;
   height: 15px;
+}
+.head-action.row-gap {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }

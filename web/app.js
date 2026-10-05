@@ -890,7 +890,7 @@ const featuredMarket = () => trendingList()[0] ?? [...S.lists.open].sort((a, b) 
 
 /** Sort choices for the All markets tab. */
 const ALL_SORTS = [
-  ['predictors', 'Most predictors', (a, b) => b.predictors - a.predictors || b.pool - a.pool],
+  ['predictors', 'Most participants', (a, b) => b.predictors - a.predictors || b.pool - a.pool],
   ['pool', 'Biggest pool', (a, b) => b.pool - a.pool || b.predictors - a.predictors],
   ['active', 'Most active (24h)', byTrending],
   ['newest', 'Newest', (a, b) => b.openedAt - a.openedAt],
@@ -966,8 +966,6 @@ function homeHero(showLive = true) {
   const open = S.lists.open;
   const inPlay = [...open, ...S.lists.live].reduce((sum, m) => sum + (m.pool || 0), 0);
   const best = Math.max(0, ...open.flatMap((m) => bucketsOf(m).map((b) => poolMultiple(m, b) ?? 0)));
-  const venues = [...new Set(open.flatMap(venuesOf))].sort().slice(0, 4);
-  const list = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}` : xs[0]);
   const word = (b) => `<b style="color:${oVar(b, false)}">${oName(b, false)}</b>`;
   const stats = [
     open.length ? ['Open markets', fmtNum(open.length)] : null,
@@ -989,7 +987,7 @@ function homeHero(showLive = true) {
             : `<p class="hero-badge">${ico('sparkles')}Listing prediction markets<span class="hero-badge-more"> · Free to play</span></p>`
         }
         <h1 id="hero-title">Predict where new listings land<span class="soft"> before the price settles</span></h1>
-        <p class="hero-sub">Pick one of five outcomes (${LADDER.map(word).join(', ')}) on freshly listed tokens${venues.length ? ` across ${esc(list(venues))}` : ''}. Points only, no real money.</p>
+        <p class="hero-sub">Pick one of five outcomes (${LADDER.map(word).join(', ')}) on new and trending tokens. Points only, no real money.</p>
         ${stats.length ? `<dl class="hero-stats">${stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
       </div>
       ${
@@ -1108,7 +1106,7 @@ function heroFacts(m, whenLabel, whenValue) {
       ${
         m.pool
           ? `<div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:hero:${m.id}`, m.pool)} pts</dd></div>
-             <div>${ico('users')}<dt>Predictors</dt><dd>${fmtNum(m.predictors)}</dd></div>`
+             <div>${ico('users')}<dt>Participants</dt><dd>${fmtNum(m.predictors)}</dd></div>`
           : isManual(m)
           ? `<div>${ico('dollar')}<dt>${isYesNo(m) ? 'Target' : 'Start price'}</dt><dd>${hasStart(m) ? fmtPrice(m.basePrice) : 'At listing'}</dd></div>`
           : ''
@@ -1433,7 +1431,7 @@ function marketMain(m) {
       ? fact(isUpcoming(m) ? 'Lists & closes' : 'Closes', `${fmtDate(m.closeAt)} <span class="muted">· in ${until(m.closeAt)}</span>`)
       : fact('Result', fmtDate(m.settleAt)),
     settled || m.phase === 'awaiting_result' ? '' : fact('Result expected', fmtDate(m.settleAt)),
-    m.pool ? fact('Pool', `${tick(`pool:page:${m.id}`, m.pool)} pts <span class="muted">· ${fmtNum(m.predictors)} predictor${m.predictors === 1 ? '' : 's'}</span>`) : '',
+    m.pool ? fact('Pool', `${tick(`pool:page:${m.id}`, m.pool)} pts <span class="muted">· ${fmtNum(m.predictors)} participant${m.predictors === 1 ? '' : 's'}</span>`) : '',
   ].join('');
 
   return `
@@ -1658,7 +1656,7 @@ function holdersView(m) {
   const yn = isYesNo(m);
   return `
     <section class="section panel panel-flush">
-      <div class="section-head"><span class="section-ico">${ico('users')}</span><h2>Top predictors <span class="count-badge">${fmtNum(h.total)}</span></h2></div>
+      <div class="section-head"><span class="section-ico">${ico('users')}</span><h2>Top participants <span class="count-badge">${fmtNum(h.total)}</span></h2></div>
       <table class="table holders"><thead><tr><th>#</th><th>Player</th><th>Picked</th><th class="right">Points</th>${h.holders.some((x) => x.payout !== null) ? '<th class="right">Won</th>' : ''}</tr></thead><tbody>
         ${h.holders
           .slice(0, 10)
@@ -2118,7 +2116,7 @@ function leaderboardView(lb) {
     <div class="tabs lb-tabs" role="tablist" aria-label="Leaderboard period">${LB_PERIODS.map(([id, label]) => `<button role="tab" aria-selected="${(lb.period ?? 'week') === id}" data-lb-period="${id}">${label}</button>`).join('')}</div>
     ${
       lb.entries.length
-        ? `${podium}<div class="panel panel-flush"><table class="table"><thead><tr><th>Rank</th><th>Predictor</th><th class="right">Profit</th><th class="right hide-sm">Correct</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        ? `${podium}<div class="panel panel-flush"><table class="table"><thead><tr><th>Rank</th><th>Participant</th><th class="right">Profit</th><th class="right hide-sm">Correct</th></tr></thead><tbody>${rows}</tbody></table></div>`
         : `<div class="empty"><div class="empty-art">${ico('trophy')}</div><p>No markets have settled ${{ day: 'today', week: 'this week', month: 'this month', all: '' }[lb.period ?? 'week'] || 'yet'}${lb.period === 'all' ? '' : ' yet'}.</p></div>`
     }
     ${S.me && !lb.me ? '<p class="fine">You’ll appear here after one of your predictions settles.</p>' : ''}`;
@@ -3848,7 +3846,7 @@ function adminOverview({ markets, waiting, drafts, token, tasks, log, pending })
   const stat = (color, label, value, sub, goto) =>
     `<button type="button" class="adm-stat" style="--c:var(--${color})" data-action="admin-tab" data-tab="${goto}"><span class="adm-stat-l">${label}</span><b>${value}</b><small>${sub}</small></button>`;
   const todo = [];
-  for (const m of waiting) todo.push(['alert', 'crash', `${esc(m.symbol)} is waiting for its result`, `${fmtPts(m.pool)} from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'}`, 'markets', 'Post result']);
+  for (const m of waiting) todo.push(['alert', 'crash', `${esc(m.symbol)} is waiting for its result`, `${fmtPts(m.pool)} from ${m.predictors} participant${m.predictors === 1 ? '' : 's'}`, 'markets', 'Post result']);
   for (const m of drafts) todo.push(['edit', 'flat', `${esc(m.symbol)} is a draft`, 'Hidden until you publish it', 'markets', 'Review']);
   if (token?.enabled && !token.ready) todo.push(['token', 'warn', 'TestFPT isn’t set up', 'Points stay in balances until it exists', 'token', 'Set up']);
   if (token?.enabled && (token.authorityKey || (token.mint && !token.savedInEnv?.mint))) todo.push(['key', 'warn', 'Save the TestFPT keys in Render', 'So a restart can’t lose them', 'token', 'Show keys']);
@@ -3895,7 +3893,7 @@ function adminMarketsTab(markets, waiting, pending) {
             ? waiting
                 .map(
                   (m) => `<details class="adm-row"${A.preview?.id === m.id || waiting.length === 1 ? ' open' : ''}>
-                    <summary><span class="mkt-cell">${tokenAvatar(m, 'avatar-sm')}<span><b>${esc(m.symbol)}</b><small class="muted">${fmtPts(m.pool)} · ${m.predictors} predictor${m.predictors === 1 ? '' : 's'}</small></span></span><span class="adm-row-cta">Post result</span></summary>
+                    <summary><span class="mkt-cell">${tokenAvatar(m, 'avatar-sm')}<span><b>${esc(m.symbol)}</b><small class="muted">${fmtPts(m.pool)} · ${m.predictors} participant${m.predictors === 1 ? '' : 's'}</small></span></span><span class="adm-row-cta">Post result</span></summary>
                     ${resultForm(m)}
                   </details>`,
                 )
@@ -3911,7 +3909,7 @@ function adminMarketsTab(markets, waiting, pending) {
     <div id="admin-checks"></div>
     ${listings}
     <section class="panel panel-flush">
-      <div class="section-head"><h2>All markets <span class="count-badge">${markets.length}</span></h2><button class="btn btn-solid btn-sm head-action" data-action="admin-tab" data-tab="create">${ico('plus')}New market</button></div>
+      <div class="section-head"><h2>All markets <span class="count-badge">${markets.length}</span></h2><span class="head-action row-gap">${A.info.telegram?.channel ? `<button class="btn btn-sm" data-action="admin-tg-summary" title="One Telegram post with every open market">${ico('telegram')}Post live markets</button>` : ''}<button class="btn btn-solid btn-sm" data-action="admin-tab" data-tab="create">${ico('plus')}New market</button></span></div>
       ${
         markets.length
           ? `<div class="table-scroll"><table class="table"><thead><tr><th>Market</th><th class="hide-sm">Type</th><th>Status</th><th class="right">Pool</th><th class="right"></th></tr></thead><tbody>${markets
@@ -4042,6 +4040,7 @@ const ADMIN_ACTIONS = {
   telegram_channel_off: 'Stopped posting to the Telegram channel',
   telegram_posted: 'Posted a market to the Telegram channel',
   telegram_posted_open: 'Posted open markets to the Telegram channel',
+  telegram_posted_summary: 'Posted a “markets live” summary to the Telegram channel',
   team_member_added: 'Gave someone console access',
   team_member_removed: 'Removed someone’s console access',
   telegram_token_banners_on: 'Turned token banners on for the Telegram channel',
@@ -4321,7 +4320,7 @@ function resultForm(m) {
   return `
     <form class="admin-detect admin-result" data-resolve="${esc(m.id)}">
       <div><b>${esc(m.symbol)}</b> <span class="muted">${esc(venueNames(m))}</span><br>
-        <span class="muted">Start price ${hasStart(m) ? fmtPrice(m.basePrice) : '<b>not set yet</b>'} · Pool ${fmtPts(m.pool)} from ${m.predictors} predictor${m.predictors === 1 ? '' : 's'} · ${dist}</span><br>
+        <span class="muted">Start price ${hasStart(m) ? fmtPrice(m.basePrice) : '<b>not set yet</b>'} · Pool ${fmtPts(m.pool)} from ${m.predictors} participant${m.predictors === 1 ? '' : 's'} · ${dist}</span><br>
         <span class="muted">${bucketsOf(m).map((b) => `${oName(b, yn)} ${rangeOf(m, b)}`).join(' · ')}</span></div>
       ${
         hasStart(m)
@@ -4352,7 +4351,9 @@ function resultForm(m) {
 
 /** "Use live price" under a price field: fills it with the median live price from the market's exchanges. */
 function liveFillButton(m, field) {
-  return `<button class="btn btn-sm live-fill" type="button" data-action="admin-live-fill" data-symbol="${esc(m.symbol)}" data-exchanges="${esc(m.venues.map((x) => x.id).join(','))}" data-field="${field}">${ico('activity')}Use live price</button>`;
+  // Each source's own pair (a CoinGecko market's is its coin id, not the ticker).
+  const pairs = Object.fromEntries(m.venues.filter((x) => x.pair).map((x) => [x.id, x.pair]));
+  return `<button class="btn btn-sm live-fill" type="button" data-action="admin-live-fill" data-symbol="${esc(m.symbol)}" data-exchanges="${esc(m.venues.map((x) => x.id).join(','))}" data-pairs="${esc(JSON.stringify(pairs))}" data-field="${field}">${ico('activity')}Use live price</button>`;
 }
 
 async function fillLivePrice(el) {
@@ -4362,7 +4363,7 @@ async function fillLivePrice(el) {
   el.disabled = true;
   el.textContent = 'Getting price…';
   try {
-    const { prices } = await A.api.priceCheck({ symbol: el.dataset.symbol, exchanges: el.dataset.exchanges.split(',').filter(Boolean) });
+    const { prices } = await A.api.priceCheck({ symbol: el.dataset.symbol, exchanges: el.dataset.exchanges.split(',').filter(Boolean), pairs: JSON.parse(el.dataset.pairs || '{}') });
     const live = prices.filter((p) => p.price !== null).map((p) => p.price).sort((a, b) => a - b);
     if (!live.length) throw new Error(`No live price for ${el.dataset.symbol} right now (${prices.map((p) => `${p.name}: ${p.error || 'not trading'}`).join(', ')}).`);
     const median = live[Math.floor((live.length - 1) / 2)];
@@ -4597,7 +4598,7 @@ function telegramPanel(t) {
           t.channel
             ? `<p class="all-good">${ico('checkCircle')}Posting to <a href="https://t.me/${esc(t.channel)}" target="_blank" rel="noopener noreferrer">@${esc(t.channel)}</a></p>
                ${t.unposted ? `<p class="muted"><b>${t.unposted} open market${t.unposted === 1 ? ' hasn’t' : 's haven’t'} been posted yet</b> (made before the channel was set up).</p>` : ''}
-               <div class="admin-actions">${t.unposted ? `<button class="btn btn-solid btn-sm" data-action="admin-tg-post-open">${ico('telegram')}Post ${t.unposted === 1 ? 'it' : `all ${t.unposted}`} now</button>` : ''}${t.open && t.open > t.unposted ? `<button class="btn btn-sm" data-action="admin-tg-post-open" data-again="1">${ico('telegram')}Post all ${t.open} open markets again</button>` : ''}<button class="btn btn-sm" data-action="admin-tg-channel-remove">Stop posting</button></div>
+               <div class="admin-actions"><button class="btn btn-solid btn-sm" data-action="admin-tg-summary" title="One post with every open market, soonest to close first">${ico('telegram')}Post live markets</button>${t.unposted ? `<button class="btn btn-sm" data-action="admin-tg-post-open">${ico('telegram')}Post ${t.unposted === 1 ? 'it' : `all ${t.unposted}`} now</button>` : ''}${t.open && t.open > t.unposted ? `<button class="btn btn-sm" data-action="admin-tg-post-open" data-again="1">${ico('telegram')}Post all ${t.open} open markets again</button>` : ''}<button class="btn btn-sm" data-action="admin-tg-channel-remove">Stop posting</button></div>
                <div class="toggle-grid"><label class="toggle"><input type="checkbox" data-action="admin-token-banners"${t.tokenBanners ? ' checked' : ''} /><span class="toggle-ui" aria-hidden="true"></span>Token banners</label></div>
                ${how(`Every market you publish is posted with a banner and a “Predict now” button, a reminder goes out in its last hour, and results with a winner are posted (cancelled markets are not). ${t.tokenBanners ? 'Token banners on: each post gets the token’s own banner with its logo and ticker. A ticker the banner font can’t draw (such as Chinese) falls back to the fixed banner. Check it with “Preview banner” on the market form.' : 'Token banners off: new markets use the fixed banner, and reminders and results are text only.'} Players see a Telegram button on market pages, their dashboard and the menu.`)}`
             : `<ol class="tg-steps">
@@ -4954,6 +4955,18 @@ async function onAdminAction(action, el) {
       }
       el.disabled = false;
       return;
+    case 'admin-tg-summary': {
+      if (!confirm('Post a “markets live” summary to the Telegram channel now?')) return;
+      el.disabled = true;
+      try {
+        const { count } = await A.api.telegramPostSummary();
+        toast(`Posted: ${count} market${count === 1 ? '' : 's'} live`);
+      } catch (err) {
+        toast(err.message, true);
+      }
+      el.disabled = false;
+      return;
+    }
     case 'admin-tg-post-open': {
       el.disabled = true;
       try {
