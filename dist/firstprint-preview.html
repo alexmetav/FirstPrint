@@ -12298,6 +12298,8 @@ function fmtDate(ts) {
 }
 
 const until = (ts) => `<span data-until="${ts}">${fmtDur(ts - now())}</span>`;
+/** "Oct 10, 6:00 PM" with the countdown beside it, so the exact time the admin set is always shown. */
+const atAndIn = (ts) => `${fmtDate(ts)} <span class="feat-sub">in ${until(ts)}</span>`;
 const outcome = (b, yn = false) => `<b class="oc" style="--c:${oVar(b, yn)}">${icon(b, yn)}${oName(b, yn)}</b>`;
 const rangeLabel = (b, t) => bucketRangeLabel(b, t).replace(/-/g, '−');
 /** The price range an outcome covers, for either kind of market. */
@@ -13078,7 +13080,7 @@ function homeHero(showLive = true) {
           ? `<a class="hero-next" href="#/market/${encodeURIComponent(next.id)}">
         <span class="hero-next-head"><span>Closing next</span><span class="st st-live"><i aria-hidden="true"></i>Open</span></span>
         <span class="hero-next-id">${tokenAvatar(next, 'avatar-md')}<span><b>${esc(next.symbol)}</b>${next.name ? `<small>${esc(next.name)}</small>` : ''}</span></span>
-        <span class="hero-next-facts"><span><small>Closes in</small><b>${until(next.closeAt)}</b></span><span><small>Pool</small><b>${fmtNum(next.pool || 0)} pts</b></span></span>
+        <span class="hero-next-facts"><span><small>Predictions close</small><b>${fmtDate(next.closeAt)}</b><small>in ${until(next.closeAt)}</small></span><span><small>Pool</small><b>${fmtNum(next.pool || 0)} pts</b></span></span>
         <span class="btn btn-gold btn-sm">Predict ${ico('arrowRight')}</span>
       </a>`
           : ''
@@ -13186,7 +13188,8 @@ function featuredView(m) {
   const fact = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
   const facts = [
     manual ? fact(yn ? 'Target price' : 'Start price', hasStart(m) ? fmtPrice(m.basePrice) : 'At listing <span class="feat-sub">opening price</span>') : '',
-    pre ? fact(m.kind === 'live_test' ? 'Starts in' : 'Lists in', until(isUpcoming(m) ? m.closeAt : m.listingAt)) : fact('Closes in', until(m.closeAt)),
+    pre ? fact(m.kind === 'live_test' ? 'Starts' : 'Lists', atAndIn(isUpcoming(m) ? m.closeAt : m.listingAt)) : fact('Predictions close', atAndIn(m.closeAt)),
+    manual && !pre ? fact('Result', fmtDate(m.settleAt)) : '',
     m.pool ? fact('Pool', `${tick(`pool:hero:${m.id}`, m.pool)} pts <span class="feat-sub">${fmtNum(m.predictors)} player${m.predictors === 1 ? '' : 's'}</span>`) : '',
   ].join('');
 
@@ -13290,8 +13293,8 @@ function cardView(m) {
 
   let when;
   if (m.phase === 'pre_listing') when = `${m.kind === 'live_test' ? 'Starts' : 'Lists'} in ${until(m.listingAt)}`;
-  else if (upcoming) when = `Lists in ${until(m.closeAt)}`;
-  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Closes in ${until(m.closeAt)}`;
+  else if (upcoming) when = `Lists ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
+  else if (m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running') when = `Predictions close ${fmtDate(m.closeAt)} · in ${until(m.closeAt)}`;
   else if (m.phase === 'running') when = `Result in ${until(m.settleAt)}`;
   else if (m.phase === 'awaiting_result') when = 'Awaiting result';
   else when = fmtDate(m.settleAt);
@@ -16038,7 +16041,7 @@ function marketForm(m, pre = null) {
           </div>
         </div>
       </div>
-      <label><span class="field-label">Predictions close (your time)</span><input name="closeAt" type="datetime-local" value="${toLocalInput(v?.closeAt ?? soon)}" required /><small class="utc-hint" data-utc-for="closeAt"></small></label>
+      <label><span class="field-label">Predictions close (your time)</span><input name="closeAt" type="datetime-local" value="${toLocalInput(v?.closeAt ?? soon)}" required /><small class="utc-hint" data-utc-for="closeAt"></small><small class="muted">The last moment players can pick. Cards show this time; the result time is separate.</small></label>
       <label><span class="field-label">Result expected by (your time)</span><input name="resultAt" type="datetime-local" value="${toLocalInput(v?.settleAt ?? soon + 24 * 3_600_000)}" required /><small class="utc-hint" data-utc-for="resultAt"></small></label>
       <div class="price-check" style="grid-column:1/-1">
         <button class="btn btn-sm" type="button" data-action="admin-price-check">${ico('activity')}Check live price</button>
@@ -16267,7 +16270,7 @@ function adminPhasePill(m) {
 function adminPhase(m) {
   if (m.mode === 'manual') {
     if (m.phase === 'draft') return 'Draft, not published';
-    if (m.phase === 'baseline') return `Open, closes in ${fmtDur(m.closeAt - now())}`;
+    if (m.phase === 'baseline') return `Open, closes ${fmtDate(m.closeAt)} (in ${fmtDur(m.closeAt - now())})`;
     if (m.phase === 'awaiting_result') return 'Awaiting your result';
   }
   return { pre_listing: `Starts in ${fmtDur(m.listingAt - now())}`, baseline: 'Open, trading', running: `Running, ${fmtDur(m.settleAt - now())} left`, resolved: `Settled: ${NAMES[m.result?.winningBucket] ?? ''}`, void: 'Cancelled' }[m.phase] ?? m.phase;
@@ -16709,7 +16712,7 @@ async function submitAdminMarket(form, intent) {
   if (autoOpen && intent === 'publish') {
     if (!confirm(`Schedule this market? It stays a draft, then opens by itself about 3 minutes after trading starts (${new Date(body.autoOpenAt).toLocaleString()}), with the live price as its start price.`)) return;
     intent = 'save';
-  } else if (intent === 'publish' && !confirm('Publish this market? Users will be able to predict straight away.')) return;
+  } else if (intent === 'publish' && !confirm(`Publish this market? Users will be able to predict straight away.\n\nPredictions close: ${fmtDate(body.closeAt)} (in ${fmtDur(body.closeAt - now())})\nResult: ${fmtDate(body.resultAt)}`)) return;
   const buttons = form.querySelectorAll('button');
   buttons.forEach((b) => (b.disabled = true));
   try {
