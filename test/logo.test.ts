@@ -86,6 +86,9 @@ test('HTTP: lists link to the logo, unchanged lists answer 304, big answers are 
     assert.equal(img.headers['content-type'], 'image/png');
     assert.match(String(img.headers['cache-control']), /immutable/);
     assert.equal((await get('/api/logo/nope')).status, 404);
+    // Uptime monitors check with HEAD: it must answer like GET.
+    const head = await new Promise<number>((resolve, reject) => request({ port, path: '/api/health', method: 'HEAD' }, (res) => { res.resume(); resolve(res.statusCode ?? 0); }).on('error', reject).end());
+    assert.equal(head, 200);
   } finally {
     server.close();
   }

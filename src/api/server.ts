@@ -1217,7 +1217,8 @@ export function createApiServer(opts: ServerOptions): Server {
     }
 
     const match = routes
-      .map((r) => ({ r, m: r.method === req.method ? r.pattern.exec(url.pathname) : null }))
+      // HEAD is answered like GET (Node sends the headers only): uptime monitors check with HEAD.
+      .map((r) => ({ r, m: r.method === (req.method === 'HEAD' ? 'GET' : req.method) ? r.pattern.exec(url.pathname) : null }))
       .find((x) => x.m);
     if (!match || !match.m) return send(res, 404, { error: 'not_found', message: 'Unknown endpoint.' });
 
