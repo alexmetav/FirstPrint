@@ -1,6 +1,7 @@
 {
   "buildCommand": "npm run build:deploy",
   "outputDirectory": ".deploy",
+  "cleanUrls": true,
   "rewrites": [
     {
       "source": "/api/health",
