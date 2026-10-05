@@ -258,8 +258,11 @@ async function onRoute() {
   const changed = next.name !== S.route.name || next.id !== S.route.id;
   S.route = next;
   S.menuOpen = false;
+  S.streakOpen = false;
   if (changed) {
     closeSheet();
+    // Overlays that belong to the page being left (the tour, results inbox, PnL card) close with it.
+    if (['tour', 'inbox', 'pnl'].includes(S.modal) && !S.modalBusy) closeModal();
     $('#view').innerHTML = skeletonView(next.name);
     window.scrollTo(0, 0);
   }
@@ -472,7 +475,6 @@ function drawTop() {
     </nav>`;
 }
 
-/** Everything secondary: pages, test SOL, the theme switch, help and the account. */
 /** With TestFPT on, the 1,000 starting points wait on the Earn page to be claimed to a wallet. */
 const startPoints = () => (S.cfg?.rewards?.onChain ? '1,000 free points to claim on the Earn page' : '1,000 free points');
 
@@ -2594,7 +2596,7 @@ function claimCard(r) {
   if (r.firstprintWallet) {
     return `
     <section class="claim-card${r.claimable ? ' has-claim' : ' is-empty'}">
-      <div class="claim-amount"><span class="claim-ico">${ico('token')}</span><div><b>${r.claimable ? `Sending <span class="num">${fmtNum(r.claimable)}</span> TestFPT to your wallet…` : 'Rewards arrive by themselves'}</b><span class="muted">Everything you earn is sent to your Firstprint wallet (${esc(shortAddress(r.firstprintWallet))}) as TestFPT, on chain, with no fee for you.</span></div></div>
+      <div class="claim-amount"><span class="claim-ico">${ico('token')}</span><div><b>${r.claimable ? (r.chainPaused ? `<span class="num">${fmtNum(r.claimable)}</span> TestFPT on its way` : `Sending <span class="num">${fmtNum(r.claimable)}</span> TestFPT to your wallet…`) : 'Rewards arrive by themselves'}</b><span class="muted">${r.claimable && r.chainPaused ? 'Sending is paused for a little while on our side. It goes out by itself as soon as it restarts; nothing for you to do.' : `Everything you earn is sent to your Firstprint wallet (${esc(shortAddress(r.firstprintWallet))}) as TestFPT, on chain, with no fee for you.`}</span></div></div>
       <div class="claim-side"><p class="fine" id="claim-status" role="status">${r.mintUrl ? `<a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a>` : ''}</p></div>
     </section>`;
   }
@@ -2610,7 +2612,7 @@ function claimCard(r) {
             : `${wallets.length > 1 ? `<label class="select">To <select id="claim-wallet">${wallets.map((w) => `<option value="${esc(w.address)}">${esc(shortAddress(w.address))}${w.walletName ? ` · ${esc(w.walletName)}` : ''}</option>`).join('')}</select></label>` : `<span class="muted">To ${esc(shortAddress(wallets[0].address))}</span>`}
                <button class="btn btn-gold" data-action="claim-tokens"${S.claimBusy ? ' disabled' : ''}>${S.claimBusy ? 'Claiming…' : `Claim ${fmtNum(r.claimable)} TestFPT`}</button>`
         }
-        <p class="fine" id="claim-status" role="status">No fee and nothing to approve: Firstprint sends it and pays the network fee.${r.mintUrl ? ` · <a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a>` : ''}</p>
+        <p class="fine" id="claim-status" role="status">${r.chainPaused ? 'Right now your wallet may ask you to approve the claim and pay a tiny fee in test SOL.' : 'No fee and nothing to approve: Firstprint sends it and pays the network fee.'}${r.mintUrl ? ` · <a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a>` : ''}</p>
       </div>
     </section>`;
 }
@@ -2814,7 +2816,7 @@ function radarView(listings) {
     <p class="page-lede">New listings found automatically from exchange announcements and new trading pairs on Binance, MEXC, Bybit, OKX, Gate, Bitget, and KuCoin. A market opens once the listing and its trading time are confirmed.</p>
     ${
       listings.length
-        ? `<table class="table radar"><thead><tr><th>Token</th><th>Exchange</th><th class="hide-sm">Found from</th><th>Trading starts</th><th class="right">Market</th></tr></thead><tbody>${rows}</tbody></table>`
+        ? `<div class="table-scroll"><table class="table radar"><thead><tr><th>Token</th><th>Exchange</th><th class="hide-sm">Found from</th><th>Trading starts</th><th class="right">Market</th></tr></thead><tbody>${rows}</tbody></table></div>`
         : '<div class="empty"><p>No new listings found yet. The radar checks every exchange every few minutes.</p></div>'
     }`;
 }
@@ -4941,8 +4943,6 @@ document.addEventListener('click', async (e) => {
   if (action?.startsWith('admin-')) return onAdminAction(action, t.closest('[data-action]'));
 
   switch (action) {
-    case 'login':
-    case 'signup':
     case 'connect':
       return openAuth('connect');
     case 'share': {

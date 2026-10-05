@@ -3,7 +3,7 @@
  * and claiming them to a wallet as TestFPT.
  *
  * With TestFPT set up, rewards wait until the player claims them: the claim mints that many TestFPT
- * to their wallet (they sign and pay the network fee in test SOL) and, once confirmed on chain, adds
+ * to their wallet (the server signs and pays the network fee) and, once confirmed on chain, adds
  * the points to their balance. Without TestFPT, rewards go straight to the balance.
  *
  * X has no free API for checking follows or reposts, so tasks are honour-based: the player links
@@ -121,6 +121,8 @@ export class RewardsService {
   private vault: WalletVault | null = null;
   /** The chain work in progress, so overlapping calls don't race; a call during a run gets one more run after it. */
   private chainRun: Promise<void> | null = null;
+  /** False once the background run finds the mint authority out of test SOL (mints and auto-claims wait). */
+  private funded = true;
   private chainNext: Promise<void> | null = null;
   /** How long submitClaim waits for confirmation before answering "still confirming". */
   confirmWaitMs = 20_000;
@@ -335,6 +337,7 @@ export class RewardsService {
     let funded = true;
     try {
       funded = (await token.chain.balance(this.authority!.address)) >= MIN_AUTHORITY_LAMPORTS;
+      this.funded = funded;
     } catch {
       return; // network down: try again next time
     }
@@ -439,7 +442,9 @@ export class RewardsService {
   /** Back to the queue for another try, or failed for good after a few. */
   private mintFailed(m: MintRow, error: string) {
     const final = m.attempts >= MAX_MINT_ATTEMPTS;
-    this.db.prepare('UPDATE chain_mints SET status = ?, error = ?, updated_at = ? WHERE id = ?').run(final ? 'failed' : 'queued', error, this.now(), m.id);
+    // The attempt count is saved too: one that can't even be built must still reach the limit, or
+    // it would stay queued at the front and hold up every later mint.
+    this.db.prepare('UPDATE chain_mints SET status = ?, error = ?, attempts = ?, updated_at = ? WHERE id = ?').run(final ? 'failed' : 'queued', error, m.attempts, this.now(), m.id);
     if (final) this.service.log(`mint ${m.id} (${m.kind} for ${m.user_id}) failed: ${error}`);
   }
 
@@ -460,7 +465,7 @@ export class RewardsService {
       const reserve = this.db.prepare('UPDATE rewards SET claim_id = ? WHERE id = ? AND claim_id IS NULL');
       let reserved = 0;
       for (const r of rows) reserved += Number(reserve.run(id, r.id).changes);
-      if (reserved !== rows.length) throw new Error('rewards changed while claiming');
+      if (reserved !== rows.length) throw new AppError(409, 'claim_conflict', 'Your rewards changed while preparing the claim. Try again.');
       this.db
         .prepare(
           `INSERT INTO claims (id, user_id, wallet, amount, status, message, last_valid_height, signature, created_at, updated_at)
@@ -607,6 +612,8 @@ export class RewardsService {
       claimable,
       // A Firstprint wallet: rewards are sent to it by the server, no claim or fee needed.
       firstprintWallet: this.embeddedAddress(userId),
+      // The server is out of test SOL: sends wait, and claims would need the wallet to pay.
+      chainPaused: this.ready() && !this.funded,
       welcomeClaimed: welcome ? welcome.claim_id !== null && this.isClaimed(welcome.claim_id) : true,
       xUsername: user.x_username,
       xConnectPoints: X_CONNECT_POINTS,
@@ -859,6 +866,7 @@ export class RewardsService {
       try {
         id = await this.serverClaim(userId, wallet);
       } catch (err) {
+        if (err instanceof AppError) throw err;
         throw new AppError(502, 'chain_unavailable', `The Solana ${token.cluster} network did not answer. Try again in a moment. (${(err as Error).message.slice(0, 120)})`);
       }
       if (!id) throw new AppError(400, 'nothing_to_claim', 'Nothing to claim yet. Complete a task or invite a friend to earn more.');
