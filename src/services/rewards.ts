@@ -124,6 +124,8 @@ export class RewardsService {
   private chainNext: Promise<void> | null = null;
   /** How long submitClaim waits for confirmation before answering "still confirming". */
   confirmWaitMs = 20_000;
+  /** Claims to a player's own wallet are signed and paid by the server (no wallet pop-up, no fee) while it has test SOL. */
+  serverPaysClaims = true;
 
   constructor(service: FirstprintService, token: TokenOptions | null, siteUrl = 'https://www.firstprint.fun') {
     this.service = service;
@@ -442,16 +444,16 @@ export class RewardsService {
   }
 
   /**
-   * Claims every unclaimed reward of a player with a Firstprint wallet, signed and paid by the
-   * server (no wallet pop-up). Points are added once it is confirmed, as with any claim.
+   * Claims every unclaimed reward to one of the player's wallets (their Firstprint wallet by
+   * default), signed and paid by the server: no wallet pop-up and no fee for the player. Points are
+   * added once it is confirmed, as with any claim. Returns the claim id, or null with nothing to claim.
    */
-  private async serverClaim(userId: string) {
+  private async serverClaim(userId: string, wallet = this.embeddedAddress(userId)): Promise<string | null> {
     const token = this.token!;
-    const wallet = this.embeddedAddress(userId);
-    if (!wallet) return;
+    if (!wallet) return null;
     const rows = as<{ id: number; amount: number }[]>(this.db.prepare('SELECT id, amount FROM rewards WHERE user_id = ? AND claim_id IS NULL').all(userId));
     const amount = rows.reduce((sum, r) => sum + r.amount, 0);
-    if (!amount) return;
+    if (!amount) return null;
     const built = await buildServerMint(token.chain, this.authority!, this.mint!, address(wallet), BigInt(amount));
     const id = randomUUID();
     tx(this.db, () => {
@@ -471,10 +473,20 @@ export class RewardsService {
     } catch (err) {
       if (/simulation failed|insufficient|custom program error|invalid|blockhash not found|failed on chain/i.test((err as Error).message)) {
         this.closeClaim(id, 'failed', `The network rejected it: ${(err as Error).message.slice(0, 160)}`);
-        return;
+        return id;
       }
     }
     await this.refreshClaim(userId, id);
+    return id;
+  }
+
+  /** True while the mint authority has enough test SOL to pay for players' transactions. */
+  private async serverFunded() {
+    try {
+      return (await this.token!.chain.balance(this.authority!.address)) >= MIN_AUTHORITY_LAMPORTS;
+    } catch {
+      return false;
+    }
   }
 
   /** The player's on-chain record: their Firstprint wallet and every TestFPT transaction for them. */
@@ -839,6 +851,25 @@ export class RewardsService {
     const rows = as<{ id: number; amount: number }[]>(this.db.prepare('SELECT id, amount FROM rewards WHERE user_id = ? AND claim_id IS NULL').all(userId));
     const amount = rows.reduce((s, r) => s + r.amount, 0);
     if (!amount) throw new AppError(400, 'nothing_to_claim', 'Nothing to claim yet. Complete a task or invite a friend to earn more.');
+
+    // Firstprint signs and pays: nothing for the wallet to approve. Only if the server is out of
+    // test SOL does the claim fall back to the wallet signing and paying the fee itself.
+    if (this.serverPaysClaims && (await this.serverFunded())) {
+      let id;
+      try {
+        id = await this.serverClaim(userId, wallet);
+      } catch (err) {
+        throw new AppError(502, 'chain_unavailable', `The Solana ${token.cluster} network did not answer. Try again in a moment. (${(err as Error).message.slice(0, 120)})`);
+      }
+      if (!id) throw new AppError(400, 'nothing_to_claim', 'Nothing to claim yet. Complete a task or invite a friend to earn more.');
+      const until = Date.now() + this.confirmWaitMs;
+      let current = await this.refreshClaim(userId, id);
+      while (current.status === 'submitted' && Date.now() < until) {
+        await new Promise((r) => setTimeout(r, 1_500));
+        current = await this.refreshClaim(userId, id);
+      }
+      return { ...current, claimId: id, cluster: token.cluster, serverPaid: true as const };
+    }
 
     let built;
     try {

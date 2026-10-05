@@ -13255,7 +13255,6 @@ function menuView(pages) {
       ${S.me ? `<a role="menuitem" href="#/u/${encodeURIComponent(S.me.username)}">${ico('user')}Public profile</a>` : ''}
       ${S.me?.isAdmin ? `<a role="menuitem" href="#/admin">${ico('lock')}Admin console</a>` : ''}
       ${telegramUrl() ? `<a role="menuitem" href="${telegramUrl()}" target="_blank" rel="noopener noreferrer">${ico('telegram')}Telegram alerts</a>` : ''}
-      ${S.cfg?.rewards ? `<button role="menuitem" data-action="faucet">${ico('droplet')}Get test SOL</button>` : ''}
       <button role="menuitemcheckbox" aria-checked="${!light}" data-action="theme" class="menu-switch">${ico('moon')}Dark mode<span class="switch-track" aria-hidden="true"><i></i></span></button>
       <hr />
       <a role="menuitem" class="menu-quiet" href="#/" data-action="how">How it works</a>
@@ -14893,7 +14892,7 @@ function faucetSteps() {
       <li><b>Get test SOL from the faucet.</b>
         <span class="muted">Open the faucet, choose ${net}, paste your address and request 1 SOL. It’s free and has no value. If it says you’ve asked too often, try again later.</span>
         <a class="btn btn-solid" href="${FAUCET_URL}" target="_blank" rel="noopener noreferrer">${ico('droplet')}Open the Solana faucet ${ico('external')}</a></li>
-      <li><b>Come back and claim.</b> <span class="muted">On the Earn page, claim your points. Your wallet pays a tiny fee from the test SOL.</span></li>
+      <li><b>That’s it.</b> <span class="muted">You only need test SOL to send TestFPT on from your own wallet. Claiming on Firstprint is free: Firstprint pays that fee.</span></li>
     </ol>
     <button class="btn" style="width:100%" data-action="close-modal">Done</button>`;
 }
@@ -14907,7 +14906,6 @@ function startSteps() {
   return `
     <ol class="steplist">
       ${step(hasWallet, 'Link a Solana wallet', 'Phantom, Solflare or Backpack. Your TestFPT goes here.', '<button class="btn" data-action="link-wallet">Link wallet</button>')}
-      ${step(false, `Get free test SOL (${clusterName()})`, 'Pays the tiny network fee for your claim.', '<button class="btn" data-action="faucet">Show me how</button>')}
       ${step(Boolean(r?.welcomeClaimed), 'Claim your 1,000 TestFPT', 'They land in your wallet and in your Firstprint balance.', '<a class="btn btn-solid" href="#/earn" data-action="close-modal">Go to claim</a>')}
       ${step(false, 'Pick a market and predict', 'Choose Crash, Down, Flat, Up or Moon and stake your points.', '<a class="btn" href="#/" data-action="close-modal">See markets</a>')}
     </ol>
@@ -14941,7 +14939,7 @@ function startChecklist() {
   const steps = [
     ['Sign in', 'Google, email or wallet', signedIn],
     ['Link a wallet', 'Phantom, Solflare or Backpack', wallet],
-    ['Claim TestFPT', 'Free test SOL pays the fee', false],
+    ['Claim TestFPT', 'Free: Firstprint pays the fee', false],
   ];
   const done = steps.filter((x) => x[2]).length;
   const next = steps.findIndex((x) => !x[2]);
@@ -15020,7 +15018,7 @@ function claimCard(r) {
             : `${wallets.length > 1 ? `<label class="select">To <select id="claim-wallet">${wallets.map((w) => `<option value="${esc(w.address)}">${esc(shortAddress(w.address))}${w.walletName ? ` · ${esc(w.walletName)}` : ''}</option>`).join('')}</select></label>` : `<span class="muted">To ${esc(shortAddress(wallets[0].address))}</span>`}
                <button class="btn btn-gold" data-action="claim-tokens"${S.claimBusy ? ' disabled' : ''}>${S.claimBusy ? 'Claiming…' : `Claim ${fmtNum(r.claimable)} TestFPT`}</button>`
         }
-        <p class="fine" id="claim-status" role="status">Your wallet pays a tiny fee in test SOL. <button class="switch" data-action="faucet">Need test SOL?</button>${r.mintUrl ? ` · <a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a>` : ''}</p>
+        <p class="fine" id="claim-status" role="status">No fee and nothing to approve: Firstprint sends it and pays the network fee.${r.mintUrl ? ` · <a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a>` : ''}</p>
       </div>
     </section>`;
 }
@@ -15100,7 +15098,10 @@ function setClaimStatus(text) {
   if (el) el.textContent = text;
 }
 
-/** Claim every reward to the chosen wallet: the server prepares, the wallet signs and pays the fee. */
+/**
+ * Claim every reward to the chosen wallet. Normally Firstprint signs, sends and pays for it (no
+ * pop-up); only if the server is out of test SOL does it hand back a transaction for the wallet to sign.
+ */
 async function claimTokens() {
   if (S.claimBusy) return;
   const wallet = $('#claim-wallet')?.value || S.me?.wallets?.[0]?.address;
@@ -15112,14 +15113,17 @@ async function claimTokens() {
     btn.disabled = true;
     btn.textContent = 'Claiming…';
   }
-  setClaimStatus('Preparing your claim…');
+  setClaimStatus('Sending your TestFPT on Solana…');
   try {
     const c = await S.api.startClaim(wallet);
-    setClaimStatus(`Approve the transaction in your wallet: it mints ${fmtNum(c.amount)} TestFPT to ${shortAddress(wallet)}.`);
-    const walletName = S.me.wallets.find((w) => w.address === wallet)?.walletName;
-    const signedTx = await signTransactionWith(wallet, c.transaction, c.cluster, walletName);
-    setClaimStatus('Sending to Solana…');
-    let res = await S.api.submitClaim(c.claimId, signedTx);
+    let res = c;
+    if (!c.serverPaid) {
+      setClaimStatus(`Approve the transaction in your wallet: it mints ${fmtNum(c.amount)} TestFPT to ${shortAddress(wallet)}.`);
+      const walletName = S.me.wallets.find((w) => w.address === wallet)?.walletName;
+      const signedTx = await signTransactionWith(wallet, c.transaction, c.cluster, walletName);
+      setClaimStatus('Sending to Solana…');
+      res = await S.api.submitClaim(c.claimId, signedTx);
+    }
     for (let i = 0; res.status === 'submitted' && i < 20; i++) {
       setClaimStatus('Confirming on Solana…');
       await new Promise((r) => setTimeout(r, 3_000));
@@ -15320,9 +15324,9 @@ function renderAuth() {
   } else if (kind === 'tour') {
     html = tourView();
   } else if (kind === 'faucet') {
-    html = modalShell('Get free test SOL', 'TestFPT lives on the Solana test network. Claiming it costs a tiny network fee, paid in free test SOL.', faucetSteps());
+    html = modalShell('Get free test SOL', 'TestFPT lives on the Solana test network. Claiming on Firstprint is free; test SOL is only for sending TestFPT on from your own wallet.', faucetSteps());
   } else if (kind === 'start') {
-    html = modalShell('Start predicting in 4 steps', 'Your 1,000 starting points are TestFPT tokens. Claim them to your wallet, then use them to predict.', startSteps());
+    html = modalShell('Start predicting in 3 steps', 'Your 1,000 starting points are TestFPT tokens. Claim them to your wallet, then use them to predict.', startSteps());
   } else if (S.auth.step === 'code') {
     html = modalShell(
       'Check your email',
@@ -16218,7 +16222,7 @@ function tokenAdminSection(t) {
   if (t.ready) {
     return `<section class="panel">
       <div class="section-head"><span class="section-ico">${ico('token')}</span><div><h2>TestFPT token <span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Live</span></h2>
-      <p class="muted">${t.walletsOn ? `Email and Google players get a Firstprint wallet; their rewards and every player’s daily streak are minted to their wallets by this server, which pays the fees. Players with their own wallet still claim rewards themselves (they pay that fee).` : `Players claim their points to their wallets as TestFPT on Solana ${net}. They pay the network fee in test SOL. Set WALLET_ENCRYPTION_KEY on the server to give email and Google players a Firstprint wallet.`}</p></div></div>
+      <p class="muted">${t.walletsOn ? `Email and Google players get a Firstprint wallet; their rewards and every player’s daily streak are minted to their wallets by this server, which pays the fees. Players with their own wallet claim with one click and the server pays that fee too (they only sign if the server runs out of test SOL).` : `Players claim their points to their wallets as TestFPT on Solana ${net}. They pay the network fee in test SOL. Set WALLET_ENCRYPTION_KEY on the server to give email and Google players a Firstprint wallet.`}</p></div></div>
       ${t.lowFunds ? `<p class="form-error">The mint authority is almost out of test SOL (${t.authoritySol} SOL), so on-chain mints are paused. Send it test SOL: <code>${esc(t.authority)}</code> <a href="https://faucet.solana.com" target="_blank" rel="noopener noreferrer">faucet ${ico('external')}</a></p>` : ''}
       ${t.chain ? `<dl class="kpis-mini"><div><dt>Firstprint wallets</dt><dd>${fmtNum(t.chain.wallets)}</dd></div><div><dt>On-chain transactions</dt><dd>${fmtNum(t.chain.mintsConfirmed)}</dd></div><div><dt>Claims on chain</dt><dd>${fmtNum(t.chain.claimsConfirmed)}</dd></div><div><dt>Waiting</dt><dd>${fmtNum(t.chain.mintsWaiting)}</dd></div>${t.chain.mintsFailed ? `<div><dt>Failed</dt><dd>${fmtNum(t.chain.mintsFailed)}</dd></div>` : ''}<div><dt>Authority SOL</dt><dd>${t.authoritySol ?? '–'}</dd></div></dl>` : ''}
       <div class="kv"><span class="muted">Mint address</span><span class="copy-row"><code>${esc(t.mint)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(t.mint)}">${ico('copy')}Copy</button><a class="btn btn-sm" href="${esc(t.mintUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a></span></div>
