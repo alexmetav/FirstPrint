@@ -867,7 +867,7 @@ function homeView() {
         ${exList.length > 1 ? `<div class="side-label">Exchanges</div><div class="side-group">${exBtn('all', 'All exchanges', base.length)}${exList.map(([e, n]) => exBtn(e, e, n)).join('')}</div>` : ''}
       </aside>
       <div class="home-main">
-        ${featured && !S.query ? featuredView(featured) : ''}
+        ${S.query ? '' : featuredDeck(featured)}
         <div class="home-head">
           ${onlyFeatured ? '' : `<h2>${S.query ? 'Search results' : (HOME_TABS.find(([id]) => id === S.filter)?.[2] ?? 'Markets')}</h2>`}
           ${S.exchange && S.exchange !== 'all' ? `<button class="chip chip-sm" data-exchange="all">${esc(S.exchange)} ${ico('cross')}</button>` : ''}
@@ -894,7 +894,6 @@ function homeHero(showLive = true) {
     best >= 1 ? ['Top payout now', `${best.toFixed(1)}×`] : null,
   ].filter(Boolean);
   const next = [...open].filter((m) => m.phase !== 'awaiting_result').sort((a, b) => a.closeAt - b.closeAt)[0];
-  const deck = trendingList();
   return `
     <section class="home-hero" aria-labelledby="hero-title">
       <svg class="hero-art" viewBox="0 0 1200 320" preserveAspectRatio="none" aria-hidden="true">
@@ -913,9 +912,7 @@ function homeHero(showLive = true) {
         ${stats.length ? `<dl class="hero-stats">${stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
       </div>
       ${
-        deck.length
-          ? heroDeck(deck)
-          : next
+        next
           ? `<a class="hero-next" href="#/market/${encodeURIComponent(next.id)}">
         <span class="hero-next-head"><span>Closing next</span><span class="st st-live"><i aria-hidden="true"></i>Open</span></span>
         <span class="hero-next-id">${tokenAvatar(next, 'avatar-md')}<span><b>${esc(next.symbol)}</b>${next.name ? `<small>${esc(next.name)}</small>` : ''}</span></span>
@@ -927,22 +924,19 @@ function homeHero(showLive = true) {
     </section>`;
 }
 
-/** The trending markets as cards that flip one by one in the hero; S.heroIdx keeps the place across refreshes. */
-function heroDeck(deck) {
+/** The featured panel: the trending markets (up to ten) flipping one by one; S.heroIdx keeps the place across refreshes. */
+function featuredDeck(fallback) {
+  const deck = trendingList();
+  if (deck.length < 2) return fallback ? featuredView(fallback) : '';
   const on = (S.heroIdx ?? 0) % deck.length;
-  const slide = (m, i) => `<a class="hero-next hero-slide${i === on ? ' is-on' : ''}" href="#/market/${encodeURIComponent(m.id)}" data-slide="${i}"${i === on ? '' : ' aria-hidden="true" tabindex="-1"'}>
-        <span class="hero-next-head"><span>${ico('flame')}Trending #${i + 1}</span>${m.phase === 'pre_listing' || isUpcoming(m) ? '<span class="st st-soon"><i aria-hidden="true"></i>Upcoming</span>' : '<span class="st st-live"><i aria-hidden="true"></i>Open</span>'}</span>
-        <span class="hero-next-id">${tokenAvatar(m, 'avatar-md')}<span><b>${esc(m.symbol)}</b>${m.name ? `<small>${esc(m.name)}</small>` : ''}</span></span>
-        <span class="hero-next-facts"><span><small>Predictors</small><b>${fmtNum(m.predictors)}</b></span><span><small>Pool</small><b>${fmtNum(m.pool || 0)} pts</b></span><span class="hero-next-close"><small>Predictions close</small><b>${fmtDate(m.closeAt)}</b><small>in ${until(m.closeAt)}</small></span></span>
-        <span class="btn btn-gold btn-sm">Predict ${ico('arrowRight')}</span>
-      </a>`;
-  return `<div class="hero-deck${deck.length > 1 ? ' has-many' : ''}" data-hero-deck aria-roledescription="carousel" aria-label="Trending markets">
+  const slide = (m, i) => `<div class="hero-slide${i === on ? ' is-on' : ''}" data-slide="${i}"${i === on ? '' : ' inert'}>${featuredView(m, i)}</div>`;
+  return `<div class="hero-deck feat-deck has-many" data-hero-deck aria-roledescription="carousel" aria-label="Trending markets">
       <div class="hero-slides">${deck.map(slide).join('')}</div>
-      ${deck.length > 1 ? `<div class="hero-dots">${deck.map((m, i) => `<button type="button" data-hero-dot="${i}" aria-label="Show ${esc(m.symbol)}" aria-current="${i === on}"></button>`).join('')}</div>` : ''}
+      <div class="hero-dots">${deck.map((m, i) => `<button type="button" data-hero-dot="${i}" aria-label="Show ${esc(m.symbol)}" aria-current="${i === on}"></button>`).join('')}</div>
     </div>`;
 }
 
-/** Resolves once the hero card has finished flipping, so a live redraw doesn't cut the animation short. */
+/** Resolves once the featured card has finished flipping, so a live redraw doesn't cut the animation short. */
 function heroFlipDone() {
   const left = (S.heroFlipUntil ?? 0) - Date.now();
   return left > 0 ? new Promise((r) => setTimeout(r, left)) : Promise.resolve();
@@ -962,13 +956,7 @@ function showHeroSlide(i, animate = true) {
     el.classList.toggle('is-on', n === to);
     el.classList.toggle('is-out', animate && was && n !== to);
     el.classList.toggle('is-in', animate && n === to && !was);
-    if (n === to) {
-      el.removeAttribute('aria-hidden');
-      el.removeAttribute('tabindex');
-    } else {
-      el.setAttribute('aria-hidden', 'true');
-      el.setAttribute('tabindex', '-1');
-    }
+    el.inert = n !== to;
   });
   deck.querySelectorAll('[data-hero-dot]').forEach((b) => b.setAttribute('aria-current', String(Number(b.dataset.heroDot) === to)));
 }
@@ -1057,7 +1045,7 @@ function featuredSide(m) {
   return `<div class="feat-chart">${oddsPlot(m, o)}</div>`;
 }
 
-function featuredView(m) {
+function featuredView(m, rank = null) {
   const yn = isYesNo(m);
   const manual = isManual(m);
   const pre = m.phase === 'pre_listing' || isUpcoming(m);
@@ -1091,12 +1079,12 @@ function featuredView(m) {
     .join('');
 
   return `
-    <section class="feat" aria-labelledby="featured-title">
+    <section class="feat" aria-labelledby="featured-title${rank ?? ''}">
       <div class="feat-main">
-        <div class="feat-kicker"><span class="st ${pre ? 'st-soon' : 'st-live'}"><i aria-hidden="true"></i>${pre ? 'Upcoming' : 'Open'}</span><span aria-hidden="true">·</span><span>Featured market</span></div>
+        <div class="feat-kicker"><span class="st ${pre ? 'st-soon' : 'st-live'}"><i aria-hidden="true"></i>${pre ? 'Upcoming' : 'Open'}</span><span aria-hidden="true">·</span><span>${rank === null ? 'Featured market' : `${ico('flame')}Trending #${rank + 1}`}</span></div>
         <div class="feat-id">
           ${tokenAvatar(m, 'avatar-lg')}
-          <div><h2 id="featured-title">${esc(m.symbol)}</h2>${m.name ? `<p>${esc(m.name)}</p>` : ''}</div>
+          <div><h2 id="featured-title${rank ?? ''}">${esc(m.symbol)}</h2>${m.name ? `<p>${esc(m.name)}</p>` : ''}</div>
         </div>
         <p class="feat-q">${question}</p>
         <dl class="feat-facts">${facts}</dl>
