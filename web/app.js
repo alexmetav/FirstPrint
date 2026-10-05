@@ -144,7 +144,45 @@ function toast(msg, isError = false) {
   el.textContent = msg;
   el.className = `show${isError ? ' error' : ''}`;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.className = ''), 3200);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+/**
+ * The toast for earned points: the brand coin, the amount counting up in gold, and a short line
+ * under it. With `streak`, it also shows the week's progress as seven pips.
+ */
+function rewardToast({ amount, unit = 'points', sub = '', note = '', streak = 0 }) {
+  const el = $('#toast');
+  const pos = Math.min(streak, DAILY_SCHEDULE.length);
+  const week = streak
+    ? `<span class="rt-week">${DAILY_SCHEDULE.map((_, i) => `<i class="${i < pos ? 'on' : ''}${i === pos - 1 ? ' now' : ''}"></i>`).join('')}</span>`
+    : '';
+  const said = [`+${fmtNum(amount)} ${unit}`, sub.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(), note].filter(Boolean).join('. ');
+  el.innerHTML = `
+    <span class="sr-only">${esc(said)}</span>
+    <span class="rt" aria-hidden="true">
+      <span class="rt-coin">${ico('coins')}</span>
+      <span class="rt-body">
+        <b class="rt-amt">+<span class="rt-n">${fmtNum(REDUCED_MOTION.matches ? amount : 0)}</span><small>${esc(unit)}</small></b>
+        ${sub ? `<span class="rt-sub">${sub}</span>` : ''}
+        ${note ? `<span class="rt-note">${esc(note)}</span>` : ''}
+      </span>
+      ${week}
+    </span>`;
+  el.className = 'reward';
+  void el.offsetWidth; // restart the entrance
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 4200);
+  if (REDUCED_MOTION.matches) return;
+  const n = el.querySelector('.rt-n');
+  const start = performance.now();
+  const step = (t) => {
+    const k = Math.min(1, (t - start) / 700);
+    n.textContent = fmtNum(Math.round(amount * (1 - Math.pow(1 - k, 3))));
+    if (k < 1 && n.isConnected) requestAnimationFrame(step);
+  };
+  setTimeout(() => requestAnimationFrame(step), 120);
 }
 
 function syncClock(serverTime) {
@@ -1877,64 +1915,123 @@ function celebrate(bucket) {
 
 /**
  * Coins fly from where points were earned (a button, a card) into the points balance in the top
- * bar, which then pulses and shows "+N". Resolves when the first coin lands, so the balance can
- * update right as it arrives. People who prefer less motion just see the pulse.
+ * bar. With `count`, the balance counts up as each coin lands; the last one makes it pulse, ring
+ * and throw a few sparks, with "+N" under it. Resolves when the last coin lands. People who
+ * prefer less motion just see the balance change.
  */
-function collectPoints(from, amount = 0, to = '.chip.points') {
-  const target = typeof to === 'string' ? $(to) || $('.chip.points') : to;
+function collectPoints(from, amount = 0, to = '.chip.points', { count = false } = {}) {
+  const find = () => (typeof to === 'string' ? $(to) || $('.chip.points') : to);
+  const target = find();
   const start = from instanceof Element ? from.getBoundingClientRect() : from;
-  const land = () => {
-    const el = typeof to === 'string' ? $(to) || $('.chip.points') : to;
+  const tickEl = () => find()?.querySelector('[data-tick]');
+  const base = Number(tickEl()?.dataset.val);
+  const counting = count && amount > 0 && Number.isFinite(base);
+  const showTotal = (k) => {
+    const el = tickEl();
+    if (el) el.textContent = fmtNum(Math.round(base + amount * k));
+  };
+  const settle = () => {
+    if (!counting) return;
+    const el = tickEl();
     if (!el) return;
-    el.classList.remove('pts-hit');
+    el.textContent = fmtNum(base + amount);
+    el.dataset.val = String(base + amount);
+    TICKS.set(el.dataset.tick, base + amount); // the next render shows it without counting again
+  };
+  const bump = (cls) => {
+    const el = find();
+    if (!el) return;
+    el.classList.remove(cls);
     void el.offsetWidth;
-    el.classList.add('pts-hit');
+    el.classList.add(cls);
+  };
+  const land = () => {
+    const el = find();
+    if (!el) return;
+    bump('pts-hit');
+    if (REDUCED_MOTION.matches) return;
+    const r = el.getBoundingClientRect();
+    const cx = r.left + Math.min(22, r.width / 2);
+    const cy = r.top + r.height / 2;
+    const fx = document.createElement('span');
+    fx.className = 'pts-burst';
+    fx.setAttribute('aria-hidden', 'true');
+    fx.style.left = `${cx}px`;
+    fx.style.top = `${cy}px`;
+    fx.innerHTML =
+      '<i class="pb-ring"></i>' +
+      Array.from({ length: 10 }, (_, i) => {
+        const a = (i / 10) * Math.PI * 2 + Math.random() * 0.4;
+        const d = 22 + Math.random() * 18;
+        return `<i class="pb-spark" style="--dx:${(Math.cos(a) * d).toFixed(1)}px;--dy:${(Math.sin(a) * d).toFixed(1)}px"></i>`;
+      }).join('');
+    document.body.appendChild(fx);
+    setTimeout(() => fx.remove(), 900);
     if (amount) {
-      const r = el.getBoundingClientRect();
       const gain = document.createElement('span');
       gain.className = 'pts-gain';
       gain.setAttribute('aria-hidden', 'true');
-      gain.textContent = `+${fmtNum(amount)}`;
+      gain.innerHTML = `${ico('coins')}+${fmtNum(amount)}`;
       gain.style.left = `${r.left + r.width / 2}px`;
-      gain.style.top = `${r.bottom + 4}px`;
+      gain.style.top = `${r.bottom + 6}px`;
       document.body.appendChild(gain);
-      setTimeout(() => gain.remove(), 1300);
+      setTimeout(() => gain.remove(), 1500);
     }
+    navigator.vibrate?.(12);
   };
-  if (!target || !start || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (!target || !start || REDUCED_MOTION.matches) {
+    settle();
     land();
     return Promise.resolve();
   }
-  const end = target.getBoundingClientRect();
   const sx = start.left + start.width / 2;
   const sy = start.top + start.height / 2;
-  const ex = end.left + Math.min(22, end.width / 2);
-  const ey = end.top + end.height / 2;
-  const count = Math.max(8, Math.min(16, Math.round(Math.log10(Math.max(10, amount)) * 5)));
+  // A flash where the coins come from.
+  const pop = document.createElement('span');
+  pop.className = 'coin-pop';
+  pop.setAttribute('aria-hidden', 'true');
+  pop.style.left = `${sx}px`;
+  pop.style.top = `${sy}px`;
+  document.body.appendChild(pop);
+  setTimeout(() => pop.remove(), 700);
+  const coins = Math.max(8, Math.min(14, Math.round(Math.log10(Math.max(10, amount)) * 5)));
   return new Promise((resolve) => {
     let landed = 0;
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < coins; i++) {
       const c = document.createElement('i');
       c.className = 'coin-fly';
       c.setAttribute('aria-hidden', 'true');
       document.body.appendChild(c);
-      // Burst out a little, then curve into the balance.
-      const mx = sx + (Math.random() - 0.5) * 150;
-      const my = sy - 30 - Math.random() * 80;
-      const anim = c.animate(
-        [
-          { transform: `translate(${sx}px, ${sy}px) scale(0.3) rotate(0deg)`, opacity: 0 },
-          { transform: `translate(${mx}px, ${my}px) scale(1) rotate(160deg)`, opacity: 1, offset: 0.35 },
-          { transform: `translate(${ex}px, ${ey}px) scale(0.5) rotate(320deg)`, opacity: 0.85 },
-        ],
-        { duration: 820, delay: i * 38, easing: 'cubic-bezier(0.55, 0, 0.2, 1)', fill: 'both' },
-      );
+      // Spray out from the button, then sweep along a curve into the balance, spinning like a coin.
+      const end = (find() || target).getBoundingClientRect();
+      const ex = end.left + Math.min(22, end.width / 2);
+      const ey = end.top + end.height / 2;
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.2;
+      const burst = 50 + Math.random() * 60;
+      const bx = sx + Math.cos(a) * burst;
+      const by = sy + Math.sin(a) * burst;
+      const kx = (bx + ex) / 2 + (Math.random() - 0.5) * 120; // control point of the sweep
+      const ky = Math.min(by, ey) - 40 - Math.random() * 60;
+      const spin = 540 + Math.round(Math.random() * 360);
+      const size = 0.85 + Math.random() * 0.35;
+      const frames = [{ transform: `translate(${sx}px, ${sy}px) scale(0.2) rotateY(0deg)`, opacity: 0, offset: 0 }];
+      frames.push({ transform: `translate(${bx}px, ${by}px) scale(${size}) rotateY(${spin * 0.3}deg)`, opacity: 1, offset: 0.28 });
+      for (let k = 1; k <= 6; k++) {
+        const t = k / 6;
+        const x = (1 - t) ** 2 * bx + 2 * (1 - t) * t * kx + t * t * ex;
+        const y = (1 - t) ** 2 * by + 2 * (1 - t) * t * ky + t * t * ey;
+        const sc = size * (1 - t * 0.5);
+        frames.push({ transform: `translate(${x}px, ${y}px) scale(${sc}) rotateY(${spin * (0.3 + 0.7 * t)}deg)`, opacity: 1, offset: 0.28 + 0.72 * t });
+      }
+      const anim = c.animate(frames, { duration: 900, delay: i * 45, easing: 'cubic-bezier(0.45, 0, 0.25, 1)', fill: 'both' });
       anim.onfinish = () => {
         c.remove();
-        if (++landed === 1) {
-          land();
-          resolve();
-        }
+        landed++;
+        if (counting) showTotal(landed / coins);
+        if (landed < coins) return bump('pts-tick');
+        settle();
+        land();
+        resolve();
       };
     }
   });
@@ -2714,7 +2811,7 @@ async function claimTokens() {
     if (res.status === 'confirmed') {
       await collectPoints(from, res.amount);
       celebrate('moon');
-      toast(`${fmtNum(res.amount)} TestFPT claimed. Check your wallet!`);
+      rewardToast({ amount: res.amount, unit: 'TestFPT', sub: 'Claimed. Check your wallet!' });
     } else if (res.status === 'submitted') {
       toast('Still confirming on Solana. It will show up shortly.');
     } else {
@@ -2734,11 +2831,12 @@ async function onTaskVerify(taskId, btn) {
   const from = btn?.getBoundingClientRect();
   try {
     const out = await S.api.verifyTask(taskId);
+    // On-chain rewards wait in the claim bar; otherwise they go straight to the balance.
+    if (!out.onChain) await collectPoints(from, out.points, '.chip.points', { count: true });
     await refreshMe();
     if (S.route.name === 'earn') $('#view').innerHTML = earnView();
-    // On-chain rewards wait in the claim bar; otherwise they go straight to the balance.
-    await collectPoints(from, out.points, out.onChain ? '.claim-card .claim-ico' : '.chip.points');
-    toast(out.onChain ? `+${fmtNum(out.points)} points ready to claim as TestFPT` : `+${fmtNum(out.points)} points added`);
+    if (out.onChain) await collectPoints(from, out.points, '.claim-card .claim-ico');
+    rewardToast({ amount: out.points, sub: out.onChain ? 'Ready to claim as TestFPT' : 'Task done' });
   } catch (err) {
     toast(err.message, true);
     if (err.code === 'x_required') $('#x-form input')?.focus();
@@ -4984,10 +5082,15 @@ document.addEventListener('click', async (e) => {
         const me = await S.api.claimDaily();
         const day = me.daily?.streak ?? 1;
         const got = dailyReward(day);
-        await collectPoints(from, got);
+        await collectPoints(from, got, '.chip.points', { count: true });
         S.me = me;
         S.daily = null;
-        toast(`+${got} points · Day ${day} streak${day > 1 ? ' 🔥' : ''}${S.rewards?.onChain && me.wallets?.length ? ' · sent to your wallet as TestFPT' : ''}. Tomorrow: +${me.daily?.next ?? got}.`);
+        rewardToast({
+          amount: got,
+          sub: `${ico('flame')}Day ${day} streak<span class="rt-dot">·</span>Tomorrow <b>+${me.daily?.next ?? got}</b>`,
+          note: S.rewards?.onChain && me.wallets?.length ? 'Sent to your wallet as TestFPT' : '',
+          streak: day,
+        });
         renderTop();
         return loadRoute();
       } catch (err) {
