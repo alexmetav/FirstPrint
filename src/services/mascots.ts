@@ -1,6 +1,6 @@
 /**
  * The characters on the result banner, one per outcome, drawn as plain SVG in a 300 × 300 box:
- * Moon a meme dog riding a rocket, Up a bull, Flat a sleeping bear, Down a grumpy bear, Crash a
+ * Moon a meme dog in sunglasses, Up a bull, Flat a sleeping bear, Down a grumpy bear, Crash a
  * dizzy bear. Flat shapes in the outcome colours, so they match the Firstprint mark.
  */
 
@@ -82,29 +82,24 @@ function bull(c: string) {
     ${line('M214 262 L234 242 L248 252 L270 222', c, 8)}${line('M252 222 H270 V240', c, 8)}`;
 }
 
-/** Moon: a meme dog riding a rocket past the moon. */
-function rocketDog(c: string) {
+/** Moon: a meme dog in sunglasses, a line shooting up to the moon. */
+function moonDog(c: string) {
   return `${disc(c)}
-    <path d="M236 52 a34 34 0 1 0 22 54 a26 26 0 1 1 -22 -54 z" fill="${c}" fill-opacity="0.9"/>
-    ${star(56, 72, 12, c)}${star(252, 192, 9, c)}${star(96, 40, 7, c, 0.7)}
-    <g transform="rotate(38 150 160)">
-      <path d="M134 238 Q150 292 166 238 Z" fill="#ff9f0a"/><path d="M141 238 Q150 270 159 238 Z" fill="${c}"/>
-      <path d="M120 196 L96 236 L124 228 Z" fill="${c}"/><path d="M180 196 L204 236 L176 228 Z" fill="${c}"/>
-      <path d="M150 52 C186 84 190 160 178 236 H122 C110 160 114 84 150 52 Z" fill="#f5f5f7"/>
-      <path d="M150 52 C162 62 170 76 175 92 H125 C130 76 138 62 150 52 Z" fill="#ff453a"/>
-      <circle cx="150" cy="152" r="34" fill="#cfe8ff" stroke="#9aa4b2" stroke-width="5"/>
-      <g transform="rotate(-38 150 152)">
-        <path d="M128 140 L132 116 L146 134 Z" fill="#d98c3a"/><path d="M172 140 L168 116 L154 134 Z" fill="#d98c3a"/>
-        <ellipse cx="150" cy="154" rx="25" ry="22" fill="#e8a54b"/>
-        <ellipse cx="150" cy="164" rx="15" ry="11" fill="#fff4e3"/>
-        <circle cx="141" cy="150" r="3.5" fill="${INK}"/><circle cx="159" cy="150" r="3.5" fill="${INK}"/>
-        <ellipse cx="150" cy="160" rx="4.5" ry="3.2" fill="${INK}"/>
-        ${line('M144 168 q6 5 12 0', INK, 2.5)}
-      </g>
-    </g>`;
+    <path d="M146 22 a28 28 0 1 0 30 40 a21 21 0 1 1 -30 -40 z" fill="${c}"/>
+    ${line('M210 266 L232 244 L246 254 L272 214', c, 8)}${line('M254 214 H272 V232', c, 8)}
+    ${star(40, 150, 11, c)}${star(262, 150, 9, c)}${star(110, 34, 7, c, 0.7)}
+    <path d="M78 132 L70 52 L134 100 Z" fill="#c97b2e"/><path d="M88 118 L84 76 L118 102 Z" fill="#f6d9b0"/>
+    <path d="M222 132 L230 52 L166 100 Z" fill="#c97b2e"/><path d="M212 118 L216 76 L182 102 Z" fill="#f6d9b0"/>
+    <ellipse cx="150" cy="170" rx="90" ry="80" fill="#e8a54b"/>
+    <path d="M78 196 Q150 150 222 196 Q214 250 150 252 Q86 250 78 196 Z" fill="#fff4e3"/>
+    <ellipse cx="150" cy="196" rx="15" ry="10" fill="${INK}"/>
+    <path d="M124 214 Q150 240 176 214 Z" fill="${INK}"/><path d="M140 224 Q150 238 160 224 Z" fill="#ff7b8a"/>
+    <path d="M92 150 H208 V158 H92 Z" fill="${INK}"/>
+    <rect x="96" y="146" width="48" height="30" rx="10" fill="${INK}"/><rect x="156" y="146" width="48" height="30" rx="10" fill="${INK}"/>
+    ${line('M106 154 L118 154', '#ffffff', 3.5)}${line('M166 154 L178 154', '#ffffff', 3.5)}`;
 }
 
-const DRAW: Record<string, (color: string) => string> = { moon: rocketDog, up: bull, flat: sleepingBear, down: grumpyBear, crash: dizzyBear };
+const DRAW: Record<string, (color: string) => string> = { moon: moonDog, up: bull, flat: sleepingBear, down: grumpyBear, crash: dizzyBear };
 
 /** The character for a winning outcome (Yes/No markets use the bull and the grumpy bear), placed with its top-left at x, y and scaled to size. */
 export function mascot(bucket: string, color: string, x: number, y: number, size = 300) {

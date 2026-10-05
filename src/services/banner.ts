@@ -206,11 +206,8 @@ export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | n
     const won = r?.winningBucket ? (m.outcomes === 'binary' ? (r.winningBucket === 'up' ? 'Yes' : 'No') : OUTCOME_NAMES[r.winningBucket]) : 'Settled';
     const pct = r?.returnPct != null ? ` ${r.returnPct >= 0 ? '+' : ''}${(r.returnPct * 100).toFixed(1)}%` : '';
     headline = 'Market Settled';
-    items = [
-      ['Predictors', (m.predictors ?? 0).toLocaleString('en-US')],
-      ...(r?.basePrice != null && r?.finalPrice != null ? [['Price', `${price(r.basePrice)} → ${price(r.finalPrice)}`] as [string, string]] : []),
-      ['Paid out', `${(r?.pool ?? 0).toLocaleString('en-US')} pts`],
-    ];
+    // Only the token's price: start → final.
+    items = r?.basePrice != null && r?.finalPrice != null ? [['Price', `${price(r.basePrice)} → ${price(r.finalPrice)}`]] : [];
     resultBody = resultHero(m, logoPng, won, pct.trim(), status.color, r?.winningBucket ?? null);
   }
   const pillW = status.text.length * 14 + 62;
