@@ -269,7 +269,7 @@ export function summaryBannerSvg(tokens: { symbol: string; logoPng: string | nul
   const more = stats.count > shown.length ? `<text x="${80 + shown.length * (size + gap) + 4}" y="${300 + size / 2 + 12}" font-size="34" font-weight="600" fill="${C.muted}">+${stats.count - shown.length}</text>` : '';
   const items: [string, string][] = [
     ['Participants', stats.participants.toLocaleString('en-US')],
-    ...(stats.next ? [['Closing next', `${drawable(stats.next.symbol) ? `${stats.next.symbol.toUpperCase()} · ` : ''}in ${timeLeft(stats.next.closeAt - now)}`] as [string, string]] : []),
+    ...(stats.next ? [['Closing next', `${drawable(stats.next.symbol) ? `${stats.next.symbol.toUpperCase()} · ` : ''}in ${longLeft(stats.next.closeAt - now)}`] as [string, string]] : []),
     ['In play', `${stats.pool.toLocaleString('en-US')} pts`],
   ];
   const pillText = 'LIVE NOW';

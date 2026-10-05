@@ -3603,7 +3603,7 @@ async function renderAdmin() {
   void backfillLogoPngs(markets);
   A.detected = detected;
   // Tokens that already have a live market show "Market made" in Find tokens.
-  A.made = { ...(A.made ?? {}), ...Object.fromEntries(markets.filter((m) => m.status === 'open' || m.status === 'locked').map((m) => [m.symbol.toUpperCase(), m.id])) };
+  A.made = Object.fromEntries(markets.filter((m) => m.status === 'open' || m.status === 'locked').map((m) => [m.symbol.toUpperCase(), m.id]));
   const venues = A.info.venues;
   const editing = markets.find((m) => m.id === A.edit && m.mode === 'manual' && m.status === 'open') ?? null;
   if (A.edit && !editing) A.edit = null;
@@ -4200,7 +4200,7 @@ function marketForm(m, pre = null) {
   const locked = Boolean(m && m.published && m.predictors > 0);
   const lock = locked ? ' disabled' : '';
   const t = v?.thresholds ?? { crash: -0.5, down: -0.1, up: 0.1, moon: 0.5 };
-  const chosen = new Set(v?.venues ? v.venues.map((x) => x.id) : A.info.exchanges.filter((e) => e.enabled).map((e) => e.id));
+  const chosen = new Set(v?.venues ? v.venues.map((x) => x.id) : A.info.exchanges.filter((e) => e.enabled && !e.priceOnly).map((e) => e.id));
   const soon = Math.ceil((Date.now() + 24 * 3_600_000) / 3_600_000) * 3_600_000;
   const pct = (n) => String(Math.round(n * 1000) / 10);
   const upcoming = Boolean(v) && v.basePrice == null;
@@ -4744,12 +4744,11 @@ async function onAdminAction(action, el) {
   }
   switch (action) {
     case 'admin-tab':
+      // The sidebar and "New market" always start clean (Make market and Edit set these themselves).
       A.tab = el.dataset.tab;
-      if (A.tab !== 'create') {
-        A.edit = null;
-        A.review = null;
-        A.prefill = null;
-      }
+      A.edit = null;
+      A.review = null;
+      A.prefill = null;
       await renderAdmin();
       return window.scrollTo({ top: 0 });
     case 'admin-token-refresh':
@@ -5645,6 +5644,22 @@ document.addEventListener('click', (e) => {
     if (!d.contains(e.target) || e.target.closest('.row-menu-item')) d.open = false;
   });
 });
+// The ⋯ menu floats over the page (fixed), so a table that scrolls sideways never clips it.
+document.addEventListener(
+  'toggle',
+  (e) => {
+    const d = e.target;
+    if (!d.matches?.('details.row-menu') || !d.open) return;
+    const r = d.querySelector('summary').getBoundingClientRect();
+    const list = d.querySelector('.row-menu-list');
+    const w = Math.max(list.offsetWidth, 190);
+    list.style.left = `${Math.max(8, Math.min(r.right - w, innerWidth - w - 8))}px`;
+    const below = r.bottom + 6 + list.offsetHeight < innerHeight;
+    list.style.top = `${below ? r.bottom + 6 : r.top - 6 - list.offsetHeight}px`;
+  },
+  true,
+);
+addEventListener('scroll', () => document.querySelectorAll('details.row-menu[open]').forEach((d) => (d.open = false)), { passive: true, capture: true });
 
 document.addEventListener('change', (e) => {
   if (e.target.matches?.('[data-upcoming]')) {

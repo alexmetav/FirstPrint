@@ -985,7 +985,11 @@ export class FirstprintService {
       durationMs: resultAt - closeAt,
       settleWindowMs: 0,
     });
-    const pairs = input.pairs ?? {};
+    // Only plain ids are kept (a CoinGecko coin id like pudgy-penguins, or an exchange pair).
+    const pairs = Object.fromEntries(Object.entries(input.pairs ?? {}).filter(([, v]) => typeof v === 'string' && /^[a-z0-9_-]{1,100}$/i.test(v))) as Record<string, string>;
+    for (const id of exchanges) {
+      if (this.venues.get(id)!.priceOnly && !pairs[id]) throw new AppError(400, 'missing_coin', `${this.venues.get(id)!.name} needs the coin id: make the market from Find tokens.`);
+    }
     const venues: VenueRef[] = exchanges.map((id) => ({ venue: id, symbol: pairs[id] || this.venues.get(id)!.pair(symbol) }));
     const exchangeLabel = exchanges.map((id) => this.venues.get(id)!.name).join(', ');
     const name = input.name ? String(input.name).trim().slice(0, 80) : null;
