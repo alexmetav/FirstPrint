@@ -215,7 +215,7 @@ export function createApiServer(opts: ServerOptions): Server {
     signIn: { google: opts.googleClientId ?? null, email: Boolean(opts.mailer) },
     // Markets are run from the admin panel, so exchange-detection pages have nothing to show.
     manualOnly: opts.manualOnly ?? false,
-    // Points as TestFPT on a Solana test network, and where to get test SOL for the fee.
+    // Points as TestFPT on a Solana test network (the faucet is for the admin's mint authority).
     rewards: opts.rewards ? { onChain: opts.rewards.ready(), cluster: opts.rewards.cluster(), faucetUrl: 'https://faucet.solana.com' } : null,
     // Public Telegram channel where new markets and results are posted (username, no @).
     telegramChannel: opts.telegram ? service.getSetting('telegram_channel') : null,
@@ -953,20 +953,27 @@ export function createApiServer(opts: ServerOptions): Server {
     const rel = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '');
     let file = join(root, rel === '/' ? 'index.html' : rel);
     if (!file.startsWith(root)) return send(res, 404, { error: 'not_found', message: 'Not found.' });
+    let missing = false;
     try {
       const s = await stat(file);
       if (s.isDirectory()) file = join(file, 'index.html');
     } catch {
       // Clean page addresses (/pitch → pitch.html), then the SPA fallback.
       const page = extname(file) ? null : `${file}.html`;
-      file = page && (await stat(page).then((s) => s.isFile(), () => false)) ? page : join(root, 'index.html');
+      if (page && (await stat(page).then((s) => s.isFile(), () => false))) file = page;
+      else {
+        file = join(root, 'index.html');
+        missing = true;
+      }
     }
     try {
       let data: Buffer | string = await readFile(file);
       if (linkToApp && LINKED_SITE_FILES.has(file.slice(root.length + 1))) {
         data = linkSiteToApp(data.toString('utf8'), APP_PREFIX, file);
       }
-      res.writeHead(200, {
+      // The app routes in the browser, so any path is its page; on the website an unknown address is
+      // a 404 (still showing the landing page) so search engines don't index it.
+      res.writeHead(missing && linkToApp ? 404 : 200, {
         'content-type': MIME[extname(file)] ?? 'application/octet-stream',
         'cache-control': extname(file) === '.html' ? 'no-cache' : 'public, max-age=300',
       });
