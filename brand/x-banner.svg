@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 500" width="1500" height="500" role="img" aria-label="Firstprint: predict the first 72 hours of every new listing">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 500" width="1500" height="500" role="img" aria-label="Firstprint: predict where new crypto listings land">
   <title>Firstprint</title>
   <defs>
     <radialGradient id="g1" cx="18%" cy="20%" r="60%">
@@ -37,7 +37,7 @@
   </g>
 
   <text x="430" y="228" font-family="Bricolage Grotesque, Poppins, DejaVu Sans, sans-serif" font-size="96" font-weight="700" letter-spacing="-4" fill="#F2F5FA">Firstprint</text>
-  <text x="436" y="292" font-family="Poppins, DejaVu Sans, sans-serif" font-size="34" font-weight="500" fill="#8D95A6">Predict the first 72 hours of every new listing.</text>
+  <text x="436" y="292" font-family="Poppins, DejaVu Sans, sans-serif" font-size="34" font-weight="400" fill="#8D95A6">Predict where new crypto listings land.</text>
 
   <g font-family="Poppins, DejaVu Sans, sans-serif" font-size="24" font-weight="600" transform="translate(436 340)">
     <rect width="122" height="44" rx="22" fill="#FF4D6A" fill-opacity="0.16"/><text x="61" y="29" text-anchor="middle" fill="#FF4D6A">Crash</text>

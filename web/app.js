@@ -1294,7 +1294,7 @@ function howItWorks() {
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
         <li>Firstprint watches seven exchanges for new listings and opens a market when one is confirmed. Sign in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
-        <li>Pick one of five outcomes for the price 72 hours after listing, from Crash to Moon. Predictions stay open until 1 hour after trading starts, and earlier predictions earn a bigger share.</li>
+        <li>Pick one of five outcomes for where the price lands at the result time shown on the market, from Crash to Moon. Predictions stay open until the time shown, and earlier predictions earn a bigger share.</li>
         <li>The starting price is the average over the first hour of trading. The final price is the average over the last hour, so a single spike can’t decide a market.</li>
         <li>Everyone who picked the winning outcome splits the pool, minus the fee shown on the market (usually 4%). Everyone gets their points back if nobody picked the winner, everyone picked the same outcome, or the market is cancelled.</li>
       </ol></details>
