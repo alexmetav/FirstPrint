@@ -80,6 +80,8 @@ function migrate(db: DB) {
   )`);
   ensure('markets', 'opening_price_failed', 'opening_price_failed INTEGER NOT NULL DEFAULT 0');
   ensure('markets', 'reminded_at', 'reminded_at INTEGER');
+  // 1: the start price is the live price when predictions close, read by the server then.
+  ensure('markets', 'start_at_close', 'start_at_close INTEGER NOT NULL DEFAULT 0');
   ensure('users', 'x_username', 'x_username TEXT');
   ensure('users', 'referral_code', 'referral_code TEXT');
   ensure('users', 'referred_by', 'referred_by TEXT');

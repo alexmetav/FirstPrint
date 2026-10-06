@@ -494,6 +494,8 @@ export function createApiServer(opts: ServerOptions): Server {
     pairs: b.pairs as Record<string, string> | undefined,
     // null (or empty) means "no price yet": the token isn't trading, and the opening price comes later.
     basePrice: b.basePrice === undefined ? (undefined as never) : b.basePrice === null || b.basePrice === '' ? null : Number(b.basePrice),
+    // The start price is the live price when predictions close (basePrice is then ignored).
+    startAtClose: b.startAtClose === undefined ? undefined : b.startAtClose === true,
     closeAt: b.closeAt === undefined ? (undefined as never) : toMs(b.closeAt),
     resultAt: b.resultAt === undefined || b.resultAt === '' ? undefined : toMs(b.resultAt),
     config: b.config as never,
@@ -706,7 +708,8 @@ export function createApiServer(opts: ServerOptions): Server {
         name: String(b.name ?? '').trim().slice(0, 60) || null,
         exchange: exchanges.join(', ') || 'MEXC',
         outcomes: b.outcomes === 'binary' ? 'binary' : 'ladder',
-        basePrice: basePrice !== null && Number.isFinite(basePrice) && basePrice > 0 ? basePrice : null,
+        basePrice: b.startAtClose !== true && basePrice !== null && Number.isFinite(basePrice) && basePrice > 0 ? basePrice : null,
+        startAtClose: b.startAtClose === true,
         closeAt: Number(b.closeAt) || Date.now(),
         settleAt: Number(b.resultAt) || Date.now(),
       },

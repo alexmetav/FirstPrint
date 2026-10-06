@@ -23,6 +23,8 @@ export interface BannerMarket {
   exchange: string;
   outcomes: string;
   basePrice: number | null;
+  /** The start price is the price when predictions close (not known yet while they are open). */
+  startAtClose?: boolean;
   closeAt: number;
   settleAt: number;
   pool?: number;
@@ -173,7 +175,7 @@ function facts(items: [string, string][], y: number) {
  * No slogans.
  */
 export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | null = null, now = Date.now()) {
-  const upcoming = m.basePrice === null;
+  const upcoming = m.basePrice === null && !m.startAtClose;
   const status =
     kind === 'live'
       ? upcoming
@@ -189,7 +191,7 @@ export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | n
   if (kind === 'live') {
     headline = 'New Market Listed';
     items = [
-      ['Start price', upcoming ? 'At listing' : price(m.basePrice!)],
+      ['Start price', m.basePrice !== null ? price(m.basePrice) : upcoming ? 'At listing' : 'At close'],
       ['Predictions close', utc(m.closeAt)],
       ['Result', utc(m.settleAt)],
     ];

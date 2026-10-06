@@ -95,7 +95,7 @@ export function newListingText(d: { symbol: string | null; name: string | null; 
 }
 
 export function resultDueText(m: { symbol: string; basePrice: number | null; pool: number; predictors: number }, adminUrl: string) {
-  const what = m.basePrice === null ? 'Predictions closed and it has no start price yet. Add its opening price, then the result.' : 'Predictions closed. Post the final price to pay the winners.';
+  const what = m.basePrice === null ? 'Predictions closed and it has no start price yet. Add its opening price, then the result.' : 'Its result is due. Post the final price to pay the winners.';
   return `⏰ <b>${esc(m.symbol)} needs you</b>\n${what}\nPool: ${m.pool.toLocaleString('en-US')} pts from ${m.predictors} participant${m.predictors === 1 ? '' : 's'}.\n\n${esc(adminUrl)}`;
 }
 

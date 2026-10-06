@@ -12096,3 +12096,34 @@ svg.viz.viz-narrow {
 .admin-main {
   min-width: 0;
 }
+
+/* Markets priced at the close: the note on the market page, the Countdown tab intro and the result timer. */
+.m-upcoming.m-atclose {
+  border-color: color-mix(in srgb, var(--up) 30%, var(--line));
+  background: color-mix(in srgb, var(--up) 6%, transparent);
+}
+.m-upcoming.m-atclose > .i {
+  color: var(--up);
+}
+.countdown-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.5;
+}
+.countdown-note .i {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+}
+.card-timer.card-timer-result {
+  color: var(--text);
+}
+.mf-presets .mf-presets-gap {
+  margin-left: 10px;
+}
+.mf .start-close-check {
+  width: fit-content;
+  max-width: 100%;
+}
