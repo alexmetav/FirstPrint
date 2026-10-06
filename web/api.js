@@ -182,6 +182,7 @@ export function createAdminApi(key, baseUrl = '') {
     priceCheck: (body) => post('/api/admin/price-check', body),
     trending: () => request('/api/admin/discover/trending'),
     exchangeNew: (venue) => request(`/api/admin/discover/exchange?venue=${encodeURIComponent(venue)}`),
+    tokenLogo: (symbol, name = '') => request(`/api/admin/discover/logo?symbol=${encodeURIComponent(symbol)}&name=${encodeURIComponent(name)}`),
     marketChecks: () => request('/api/admin/market-checks'),
     fetchImage: (url) => request(`/api/admin/fetch-image?url=${encodeURIComponent(url)}`),
     setStartPrice: (id, basePrice) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/start-price`, { basePrice }),

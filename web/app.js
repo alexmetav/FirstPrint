@@ -40,7 +40,6 @@ const S = {
   heroIdx: 0,
   lbPeriod: 'week',
   query: '',
-  exchange: 'all',
   lists: { open: [], live: [], settled: [] },
   /** Predictor counts as last drawn on each card, to float "+N" when more people join. */
   cardSeen: new Map(),
@@ -350,7 +349,11 @@ async function onRoute() {
 function setHtml(el, html) {
   const key = html.replace(/(data-until="\d+">)[^<]*/g, '$1');
   if (el.__html === key && el.firstElementChild && el.firstElementChild === el.__first) return;
+  // A redraw (new odds, "1m ago") must not snap shut a section the reader opened.
+  const tag = (d, i) => `${d.className}#${i}`;
+  const opened = new Set([...el.querySelectorAll('details')].map((d, i) => (d.open ? tag(d, i) : '')).filter(Boolean));
   el.innerHTML = html;
+  if (opened.size) el.querySelectorAll('details').forEach((d, i) => opened.has(tag(d, i)) && (d.open = true));
   el.__html = key;
   el.__first = el.firstElementChild;
 }
@@ -915,6 +918,9 @@ function renderDemoBar() {
 // ------------------------------------------------------------------ Home
 
 /** Home tabs: the top open markets, the newest, every open market with a sort, then waiting and settled ones. */
+/** Every exchange's new listings in one list, under "Exchanges" in the side menu. */
+const LISTINGS_TAB = ['listings', 'zap', 'New listings'];
+
 const HOME_TABS = [
   ['trending', 'flame', 'Trending'],
   ['new', 'sparkles', 'New'],
@@ -945,7 +951,26 @@ const ALL_SORTS = [
   ['ending', 'Ending soon', (a, b) => a.closeAt - b.closeAt],
 ];
 
-const venuesOf = (m) => (m.venues?.length ? m.venues.map((v) => v.name) : [m.exchange]);
+/** Exchanges a market's token trades on (not CoinGecko, which is a price source). */
+const listedOn = (m) => (m.venues ?? []).filter((v) => v.id !== 'coingecko');
+const isListing = (m) => listedOn(m).length > 0;
+/** A small mark in the exchange's brand colour with its name: where the token is listed, at a glance. */
+const EX_MARK = {
+  binance: ['#F0B90B', '#181A20'],
+  mexc: ['#2D7FF9', '#fff'],
+  bybit: ['#F7A600', '#17181E'],
+  okx: ['#e8e8e8', '#000'],
+  gate: ['#2354E6', '#fff'],
+  bitget: ['#00C2D1', '#fff'],
+  kucoin: ['#23AF91', '#fff'],
+};
+function exBadge(m) {
+  const on = listedOn(m);
+  if (!on.length) return '';
+  const [v] = on;
+  const [bg, fg] = EX_MARK[v.id] ?? ['var(--surface-2)', 'var(--text)'];
+  return `<span class="ex-badge" title="Listed on ${esc(on.map((x) => x.name).join(', '))}"><i style="background:${bg};color:${fg}" aria-hidden="true">${esc(v.name.slice(0, 1))}</i>${esc(v.name)}${on.length > 1 ? `<small>+${on.length - 1}</small>` : ''}</span>`;
+}
 
 function tabList(tab) {
   // Closed markets counting down to their result, the soonest result first.
@@ -953,6 +978,8 @@ function tabList(tab) {
   if (tab === 'settled') return [...S.lists.settled];
   const open = [...S.lists.open];
   if (tab === 'new') return open.sort((a, b) => b.openedAt - a.openedAt);
+  // Tokens newly listed on an exchange, every exchange together (CoinGecko-only markets aren't listings).
+  if (tab === 'listings') return open.filter(isListing).sort((a, b) => b.openedAt - a.openedAt);
   if (tab === 'all') return open.sort((ALL_SORTS.find(([id]) => id === S.sort) ?? ALL_SORTS[0])[2]);
   return trendingList();
 }
@@ -960,19 +987,18 @@ function tabList(tab) {
 /** The cards under the tabs: the chosen tab, or every market matching the search. */
 function marketResults() {
   const q = (S.query ?? '').trim().toLowerCase();
-  const byExchange = (m) => S.exchange === 'all' || venuesOf(m).includes(S.exchange);
   if (q) {
     const all = [...[...S.lists.open].sort(byTrending), ...S.lists.live, ...S.lists.settled];
-    const hits = all.filter((m) => byExchange(m) && (m.symbol.toLowerCase().includes(q) || (m.name ?? '').toLowerCase().includes(q)));
+    const hits = all.filter((m) => (m.symbol.toLowerCase().includes(q) || (m.name ?? '').toLowerCase().includes(q)));
     return hits.length
       ? `<p class="results-note">${hits.length} market${hits.length === 1 ? '' : 's'} matching “${esc(S.query.trim())}”</p><div class="grid">${hits.map(cardView).join('')}</div>`
       : `<div class="empty"><div class="empty-art">${ico('search')}</div><p><strong>No markets match “${esc(S.query.trim())}”.</strong><br />Try a token symbol like BTC or a project name.</p></div>`;
   }
-  const list = tabList(S.filter).filter(byExchange);
+  const list = tabList(S.filter);
   // Trending carries on into every other open market below it, so the first screen shows all there is to predict.
   if (S.filter === 'trending') {
     const seen = new Set(list.map((m) => m.id));
-    const rest = [...S.lists.open].filter((m) => !seen.has(m.id) && byExchange(m)).sort(ALL_SORTS[0][2]);
+    const rest = [...S.lists.open].filter((m) => !seen.has(m.id)).sort(ALL_SORTS[0][2]);
     if (!list.length && !rest.length) return `<div class="empty">${emptyText()}</div>`;
     return `${list.length ? `<div class="grid">${list.map(cardView).join('')}</div>` : ''}${
       rest.length
@@ -986,18 +1012,13 @@ function marketResults() {
 
 function homeView() {
   const tnCard = startChecklist();
-  if (!HOME_TABS.some(([id]) => id === S.filter)) S.filter = 'trending';
+  if (![...HOME_TABS, LISTINGS_TAB].some(([id]) => id === S.filter)) S.filter = 'trending';
   const featured = featuredMarket();
-  const count = (id) => (id === 'live' ? S.lists.live.length : id === 'settled' ? S.lists.settled.length : id === 'trending' ? trendingList().length : S.lists.open.length);
+  const count = (id) => (id === 'live' ? S.lists.live.length : id === 'settled' ? S.lists.settled.length : id === 'trending' ? trendingList().length : id === 'listings' ? S.lists.open.filter(isListing).length : S.lists.open.length);
   const base = tabList(S.filter);
-  const shown = base.filter((m) => S.exchange === 'all' || !S.exchange || venuesOf(m).includes(S.exchange));
-  const onlyFeatured = !S.query && featured && ['trending', 'new', 'all'].includes(S.filter) && shown.length === 1 && shown[0].id === featured.id && S.lists.open.length <= 1;
-  const exchanges = [...new Set([...S.lists.open, ...S.lists.live, ...S.lists.settled].flatMap(venuesOf))].sort();
-  // Only exchanges that have markets in this tab (plus the one currently chosen).
-  const exList = exchanges.map((e) => [e, base.filter((m) => venuesOf(m).includes(e)).length]).filter(([e, n]) => n > 0 || S.exchange === e);
+  const onlyFeatured = !S.query && featured && ['trending', 'new', 'all'].includes(S.filter) && base.length === 1 && base[0].id === featured.id && S.lists.open.length <= 1;
   const filterBtn = ([id, icon, label]) =>
     `<button data-filter="${id}" aria-current="${S.filter === id && !S.query}">${ico(icon)}<span>${label}</span><span class="side-n">${count(id)}</span></button>`;
-  const exBtn = (id, label, n) => `<button data-exchange="${esc(id)}" aria-current="${(S.exchange ?? 'all') === id}">${id === 'all' ? ico('landmark') : `<span class="ex-dot" aria-hidden="true">${esc(label.slice(0, 1))}</span>`}<span>${esc(label)}</span><span class="side-n">${n}</span></button>`;
   return `
     ${tnCard}
     ${S.query ? '' : homeHero(!tnCard)}
@@ -1005,13 +1026,12 @@ function homeView() {
       <aside class="home-side" aria-label="Filter markets">
         <div class="side-group">${HOME_TABS.map(filterBtn).join('')}</div>
         <p class="side-soon" title="Creating your own market is coming soon">${ico('plusCircle')}<span>Create a market</span><span class="soon">Soon</span></p>
-        ${exList.length > 1 ? `<div class="side-label">Exchanges</div><div class="side-group">${exBtn('all', 'All exchanges', base.length)}${exList.map(([e, n]) => exBtn(e, e, n)).join('')}</div>` : ''}
+        <div class="side-label">Exchanges</div><div class="side-group">${filterBtn(LISTINGS_TAB)}</div>
       </aside>
       <div class="home-main">
         ${S.query ? '' : featuredDeck(featured)}
         <div class="home-head">
-          ${onlyFeatured ? '' : `<h2>${S.query ? 'Search results' : (HOME_TABS.find(([id]) => id === S.filter)?.[2] ?? 'Markets')}</h2>`}
-          ${S.exchange && S.exchange !== 'all' ? `<button class="chip chip-sm" data-exchange="all">${esc(S.exchange)} ${ico('cross')}</button>` : ''}
+          ${onlyFeatured ? '' : `<h2>${S.query ? 'Search results' : ([...HOME_TABS, LISTINGS_TAB].find(([id]) => id === S.filter)?.[2] ?? 'Markets')}</h2>`}
           ${S.filter === 'all' && !S.query && !onlyFeatured ? `<label class="select home-sort">Sort <select id="market-sort">${ALL_SORTS.map(([id, label]) => `<option value="${id}"${id === (S.sort ?? 'predictors') ? ' selected' : ''}>${label}</option>`).join('')}</select></label>` : ''}
         </div>
         <div id="market-results">${onlyFeatured ? '<p class="home-note">This is the only open market right now. New markets show up here as soon as they open.</p>' : marketResults()}</div>
@@ -1132,6 +1152,7 @@ function homeRail() {
 
 function emptyText() {
   if (S.filter === 'live') return `<div class="empty-art">${ico('clock')}</div><p>Nothing is counting down yet. Markets move here once predictions close, and wait for their result.</p><button class="btn" data-filter="trending">See open markets</button>`;
+  if (S.filter === 'listings') return `<div class="empty-art">${ico('zap')}</div><p>No new exchange listings open right now. Markets on tokens just listed on MEXC, Gate, Bitget and others show up here.</p><button class="btn" data-filter="trending">See open markets</button>`;
   if (S.filter === 'settled') return `<div class="empty-art">${ico('checkCircle')}</div><p>No settled markets yet. Results appear here after Firstprint posts them.</p>`;
   return `<div class="empty-art">${ico('satellite')}</div>
     <p><strong>No open markets right now.</strong><br />New markets land here as soon as Firstprint opens them.</p>
@@ -1321,15 +1342,12 @@ function cardView(m) {
     : m.phase === 'awaiting_result' ? `<span class="st st-wait">${m.settleAt > now() ? 'Countdown' : 'Awaiting'}</span>`
     : soon ? `<span class="st st-hot">${ico('flame')}${upcoming ? 'Listing soon' : 'Closing soon'}</span>`
     : upcoming ? '<span class="st st-soon"><i aria-hidden="true"></i>Upcoming</span>'
-    : '<span class="st st-live"><i aria-hidden="true"></i>Open</span>';
+    : ''; // Open markets show a live dot on the token logo instead.
 
   // New predictors since this card was last drawn float up as "+N": real activity, never made up.
   const seen = S.cardSeen.get(m.id);
   const joined = seen === undefined ? 0 : m.predictors - seen;
   S.cardSeen.set(m.id, m.predictors);
-  const activity = m.predictors
-    ? `<span class="card-act">${ico('users')}${tick(`pred:${m.id}`, m.predictors)}<span>${m.predictors === 1 ? 'participant' : 'participants'}</span></span>`
-    : '';
   // When the result comes, so it's clear from the card how long a pick is held.
   const result = open && m.settleAt
     ? `<span class="card-result" title="Result ${esc(fmtDate(m.settleAt))}">${ico('calendar')}Result<b>${esc(new Date(m.settleAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</b></span>`
@@ -1349,12 +1367,12 @@ function cardView(m) {
     <article class="card mcard${soon ? ' soon' : ''}${joined > 0 ? ' has-new' : ''}">
       ${joined > 0 ? `<span class="card-bump" aria-hidden="true">+${joined}</span>` : ''}
       <div class="card-top">
-        ${tokenAvatar(m, 'avatar-md')}
-        <a class="card-link" href="${href}"><span class="sym">${esc(m.symbol)}${yn ? ' <span class="tag tag-yn">Yes / No</span>' : ''}</span><span class="card-name">${esc(m.name || '')}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</span></a>
+        ${open && !upcoming ? `<span class="av-live" title="Open for predictions">${tokenAvatar(m, 'avatar-md')}<i class="live-dot" aria-hidden="true"></i><span class="sr-only">Open</span></span>` : tokenAvatar(m, 'avatar-md')}
+        <a class="card-link" href="${href}"><span class="sym">${esc(m.symbol)}${yn ? ' <span class="tag tag-yn">Yes / No</span>' : ''}</span><span class="card-name">${m.name ? `<span class="card-nm">${esc(m.name)}</span>` : ''}${exBadge(m)}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</span></a>
         ${g}
       </div>
       ${body}
-      <div class="card-foot"><span class="foot-l">${state}${timer}</span>${activity || result ? `<span class="foot-r">${activity}${result}</span>` : ''}</div>
+      <div class="card-foot"><span class="foot-l">${state}${timer}</span>${result ? `<span class="foot-r">${result}</span>` : ''}</div>
     </article>`;
 }
 
@@ -1693,7 +1711,10 @@ function oddsPlot(m, o) {
   const yn = isYesNo(m);
   const lines = yn ? ['up'] : bucketsOf(m).filter((b) => o.series.some((p) => (p.shares[b] ?? 0) > 0));
   const t0 = o.series[0].t;
-  const t1 = Math.max(o.series[o.series.length - 1].t, Math.min(now(), m.closeAt));
+  // "Now" moves on in coarse steps (a 200th of the span, at least a minute), so the chart doesn't
+  // change on every refresh: each change redraws the page.
+  const step = Math.max(60_000, Math.floor((Math.max(m.closeAt, now()) - t0) / 200 / 60_000) * 60_000);
+  const t1 = Math.max(o.series[o.series.length - 1].t, Math.min(Math.ceil(now() / step) * step, m.closeAt));
   const x = (t) => ((t - t0) / (t1 - t0 || 1)) * 100;
   const y = (v) => 100 - v * 100;
   const last = o.series[o.series.length - 1].shares;
@@ -3556,8 +3577,7 @@ function onLive(type, data) {
     }
     if (S.route.name === 'home') {
       const hit = [...S.lists.open, ...S.lists.live].some((m) => patch(m));
-      const busy = document.activeElement?.id === 'exchange-filter';
-      if (hit && !homeRenderTimer && !busy) {
+      if (hit && !homeRenderTimer) {
         homeRenderTimer = setTimeout(() => {
           homeRenderTimer = null;
           heroFlipDone().then(() => S.route.name === 'home' && setHtml($('#view'), homeView()));
@@ -3907,6 +3927,33 @@ async function copyLogo(form, url) {
     say('Saved a copy. The logo no longer depends on that link.', 'ok');
   } catch (err) {
     if (form.isConnected) say(`Couldn’t copy it (${err.message}). The link will be used as it is.`, 'bad');
+  }
+}
+
+/**
+ * Finds the token's logo on CoinGecko by its ticker (and name) and saves a copy, so a market made
+ * from a new listing needs no logo pasted by hand. Runs by itself when a listing is reviewed (only
+ * if the form has no logo yet), and from the Find button.
+ */
+async function findLogo(form, { force = false } = {}) {
+  if (!form || !A.api) return;
+  if (!force && form.querySelector('[name=logoUrl]').value) return;
+  const symbol = form.querySelector('[name=symbol]')?.value.trim() ?? '';
+  const name = form.querySelector('[name=name]')?.value.trim() ?? '';
+  const status = form.querySelector('[data-logo-status]');
+  const say = (text, cls = '') => status && ((status.textContent = text), (status.className = `logo-status ${cls}`));
+  if (!symbol) return force && say('Fill in the symbol first.', 'bad');
+  say(`Looking for ${symbol}’s logo on CoinGecko…`);
+  try {
+    const { logo } = await A.api.tokenLogo(symbol, name);
+    if (!form.isConnected || (!force && form.querySelector('[name=logoUrl]').value)) return;
+    if (!logo) return say(`CoinGecko doesn’t list ${symbol} yet. Paste a logo link or upload one.`, 'bad');
+    form.querySelector('[data-logo-link]').value = logo.logo;
+    setLogo(form, logo.logo, { keepLink: true });
+    await copyLogo(form, logo.logo);
+    if (form.isConnected && form.querySelector('[name=logoUrl]').value) say(`Logo from CoinGecko (${logo.name}). Check it’s the right token.`, 'ok');
+  } catch (err) {
+    if (form.isConnected) say(`Couldn’t look up the logo (${err.message}). Paste a link or upload one.`, 'bad');
   }
 }
 
@@ -4343,6 +4390,7 @@ function marketForm(m, pre = null) {
             <input type="hidden" name="logoUrl" value="${esc(v?.logoUrl ?? '')}" />
             <input class="logo-link" data-logo-link type="url" inputmode="url" placeholder="Paste an image link (https://…)" value="${v?.logoUrl && !v.logoUrl.startsWith('data:') ? esc(v.logoUrl) : ''}" autocomplete="off" />
             <label class="btn btn-sm logo-upload">${ico('upload')}<span>Upload</span><input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-logo-file hidden /></label>
+            <button class="btn btn-sm" type="button" data-action="logo-find" title="Look the token up on CoinGecko by its ticker and name">${ico('search')}<span>Find</span></button>
             <button class="btn btn-sm" type="button" data-action="logo-clear"${v?.logoUrl ? '' : ' hidden'}>Remove</button>
           </div>
           <small class="logo-status" data-logo-status></small>
@@ -4660,6 +4708,7 @@ async function makeFromDiscovery(el) {
   A.tab = 'create';
   await renderAdmin();
   window.scrollTo({ top: 0 });
+  findLogo($('#admin-market'));
 }
 
 /** Starting values for a market made from a detected listing. */
@@ -5037,7 +5086,8 @@ async function onAdminAction(action, el) {
       A.edit = null;
       A.tab = 'create';
       await renderAdmin();
-      return window.scrollTo({ top: 0 });
+      window.scrollTo({ top: 0 });
+      return findLogo($('#admin-market'));
     case 'admin-review-ignore':
       if (!confirm('Skip this listing? It leaves the list and no market is made.')) return;
       try {
@@ -5437,12 +5487,6 @@ document.addEventListener('click', async (e) => {
     S.streakOpen = false;
     renderTop();
   }
-  const exchangePick = t.closest('[data-exchange]')?.dataset.exchange;
-  if (exchangePick) {
-    S.exchange = exchangePick;
-    $('#view').innerHTML = homeView();
-    return;
-  }
   const dashTab = t.closest('[data-dash-tab]')?.dataset.dashTab;
   if (dashTab) return showDashTab(dashTab);
   const pnlRange = t.closest('[data-pnl-range]')?.dataset.pnlRange;
@@ -5646,6 +5690,8 @@ document.addEventListener('click', async (e) => {
       return;
     case 'logo-clear':
       return setLogo(t.closest('form'), '');
+    case 'logo-find':
+      return findLogo(t.closest('form'), { force: true });
     case 'retry':
       return loadRoute();
     case 'skip':
@@ -5885,10 +5931,6 @@ document.addEventListener('change', (e) => {
     S.sort = e.target.value;
     const out = $('#market-results');
     if (out) out.innerHTML = marketResults();
-  }
-  if (e.target.id === 'exchange-filter') {
-    S.exchange = e.target.value;
-    $('#view').innerHTML = homeView();
   }
 });
 

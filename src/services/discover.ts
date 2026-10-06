@@ -8,6 +8,9 @@
 import { AppError, type FirstprintService } from './firstprint.ts';
 
 const TRENDING_URL = 'https://api.coingecko.com/api/v3/search/trending';
+const SEARCH_URL = 'https://api.coingecko.com/api/v3/search';
+const LOGO_CACHE_MS = 60 * 60_000;
+const LOGO_MISS_MS = 10 * 60_000;
 const CACHE_MS = 5 * 60_000;
 const TIMEOUT_MS = 8_000;
 const MINUTE = 60_000;
@@ -22,6 +25,15 @@ export interface TrendingCoin {
   rank: number | null;
   url: string;
 }
+
+export interface TokenLogo {
+  logo: string;
+  coinId: string;
+  name: string;
+  url: string;
+}
+
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export interface NewListing {
   id: number;
@@ -56,6 +68,7 @@ export class Discover {
   private fetchImpl: typeof fetch;
   private apiKey: string | null;
   private cache: { at: number; coins: TrendingCoin[] } | null = null;
+  private logos = new Map<string, { at: number; hit: TokenLogo | null }>();
 
   constructor(service: FirstprintService, opts: { fetchImpl?: typeof fetch; apiKey?: string | null } = {}) {
     this.service = service;
@@ -100,6 +113,52 @@ export class Discover {
       .filter((c) => c.symbol && c.name);
     this.cache = { at: now, coins };
     return { coins, fetchedAt: now, source: 'CoinGecko' };
+  }
+
+  /**
+   * A token's logo from CoinGecko's search, so a new listing needn't have one pasted by hand. Only a
+   * coin with the very same ticker counts; among several, the one whose name matches wins, then the
+   * biggest by market cap. null when CoinGecko doesn't know the token yet.
+   */
+  async tokenLogo(symbol: string, name = ''): Promise<TokenLogo | null> {
+    const sym = symbol.trim().toUpperCase();
+    if (!/^[A-Z0-9]{1,20}$/.test(sym)) throw new AppError(400, 'bad_symbol', 'Give the token’s ticker, like PEPE.');
+    const key = `${sym}|${norm(name)}`;
+    const now = this.service.clock.now();
+    const known = this.logos.get(key);
+    if (known && now - known.at < (known.hit ? LOGO_CACHE_MS : LOGO_MISS_MS)) return known.hit;
+    let body: { coins?: Record<string, unknown>[] };
+    try {
+      const res = await this.fetchImpl(`${SEARCH_URL}?query=${encodeURIComponent(sym)}`, {
+        headers: { accept: 'application/json', ...(this.apiKey ? { 'x-cg-demo-api-key': this.apiKey } : {}) },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (res.status === 429) throw new AppError(429, 'rate_limited', 'CoinGecko is busy (too many requests). Try again in a minute.');
+      if (!res.ok) throw new AppError(502, 'source_failed', `CoinGecko answered with an error (${res.status}).`);
+      body = (await res.json()) as typeof body;
+    } catch (err) {
+      if (err instanceof AppError) throw err;
+      throw new AppError(502, 'source_failed', 'CoinGecko didn’t answer. Try again in a moment.');
+    }
+    const want = norm(name);
+    const rank = (c: Record<string, unknown>) => (typeof c.market_cap_rank === 'number' ? c.market_cap_rank : Infinity);
+    const nameScore = (c: Record<string, unknown>) => {
+      const n = norm(String(c.name ?? ''));
+      return !want || !n ? 0 : n === want ? 2 : n.includes(want) || want.includes(n) ? 1 : 0;
+    };
+    const pick = (body.coins ?? [])
+      .filter((c) => String(c.symbol ?? '').toUpperCase() === sym && typeof (c.large ?? c.thumb) === 'string')
+      .sort((a, b) => nameScore(b) - nameScore(a) || rank(a) - rank(b))[0];
+    const hit = pick
+      ? {
+          logo: String(pick.large ?? pick.thumb),
+          coinId: String(pick.id ?? ''),
+          name: String(pick.name ?? ''),
+          url: `https://www.coingecko.com/en/coins/${encodeURIComponent(String(pick.id ?? ''))}`,
+        }
+      : null;
+    this.logos.set(key, { at: now, hit });
+    return hit;
   }
 
   /** What the listing tracker found on one exchange in the last week, with live and opening prices. */
