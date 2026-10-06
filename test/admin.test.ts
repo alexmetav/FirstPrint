@@ -328,3 +328,28 @@ test('maintenance: players can read but not write, admins still can, workers pau
     server.close();
   }
 });
+
+test('market lists: guests get a short list with the total; signed-in players get them all', async () => {
+  const { service } = setup();
+  const { GUEST_MARKETS } = await import('../src/api/server.ts');
+  const server = createApiServer({ service, adminKey: null, secureCookies: false, webDir: new URL('../web', import.meta.url).pathname });
+  await new Promise<void>((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    for (let i = 0; i < GUEST_MARKETS + 5; i++) {
+      service.createManualMarket({ symbol: `T${i}`, exchanges: ['exa'], basePrice: 1, closeAt: T0 + (i + 1) * 60 * MIN, resultAt: T0 + 9 * 24 * 60 * MIN, publish: true } as never);
+    }
+    const guest = await (await fetch(`${base}/api/markets?filter=open`)).json();
+    assert.equal(guest.markets.length, GUEST_MARKETS);
+    assert.equal(guest.total, GUEST_MARKETS + 5);
+    assert.equal(guest.limited, true);
+    assert.equal(guest.markets[0].symbol, 'T0', 'the soonest to close come first');
+    const u = await service.createUser({ username: 'reader' });
+    const cookie = `fp_session=${service.createSession(u.id, 'email').token}`;
+    const player = await (await fetch(`${base}/api/markets?filter=open`, { headers: { cookie } })).json();
+    assert.equal(player.markets.length, GUEST_MARKETS + 5);
+    assert.equal(player.limited, false);
+  } finally {
+    server.close();
+  }
+});

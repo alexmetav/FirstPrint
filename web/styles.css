@@ -12981,3 +12981,30 @@ html.in-maint body {
 @media (prefers-reduced-motion: reduce) {
   .ld-mark i:nth-child(n) { animation-duration: 3s; }
 }
+
+/* After a page of cards: "Show more" for players, an invitation to sign up for guests. */
+.see-more {
+  display: flex;
+  justify-content: center;
+  margin: 18px 0 6px;
+}
+.see-more .btn .muted {
+  margin-left: 4px;
+  font-weight: 400;
+}
+.see-more-guest {
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 18px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 16px;
+  text-align: center;
+}
+.see-more-guest p {
+  margin: 0;
+  color: var(--muted);
+}
+.see-more-guest p b {
+  color: var(--text);
+}

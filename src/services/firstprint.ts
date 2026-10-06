@@ -2039,6 +2039,25 @@ export class FirstprintService {
 
   // --- Read models ------------------------------------------------------------
 
+  /**
+   * Published markets for the public lists. `limit` caps how many come back (guests get a short
+   * list; players a larger one), and `total` says how many there are, so the page can offer more.
+   * Open markets that close soonest come first, so a short list shows the most urgent ones.
+   */
+  listMarketsPage(filter: 'open' | 'live' | 'settled' | 'all', userId: string | undefined, limit: number) {
+    const where = this.listWhere(filter);
+    // listing_at is when predictions close (manual markets) or trading starts (listings).
+    const order = filter === 'settled' ? 'listing_at DESC' : 'listing_at ASC';
+    const n = Math.max(1, Math.min(200, Math.floor(limit)));
+    const rows = as<MarketRow[]>(this.db.prepare(`SELECT * FROM markets WHERE published = 1 AND ${where} ORDER BY ${order} LIMIT ?`).all(n));
+    const total = as<{ n: number }>(this.db.prepare(`SELECT COUNT(*) AS n FROM markets WHERE published = 1 AND ${where}`).get()).n;
+    return { markets: rows.map((r) => this.view(r, userId)), total };
+  }
+
+  private listWhere(filter: 'open' | 'live' | 'settled' | 'all') {
+    return filter === 'open' ? "status = 'open'" : filter === 'live' ? "status = 'locked'" : filter === 'settled' ? "status IN ('resolved', 'void')" : '1 = 1';
+  }
+
   listMarkets(filter: 'open' | 'live' | 'settled' | 'all', userId?: string) {
     const where =
       filter === 'open'

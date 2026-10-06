@@ -95,6 +95,9 @@ interface Ctx {
  * (the admin key sits in sessionStorage). Inline styles stay allowed: the UI sets CSS variables in style="".
  * Images may come from any https host (exchange and token logos). Keep in step with vercel.json.
  */
+/** How many markets per list a visitor who isn't signed in sees. */
+export const GUEST_MARKETS = 12;
+
 export const CSP = [
   "default-src 'self'",
   "script-src 'self' https://accounts.google.com/gsi/client",
@@ -395,7 +398,11 @@ export function createApiServer(opts: ServerOptions): Server {
   route('GET', '/api/markets', ({ url, optionalUser }) => {
     const filter = (url.searchParams.get('filter') ?? 'all') as 'open' | 'live' | 'settled' | 'all';
     if (!['open', 'live', 'settled', 'all'].includes(filter)) throw new AppError(400, 'bad_filter', 'Unknown filter.');
-    return { markets: service.listMarkets(filter, optionalUser()?.id), serverTime: service.clock.now() };
+    // Guests get a short list (a taste, and light on the server); signed-in players get them all.
+    const me = optionalUser();
+    const limit = me ? 200 : filter === 'settled' ? 6 : GUEST_MARKETS;
+    const page = service.listMarketsPage(filter, me?.id, limit);
+    return { markets: page.markets, total: page.total, limited: !me && page.total > page.markets.length, serverTime: service.clock.now() };
   });
 
   route('GET', '/api/markets/:id', ({ params, optionalUser }) => service.getMarket(params.id, optionalUser()?.id));
