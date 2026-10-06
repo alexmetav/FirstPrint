@@ -306,12 +306,15 @@ function parseRoute() {
 }
 
 /** Placeholders shaped like the page that is loading, instead of a spinner. */
+/** The Firstprint mark with its five bars rising and falling like a volume meter: "loading". */
+const loaderMark = (label = 'Loading') => `<div class="fp-loader" role="status" aria-label="${esc(label)}"><span class="ld-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></div>`;
+
 function skeletonView(name) {
   const card = '<div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div>';
   const grid = `<div class="sk-grid">${card.repeat(6)}</div>`;
-  if (name === 'home') return `<div class="skeleton" aria-busy="true" aria-label="Loading markets"><div class="sk-hero"><i class="sk sk-line w30"></i><i class="sk sk-title"></i><i class="sk sk-line w50"></i></div>${grid}</div>`;
-  if (name === 'portfolio') return `<div class="skeleton" aria-busy="true" aria-label="Loading your dashboard"><div class="sk-row"><i class="sk sk-circle lg"></i><span class="sk-col"><i class="sk sk-line w20"></i><i class="sk sk-title w30"></i></span></div><div class="sk-grid two"><div class="sk-card tall"></div><div class="sk-card tall"></div></div><div class="sk-card block"></div></div>`;
-  return `<div class="skeleton" aria-busy="true" aria-label="Loading"><i class="sk sk-title w40"></i><i class="sk sk-line w60"></i><div class="sk-card block"></div></div>`;
+  if (name === 'home') return `${loaderMark('Loading markets')}<div class="skeleton" aria-busy="true" aria-label="Loading markets"><div class="sk-hero"><i class="sk sk-line w30"></i><i class="sk sk-title"></i><i class="sk sk-line w50"></i></div>${grid}</div>`;
+  if (name === 'portfolio') return `${loaderMark('Loading your dashboard')}<div class="skeleton" aria-busy="true" aria-label="Loading your dashboard"><div class="sk-row"><i class="sk sk-circle lg"></i><span class="sk-col"><i class="sk sk-line w20"></i><i class="sk sk-title w30"></i></span></div><div class="sk-grid two"><div class="sk-card tall"></div><div class="sk-card tall"></div></div><div class="sk-card block"></div></div>`;
+  return `${loaderMark()}<div class="skeleton" aria-busy="true" aria-label="Loading"><i class="sk sk-title w40"></i><i class="sk sk-line w60"></i><div class="sk-card block"></div></div>`;
 }
 
 /** A short fade-and-rise when a new page appears (not on live updates of the same page). */
@@ -427,10 +430,15 @@ function setHtml(el, html) {
 
 async function loadRoute() {
   const view = $('#view');
+  // Quick taps from page to page: only the latest page may draw, so a slow earlier one can't
+  // land on top of it (or leave the screen blank) when its data finally arrives.
+  const seq = (S.routeSeq = (S.routeSeq ?? 0) + 1);
+  const stale = () => seq !== S.routeSeq;
   try {
     if (S.route.name === 'home') {
       await loadHome();
       await heroFlipDone();
+      if (stale()) return;
       setHtml(view, homeView());
     } else if (S.route.name === 'market') {
       await loadMarket(S.route.id);
@@ -439,6 +447,7 @@ async function loadRoute() {
         S.pendingPick = null;
         if (S.market.status === 'open' && bucketsOf(S.market).includes(pending.bucket)) S.trade.bucket = pending.bucket;
       }
+      if (stale()) return;
       renderMarket();
       if (pending?.id === S.route.id && S.trade.bucket) {
         requestQuote();
@@ -447,9 +456,11 @@ async function loadRoute() {
       }
     } else if (S.route.name === 'leaderboard') {
       const lb = await S.api.leaderboard(S.lbPeriod);
+      if (stale()) return;
       setHtml(view, leaderboardView(lb));
     } else if (S.route.name === 'profile') {
       S.profile = await S.api.profile(S.route.id);
+      if (stale()) return;
       setHtml(view, profileView(S.profile));
     } else if (S.route.name === 'admin') {
       await renderAdmin();
@@ -462,8 +473,11 @@ async function loadRoute() {
           view.innerHTML = dead('This stats link isn’t complete.');
         } else {
           try {
-            view.innerHTML = analyticsView(await S.api.publicAnalytics(S.route.key, S.vizDays ?? 30), { shared: true });
+            const data = await S.api.publicAnalytics(S.route.key, S.vizDays ?? 30);
+            if (stale()) return;
+            view.innerHTML = analyticsView(data, { shared: true });
           } catch (err) {
+    if (stale()) return;
             view.innerHTML =
               err.status === 404
                 ? dead('This stats link is no longer active.')
@@ -476,9 +490,11 @@ async function loadRoute() {
       return;
     } else if (S.route.name === 'radar') {
       const { listings } = await S.api.detectedListings();
+      if (stale()) return;
       setHtml(view, radarView(listings));
     } else if (S.route.name === 'earn') {
       await Promise.all([refreshRewards(), loadDaily()]);
+      if (stale()) return;
       setHtml(view, earnView());
     } else if (S.route.name === 'portfolio') {
       const preds = S.me ? (await S.api.myPredictions()).predictions : [];
@@ -492,6 +508,7 @@ async function loadRoute() {
         if (live) S.lists.live = live.markets;
       }
       S.dashData = [preds, history, stats, chain];
+      if (stale()) return;
       setHtml(view, portfolioView(preds, history, stats, chain));
     }
     document.title = titleFor();
