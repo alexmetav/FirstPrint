@@ -12150,8 +12150,8 @@ svg.viz.viz-narrow {
 .card-timer.card-timer-result {
   color: var(--text);
 }
-.mf-presets .mf-presets-gap {
-  margin-left: 10px;
+.mf-presets .muted {
+  min-width: 108px;
 }
 .mf .start-close-check {
   width: fit-content;
@@ -12811,6 +12811,7 @@ function createAdminApi(key, baseUrl = '') {
     updateManual: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}`, body),
     publish: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/publish`),
     unpublish: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/unpublish`),
+    closePredictions: (id, inHours = 0) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/close`, { inHours }),
     deleteDraft: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/delete`),
     deleteMarket: (id) => post(`/api/admin/markets/${encodeURIComponent(id)}/delete`),
     previewResult: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/preview`, body),
@@ -15300,8 +15301,8 @@ function howItWorks() {
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
         <li>Firstprint opens markets on newly listed tokens on major exchanges, including new listings it spots automatically on MEXC, OKX, Gate, Bitget and KuCoin. Log in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
-        <li>Pick one of five outcomes for where the price ends up compared with the start price, from Crash to Moon. Predictions stay open a day or two, and earlier predictions earn a bigger share.</li>
-        <li>The start price is locked when predictions close, so a move while they are open doesn’t count. The market then counts down to its result, usually 15 or 30 days later.</li>
+        <li>Pick one of five outcomes for where the price ends up compared with the start price, from Crash to Moon. Predictions stay open up to three days, and earlier predictions earn a bigger share.</li>
+        <li>The start price is locked when predictions close, so a move while they are open doesn’t count. The market then counts down to its result, usually 7 to 30 days later.</li>
         <li>When the result is due, the final price and the winners appear on the market page.</li>
         <li>Everyone who picked the winning outcome splits the pool, minus the fee shown on the market (usually 4%). Everyone gets their points back if nobody picked the winner, everyone picked the same outcome, or the market is cancelled.</li>
       </ol></details>
@@ -17591,6 +17592,7 @@ async function renderAdmin() {
     return;
   }
   const [{ markets }, detected, { log }, token, { tasks }, teamData] = loaded;
+  A.markets = markets;
   void backfillLogoPngs(markets);
   A.detected = detected;
   // Tokens that already have a live market show "Market made" in Find tokens.
@@ -17610,12 +17612,13 @@ async function renderAdmin() {
   const pending = manualOnly ? detected : [];
   if (A.review && !pending.some((d) => d.id === A.review.id)) A.review = null;
   const review = !editing && A.review ? A.review : null;
-  const badges = { markets: waiting.length + pending.length, token: token?.enabled && !token.ready ? '!' : 0 };
+  const tooLong = markets.filter(openTooLong).sort((a, b) => b.closeAt - a.closeAt);
+  const badges = { markets: waiting.length + pending.length + tooLong.length, token: token?.enabled && !token.ready ? '!' : 0 };
   const [, , title, lede] = ADMIN_TABS.find(([id]) => id === tab);
 
   let body;
-  if (tab === 'overview') body = adminOverview({ markets, waiting, drafts, token, tasks, log, pending });
-  else if (tab === 'markets') body = adminMarketsTab(markets, waiting, pending, counting);
+  if (tab === 'overview') body = adminOverview({ markets, waiting, drafts, token, tasks, log, pending, tooLong });
+  else if (tab === 'markets') body = adminMarketsTab(markets, waiting, pending, counting, tooLong);
   else if (tab === 'analytics') {
     try {
       const data = await A.api.analytics(S.vizDays ?? 30);
@@ -17837,7 +17840,7 @@ function statusChips(token, backup) {
 }
 
 /** Overview: the headline numbers first, then one inbox (to do / new listings), then recent activity. */
-function adminOverview({ markets, waiting, drafts, token, tasks, log, pending }) {
+function adminOverview({ markets, waiting, drafts, token, tasks, log, pending, tooLong = [] }) {
   const open = markets.filter((m) => m.status === 'open' && m.phase !== 'draft');
   const inPools = open.reduce((n, m) => n + m.pool, 0);
   const predictors = open.reduce((n, m) => n + m.predictors, 0);
@@ -17845,6 +17848,7 @@ function adminOverview({ markets, waiting, drafts, token, tasks, log, pending })
   const stat = (color, label, value, sub, goto) =>
     `<button type="button" class="adm-stat" style="--c:var(--${color})" data-action="admin-tab" data-tab="${goto}"><span class="adm-stat-l">${label}</span><b>${value}</b><small>${sub}</small></button>`;
   const todo = [];
+  if (tooLong.length) todo.push(['alert', 'down', `${tooLong.length} market${tooLong.length === 1 ? ' is' : 's are'} open longer than 3 days`, `${tooLong.map((m) => esc(m.symbol)).slice(0, 4).join(', ')}${tooLong.length > 4 ? '…' : ''}: close them so late players can’t follow the trend`, 'markets', 'Close them']);
   for (const m of waiting) todo.push(['alert', 'crash', `${esc(m.symbol)} is waiting for its result`, `${fmtPts(m.pool)} from ${m.predictors} participant${m.predictors === 1 ? '' : 's'}`, 'markets', 'Post result']);
   for (const m of drafts) todo.push(['edit', 'flat', `${esc(m.symbol)} is a draft`, 'Hidden until you publish it', 'markets', 'Review']);
   if (token?.enabled && !token.ready) todo.push(['token', 'warn', 'TestFPT isn’t set up', 'Points stay in balances until it exists', 'token', 'Set up']);
@@ -17884,7 +17888,16 @@ function adminInbox(panes) {
   </section>`;
 }
 
-function adminMarketsTab(markets, waiting, pending, counting = []) {
+function adminMarketsTab(markets, waiting, pending, counting = [], tooLong = []) {
+  // Made before the three-day limit: still open for days against a fixed start price. One click closes each.
+  const fix = tooLong.length
+    ? `<section class="panel adm-results adm-toolong"><div class="section-head"><span class="section-ico">${ico('alert')}</span><h2>Open longer than 3 days <span class="count-badge">${tooLong.length}</span></h2>${tooLong.length > 1 ? '<button class="btn btn-sm" type="button" data-action="admin-close-all">Close all now</button>' : ''}</div>
+        <p class="muted adm-fix-note">Made before the 3-day limit. While predictions stay open, late players can see the token’s trend. Close them now (or give players 24 hours’ notice); predictions stay and the result date doesn’t change.</p>
+        <ul class="todo">${tooLong
+          .map((m) => `<li style="--c:var(--down)"><span class="todo-ico">${tokenAvatar(m, 'avatar-sm')}</span><div><b>${esc(m.symbol)}</b><span class="muted">Closes in <span data-until="${m.closeAt}">${fmtDur(m.closeAt - now())}</span> · result ${fmtDate(m.settleAt)} · ${fmtPts(m.pool)} from ${m.predictors} participant${m.predictors === 1 ? '' : 's'}</span></div>
+            <span class="todo-actions"><button class="btn btn-sm btn-solid" type="button" data-action="admin-close-now" data-id="${esc(m.id)}">${ico('lock')}Close now</button><button class="btn btn-sm" type="button" data-action="admin-close-24" data-id="${esc(m.id)}">Close in 24h</button></span></li>`)
+          .join('')}</ul></section>`
+    : '';
   const results = waiting.length
     ? `<section class="panel adm-results"><div class="section-head"><span class="section-ico">${ico('alert')}</span><h2>Waiting for your result <span class="count-badge">${waiting.length}</span></h2></div>
         ${
@@ -17912,6 +17925,7 @@ function adminMarketsTab(markets, waiting, pending, counting = []) {
     ? `<details class="adm-collapse"><summary>${ico('zap')}<b>New listings</b><span class="count-badge">${pending.length}</span><span class="muted">found on the exchanges</span></summary>${listingsList(pending)}</details>`
     : '';
   return `
+    ${fix}
     ${results}
     ${countdown}
     <div id="admin-checks"></div>
@@ -18210,7 +18224,7 @@ function marketForm(m, pre = null) {
   const lock = locked ? ' disabled' : '';
   const t = v?.thresholds ?? { crash: -0.5, down: -0.1, up: 0.1, moon: 0.5 };
   const chosen = new Set(v?.venues ? v.venues.map((x) => x.id) : A.info.exchanges.filter((e) => e.enabled && !e.priceOnly).map((e) => e.id));
-  const soon = roundUpHour(Date.now() + OPEN_HOURS_DEFAULT * 3_600_000);
+  const soon = closeAfter(OPEN_HOURS_DEFAULT);
   const pct = (n) => String(Math.round(n * 1000) / 10);
   // The start price: taken when predictions close (the default), a fixed price, or an upcoming token's opening price.
   const atClose = v ? Boolean(v.startAtClose) : true;
@@ -18260,8 +18274,10 @@ function marketForm(m, pre = null) {
           <label><span class="field-label">Result</span><input name="resultAt" type="datetime-local" value="${toLocalInput(v?.settleAt ?? soon + RESULT_DAYS_DEFAULT * 86_400_000)}" required /><small class="utc-hint" data-utc-for="resultAt"></small></label>
         </div>
         <div class="mf-presets" role="group" aria-label="How long predictions stay open">
-          <span class="muted">Predictions open</span>${OPEN_PRESETS.map((h) => `<button type="button" class="chip-btn${openOn === h ? ' on' : ''}" data-action="admin-open-for" data-hours="${h}">${h} hours</button>`).join('')}
-          <span class="muted mf-presets-gap">Result after</span>${RESULT_PRESETS.map((d) => `<button type="button" class="chip-btn${resultOn === d ? ' on' : ''}" data-action="admin-result-after" data-days="${d}">${d} days</button>`).join('')}
+          <span class="muted">Predictions open</span>${OPEN_PRESETS.map((h) => `<button type="button" class="chip-btn${openOn === h ? ' on' : ''}" data-action="admin-open-for" data-hours="${h}" aria-label="${h} hours">${h}h</button>`).join('')}
+        </div>
+        <div class="mf-presets" role="group" aria-label="When the result comes">
+          <span class="muted">Result after</span>${RESULT_PRESETS.map((d) => `<button type="button" class="chip-btn${resultOn === d ? ' on' : ''}" data-action="admin-result-after" data-days="${d}" aria-label="${d} days">${d} days</button>`).join('')}
         </div>
         <label class="check start-close-check"${upcoming ? ' hidden' : ''}><input type="checkbox" name="startAtClose" data-start-close${atClose ? ' checked' : ''}${lock} /> <b>Start price is the price when predictions close</b> <span class="muted">(recommended)</span></label>
         <details class="adm-how start-close-how"${upcoming ? ' hidden' : ''}><summary>Why at the close</summary><p>The result is measured from the moment predictions close, so a token that climbs while predictions are open gives nobody an edge. The price is read by itself from the market’s sources in the minutes before the close; if they don’t answer, you’re asked for it. Untick it only for a fixed target price.</p></details>
@@ -18275,7 +18291,7 @@ function marketForm(m, pre = null) {
             <details class="adm-how"><summary>How this works</summary><p>The market waits as a draft. Once the token has traded for 3 minutes (checked against those minutes, so an opening spike is skipped), predictions open, with the channel post. The start price is the price when predictions close. You get a Telegram message either way. Needs the logo, and predictions must stay open at least 30 minutes after trading starts.</p></details>
           </div>
         </div>
-        <p class="mf-fine">Times are in your time zone. Players pick for ${OPEN_PRESETS.join(' to ')} hours, then the market counts down to its result.</p>
+        <p class="mf-fine">Times are in your time zone. Predictions stay open at most ${OPEN_HOURS_MAX} hours (an upcoming token closes when it lists), then the market counts down to its result.</p>
       </section>
 
       <section class="mf-group">
@@ -18415,13 +18431,23 @@ const TRACKER_PAGES = [
 const roundUpHour = (t) => Math.ceil(t / 3_600_000) * 3_600_000;
 
 /**
- * Market timing: predictions stay open a day or two, then the market counts down to its result,
- * 15 or 30 days after the close, measured from the price at the close.
+ * Market timing: predictions stay open up to three days, then the market counts down to its result,
+ * 7, 15 or 30 days after the close, measured from the price at the close.
  */
-const OPEN_PRESETS = [24, 48];
-const OPEN_HOURS_DEFAULT = 48;
-const RESULT_PRESETS = [15, 30];
+const OPEN_PRESETS = [24, 48, 72];
+const OPEN_HOURS_DEFAULT = 72;
+/** The most predictions can stay open on a token that is already trading (the server checks it too). */
+const OPEN_HOURS_MAX = 72;
+const RESULT_PRESETS = [7, 15, 30];
 const RESULT_DAYS_DEFAULT = 15;
+/**
+ * When predictions close if they open for `hours` from now: rounded down to the quarter hour (on the
+ * server's clock), so it never goes past the three-day limit.
+ */
+const closeAfter = (hours, from = now()) => Math.floor((from + hours * 3_600_000) / 900_000) * 900_000;
+/** An open market whose predictions close more than three days away: made before the limit. */
+const openTooLong = (m) =>
+  m.mode === 'manual' && m.status === 'open' && m.published && m.phase === 'baseline' && !(m.basePrice == null && !m.startAtClose) && m.closeAt - now() > (OPEN_HOURS_MAX * 60 + 5) * 60_000;
 
 async function loadDiscover(key, fetcher) {
   A.discover = { ...(A.discover ?? {}), [key]: { loading: true } };
@@ -18500,13 +18526,12 @@ async function makeFromDiscovery(el) {
   const i = Number(el.dataset.i);
   const now = Date.now();
   const hour = 3_600_000;
-  const roundHour = (t) => Math.ceil(t / hour) * hour;
   let pre;
   if (el.dataset.src === 'ex') {
     const l = A.discover?.[`ex:${A.discoverVenue}`]?.data?.listings?.[i];
     if (!l) return;
     const upcoming = Boolean(l.listingAt && l.listingAt > now);
-    const closeAt = upcoming ? l.listingAt : roundHour(now + OPEN_HOURS_DEFAULT * hour);
+    const closeAt = upcoming ? l.listingAt : closeAfter(OPEN_HOURS_DEFAULT);
     pre = {
       symbol: l.symbol,
       name: l.name ?? '',
@@ -18527,7 +18552,7 @@ async function makeFromDiscovery(el) {
     // needn't trade on any of our exchanges. The admin only checks the price and publishes.
     const c = A.discover?.trending?.data?.coins?.[i];
     if (!c) return;
-    const closeAt = roundHour(now + OPEN_HOURS_DEFAULT * hour);
+    const closeAt = closeAfter(OPEN_HOURS_DEFAULT);
     pre = {
       symbol: c.symbol,
       name: c.name,
@@ -18559,7 +18584,7 @@ function reviewPrefill(d) {
   const hour = 3_600_000;
   const upcoming = Boolean(d.listingAt && d.listingAt > now);
   // Upcoming: predictions close when trading starts. Already trading: predictions stay open two days.
-  const closeAt = upcoming ? d.listingAt : roundUpHour(now + OPEN_HOURS_DEFAULT * hour);
+  const closeAt = upcoming ? d.listingAt : closeAfter(OPEN_HOURS_DEFAULT);
   const pair = `${d.symbol}/USDT`;
   return {
     detectionId: d.id,
@@ -18646,6 +18671,7 @@ function marketActions(m) {
   const more = [];
   if (manualOpen && !m.published) main.push(btn('admin-publish', 'send', 'Publish', ' btn-solid'));
   if (manualOpen) main.push(btn('admin-edit', 'edit', 'Edit'));
+  if (manualOpen && m.published && m.phase === 'baseline') more.push(item('admin-close-now', 'lock', 'Close predictions now'));
   if (manualOpen && m.published && m.predictors === 0) more.push(item('admin-unpublish', 'eye', 'Unpublish'));
   if (A.info.telegram?.channel && m.status === 'open' && m.published && m.kind !== 'live_test') more.push(item('admin-tg-post', 'telegram', 'Post to Telegram'));
   if (manualOpen && !m.published) more.push(item('admin-delete', 'trash', 'Delete draft', ' danger'));
@@ -18848,7 +18874,7 @@ async function onAdminAction(action, el) {
       const closeIn = form.querySelector('[name=closeAt]');
       const resultIn = form.querySelector('[name=resultAt]');
       const days = Number(el.dataset.days ?? form.querySelector('[data-action="admin-result-after"].on')?.dataset.days ?? RESULT_DAYS_DEFAULT);
-      const close = el.dataset.hours ? roundUpHour(Date.now() + Number(el.dataset.hours) * 3_600_000) : inputMs(closeIn.value);
+      const close = el.dataset.hours ? closeAfter(Number(el.dataset.hours)) : inputMs(closeIn.value);
       if (!Number.isFinite(close)) return toast('Choose when predictions close first.', true);
       closeIn.value = toLocalInput(close);
       resultIn.value = toLocalInput(close + days * 86_400_000);
@@ -19084,6 +19110,26 @@ async function onAdminAction(action, el) {
         toast(err.message, true);
       }
       return renderAdmin();
+    case 'admin-close-now':
+    case 'admin-close-24':
+    case 'admin-close-all': {
+      // Older markets open for days: close predictions now or in 24 hours. The result date stays.
+      const hours = el.dataset.action === 'admin-close-24' ? 24 : 0;
+      const ids = el.dataset.action === 'admin-close-all' ? (A.markets ?? []).filter(openTooLong).map((m) => m.id) : [el.dataset.id];
+      const what = ids.length === 1 ? `${(A.markets ?? []).find((m) => m.id === ids[0])?.symbol ?? 'this market'}` : `${ids.length} markets`;
+      if (!ids.length || !confirm(`${hours ? `Close predictions on ${what} in 24 hours?` : `Close predictions on ${what} now?`}\n\nPlayers keep their predictions and the result date stays the same.`)) return;
+      let done = 0;
+      for (const id of ids) {
+        try {
+          await A.api.closePredictions(id, hours);
+          done++;
+        } catch (err) {
+          toast(err.message, true);
+        }
+      }
+      if (done) toast(hours ? `${done === 1 ? what : `${done} markets`} close in 24 hours` : `Predictions closed on ${done === 1 ? what : `${done} markets`}`);
+      return renderAdmin();
+    }
     case 'admin-cancel':
       if (!confirm('Cancel this market and refund every prediction?')) return;
       try {

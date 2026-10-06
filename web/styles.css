@@ -12120,8 +12120,8 @@ svg.viz.viz-narrow {
 .card-timer.card-timer-result {
   color: var(--text);
 }
-.mf-presets .mf-presets-gap {
-  margin-left: 10px;
+.mf-presets .muted {
+  min-width: 108px;
 }
 .mf .start-close-check {
   width: fit-content;

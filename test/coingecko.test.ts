@@ -33,7 +33,7 @@ test('a trending market keeps its CoinGecko coin id, prices from it, and is neve
     return { 'pudgy-penguins': { usd: 0.0325 } };
   });
   const service = new FirstprintService(openDb(':memory:'), clock, [cg]);
-  const id = service.createManualMarket({ symbol: 'PENGU', name: 'Pudgy Penguins', exchanges: ['coingecko'], pairs: { coingecko: 'pudgy-penguins' }, basePrice: 0.0325, closeAt: clock.now() + 15 * 24 * HOUR, resultAt: clock.now() + 16 * 24 * HOUR, publish: true });
+  const id = service.createManualMarket({ symbol: 'PENGU', name: 'Pudgy Penguins', exchanges: ['coingecko'], pairs: { coingecko: 'pudgy-penguins' }, basePrice: 0.0325, closeAt: clock.now() + 72 * HOUR, resultAt: clock.now() + 18 * 24 * HOUR, publish: true });
   assert.throws(() => service.createManualMarket({ symbol: 'SOL', exchanges: ['coingecko'], basePrice: 1, closeAt: clock.now() + HOUR, resultAt: clock.now() + 2 * HOUR }), /needs the coin id/, 'CoinGecko without a coin id is refused');
   const m = service.getMarket(id);
   assert.deepEqual(m.venues.map((v) => [v.id, v.name, v.pair]), [['coingecko', 'CoinGecko', 'pudgy-penguins']]);

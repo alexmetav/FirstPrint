@@ -171,6 +171,7 @@ export function createAdminApi(key, baseUrl = '') {
     updateManual: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}`, body),
     publish: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/publish`),
     unpublish: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/unpublish`),
+    closePredictions: (id, inHours = 0) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/close`, { inHours }),
     deleteDraft: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/delete`),
     deleteMarket: (id) => post(`/api/admin/markets/${encodeURIComponent(id)}/delete`),
     previewResult: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/preview`, body),

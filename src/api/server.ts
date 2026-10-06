@@ -747,6 +747,15 @@ export function createApiServer(opts: ServerOptions): Server {
     return service.getMarket(params.id, undefined, true);
   });
 
+  // Closes predictions now (or in up to 72 hours), keeping the result date.
+  route('POST', '/api/admin/manual-markets/:id/close', async ({ req, params, body, requireAdmin }) => {
+    requireAdmin('listings');
+    const hours = Number((await body()).inHours ?? 0);
+    service.closePredictions(params.id, Number.isFinite(hours) && hours > 0 ? hours * 3_600_000 : 0);
+    audit(req, 'predictions_closed', params.id, hours > 0 ? `in ${hours}h` : 'now');
+    return service.getMarket(params.id, undefined, true);
+  });
+
   route('POST', '/api/admin/manual-markets/:id/unpublish', ({ req, params, requireAdmin }) => {
     requireAdmin('listings');
     service.unpublishMarket(params.id);
