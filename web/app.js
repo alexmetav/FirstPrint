@@ -151,6 +151,31 @@ function toast(msg, isError = false) {
 }
 
 /**
+ * The toast after a prediction: the token, the pick in its colour and the stake leaving the
+ * balance in red. Small and quiet, so it confirms without covering the market.
+ */
+function pickToast(m, bucket, stake, payout) {
+  const el = $('#toast');
+  const yn = isYesNo(m);
+  const said = `You picked ${oName(bucket, yn)} on ${m.symbol} for ${fmtPts(stake)}.${payout ? ` Win about ${fmtPts(payout)}.` : ''}`;
+  el.innerHTML = `
+    <span class="sr-only">${esc(said)}</span>
+    <span class="pt" aria-hidden="true">
+      ${tokenAvatar(m, 'pt-logo')}
+      <span class="pt-body">
+        <span class="pt-pick" style="--c:${oVar(bucket, yn)}">${icon(bucket, yn)}${oName(bucket, yn)}<small>${esc(m.symbol)}</small></span>
+        ${payout ? `<span class="pt-win">Win ~${fmtPts(payout)}</span>` : ''}
+      </span>
+      <b class="pt-amt">−${fmtPts(stake)}</b>
+    </span>`;
+  el.className = 'pick';
+  void el.offsetWidth; // restart the entrance
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+/**
  * The toast for earned points: the brand coin, the amount counting up in gold, and a short line
  * under it. With `streak`, it also shows the week's progress as seven pips.
  */
@@ -1303,9 +1328,11 @@ function cardView(m) {
   const joined = seen === undefined ? 0 : m.predictors - seen;
   S.cardSeen.set(m.id, m.predictors);
   const activity = m.predictors
-    ? `<span class="card-act">${ico('users')}${tick(`pred:${m.id}`, m.predictors)}<span>${open ? 'predicting' : 'predicted'}</span></span>`
-    : open
-    ? '<span class="card-act quiet">Be the first to predict</span>'
+    ? `<span class="card-act">${ico('users')}${tick(`pred:${m.id}`, m.predictors)}<span>${m.predictors === 1 ? 'participant' : 'participants'}</span></span>`
+    : '';
+  // When the result comes, so it's clear from the card how long a pick is held.
+  const result = open && m.settleAt
+    ? `<span class="card-result" title="Result ${esc(fmtDate(m.settleAt))}">${ico('calendar')}Result<b>${esc(new Date(m.settleAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</b></span>`
     : '';
 
   // A countdown to when predictions close (or, for an upcoming token, to its listing), so the
@@ -1327,7 +1354,7 @@ function cardView(m) {
         ${g}
       </div>
       ${body}
-      <div class="card-foot"><span class="foot-l">${state}${timer}</span>${activity}</div>
+      <div class="card-foot"><span class="foot-l">${state}${timer}</span>${activity || result ? `<span class="foot-r">${activity}${result}</span>` : ''}</div>
     </article>`;
 }
 
@@ -1926,8 +1953,7 @@ async function submitPrediction() {
     const payout = S.trade.quote?.payout;
     await S.api.predict(m.id, bucket, stake);
     celebrate(isYesNo(m) && bucket === 'down' ? 'crash' : bucket);
-    const onChain = S.me?.wallets?.some((w) => w.walletName === 'Firstprint wallet');
-    toast(`You’re in! ${oName(bucket, isYesNo(m))} for ${fmtPts(stake)}${payout ? `. Win about ${fmtPts(payout)} if it lands.` : '.'}${onChain ? ' Your stake goes on chain as TestFPT.' : ''}`);
+    pickToast(m, bucket, stake, payout);
     $('#trade-error').textContent = '';
     closeSheet();
     await refreshMe();

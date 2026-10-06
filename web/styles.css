@@ -12256,3 +12256,152 @@ svg.viz.viz-narrow {
   margin: 0;
   font-size: 13px;
 }
+
+/* Plain toasts: a quiet dark card instead of a bright white pill. */
+#toast {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  box-shadow: var(--shadow-lg);
+  max-width: min(360px, calc(100vw - 32px));
+  transform: translate(-50%, 12px) scale(0.98);
+  transition: opacity 180ms, transform 260ms var(--ease-out);
+}
+#toast.show {
+  transform: translate(-50%, 0) scale(1);
+}
+#toast.error {
+  border-color: transparent;
+}
+
+/* The prediction toast: token logo, the pick in its colour, the stake leaving in red. */
+#toast.pick {
+  padding: 8px 14px 8px 8px;
+  border-radius: 16px;
+  text-align: left;
+  width: max-content;
+}
+.pt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pt .pt-logo {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  font-size: 13px;
+}
+.pt-body {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.pt-pick {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--c);
+  white-space: nowrap;
+}
+.pt-pick .i {
+  width: 15px;
+  height: 15px;
+}
+.pt-pick small {
+  margin-left: 3px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.pt-win {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.pt-amt {
+  margin-left: 14px;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--crash);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+#toast.pick.show .pt-amt {
+  animation: pt-amt 420ms 80ms var(--ease-out) both;
+}
+@keyframes pt-amt {
+  from { opacity: 0; transform: translateY(-6px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #toast,
+  #toast.show {
+    transform: translate(-50%, 0);
+    transition: opacity 160ms;
+  }
+  #toast.pick.show .pt-amt {
+    animation: none;
+  }
+}
+/* On a market page the phone's "Make a prediction" bar sits above the tab bar: keep toasts above both. */
+@media (max-width: 900px) {
+  body:has(.mobile-bar) #toast {
+    bottom: calc(154px + env(safe-area-inset-bottom));
+  }
+}
+@media (max-width: 640px) {
+  body:has(.mobile-bar) #toast {
+    bottom: calc(142px + env(safe-area-inset-bottom));
+  }
+}
+
+/* "You 100" on a rung: a soft chip in the outcome's colour instead of a bright white pill. */
+.tag-you {
+  background: color-mix(in srgb, var(--c, var(--text)) 16%, transparent);
+  color: var(--c, var(--text));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c, var(--text)) 35%, transparent);
+  font-weight: 600;
+}
+
+/* Card footer, right: participants, then when the result comes. */
+.mcard .foot-r {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  min-width: 0;
+}
+.card-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.card-result .i {
+  width: 13px;
+  height: 13px;
+}
+.card-result b {
+  margin-left: 2px;
+  color: var(--text);
+  font-weight: 500;
+}
+@media (max-width: 360px) {
+  .mcard .card-foot {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+}
+/* With participants beside it, the date needs no icon: keeps narrow desktop cards on one line. */
+.card-act + .card-result .i {
+  display: none;
+}
