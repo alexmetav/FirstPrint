@@ -3947,14 +3947,47 @@ async function findLogo(form, { force = false } = {}) {
   try {
     const { logo } = await A.api.tokenLogo(symbol, name);
     if (!form.isConnected || (!force && form.querySelector('[name=logoUrl]').value)) return;
-    if (!logo) return say(`CoinGecko doesn’t list ${symbol} yet. Paste a logo link or upload one.`, 'bad');
+    if (!logo) return say(`CoinGecko doesn’t list ${symbol} yet. Grab the logo from one of the pages below.`, 'bad');
     form.querySelector('[data-logo-link]').value = logo.logo;
     setLogo(form, logo.logo, { keepLink: true });
     await copyLogo(form, logo.logo);
     if (form.isConnected && form.querySelector('[name=logoUrl]').value) say(`Logo from CoinGecko (${logo.name}). Check it’s the right token.`, 'ok');
   } catch (err) {
-    if (form.isConnected) say(`Couldn’t look up the logo (${err.message}). Paste a link or upload one.`, 'bad');
+    if (form.isConnected) say(`Couldn’t look up the logo (${err.message}). Grab it from one of the pages below.`, 'bad');
   }
+}
+
+/**
+ * Where the admin can grab a logo by hand when CoinGecko doesn't know the token: its page on each
+ * exchange it lists on, the listing announcement, and an image search. Pasting the copied image
+ * link saves our own copy (copyLogo), so players never load anything from these sites.
+ */
+function logoSources(symbol, name, exchanges, pairs = {}, detectionId = null) {
+  const sym = String(symbol).trim().toUpperCase();
+  if (!/^[A-Z0-9]{1,20}$/.test(sym)) return '';
+  const names = Object.fromEntries((A.info?.exchanges ?? []).map((e) => [e.id, e.name]));
+  const links = exchanges
+    .filter((id) => TRADE_URLS[id] && (id !== 'coingecko' || pairs.coingecko))
+    .map((id) => [`${names[id] ?? id} page`, TRADE_URLS[id](encodeURIComponent(sym), { pair: pairs[id] })]);
+  const ann = detectionId ? A.detected?.find((d) => d.id === Number(detectionId))?.url : null;
+  if (ann) links.push(['Listing announcement', ann]);
+  links.push(['Image search', `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`${sym} ${String(name).trim()} crypto token logo`.replace(/\s+/g, ' '))}`]);
+  return `<span class="muted">Logo not found? Open one, right-click the logo, “Copy image address”, paste it above:</span>${links
+    .map(([label, href]) => `<a class="btn btn-sm" href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(label)} ${ico('external')}</a>`)
+    .join('')}`;
+}
+
+/** Keeps the logo links in step with the symbol, name and exchanges being typed in. */
+function refreshLogoSources(form) {
+  const box = form?.querySelector('[data-logo-sources]');
+  if (!box) return;
+  const get = (n) => form.querySelector(`[name=${n}]`)?.value ?? '';
+  let pairs = {};
+  try {
+    pairs = JSON.parse(get('pairs') || '{}');
+  } catch {}
+  const exchanges = [...form.querySelectorAll('[name=exchanges]:checked')].map((c) => c.value);
+  box.innerHTML = logoSources(get('symbol'), get('name'), exchanges, pairs, get('detectionId') || null);
 }
 
 /** The long explanation behind a setting, folded away until asked for. */
@@ -4394,6 +4427,7 @@ function marketForm(m, pre = null) {
             <button class="btn btn-sm" type="button" data-action="logo-clear"${v?.logoUrl ? '' : ' hidden'}>Remove</button>
           </div>
           <small class="logo-status" data-logo-status></small>
+          <div class="logo-sources" data-logo-sources>${logoSources(v?.symbol ?? '', v?.name ?? '', [...chosen], v?.pairs ?? {}, pre?.detectionId)}</div>
           <small class="muted" title="On CoinGecko, right-click the token’s logo and choose “Copy image address”.">Square works best. A copy is saved, so the logo keeps working if the link changes.</small>
         </div>
       </section>
@@ -5738,6 +5772,10 @@ document.addEventListener('input', (e) => {
 
 document.addEventListener('input', (e) => {
   if (e.target.matches?.('#admin-market [type=datetime-local]')) return updateUtcHints();
+  if (e.target.matches?.('#admin-market [name=symbol], #admin-market [name=name]')) {
+    clearTimeout(refreshLogoSources.timer);
+    refreshLogoSources.timer = setTimeout(() => refreshLogoSources(e.target.form), 300);
+  }
   if (!e.target.matches?.('[data-logo-link]')) return;
   const v = e.target.value.trim();
   if (!v || /^https:\/\/\S+$/i.test(v)) setLogo(e.target.form, v, { keepLink: true });
@@ -5909,6 +5947,7 @@ document.addEventListener(
 addEventListener('scroll', () => document.querySelectorAll('details.row-menu[open]').forEach((d) => (d.open = false)), { passive: true, capture: true });
 
 document.addEventListener('change', (e) => {
+  if (e.target.matches?.('#admin-market [name=exchanges]')) refreshLogoSources(e.target.form);
   if (e.target.matches?.('[data-start-close]') || e.target.matches?.('[data-upcoming]')) syncStartPrice(e.target.closest('form'));
   if (e.target.matches?.('[data-upcoming]')) {
     const form = e.target.closest('form');
