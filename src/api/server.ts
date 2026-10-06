@@ -1140,7 +1140,9 @@ export function createApiServer(opts: ServerOptions): Server {
       const status = missing && linkToApp ? 404 : 200;
       const headers: Record<string, string> = {
         'content-type': hit.type,
-        'cache-control': extname(file) === '.html' ? 'no-cache' : 'public, max-age=300',
+        // Pages, scripts and styles are checked on every load (a cheap 304 when unchanged), so after a
+        // deploy no browser or CDN mixes a new script with an old stylesheet. Images may wait 5 minutes.
+        'cache-control': ['.html', '.js', '.css'].includes(extname(file)) ? 'no-cache' : 'public, max-age=300',
         etag: hit.etag,
         vary: 'accept-encoding',
       };

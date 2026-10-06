@@ -12902,6 +12902,13 @@ html.in-maint body {
   object-fit: cover;
   display: block;
 }
+.ex-badge .ex-logo {
+  width: 16px;
+  height: 16px;
+}
+.ex-badge .ex-logo img {
+  object-fit: contain;
+}
 
 </style>
   </head>
@@ -15763,7 +15770,7 @@ function exBadge(m) {
   // The exchange's own logo once the server has saved it; its first letter in its colour until then.
   const logo = S.cfg?.exchangeLogos?.[v.id];
   const mark = logo
-    ? `<i class="ex-logo" aria-hidden="true"><img src="${esc(logo)}" alt="" decoding="async" /></i>`
+    ? `<i class="ex-logo" aria-hidden="true" style="width:16px;height:16px;overflow:hidden;background:#fff"><img src="${esc(logo)}" alt="" width="16" height="16" decoding="async" style="width:16px;height:16px;object-fit:contain;display:block" /></i>`
     : `<i style="background:${bg};color:${fg}" aria-hidden="true">${esc(v.name.slice(0, 1))}</i>`;
   return `<span class="ex-badge" title="Listed on ${esc(on.map((x) => x.name).join(', '))}">${mark}${esc(v.name)}${on.length > 1 ? `<small>+${on.length - 1}</small>` : ''}</span>`;
 }

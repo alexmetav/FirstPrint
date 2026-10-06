@@ -12872,3 +12872,10 @@ html.in-maint body {
   object-fit: cover;
   display: block;
 }
+.ex-badge .ex-logo {
+  width: 16px;
+  height: 16px;
+}
+.ex-badge .ex-logo img {
+  object-fit: contain;
+}
