@@ -1087,14 +1087,14 @@ function pagedGrid(list, total = list.length) {
     const more = Math.max(0, total - list.length);
     return `<div class="grid">${list.map(cardView).join('')}</div>${
       more
-        ? `<div class="see-more see-more-guest"><p><b>${fmtNum(total)} markets</b> are open. Sign up free to see them all and start predicting.</p><button class="btn btn-solid" data-action="connect">${ico('userPlus')}Sign up to see all</button></div>`
+        ? `<div class="see-more"><button class="btn" data-action="connect" title="Sign in to see all ${fmtNum(total)} markets">Show more markets</button></div>`
         : ''
     }`;
   }
   const shown = Math.max(PAGE, S.showN ?? PAGE);
   const left = list.length - shown;
   return `<div class="grid">${list.slice(0, shown).map(cardView).join('')}</div>${
-    left > 0 ? `<div class="see-more"><button class="btn" data-action="show-more">Show ${fmtNum(Math.min(PAGE, left))} more${left > PAGE ? ` <span class="muted">of ${fmtNum(left)}</span>` : ''}</button></div>` : ''
+    left > 0 ? `<div class="see-more"><button class="btn" data-action="show-more">Show more markets</button></div>` : ''
   }`;
 }
 
