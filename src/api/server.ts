@@ -747,6 +747,14 @@ export function createApiServer(opts: ServerOptions): Server {
     return service.getMarket(params.id, undefined, true);
   });
 
+  // A fixed start price becomes the price when predictions close (only while nobody has predicted).
+  route('POST', '/api/admin/manual-markets/:id/close-start', ({ req, params, requireAdmin }) => {
+    requireAdmin('listings');
+    service.useCloseStart(params.id);
+    audit(req, 'start_price_at_close', params.id);
+    return service.getMarket(params.id, undefined, true);
+  });
+
   // Closes predictions now (or in up to 72 hours), keeping the result date.
   route('POST', '/api/admin/manual-markets/:id/close', async ({ req, params, body, requireAdmin }) => {
     requireAdmin('listings');

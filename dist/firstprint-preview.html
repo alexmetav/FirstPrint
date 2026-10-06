@@ -12268,6 +12268,24 @@ svg.viz.viz-narrow {
 .home-subhead .side-n {
   font-size: 13px;
 }
+/* Price warnings: the actions beside each, and the switch-all bar at the top. */
+.check-list li .check-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.adm-warn-all {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0 12px;
+}
+.adm-warn-all p {
+  margin: 0;
+  font-size: 13px;
+}
 
 </style>
   </head>
@@ -12922,6 +12940,7 @@ function createAdminApi(key, baseUrl = '') {
     updateManual: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}`, body),
     publish: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/publish`),
     unpublish: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/unpublish`),
+    useCloseStart: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/close-start`),
     closePredictions: (id, inHours = 0) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/close`, { inHours }),
     deleteDraft: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/delete`),
     deleteMarket: (id) => post(`/api/admin/markets/${encodeURIComponent(id)}/delete`),
@@ -17912,11 +17931,14 @@ function checksView(list) {
   const items = list.flatMap((c) => c.warnings.map((w) => ({ ...w, c })));
   if (!items.length) return '';
   const high = items.some((i) => i.level === 'high');
+  // Markets nobody has predicted on yet can drop their fixed start price for the price at the close.
+  const switchable = [...new Set(items.filter((i) => i.c.canUseClose).map((i) => i.c.id))];
   return `
     <details class="adm-collapse adm-warn${high ? ' high' : ''}">
       <summary>${ico('alert')}<b>${items.length} price warning${items.length === 1 ? '' : 's'}</b><span class="muted">in open markets, checked ${fmtAgo(A.checks.at)}</span></summary>
+      ${switchable.length > 1 ? `<div class="adm-warn-all"><p class="muted">${switchable.length} of these have no predictions yet. Taking their start price at the close is fairer and needs no checking.</p><button class="btn btn-sm btn-solid" data-action="admin-close-start-all" data-ids="${esc(switchable.join(','))}">${ico('lock')}Use price at close for all ${switchable.length}</button></div>` : ''}
       <ul class="check-list">${items
-        .map((i) => `<li class="lvl-${i.level}"><span class="check-dot" aria-hidden="true"></span><p><b>${esc(i.c.symbol)}</b> ${esc(i.text)}</p><button class="btn btn-sm" data-action="admin-edit" data-id="${esc(i.c.id)}">${ico('edit')}Edit</button></li>`)
+        .map((i) => `<li class="lvl-${i.level}"><span class="check-dot" aria-hidden="true"></span><p><b>${esc(i.c.symbol)}</b> ${esc(i.text)}</p><span class="check-actions">${i.c.canUseClose ? `<button class="btn btn-sm btn-solid" data-action="admin-close-start" data-id="${esc(i.c.id)}">${ico('lock')}Use price at close</button>` : ''}<button class="btn btn-sm" data-action="admin-edit" data-id="${esc(i.c.id)}">${ico('edit')}Edit</button></span></li>`)
         .join('')}</ul>
       <div class="adm-collapse-foot"><button class="btn btn-sm" data-action="admin-recheck">${ico('refresh')}Check again</button></div>
     </details>`;
@@ -19234,6 +19256,25 @@ async function onAdminAction(action, el) {
         toast(err.message, true);
       }
       return renderAdmin();
+    case 'admin-close-start':
+    case 'admin-close-start-all': {
+      // A fixed start price becomes the price when predictions close (markets nobody has predicted on).
+      const ids = el.dataset.ids ? el.dataset.ids.split(',') : [el.dataset.id];
+      const sym = ids.length === 1 ? ((A.markets ?? []).find((m) => m.id === ids[0])?.symbol ?? 'this market') : `${ids.length} markets`;
+      if (!confirm(`Use the price at the close as the start price for ${sym}?\n\nThe fixed start price is removed. When predictions close, the live price is read by itself and locked.`)) return;
+      let done = 0;
+      for (const id of ids) {
+        try {
+          await A.api.useCloseStart(id);
+          done++;
+        } catch (err) {
+          toast(err.message, true);
+        }
+      }
+      if (done) toast(`${done === 1 ? sym : `${done} markets`} now take${done === 1 ? 's' : ''} the start price at the close`);
+      A.checks = null;
+      return renderAdmin();
+    }
     case 'admin-close-now':
     case 'admin-close-24':
     case 'admin-close-all': {

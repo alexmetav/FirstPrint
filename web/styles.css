@@ -12238,3 +12238,21 @@ svg.viz.viz-narrow {
 .home-subhead .side-n {
   font-size: 13px;
 }
+/* Price warnings: the actions beside each, and the switch-all bar at the top. */
+.check-list li .check-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.adm-warn-all {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 4px 0 12px;
+}
+.adm-warn-all p {
+  margin: 0;
+  font-size: 13px;
+}
