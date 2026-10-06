@@ -1994,6 +1994,28 @@ export class FirstprintService {
     this.db.prepare("UPDATE detected_listings SET status = 'approved', market_id = ? WHERE id = ? AND status = 'pending'").run(marketId, id);
   }
 
+  /**
+   * Maintenance mode, for deploying big changes safely: players can't write (sign up, predict,
+   * claim) and the background workers pause, so the copy a new server starts from has everything.
+   * Stored in the database, so a freshly deployed server starts in maintenance too.
+   */
+  maintenance(): { on: boolean; message: string; since: number | null } {
+    try {
+      const v = JSON.parse(this.getSetting('maintenance') ?? 'null') as { message?: string; since?: number } | null;
+      if (v) return { on: true, message: String(v.message ?? ''), since: Number(v.since) || null };
+    } catch {
+      /* a broken value counts as off */
+    }
+    return { on: false, message: '', since: null };
+  }
+
+  setMaintenance(on: boolean, message = '') {
+    const text = String(message ?? '').trim().slice(0, 200);
+    this.setSetting('maintenance', on ? JSON.stringify({ message: text, since: this.maintenance().since ?? this.clock.now() }) : null);
+    this.log(`maintenance ${on ? 'on' : 'off'}`);
+    return this.maintenance();
+  }
+
   getSetting(key: string): string | null {
     return as<{ value: string } | undefined>(this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key))?.value ?? null;
   }

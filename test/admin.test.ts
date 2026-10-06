@@ -275,3 +275,56 @@ test('team: the owner gives admin or tasks-only access by email or wallet from S
     server.close();
   }
 });
+
+test('maintenance: players can read but not write, admins still can, workers pause, a backup is taken', async () => {
+  const { clock, service, scheduler } = setup();
+  let backups = 0;
+  const server = createApiServer({
+    service,
+    adminKey: 'admin-key-for-tests-123456',
+    secureCookies: false,
+    webDir: new URL('../web', import.meta.url).pathname,
+    backupNow: async () => (backups++, true),
+    backupStatus: () => ({ enabled: true, lastOkAt: null, lastError: null }),
+  });
+  await new Promise<void>((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const key = { 'content-type': 'application/json', 'x-admin-key': 'admin-key-for-tests-123456' };
+  try {
+    const player = await service.createUser({ username: 'player1' });
+    const cookie = `fp_session=${service.createSession(player.id, 'email').token}`;
+    const daily = (headers: Record<string, string>) => fetch(`${base}/api/me/notifications/read`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: '{}' });
+
+    assert.deepEqual((await (await fetch(`${base}/api/status`)).json()).maintenance, { on: false });
+    const on = await (await fetch(`${base}/api/admin/maintenance`, { method: 'POST', headers: key, body: JSON.stringify({ on: true, message: 'Back at 6pm' }) })).json();
+    assert.equal(on.on, true);
+    assert.equal(on.backedUp, true);
+    assert.equal(backups, 1);
+    assert.deepEqual((await (await fetch(`${base}/api/config`)).json()).maintenance, { on: true, message: 'Back at 6pm', since: T0 });
+
+    // A player's write is refused with the admin's note; reads still work.
+    const refused = await daily({ cookie });
+    assert.equal(refused.status, 503);
+    assert.deepEqual(await refused.json(), { error: 'maintenance', message: 'Back at 6pm' });
+    assert.equal((await fetch(`${base}/api/markets`, { headers: { cookie } })).status, 200);
+    // Sign-ups are writes too.
+    assert.equal((await fetch(`${base}/api/auth/email/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"email":"new@example.com"}' })).status, 503);
+    // The admin's own test actions still go through.
+    assert.notEqual((await daily({ cookie, 'x-admin-key': 'admin-key-for-tests-123456' })).status, 503);
+
+    // The scheduler doesn't close or settle anything until maintenance ends.
+    const m = service.createManualMarket({ symbol: 'MNT', exchanges: ['exa'], basePrice: 1, closeAt: T0 + 30 * MIN, resultAt: T0 + 3 * 24 * 60 * MIN, publish: true } as never);
+    clock.advance(31 * MIN);
+    await scheduler.tick();
+    assert.equal(service.getMarket(m).phase === 'awaiting_result', false, 'paused while in maintenance');
+
+    const off = await (await fetch(`${base}/api/admin/maintenance`, { method: 'POST', headers: key, body: JSON.stringify({ on: false }) })).json();
+    assert.equal(off.on, false);
+    assert.equal(backups, 1, 'no backup needed when turning it off');
+    assert.notEqual((await daily({ cookie })).status, 503);
+    await scheduler.tick();
+    assert.equal(service.getMarket(m).phase, 'awaiting_result', 'catches up once it ends');
+  } finally {
+    server.close();
+  }
+});

@@ -51,6 +51,8 @@ export interface ServerOptions {
   devEmailCodes?: boolean;
   /** Database backup health, shown in the admin panel. */
   backupStatus?: () => { enabled: boolean; lastOkAt: number | null; lastError: string | null };
+  /** Takes a database copy now (maintenance mode turns on just before a deploy). */
+  backupNow?: () => Promise<boolean>;
   /** True when exchange auto-detection and live prices are off and admins run every market. */
   manualOnly?: boolean;
   /** New-listing checks (and the exchanges watched), when the server runs them. */
@@ -232,7 +234,38 @@ export function createApiServer(opts: ServerOptions): Server {
     rewards: opts.rewards ? { onChain: opts.rewards.ready(), cluster: opts.rewards.cluster(), faucetUrl: 'https://faucet.solana.com' } : null,
     // Public Telegram channel where new markets and results are posted (username, no @).
     telegramChannel: opts.telegram ? service.getSetting('telegram_channel') : null,
+    maintenance: publicMaintenance(),
   }));
+
+  /** What players see during maintenance: on or off, and the admin's short note. */
+  const publicMaintenance = () => {
+    const m = service.maintenance();
+    return m.on ? { on: true, message: m.message, since: m.since } : { on: false };
+  };
+  // Polled by open pages, so players move to the maintenance screen (and back) without reloading.
+  route('GET', '/api/status', () => ({ maintenance: publicMaintenance() }));
+
+  route('GET', '/api/admin/maintenance', ({ requireAdmin }) => {
+    requireAdmin();
+    return service.maintenance();
+  });
+
+  // On: players can't write and the workers pause, then a fresh copy of the database is taken, so a
+  // deploy started after this loses nothing. Off: everything resumes and catches up.
+  route('POST', '/api/admin/maintenance', async ({ req, body, requireAdmin }) => {
+    requireAdmin();
+    const b = await body();
+    const on = b.on === true;
+    const m = service.setMaintenance(on, String(b.message ?? ''));
+    audit(req, on ? 'maintenance_on' : 'maintenance_off', null, m.message || null);
+    let backedUp = false;
+    if (on && opts.backupNow) {
+      // A moment for any write already in progress to finish, then the copy (once more if one was mid-upload).
+      await new Promise((r) => setTimeout(r, 1500));
+      backedUp = (await opts.backupNow().catch(() => false)) || (await opts.backupNow().catch(() => false));
+    }
+    return { ...m, backedUp, backups: Boolean(opts.backupNow && opts.backupStatus?.().enabled) };
+  });
 
   // --- Earn: rewards, tasks, referrals, TestFPT claims --------------------------------
 
@@ -1343,6 +1376,12 @@ export function createApiServer(opts: ServerOptions): Server {
       }
       if (req.method === 'POST' && !String(req.headers['content-type'] ?? '').startsWith('application/json')) {
         throw new AppError(415, 'json_required', 'Requests must use Content-Type: application/json.');
+      }
+      // Maintenance: players can read but not write; admins (key or admin account) can still test.
+      if (req.method === 'POST' && !url.pathname.startsWith('/api/admin/') && url.pathname !== '/api/auth/logout' && service.maintenance().on) {
+        const given = String(req.headers['x-admin-key'] ?? '');
+        const isAdmin = (given && opts.adminKey && Buffer.byteLength(given) === Buffer.byteLength(opts.adminKey) && timingSafeEqual(Buffer.from(given), Buffer.from(opts.adminKey))) || accountLevel(req, ctx.optionalUser()) !== null;
+        if (!isAdmin) throw new AppError(503, 'maintenance', service.maintenance().message || 'Firstprint is being updated. Back in a few minutes.');
       }
       // Admin tools use the smaller share of the CoinGecko budget; live-market work keeps the rest.
       const out = await (url.pathname.startsWith('/api/admin/') ? asAdmin(() => match.r.handler(ctx)) : match.r.handler(ctx));
