@@ -722,6 +722,13 @@ function streakCard(compact = false) {
   const today = d.today;
   const cur = d.claimedToday ? d.streak : d.streak + 1; // the streak day today counts as
   const pos = Math.min(cur, 7);
+  // In the side column: one small circle per day (like the streak pop-up), the points under it.
+  const dots = DAILY_SCHEDULE.map((pts, i) => {
+    const n = i + 1;
+    const done = n < pos || (n === pos && d.claimedToday);
+    const state = done ? 'done' : n === pos ? 'today' : 'next';
+    return `<li class="sp-day ${state}"><span class="sp-dot" title="Day ${n === 7 ? '7+' : n}">${done ? ico('check') : ''}</span><b>+${pts}</b></li>`;
+  }).join('');
   const tiles = DAILY_SCHEDULE.map((pts, i) => {
     const n = i + 1;
     const state = n < pos ? 'done' : n === pos ? (d.claimedToday ? 'done today' : 'today') : 'next';
@@ -751,8 +758,8 @@ function streakCard(compact = false) {
         <div><span class="eyebrow">Daily streak</span><b class="st-count">${d.streak ? `${d.streak} day${d.streak === 1 ? '' : 's'}` : 'No streak yet'}</b></div>
         ${d.claimedToday ? `<span class="st-note">${ico('check')}Claimed today · +${d.next} tomorrow</span>` : `<button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim +${d.next}</button>`}
       </div>
-      <ol class="st-days">${tiles}</ol>
-      <p class="st-rule muted">${compact ? 'Claim once a day (UTC); miss a day and it starts again at 50.' : 'Claim once a day (UTC): 50 points on day 1, 25 more each day, 200 a day from day 7. Miss a day and it starts again at 50.'}</p>
+      ${compact ? `<ol class="sp-days st-dots">${dots}</ol>` : `<ol class="st-days">${tiles}</ol>`}
+      <p class="st-rule muted">${compact ? 'One claim a day (UTC). Miss a day and it resets.' : 'Claim once a day (UTC): 50 points on day 1, 25 more each day, 200 a day from day 7. Miss a day and it starts again at 50.'}</p>
       ${
         compact
           ? `<details class="st-cal-more"><summary>${ico('calendar')}${month}<span class="muted">${claimedThisMonth} day${claimedThisMonth === 1 ? '' : 's'} claimed</span></summary>

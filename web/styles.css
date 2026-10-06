@@ -13308,3 +13308,38 @@ html.in-maint body {
   justify-self: stretch;
   justify-content: center;
 }
+/* Side streak, v2: quiet text, one circle per day. */
+.earn2-side .streak-card .eyebrow {
+  font-size: 10.5px;
+}
+.earn2-side .st-count {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.earn2-side .st-note {
+  font-weight: 500;
+  font-size: 12.5px;
+}
+.earn2-side .st-dots {
+  gap: 2px;
+  padding: 2px 0;
+}
+.earn2-side .st-dots .sp-dot {
+  width: 24px;
+  height: 24px;
+}
+.earn2-side .st-dots .sp-dot .i {
+  width: 12px;
+  height: 12px;
+}
+.earn2-side .st-dots .sp-day b {
+  font-size: 10.5px;
+  font-weight: 400;
+}
+.earn2-side .st-dots .sp-day small {
+  font-size: 9.5px;
+}
+.earn2-side .st-head > .btn {
+  font-weight: 500;
+}
