@@ -362,3 +362,23 @@ test('market lists: guests get a short list with the total; signed-in players ge
     server.close();
   }
 });
+
+test('market lists are built once for everyone for a few seconds; each player still sees their own picks, and a change rebuilds them', async () => {
+  const { service } = setup();
+  service.listCacheMs = 60_000;
+  const id = service.createManualMarket({ symbol: 'CACHE', exchanges: ['exa'], basePrice: 1, closeAt: T0 + 60 * MIN, resultAt: T0 + 9 * 24 * 60 * MIN, publish: true } as never);
+  const ann = await service.createUser({ username: 'ann' });
+  const bob = await service.createUser({ username: 'bob' });
+
+  const first = service.listMarketsPage('open', undefined, 12);
+  assert.equal(first.markets[0].pool, 0);
+  assert.strictEqual(service.listMarketsPage('open', undefined, 12).markets[0], first.markets[0], 'reused, not rebuilt');
+
+  service.placePrediction(id, ann.id, 'up', 100);
+  await new Promise((r) => setImmediate(r)); // the change notice runs right after the prediction is saved
+  const forAnn = service.listMarketsPage('open', ann.id, 200).markets[0];
+  assert.equal(forAnn.pool, 100, 'a new prediction rebuilds the list');
+  assert.deepEqual(forAnn.mine.map((p) => [p.bucket, p.stake]), [['up', 100]]);
+  assert.deepEqual(service.listMarketsPage('open', bob.id, 200).markets[0].mine, [], 'nobody sees another player’s picks');
+  assert.deepEqual(service.listMarketsPage('open', undefined, 200).markets[0].mine, []);
+});
