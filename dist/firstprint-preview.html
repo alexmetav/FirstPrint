@@ -12176,6 +12176,58 @@ svg.viz.viz-narrow {
   background: var(--text);
 }
 
+/* How it works: the same type as the market cards above (16px titles, 14px muted body), not a bigger, bolder block. */
+.steps {
+  gap: 14px;
+}
+.steps li {
+  padding: 18px;
+}
+.steps li::after {
+  top: 16px;
+  right: 18px;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--muted);
+  opacity: 0.6;
+}
+.steps .step-ico {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  margin-bottom: 12px;
+}
+.steps .step-ico .i {
+  width: 18px;
+  height: 18px;
+}
+.steps li > b {
+  display: block;
+  font-family: var(--body);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  letter-spacing: -0.01em;
+}
+.steps p {
+  margin: 6px 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+.steps p .oc {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.steps p .oc .i {
+  width: 13px;
+  height: 13px;
+  margin-right: 3px;
+  vertical-align: -2px;
+}
+
 </style>
   </head>
   <body>
