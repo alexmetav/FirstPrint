@@ -1329,8 +1329,10 @@ function cardView(m) {
   S.cardSeen.set(m.id, m.predictors);
   const activity = m.predictors
     ? `<span class="card-act">${ico('users')}${tick(`pred:${m.id}`, m.predictors)}<span>${m.predictors === 1 ? 'participant' : 'participants'}</span></span>`
-    : open
-    ? '<span class="card-act quiet">Be the first to predict</span>'
+    : '';
+  // When the result comes, so it's clear from the card how long a pick is held.
+  const result = open && m.settleAt
+    ? `<span class="card-result" title="Result ${esc(fmtDate(m.settleAt))}">${ico('calendar')}Result<b>${esc(new Date(m.settleAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</b></span>`
     : '';
 
   // A countdown to when predictions close (or, for an upcoming token, to its listing), so the
@@ -1352,7 +1354,7 @@ function cardView(m) {
         ${g}
       </div>
       ${body}
-      <div class="card-foot"><span class="foot-l">${state}${timer}</span>${activity}</div>
+      <div class="card-foot"><span class="foot-l">${state}${timer}</span>${activity || result ? `<span class="foot-r">${activity}${result}</span>` : ''}</div>
     </article>`;
 }
 

@@ -12370,3 +12370,38 @@ svg.viz.viz-narrow {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c, var(--text)) 35%, transparent);
   font-weight: 600;
 }
+
+/* Card footer, right: participants, then when the result comes. */
+.mcard .foot-r {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  min-width: 0;
+}
+.card-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.card-result .i {
+  width: 13px;
+  height: 13px;
+}
+.card-result b {
+  margin-left: 2px;
+  color: var(--text);
+  font-weight: 500;
+}
+@media (max-width: 360px) {
+  .mcard .card-foot {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+}
+/* With participants beside it, the date needs no icon: keeps narrow desktop cards on one line. */
+.card-act + .card-result .i {
+  display: none;
+}
