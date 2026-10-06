@@ -80,3 +80,31 @@ test('admin checks ask CoinGecko once for every market, reuse prices for a minut
   assert.equal(fresh[0].price, null);
   assert.match(fresh[0].error ?? '', /busy \(rate limit\)/, 'not "not trading"');
 });
+
+test('a fixed start price nobody predicted against switches to the price at the close; one with predictions stays', async () => {
+  const clock = new ManualClock(Date.now());
+  const http = async () => {
+    throw new Error('429 Too Many Requests for api.coingecko.com/api/v3/simple/price');
+  };
+  const service = new FirstprintService(openDb(':memory:'), clock, [coingecko(http)]);
+  const mk = (sym: string) =>
+    service.createManualMarket({ symbol: sym, exchanges: ['coingecko'], pairs: { coingecko: `${sym.toLowerCase()}-coin` }, basePrice: 1, closeAt: clock.now() + 48 * HOUR, resultAt: clock.now() + 20 * 24 * HOUR, publish: true });
+  const empty = mk('QNT');
+  const played = mk('DRV');
+  const u = await service.createUser({ username: 'player_one', email: 'p1@example.com' });
+  service.placePrediction(played, u.id, 'up', 50);
+
+  const checks = Object.fromEntries((await service.marketChecks()).map((c) => [c.id, c]));
+  assert.equal(checks[empty].canUseClose, true);
+  assert.equal(checks[played].canUseClose, false, 'players predicted against the fixed price');
+  assert.match(checks[empty].warnings[0].text, /didn't answer just now[\s\S]*at the close/);
+
+  service.useCloseStart(empty);
+  const m = service.getMarket(empty);
+  assert.equal(m.basePrice, null);
+  assert.equal(m.startAtClose, true);
+  assert.throws(() => service.useCloseStart(played), /already predicted/);
+  assert.equal(service.getMarket(played).basePrice, 1);
+  const again = Object.fromEntries((await service.marketChecks()).map((c) => [c.id, c]));
+  assert.deepEqual(again[empty].warnings, [], 'no live price needed until the close is near');
+});

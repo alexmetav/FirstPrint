@@ -911,13 +911,21 @@ export class FirstprintService {
         }
         if (median === null && m.base_price !== null) {
           const names = prices.map((p) => p.name).join(', ');
-          warnings.push({ level: 'medium', text: `Couldn't get a live price for ${m.symbol} from ${names || 'its exchanges'}. If it already trades, check the start price yourself.` });
+          const busy = prices.length > 0 && prices.every((p) => p.error);
+          warnings.push({
+            level: 'medium',
+            text: busy
+              ? `${names || 'Its price source'} didn't answer just now (${prices[0].error}), so ${m.symbol}'s fixed start price couldn't be checked. Taking the start price at the close removes the need to check it.`
+              : `Couldn't find a live price for ${m.symbol} on ${names || 'its exchanges'}. If it already trades, check the start price yourself, or take the start price at the close.`,
+          });
         }
         const left = m.listing_at - now;
         if (median !== null && !atClose && left > 48 * 3_600_000) {
           warnings.push({ level: 'medium', text: `Predictions stay open ${Math.round(left / 86_400_000)} more days against a fixed start price while ${m.symbol} is trading, so late players can follow the trend. Take the start price at the close instead.` });
         }
-        return { id: m.id, symbol: m.symbol, published: m.published === 1, startPrice: m.base_price, livePrice: median, prices, warnings };
+        // A fixed start price nobody has predicted against yet can switch to the price at the close.
+        const canUseClose = m.start_at_close !== 1 && m.base_price !== null && this.predictions(m.id).length === 0;
+        return { id: m.id, symbol: m.symbol, published: m.published === 1, startPrice: m.base_price, livePrice: median, prices, warnings, canUseClose };
       }),
     );
   }
@@ -1197,6 +1205,23 @@ export class FirstprintService {
     this.log(`predictions ${ms ? `set to close in ${Math.round(ms / 60_000)} min` : 'closed now'} ${marketId}`);
     if (ms === 0) this.closeDueMarkets();
     else this.onEvent('market', { marketId });
+    return marketId;
+  }
+
+  /**
+   * Switches a market with a fixed start price to taking it when predictions close. Only while nobody
+   * has predicted: players who did picked against the fixed price, so for them it stays.
+   */
+  useCloseStart(marketId: string) {
+    const m = this.manualRow(marketId);
+    if (m.status !== 'open') throw new AppError(409, 'not_open', 'Only markets taking predictions can change their start price.');
+    if (m.start_at_close === 1) return marketId;
+    if (this.predictions(marketId).length > 0) {
+      throw new AppError(409, 'has_predictions', 'Players have already predicted against the fixed start price, so it stays. Close the market early instead.');
+    }
+    this.db.prepare('UPDATE markets SET base_price = NULL, start_at_close = 1 WHERE id = ?').run(marketId);
+    if (m.published === 1) this.onEvent('market', { marketId });
+    this.log(`start price set to the close ${marketId}`);
     return marketId;
   }
 
