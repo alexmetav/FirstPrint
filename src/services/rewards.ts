@@ -16,6 +16,7 @@ import { tx } from '../db/db.ts';
 import { isSolanaAddress } from '../solana/base58.ts';
 import { WalletVault } from '../solana/vault.ts';
 import { XCheckUnavailable, type XChecker } from './xcheck.ts';
+import { channelName } from './telegram.ts';
 import {
   buildClaimTransaction,
   buildServerMint,
@@ -51,7 +52,19 @@ export const TASK_MIN_WAIT_MS = 8_000;
 export const CLAIM_PENDING_MS = 3 * 60_000;
 export const FAUCET_URL = 'https://faucet.solana.com';
 
-export type TaskKind = 'follow' | 'repost' | 'like' | 'share' | 'link';
+export type TaskKind = 'follow' | 'repost' | 'like' | 'share' | 'link' | 'telegram';
+/** Tasks done on X: they need the player's X account. */
+const X_TASKS: readonly string[] = ['follow', 'repost', 'like', 'share'];
+
+/** Checks on Telegram through our bot (the "join the channel" task). */
+export interface TelegramChecker {
+  /** The Telegram user ID that pressed Start in the bot with this code, or null. */
+  startedBy(code: string): Promise<string | null>;
+  /** True when the user is in the public channel (@name). */
+  isMember(channel: string, userId: string): Promise<boolean>;
+  /** Sends a private message (best effort). */
+  sendTo(chat: string, html: string): Promise<void>;
+}
 export interface TaskInput {
   kind: TaskKind;
   title?: string;
@@ -143,6 +156,8 @@ export class RewardsService {
    * follow, repost and post tasks are checked before they pay. Without it both stay honour-based.
    */
   xcheck: XChecker | null = null;
+  /** Our Telegram bot and its username, for the join-the-channel task; null without TELEGRAM_BOT_TOKEN. */
+  tg: { checker: TelegramChecker; bot: string } | null = null;
   /** Per player: checks on X in a row that found nothing, and the end of the wait once there were too many. */
   private xFails = new Map<string, { n: number; until: number }>();
 
@@ -731,11 +746,22 @@ export class RewardsService {
       // After too many checks on X that found nothing: when the player may check again.
       xCooldownUntil: this.xCooldownUntil(userId),
       xPending: this.xcheck && user.x_pending && user.x_code ? { username: user.x_pending, code: user.x_code } : null,
+      // The join-the-channel task is checked through our bot: until the player's Telegram is linked,
+      // the link that opens the bot with their code.
+      telegram: this.tgStatus(userId),
       referral: { code, link, invited, rewarded: referrals.n, points: referrals.pts ?? 0, limit: REFERRAL_LIMIT, perReferral: REFERRAL_POINTS, markets: REFERRAL_MARKETS },
       rewards: rewards.map((r) => ({ kind: r.kind, ref: r.ref, amount: r.amount, at: r.created_at, claimed: r.claim_id !== null && this.isClaimed(r.claim_id) })),
       claims: claims.map((c) => this.publicClaim(c)),
       tasks: this.tasksFor(userId, code),
     };
+  }
+
+  private tgStatus(userId: string) {
+    if (!this.tg) return null;
+    const open = this.db.prepare("SELECT 1 FROM tasks WHERE kind = 'telegram' AND active = 1").get();
+    if (!open) return null;
+    const linked = Boolean(as<{ tg_id: string | null }>(this.db.prepare('SELECT tg_id FROM users WHERE id = ?').get(userId)).tg_id);
+    return { linked, botUrl: linked ? null : `https://t.me/${this.tg.bot}?start=${this.tgCode(userId)}` };
   }
 
   private isClaimed(claimId: string) {
@@ -897,6 +923,8 @@ export class RewardsService {
         return `https://x.com/intent/like?tweet_id=${encodeURIComponent(t.target)}`;
       case 'share':
         return `https://x.com/intent/tweet?text=${encodeURIComponent(t.target)}&url=${encodeURIComponent(`${this.siteUrl}/?ref=${code}`)}`;
+      case 'telegram':
+        return `https://t.me/${encodeURIComponent(t.target)}`;
       default:
         return t.target;
     }
@@ -962,13 +990,14 @@ export class RewardsService {
             ? x.reposted(name, t.target)
             : (await x.recentPosts(name)).some((p) => p.text.toLowerCase().includes(`ref=${code}`)),
       );
-      if (done) this.xFails.delete(userId);
+        if (done) this.xFails.delete(userId);
       if (!done) {
         this.xMissed(userId);
         const what = t.kind === 'follow' ? `following @${t.target}` : t.kind === 'repost' ? 'your repost' : 'your post with your invite link';
         throw new AppError(409, 'task_not_done', `We can’t see ${what} on @${name} yet. Finish it on X, wait a few seconds, then confirm again.`);
       }
     }
+    if (this.tg && t.kind === 'telegram') await this.checkTelegram(userId, t.target);
     return tx(this.db, () => {
       const { t: task, xUsername: x } = this.taskReady(userId, taskId);
       this.db.prepare('UPDATE task_completions SET completed_at = ?, x_username = ? WHERE task_id = ? AND user_id = ?').run(this.now(), x, taskId, userId);
@@ -981,15 +1010,57 @@ export class RewardsService {
   private taskReady(userId: string, taskId: string) {
     const t = this.activeTask(taskId);
     const user = as<{ x_username: string | null }>(this.db.prepare('SELECT x_username FROM users WHERE id = ?').get(userId));
-    if (t.kind !== 'link' && !user.x_username) throw new AppError(409, 'x_required', 'Link your X username first, so we know which account did it.');
+    if (X_TASKS.includes(t.kind) && !user.x_username) throw new AppError(409, 'x_required', 'Link your X username first, so we know which account did it.');
     const mine = as<{ started_at: number; completed_at: number | null } | undefined>(
       this.db.prepare('SELECT started_at, completed_at FROM task_completions WHERE task_id = ? AND user_id = ?').get(taskId, userId),
     );
     if (mine?.completed_at) throw new AppError(409, 'task_done', 'You already completed this task.');
     if (!mine) throw new AppError(409, 'task_not_started', 'Open the task first, then come back to confirm it.');
-    if (this.now() - mine.started_at < TASK_MIN_WAIT_MS) throw new AppError(429, 'task_too_fast', 'Give it a few seconds: finish the task on X, then confirm.');
+    if (this.now() - mine.started_at < TASK_MIN_WAIT_MS) throw new AppError(429, 'task_too_fast', 'Give it a few seconds: finish the task, then confirm.');
     if (t.max_completions !== null && this.completions(taskId) >= t.max_completions) throw new AppError(409, 'task_full', 'This task has reached its limit.');
     return { t, xUsername: user.x_username };
+  }
+
+  // --- Telegram -----------------------------------------------------------------------
+
+  /** The player's code for linking Telegram (made once, kept until it's used). */
+  private tgCode(userId: string) {
+    const cur = as<{ tg_code: string | null }>(this.db.prepare('SELECT tg_code FROM users WHERE id = ?').get(userId));
+    if (cur.tg_code) return cur.tg_code;
+    const code = `FP-${Array.from({ length: 8 }, () => REF_ALPHABET[randomInt(REF_ALPHABET.length)]).join('')}`;
+    this.db.prepare('UPDATE users SET tg_code = ? WHERE id = ?').run(code, userId);
+    return code;
+  }
+
+  /**
+   * Checks the join-the-channel task on Telegram. The player's Telegram account is found first: they
+   * press Start in our bot through a link carrying their code (one Telegram account per Firstprint
+   * account). Then the channel must list them as a member.
+   */
+  private async checkTelegram(userId: string, channel: string) {
+    const tg = this.tg!.checker;
+    const cur = as<{ tg_id: string | null; tg_code: string | null }>(this.db.prepare('SELECT tg_id, tg_code FROM users WHERE id = ?').get(userId));
+    let tgId = cur.tg_id;
+    const call = async <T>(fn: () => Promise<T>) => {
+      try {
+        return await fn();
+      } catch (err) {
+        this.service.log(`Telegram check failed: ${(err as Error).message}`);
+        throw new AppError(503, 'tg_check_unavailable', 'We couldn’t check Telegram just now. Try again in a minute.');
+      }
+    };
+    if (!tgId) {
+      const code = cur.tg_code ?? this.tgCode(userId);
+      const found = await call(() => tg.startedBy(code));
+      if (!found) throw new AppError(409, 'tg_not_linked', 'Open our bot and press Start first, then press Verify again.');
+      const taken = as<{ id: string } | undefined>(this.db.prepare('SELECT id FROM users WHERE tg_id = ? AND id != ?').get(found, userId));
+      if (taken) throw new AppError(409, 'tg_taken', 'That Telegram account is already linked to another Firstprint account.');
+      this.db.prepare('UPDATE users SET tg_id = ?, tg_code = NULL WHERE id = ?').run(found, userId);
+      tgId = found;
+      void tg.sendTo(found, 'Your Telegram is now linked to Firstprint ✅').catch(() => {});
+    }
+    const member = await call(() => tg.isMember(channel, tgId!));
+    if (!member) throw new AppError(409, 'task_not_done', `We can’t see you in @${channel} yet. Join the channel, then press Verify again.`);
   }
 
   // --- Admin: tasks --------------------------------------------------------------------
@@ -1007,6 +1078,10 @@ export class RewardsService {
         target = m[1];
       } else if (kind === 'share') {
         if (target.length < 3 || target.length > 240) throw new AppError(400, 'bad_target', 'The post text must be 3–240 characters.');
+      } else if (kind === 'telegram') {
+        const name = channelName(target);
+        if (!name) throw new AppError(400, 'bad_target', 'Enter the public channel, like @firstprint or t.me/firstprint.');
+        target = name;
       } else if (!/^https:\/\/[^\s"'<>]+$/.test(target)) {
         throw new AppError(400, 'bad_target', 'Enter a link starting with https://');
       }
@@ -1032,12 +1107,12 @@ export class RewardsService {
   }
 
   private defaultTitle(kind: TaskKind, target: string) {
-    return { follow: `Follow @${target} on X`, repost: 'Repost our post on X', like: 'Like our post on X', share: 'Share Firstprint on X', link: 'Visit the link' }[kind];
+    return { follow: `Follow @${target} on X`, repost: 'Repost our post on X', like: 'Like our post on X', share: 'Share Firstprint on X', link: 'Visit the link', telegram: 'Join our Telegram channel' }[kind];
   }
 
   createTask(input: TaskInput) {
     const kind = input.kind;
-    if (!['follow', 'repost', 'like', 'share', 'link'].includes(kind)) throw new AppError(400, 'bad_kind', 'Choose a task type.');
+    if (!['follow', 'repost', 'like', 'share', 'link', 'telegram'].includes(kind)) throw new AppError(400, 'bad_kind', 'Choose a task type.');
     const c = this.cleanTask({ ...input, maxCompletions: input.maxCompletions ?? null }, kind);
     if (!c.target) throw new AppError(400, 'bad_target', 'Fill in what the task points to.');
     if (c.points === undefined) throw new AppError(400, 'bad_points', 'Set how many points the task gives.');

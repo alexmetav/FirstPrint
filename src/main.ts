@@ -89,6 +89,15 @@ const adminUrl = `${appUrl}#/admin`;
 const telegram = cfg.telegramBotToken
   ? new Telegram(cfg.telegramBotToken, { get: () => service.getSetting('telegram_chat_id'), set: (id) => service.setSetting('telegram_chat_id', id) })
   : null;
+// The join-the-channel task is checked through the same bot (it must be an admin of the channel).
+if (telegram) {
+  telegram
+    .me()
+    .then((bot) => {
+      if (bot) rewards.tg = { checker: telegram, bot };
+    })
+    .catch((err: Error) => log(`Telegram bot lookup failed: ${err.message}`));
+}
 const alert = (text: string) => {
   telegram?.send(text).catch((err: Error) => log(`telegram failed: ${err.message}`));
 };

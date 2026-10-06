@@ -548,3 +548,71 @@ test('X checks: three checks in a row that find nothing mean a five-minute wait 
   assert.equal(rewards.summary(user.id).xCooldownUntil, null);
   assert.equal((await rewards.verifyTask(user.id, follow)).points, 50, 'after the wait it checks again');
 });
+
+test('Telegram task: join the channel, press Start in our bot with your code, then Verify; checked through the bot', async () => {
+  const { clock, service, rewards } = await setup(false);
+  const task = rewards.createTask({ kind: 'telegram', target: 't.me/firstprint_alerts', points: 500 });
+  assert.throws(() => rewards.createTask({ kind: 'telegram', target: 'not a channel!', points: 10 }), failsWith('bad_target'));
+  const listed = rewards.listTasksAdmin().find((t) => t.id === task)!;
+  assert.deepEqual([listed.title, listed.url], ['Join our Telegram channel', 'https://t.me/firstprint_alerts']);
+
+  // The bot: who pressed Start with which code, who is in the channel, what it sent.
+  const starts = new Map<string, string>();
+  const members = new Set<string>();
+  const sent: string[] = [];
+  rewards.tg = {
+    bot: 'firstprint_bot',
+    checker: {
+      startedBy: async (code) => starts.get(code) ?? null,
+      isMember: async (channel, id) => channel === 'firstprint_alerts' && members.has(id),
+      sendTo: async (chat) => void sent.push(chat),
+    },
+  };
+  const { user: a } = await player(service, 'a@example.com');
+  const { user: b } = await player(service, 'b@example.com');
+
+  // No X account needed for this one; the bot link carries the player's own code.
+  const tg = rewards.summary(a.id).telegram!;
+  assert.equal(tg.linked, false);
+  const code = /start=(FP-[A-Z0-9]+)$/.exec(tg.botUrl!)![1];
+  assert.match(tg.botUrl!, /^https:\/\/t\.me\/firstprint_bot\?start=FP-/);
+  assert.equal(rewards.summary(a.id).telegram!.botUrl, tg.botUrl, 'the code stays the same until used');
+
+  rewards.startTask(a.id, task);
+  clock.advance(TASK_MIN_WAIT_MS);
+  await assert.rejects(rewards.verifyTask(a.id, task), failsWith('tg_not_linked'));
+  starts.set(code, '111');
+  await assert.rejects(rewards.verifyTask(a.id, task), failsWith('task_not_done'), 'linked, but not in the channel yet');
+  assert.deepEqual(sent, ['111'], 'the bot confirms the link');
+  assert.equal(rewards.summary(a.id).telegram!.linked, true);
+  members.add('111');
+  assert.equal((await rewards.verifyTask(a.id, task)).points, 500);
+  assert.equal(service.getUser(a.id).points, START_POINTS + 500);
+
+  // One Telegram account per Firstprint account.
+  const codeB = /start=(FP-[A-Z0-9]+)$/.exec(rewards.summary(b.id).telegram!.botUrl!)![1];
+  starts.set(codeB, '111');
+  rewards.startTask(b.id, task);
+  clock.advance(TASK_MIN_WAIT_MS);
+  await assert.rejects(rewards.verifyTask(b.id, task), failsWith('tg_taken'));
+});
+
+test('tasks: a full task opens again for new players when the admin raises or clears the limit', async () => {
+  const { clock, service, rewards } = await setup(false);
+  const follow = rewards.createTask({ kind: 'follow', target: '@firstprint', points: 50, maxCompletions: 1 });
+  const { user: a } = await player(service, 'a@example.com');
+  const { user: b } = await player(service, 'b@example.com');
+  for (const [u, x] of [[a, 'ana'], [b, 'bea']] as const) rewards.connectX(u.id, x);
+  rewards.startTask(a.id, follow);
+  clock.advance(TASK_MIN_WAIT_MS);
+  await rewards.verifyTask(a.id, follow);
+  assert.equal(rewards.summary(b.id).tasks[0].remaining, 0, 'a new player sees it full');
+  assert.equal(rewards.summary(b.id).tasks[0].done, false, 'but never as done by them');
+
+  rewards.updateTask(follow, { points: 500, maxCompletions: null });
+  const t = rewards.summary(b.id).tasks[0];
+  assert.deepEqual([t.points, t.remaining, t.done], [500, null, false]);
+  rewards.startTask(b.id, follow);
+  clock.advance(TASK_MIN_WAIT_MS);
+  assert.equal((await rewards.verifyTask(b.id, follow)).points, 500);
+});

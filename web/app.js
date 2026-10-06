@@ -2810,7 +2810,7 @@ function historyView(entries) {
 
 const rewardsCluster = () => S.rewards?.cluster || S.cfg?.rewards?.cluster || 'testnet';
 const clusterName = () => (rewardsCluster() === 'devnet' ? 'Devnet' : 'Testnet');
-const TASK_ICONS = { follow: 'userPlus', repost: 'repeat', like: 'heart', share: 'megaphone', link: 'link' };
+const TASK_ICONS = { follow: 'userPlus', repost: 'repeat', like: 'heart', share: 'megaphone', link: 'link', telegram: 'telegram' };
 
 /** The getting-started steps, with what's already done ticked. */
 function startSteps() {
@@ -2980,13 +2980,15 @@ function tasksCard(r) {
   const open = rows.filter((t) => !t.done && t.remaining !== 0).reduce((sum, t) => sum + t.points, 0);
   return `
     <section class="section panel tasks-card">
-      <div class="section-head"><span class="section-ico">${ico('list')}</span><div><h2>Tasks</h2><p class="muted">Do a task on X, then press Verify.</p></div>${open ? `<span class="pill pill-pts head-action">+${fmtNum(open)} to earn</span>` : ''}</div>
+      <div class="section-head"><span class="section-ico">${ico('list')}</span><div><h2>Tasks</h2><p class="muted">Do a task, then press Verify.</p></div>${open ? `<span class="pill pill-pts head-action">+${fmtNum(open)} to earn</span>` : ''}</div>
       ${
         rows.length
           ? `<ul class="tasks">${rows
               .map((t) => {
                 const full = t.remaining === 0 && !t.done;
-                const needsX = t.kind !== 'link' && !connected && !t.done && !full;
+                const needsX = X_TASKS.has(t.kind) && !connected && !t.done && !full;
+                // The channel task is checked through our bot: until it knows the player, they press Start there.
+                const needsBot = t.kind === 'telegram' && r.telegram && !r.telegram.linked && !t.done && !full;
                 const expanded = needsX && S.xOpenTask === t.id;
                 let action;
                 if (t.done) action = `<span class="task-done">${ico('checkCircle')}Already claimed</span>`;
@@ -2996,12 +2998,13 @@ function tasksCard(r) {
                 else if (t.startedAt) {
                   // Follow, repost and post tasks are checked on X: after too many misses the player waits.
                   const wait = r.xChecks && X_CHECKED.has(t.kind) ? xWait(r) : '';
-                  action = `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}Open</a>${wait || `<button class="btn btn-solid" data-action="task-verify" data-task="${esc(t.id)}">${ico('check')}Verify</button>`}`;
+                  const bot = needsBot ? `<a class="btn" href="${esc(r.telegram.botUrl)}" target="_blank" rel="noopener noreferrer">${ico('send')}Open bot</a>` : '';
+                  action = `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}Open</a>${bot}${wait || `<button class="btn btn-solid" data-action="task-verify" data-task="${esc(t.id)}">${ico('check')}Verify</button>`}`;
                 }
                 else action = `<a class="btn btn-solid" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer" data-action="task-go" data-task="${esc(t.id)}">${TASK_GO[t.kind] ?? 'Start'} ${ico('chevronRight')}</a>`;
                 return `<li class="task${t.done ? ' is-done' : ''}${full ? ' is-full' : ''}${expanded ? ' is-open' : ''}">
                   <span class="task-ico">${ico(TASK_ICONS[t.kind] ?? 'star')}</span>
-                  <div class="task-body"><b>${esc(t.title)}</b><small><span class="pts">+${fmtNum(t.points)} points</span>${t.remaining !== null && !t.done && !full && t.remaining <= 20 ? ` · ${fmtNum(t.remaining)} left` : ''}</small></div>
+                  <div class="task-body"><b>${esc(t.title)}</b><small><span class="pts">+${fmtNum(t.points)} points</span>${t.remaining !== null && !t.done && !full && t.remaining <= 20 ? ` · ${fmtNum(t.remaining)} left` : ''}</small>${needsBot && t.startedAt ? '<small class="task-hint">Joined? Now open our bot and press Start, so we can see it’s you. Then press Verify.</small>' : ''}</div>
                   <div class="task-actions">${action}</div>
                   ${expanded ? `<div class="task-connect">${xConnectPanel(r)}</div>` : ''}
                 </li>`;
@@ -3021,7 +3024,10 @@ function tasksCard(r) {
 const X_CHECKED = new Set(['follow', 'repost', 'share']);
 
 /** What the button says before a task is opened. */
-const TASK_GO = { follow: 'Follow', repost: 'Repost', like: 'Like', share: 'Post', link: 'Open' };
+const TASK_GO = { follow: 'Follow', repost: 'Repost', like: 'Like', share: 'Post', link: 'Open', telegram: 'Join' };
+
+/** Tasks done on X: they need the player's X account first. */
+const X_TASKS = new Set(['follow', 'repost', 'like', 'share']);
 
 function claimsList(r) {
   if (!r.claims.length) return '';
@@ -4524,7 +4530,7 @@ function saveKeysNote(t) {
   </div>`;
 }
 
-const TASK_TARGET_HINT = { follow: 'X handle, e.g. @firstprint', repost: 'Link to the post on X', like: 'Link to the post on X', share: 'Text of the post (the player’s invite link is added)', link: 'https:// link' };
+const TASK_TARGET_HINT = { follow: 'X handle, e.g. @firstprint', repost: 'Link to the post on X', like: 'Link to the post on X', share: 'Text of the post (the player’s invite link is added)', link: 'https:// link', telegram: 'Public channel, e.g. @firstprint' };
 
 /** Tasks players complete for points: create, set a limit, switch off. */
 /** Whether tasks are checked on X (GetXAPI), and the credit left for those checks. */
@@ -4541,7 +4547,7 @@ function tasksAdminSection(tasks) {
     ${xCheckNote()}
     <form id="admin-task" class="admin-form task-form" novalidate>
       <label><span class="field-label">Type</span><select name="kind">
-        <option value="follow">Follow on X</option><option value="repost">Repost on X</option><option value="like">Like on X</option><option value="share">Post on X (with invite link)</option><option value="link">Visit a link</option>
+        <option value="follow">Follow on X</option><option value="repost">Repost on X</option><option value="like">Like on X</option><option value="share">Post on X (with invite link)</option><option value="link">Visit a link</option><option value="telegram">Join Telegram channel</option>
       </select></label>
       <label class="span-2"><span class="field-label">Target</span><input name="target" placeholder="${esc(TASK_TARGET_HINT.follow)}" required /></label>
       <label><span class="field-label">Title <span class="muted">(optional)</span></span><input name="title" maxlength="80" /></label>
@@ -4562,8 +4568,18 @@ function tasksAdminSection(tasks) {
                 <td><span class="mkt-cell"><span class="task-ico task-ico-sm">${ico(TASK_ICONS[t.kind] ?? 'star')}</span><span><a href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${esc(t.title)}</a>${t.active ? '' : ' <span class="pill pill-off">Off</span>'}</span></span></td>
                 <td class="right num-cell">+${fmtNum(t.points)}</td>
                 <td><span class="progress-cell">${fmtNum(t.completions)}${t.maxCompletions ? ` / ${fmtNum(t.maxCompletions)}` : ''}${pct === null ? '' : `<span class="meter"><i style="width:${pct}%"></i></span>`}</span></td>
-                <td class="right"><button class="btn btn-sm" data-action="admin-task-toggle" data-id="${esc(t.id)}" data-active="${t.active ? '1' : '0'}">${ico('power')}${t.active ? 'Switch off' : 'Switch on'}</button></td>
-              </tr>`;
+                <td class="right"><span class="row-actions"><button class="btn btn-sm" data-action="admin-task-edit" data-id="${esc(t.id)}">${ico('edit')}Edit</button><button class="btn btn-sm" data-action="admin-task-toggle" data-id="${esc(t.id)}" data-active="${t.active ? '1' : '0'}">${ico('power')}${t.active ? 'Switch off' : 'Switch on'}</button></span></td>
+              </tr>${
+                A.editTask === t.id
+                  ? `<tr class="row-edit"><td colspan="4"><form class="admin-form task-form" data-task-edit="${esc(t.id)}" novalidate>
+                      <label class="span-2"><span class="field-label">Title</span><input name="title" maxlength="80" value="${esc(t.title)}" /></label>
+                      <label><span class="field-label">Points</span><input name="points" type="number" min="1" max="10000" value="${t.points}" required /></label>
+                      <label><span class="field-label">Limit <span class="muted">(players)</span></span><input name="maxCompletions" type="number" min="1" placeholder="No limit" value="${t.maxCompletions ?? ''}" /></label>
+                      <span class="row-actions"><button class="btn btn-solid" type="submit">${ico('check')}Save</button><button class="btn" type="button" data-action="admin-task-edit" data-id="">Cancel</button></span>
+                      <p class="muted fine span-all">Leave the limit empty so every player can do it. ${fmtNum(t.completions)} player${t.completions === 1 ? ' has' : 's have'} done it so far.</p>
+                    </form></td></tr>`
+                  : ''
+              }`;
             })
             .join('')}</tbody></table></div>`
         : '<p class="muted pad">No tasks yet. Add one above.</p>'
@@ -5346,6 +5362,9 @@ async function onAdminAction(action, el) {
       return window.scrollTo({ top: 0 });
     case 'admin-token-refresh':
       return renderAdmin();
+    case 'admin-task-edit':
+      A.editTask = el.dataset.id || null;
+      return renderAdmin();
     case 'admin-task-toggle':
       try {
         await A.api.updateTask(el.dataset.id, { active: el.dataset.active !== '1' });
@@ -5735,6 +5754,17 @@ async function onAdminSubmit(form, submitter) {
     try {
       await A.api.createTask({ ...data, points: Number(data.points), maxCompletions: data.maxCompletions ? Number(data.maxCompletions) : null });
       toast('Task added');
+      return renderAdmin();
+    } catch (err) {
+      return toast(err.message, true);
+    }
+  }
+  if (form.dataset.taskEdit) {
+    const data = Object.fromEntries(new FormData(form));
+    try {
+      await A.api.updateTask(form.dataset.taskEdit, { title: data.title, points: Number(data.points), maxCompletions: data.maxCompletions ? Number(data.maxCompletions) : null });
+      A.editTask = null;
+      toast('Task saved');
       return renderAdmin();
     } catch (err) {
       return toast(err.message, true);

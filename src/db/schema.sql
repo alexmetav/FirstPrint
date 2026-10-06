@@ -196,10 +196,10 @@ CREATE TABLE IF NOT EXISTS claims (
 );
 CREATE INDEX IF NOT EXISTS claims_user ON claims(user_id, created_at);
 
--- Tasks admins publish (follow on X, repost, share, visit a link) and who completed them.
+-- Tasks admins publish (follow on X, repost, share, visit a link, join the Telegram channel) and who completed them.
 CREATE TABLE IF NOT EXISTS tasks (
   id               TEXT PRIMARY KEY,
-  kind             TEXT NOT NULL CHECK (kind IN ('follow', 'repost', 'like', 'share', 'link')),
+  kind             TEXT NOT NULL CHECK (kind IN ('follow', 'repost', 'like', 'share', 'link', 'telegram')),
   title            TEXT NOT NULL,
   target           TEXT NOT NULL,   -- X handle, post id, share text or URL depending on kind
   points           INTEGER NOT NULL CHECK (points > 0),

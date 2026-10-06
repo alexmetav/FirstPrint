@@ -66,6 +66,40 @@ export class Telegram {
     await this.call('sendPhoto', form);
   }
 
+  private botName: string | null = null;
+
+  /** The bot's username (asked once), for t.me links. */
+  async me() {
+    if (!this.botName) this.botName = String(((await this.call('getMe', {})) as { username?: string }).username ?? '');
+    return this.botName;
+  }
+
+  // Codes players sent with Start (/start CODE), remembered so a later check still finds them after
+  // newer messages push them out of what getUpdates returns.
+  private starts = new Map<string, string>();
+
+  /** The Telegram user ID that pressed Start in the bot with this code, or null if none has yet. */
+  async startedBy(code: string): Promise<string | null> {
+    const want = code.toUpperCase();
+    if (!this.starts.has(want)) {
+      const updates = (await this.call('getUpdates', { offset: -100, limit: 100, allowed_updates: ['message'] })) as {
+        message?: { text?: string; from?: { id: number | string; is_bot?: boolean } };
+      }[];
+      for (const u of updates ?? []) {
+        const m = /^\/start\s+(FP-[A-Z0-9]{6,})\s*$/i.exec(u.message?.text?.trim() ?? '');
+        if (m && u.message!.from && !u.message!.from.is_bot) this.starts.set(m[1].toUpperCase(), String(u.message!.from.id));
+      }
+      if (this.starts.size > 5_000) this.starts.clear();
+    }
+    return this.starts.get(want) ?? null;
+  }
+
+  /** True when the user is in the channel (@name). The bot must be an admin of the channel. */
+  async isMember(channel: string, userId: string) {
+    const m = (await this.call('getChatMember', { chat_id: `@${channel}`, user_id: Number(userId) })) as { status?: string; is_member?: boolean };
+    return ['creator', 'administrator', 'member'].includes(String(m?.status)) || (m?.status === 'restricted' && m.is_member === true);
+  }
+
   /** Links the chat that most recently sent the bot this code. */
   async connect(code: string) {
     // offset -100: the latest 100 messages (without it Telegram returns the oldest ones still waiting).
