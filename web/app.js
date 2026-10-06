@@ -1303,7 +1303,7 @@ function cardView(m) {
   const joined = seen === undefined ? 0 : m.predictors - seen;
   S.cardSeen.set(m.id, m.predictors);
   const activity = m.predictors
-    ? `<span class="card-act">${ico('users')}${tick(`pred:${m.id}`, m.predictors)}<span>${open ? 'predicting' : 'predicted'}</span></span>`
+    ? `<span class="card-act">${ico('users')}${tick(`pred:${m.id}`, m.predictors)}<span>${m.predictors === 1 ? 'participant' : 'participants'}</span></span>`
     : open
     ? '<span class="card-act quiet">Be the first to predict</span>'
     : '';
