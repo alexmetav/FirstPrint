@@ -57,6 +57,8 @@ export interface ServerOptions {
   backupNow?: () => Promise<boolean>;
   /** New accounts allowed per network (IP) per day (NEW_ACCOUNTS_PER_DAY, default 10). Raise it for an event on shared Wi-Fi. */
   newAccountsPerDay?: number;
+  /** Public API (/api/v1) calls a minute from everyone together (default 600). */
+  publicApiPerMinute?: number;
   /** True when exchange auto-detection and live prices are off and admins run every market. */
   manualOnly?: boolean;
   /** New-listing checks (and the exchanges watched), when the server runs them. */
@@ -497,10 +499,17 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // --- Public API (read-only, no key): markets, tokens coming up, the leaderboard. Docs: /api.html ----
 
-  /** Any site may call it from the browser; 60 calls a minute per visitor. */
+  /**
+   * Any site may call it from the browser; 60 calls a minute per visitor, and at most
+   * PUBLIC_API_PER_MINUTE in all, so callers spread over many addresses can't load the server (the
+   * app's own routes aren't counted). Answers may be cached for 15 seconds by Cloudflare or a browser.
+   */
+  const PUBLIC_API_PER_MINUTE = opts.publicApiPerMinute ?? 600;
   const publicCall = (req: IncomingMessage, res: ServerResponse) => {
     rateLimit(`pub:${visitor(req)}`, 60, 60_000);
+    rateLimit('pub:all', PUBLIC_API_PER_MINUTE, 60_000);
     res.setHeader('access-control-allow-origin', '*');
+    (res as Negotiated).publicMaxAge = 15;
   };
   const siteOf = (req: IncomingMessage) => (opts.publicUrl ?? `http://${req.headers.host ?? 'localhost'}`).replace(/\/+$/, '');
   const asPublic = (req: IncomingMessage, m: unknown) => publicMarket(m as MarketView, siteOf(req), service.clock.now());
@@ -1579,7 +1588,12 @@ function sameEtag(header: string, etag: string) {
   return header.split(',').some((t) => t.trim() === '*' || bare(t) === bare(etag));
 }
 
-type Negotiated = ServerResponse & { gzipOk?: boolean; ifNoneMatch?: string | null };
+type Negotiated = ServerResponse & {
+  gzipOk?: boolean;
+  ifNoneMatch?: string | null;
+  /** Seconds a shared cache (Cloudflare) may keep this answer: only the public API, which is the same for everyone. */
+  publicMaxAge?: number;
+};
 
 const ZIPPABLE = /^(?:text\/|application\/(?:json|javascript|manifest\+json|xml)|image\/svg\+xml)/;
 
@@ -1595,12 +1609,15 @@ function send(res: ServerResponse, status: number, body: unknown) {
   const json = JSON.stringify(body);
   const type = 'application/json; charset=utf-8';
   // GETs that succeed carry an ETag: the 8-second refreshes then cost a few bytes when nothing changed.
-  // "private, no-cache" keeps them out of shared caches but lets the browser revalidate.
+  // "private, no-cache" keeps them out of shared caches but lets the browser revalidate; the public
+  // API's answers are the same for everyone, so Cloudflare may keep those for a few seconds.
   if (status === 200 && r.ifNoneMatch !== null && r.ifNoneMatch !== undefined) {
     // serverTime changes every call; leave it out so an unchanged list still matches.
     const tagged = json.includes('"serverTime"') ? JSON.stringify(body, (k, v) => (k === 'serverTime' ? 0 : v)) : json;
     const etag = `W/"${createHash('sha1').update(tagged).digest('base64url').slice(0, 22)}"`;
-    const headers = { 'cache-control': 'private, no-cache', etag, vary: 'accept-encoding, cookie' };
+    const headers = r.publicMaxAge
+      ? { 'cache-control': `public, max-age=${r.publicMaxAge}`, etag, vary: 'accept-encoding' }
+      : { 'cache-control': 'private, no-cache', etag, vary: 'accept-encoding, cookie' };
     if (r.ifNoneMatch === etag) {
       res.writeHead(304, headers);
       return res.end();

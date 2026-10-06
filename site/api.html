@@ -72,7 +72,7 @@
       <ul>
         <li><strong>Base URL:</strong> <code>https://www.firstprint.fun/api/v1</code></li>
         <li><strong>No key, no sign-in.</strong> Only <code>GET</code> requests. Any website can call it from the browser (CORS is open).</li>
-        <li><strong>Limit:</strong> 60 requests a minute per address. Over the limit you get <code>429</code>; wait a minute and try again.</li>
+        <li><strong>Limit:</strong> 60 requests a minute per address, and a shared limit for everyone together. Over a limit you get <code>429</code>; wait a minute and try again.</li>
         <li><strong>Private data is never returned:</strong> no emails, wallets, or who predicted what.</li>
         <li>Points have no cash value. Nothing here is financial advice.</li>
       </ul>
@@ -141,7 +141,7 @@
       </div>
 
       <h2>Errors</h2>
-      <p>Errors come back as JSON with a short code, for example <code>{"error": "bad_status", "message": "…"}</code>, and a <code>4xx</code> status. Data refreshes every few seconds; checking every 10 to 30 seconds is plenty.</p>
+      <p>Errors come back as JSON with a short code, for example <code>{"error": "bad_status", "message": "…"}</code>, and a <code>4xx</code> status. Answers may be cached for up to 15 seconds, so checking every 15 to 30 seconds is plenty.</p>
 
       <h2>Fair use</h2>
       <p>Please keep to the limit, and link back to Firstprint if you show this data publicly. Version 1 won’t change in ways that break your code; new fields may be added. Questions or ideas: <a href="mailto:team@firstprint.fun">team@firstprint.fun</a></p>

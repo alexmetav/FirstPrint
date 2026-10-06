@@ -26,7 +26,7 @@ test('public API (read-only): markets, upcoming tokens and the leaderboard, with
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const get = async (path: string) => {
     const r = await fetch(base + path);
-    return { status: r.status, cors: r.headers.get('access-control-allow-origin'), json: (await r.json()) as Record<string, any> };
+    return { status: r.status, cors: r.headers.get('access-control-allow-origin'), cache: r.headers.get('cache-control'), json: (await r.json()) as Record<string, any> };
   };
   try {
     const priced = service.createManualMarket({ symbol: 'ABC', name: 'Alpha', exchanges: ['mexc'], basePrice: 2, closeAt: T0 + 2 * HOUR, resultAt: T0 + 48 * HOUR, publish: true } as never);
@@ -39,6 +39,7 @@ test('public API (read-only): markets, upcoming tokens and the leaderboard, with
     assert.equal(index.status, 200);
     assert.equal(index.cors, '*', 'any site may call it');
     assert.equal(index.json.docs, 'https://firstprint.test/api.html');
+    assert.equal(index.cache, 'public, max-age=15', 'the same for everyone, so Cloudflare may keep it briefly');
 
     const open = await get('/api/v1/markets');
     assert.equal(open.status, 200);
@@ -60,7 +61,9 @@ test('public API (read-only): markets, upcoming tokens and the leaderboard, with
 
     const one = await get(`/api/v1/markets/${priced}`);
     assert.equal(one.json.token.name, 'Alpha');
-    assert.equal((await get('/api/v1/markets/nope')).status, 404);
+    const missing = await get('/api/v1/markets/nope');
+    assert.equal(missing.status, 404);
+    assert.equal(missing.cache, 'no-store', 'errors are never cached');
     assert.equal((await get('/api/v1/markets?status=bogus')).status, 400);
     assert.equal((await get('/api/v1/markets?status=settled')).json.count, 0);
 
@@ -70,6 +73,22 @@ test('public API (read-only): markets, upcoming tokens and the leaderboard, with
     assert.equal(board.json.seasonStart, null);
     assert.equal((await get('/api/v1/leaderboard?period=year')).status, 400);
     void soon;
+  } finally {
+    server.close();
+  }
+});
+
+test('public API: a total cap per minute, so callers on many addresses cannot load the server', async () => {
+  const service = new FirstprintService(openDb(':memory:'), new ManualClock(T0), [venue]);
+  const server = createApiServer({ service, adminKey: null, secureCookies: false, webDir: new URL('../web', import.meta.url).pathname, publicApiPerMinute: 3 });
+  await new Promise<void>((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    const codes = [];
+    for (let i = 0; i < 4; i++) codes.push((await fetch(`${base}/api/v1`)).status);
+    assert.deepEqual(codes, [200, 200, 200, 429]);
+    const app = await fetch(`${base}/api/markets`);
+    assert.equal(app.status, 200, "the app's own routes don't count");
   } finally {
     server.close();
   }
