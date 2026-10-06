@@ -13373,6 +13373,21 @@ html.in-maint body {
 .earn2-side .st-head > .btn {
   font-weight: 500;
 }
+/* Task status labels: what happened, in one quiet line with its icon. */
+.task-done,
+.task-full {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.task-done .i,
+.task-full .i {
+  width: 15px;
+  height: 15px;
+}
 
 </style>
   </head>
@@ -18193,8 +18208,9 @@ function tasksCard(r) {
                 const needsX = t.kind !== 'link' && !connected && !t.done && !full;
                 const expanded = needsX && S.xOpenTask === t.id;
                 let action;
-                if (t.done) action = `<span class="task-done">${ico('checkCircle')}Done</span>`;
-                else if (full) action = '<span class="muted">Full</span>';
+                if (t.done) action = `<span class="task-done">${ico('checkCircle')}Already claimed</span>`;
+                // Everyone's spots are taken (the task had a limit): say so plainly, not just "Full".
+                else if (full) action = `<span class="muted task-full">${ico('lock')}All spots claimed</span>`;
                 else if (needsX) action = expanded ? '' : `<button class="btn btn-solid" data-action="task-connect" data-task="${esc(t.id)}">${ico('x')}Connect X</button>`;
                 else if (t.startedAt) {
                   // Follow, repost and post tasks are checked on X: after too many misses the player waits.

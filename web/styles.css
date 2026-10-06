@@ -13343,3 +13343,18 @@ html.in-maint body {
 .earn2-side .st-head > .btn {
   font-weight: 500;
 }
+/* Task status labels: what happened, in one quiet line with its icon. */
+.task-done,
+.task-full {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.task-done .i,
+.task-full .i {
+  width: 15px;
+  height: 15px;
+}
