@@ -1156,8 +1156,8 @@ function homeView() {
   const filterBtn = ([id, icon, label]) =>
     `<button data-filter="${id}" aria-current="${S.filter === id && !S.query}">${ico(icon)}<span>${label}</span><span class="side-n">${count(id)}</span></button>`;
   return `
-    ${tnCard}
     ${S.query ? '' : homeHero(!tnCard)}
+    ${tnCard}
     <div class="home">
       <aside class="home-side" aria-label="Filter markets">
         <div class="side-group">${HOME_TABS.map(filterBtn).join('')}</div>
@@ -2857,25 +2857,17 @@ function startChecklist() {
     ['Claim TestFPT', 'Free: Firstprint pays the fee', false],
   ];
   const done = steps.filter((x) => x[2]).length;
-  const next = steps.findIndex((x) => !x[2]);
   const cta = !signedIn
     ? `<button class="btn btn-gold" data-action="connect">Sign in to claim ${ico('arrowRight')}</button>`
     : !wallet
     ? `<button class="btn btn-gold" data-action="start-guide">Link a wallet ${ico('arrowRight')}</button>`
     : `<a class="btn btn-gold" href="#/earn">Claim 1,000 TestFPT ${ico('arrowRight')}</a>`;
+  // One slim line under the hero: seen, but it doesn't push the markets down.
   return `
-    <section class="testnet-card" aria-labelledby="testnet-title" style="--done:${done / steps.length}">
-      <div class="tn-coins" aria-hidden="true"><i></i><i></i><i></i></div>
-      <div class="tn-copy">
-        <p class="tn-kicker"><span class="dot-live" aria-hidden="true"></span>Testnet is live</p>
-        <h2 id="testnet-title">Claim 1,000 free TestFPT<span class="soft"> on Solana ${clusterName()}</span></h2>
-        <p class="tn-sub">Your Firstprint points, as a token in your own wallet. Takes about two minutes. Test network only, no real money.</p>
-      </div>
-      <ol class="tn-steps">${steps
-        .map(([t, sub, ok], i) => `<li class="${ok ? 'done' : i === next ? 'next' : ''}"><span class="tn-n">${ok ? ico('check') : `0${i + 1}`}</span><span><b>${t}</b><small>${sub}</small></span></li>`)
-        .join('')}</ol>
-      <div class="tn-actions">${cta}${signedIn ? '<button class="btn tn-more" data-action="start-guide">See all steps</button>' : ''}</div>
-      <span class="tn-progress" aria-hidden="true"><i></i></span>
+    <section class="tn-strip" aria-label="Testnet">
+      <span class="tn-strip-coin" aria-hidden="true">${ico('token')}</span>
+      <p><span class="tn-strip-live"><span class="dot-live" aria-hidden="true"></span>Testnet is live</span><b>Claim 1,000 free TestFPT</b><span class="muted tn-strip-sub"> on Solana ${clusterName()} · free, no real money${signedIn ? ` · step ${Math.min(done + 1, steps.length)} of ${steps.length}` : ''}</span></p>
+      ${cta.replace('class="btn btn-gold"', 'class="btn btn-gold btn-sm"')}
       ${signedIn ? '' : `<button class="tn-close" data-action="testnet-hide" aria-label="Hide this">${ico('cross')}</button>`}
     </section>`;
 }
@@ -2997,8 +2989,9 @@ function tasksCard(r) {
                 const needsX = t.kind !== 'link' && !connected && !t.done && !full;
                 const expanded = needsX && S.xOpenTask === t.id;
                 let action;
-                if (t.done) action = `<span class="task-done">${ico('checkCircle')}Done</span>`;
-                else if (full) action = '<span class="muted">Full</span>';
+                if (t.done) action = `<span class="task-done">${ico('checkCircle')}Already claimed</span>`;
+                // Everyone's spots are taken (the task had a limit): say so plainly, not just "Full".
+                else if (full) action = `<span class="muted task-full">${ico('lock')}All spots claimed</span>`;
                 else if (needsX) action = expanded ? '' : `<button class="btn btn-solid" data-action="task-connect" data-task="${esc(t.id)}">${ico('x')}Connect X</button>`;
                 else if (t.startedAt) {
                   // Follow, repost and post tasks are checked on X: after too many misses the player waits.
