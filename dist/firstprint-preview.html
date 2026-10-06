@@ -12158,6 +12158,24 @@ svg.viz.viz-narrow {
   max-width: 100%;
 }
 
+/* The selected tab is marked in the text colour, not brand blue: white in dark mode, black in light mode.
+   Blue stays for actions (buttons, links). */
+.nav a[aria-current='page'] .i,
+.tabbar a[aria-current='page'] .i,
+.subnav a[aria-current='page'] .i,
+.home-side button[aria-current='true'] .i,
+.admin-nav button[aria-current='page'] .i,
+.tabs button[aria-selected='true'] .i,
+.tabs-scroll button[aria-selected='true'] .i {
+  color: var(--text);
+}
+.dash-tabs button[aria-selected='true']::after {
+  background: var(--text);
+}
+.dash-tabs.seg-on::before {
+  background: var(--text);
+}
+
 </style>
   </head>
   <body>
