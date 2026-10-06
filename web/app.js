@@ -4448,6 +4448,10 @@ function saveKeysNote(t) {
   if (t.authorityKey && !t.savedInEnv?.authority) rows.push(['TESTFPT_AUTHORITY_KEY', t.authorityKey]);
   if (t.mint && !t.savedInEnv?.mint) rows.push(['TESTFPT_MINT', t.mint]);
   if (t.authorityKeyHidden && !t.savedInEnv?.authority) return `<p class="muted">${ico('key')} The owner can see and save the TestFPT keys in Render.</p>`;
+  // Both already in the host's settings: say so, so nobody goes looking for a key to copy.
+  if (t.savedInEnv?.authority && t.savedInEnv?.mint) {
+    return `<p class="keys-saved">${ico('check')}<span><b>Keys saved in Render</b> <span class="muted">TESTFPT_AUTHORITY_KEY and TESTFPT_MINT are set, so a restart can’t lose them.</span></span></p>`;
+  }
   if (!rows.length) return '';
   return `<div class="save-keys">
     <b>${ico('key')}Save these in Render so a restart can’t lose them</b>

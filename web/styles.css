@@ -13018,3 +13018,20 @@ html.in-maint body {
   contain-intrinsic-size: auto 600px;
   overflow-clip-margin: 24px;
 }
+
+/* Admin → TestFPT: the keys are already in the host's settings. */
+.keys-saved {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.keys-saved > svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  color: var(--up);
+}
