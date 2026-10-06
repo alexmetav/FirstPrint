@@ -1,5 +1,6 @@
 export interface Mailer {
-  send(to: string, subject: string, text: string): Promise<void>;
+  /** `html` is the styled version; `text` is always sent too, for inboxes that show text only. */
+  send(to: string, subject: string, text: string, html?: string): Promise<void>;
 }
 
 /** Sends through Resend's HTTP API (https://resend.com). Needs an API key and a verified sender. */
@@ -12,11 +13,11 @@ export class ResendMailer implements Mailer {
     this.from = from;
   }
 
-  async send(to: string, subject: string, text: string) {
+  async send(to: string, subject: string, text: string, html?: string) {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { authorization: `Bearer ${this.apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ from: this.from, to: [to], subject, text }),
+      body: JSON.stringify({ from: this.from, to: [to], subject, text, ...(html ? { html } : {}) }),
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) throw new Error(`Email provider rejected the message (${res.status})`);

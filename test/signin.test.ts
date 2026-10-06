@@ -158,8 +158,8 @@ test('google: accepts a valid token and rejects every kind of bad one', async ()
 
 async function serve(extra: Record<string, unknown> = {}) {
   const { clock, service } = setup();
-  const sent: { to: string; text: string }[] = [];
-  const mailer: Mailer = { send: async (to, _s, text) => void sent.push({ to, text }) };
+  const sent: { to: string; text: string; html?: string }[] = [];
+  const mailer: Mailer = { send: async (to, _s, text, html) => void sent.push({ to, text, html }) };
   const { jwks, token } = googleKit();
   const server = createApiServer({ service, adminKey: null, secureCookies: false, webDir: new URL('../web', import.meta.url).pathname, googleClientId: CLIENT_ID, googleJwks: jwks, mailer, ...extra });
   await new Promise<void>((r) => server.listen(0, r));
@@ -182,6 +182,8 @@ test('HTTP: email code sign-in end to end, and the session works', async () => {
     assert.equal(start.json.devCode, undefined); // never leaked outside dev mode
     const code = /code is (\d{6})/.exec(s.sent[0].text)![1];
     assert.equal(s.sent[0].to, 'kim@example.com');
+    assert.ok(s.sent[0].html?.includes(`>${code}</div>`), 'the styled email shows the code large');
+    assert.match(s.sent[0].html!, /src="http:\/\/127\.0\.0\.1:\d+\/icon-192\.png"/, 'with the logo from the site');
 
     assert.equal((await s.post('/api/auth/email/verify', { email: 'kim@example.com', code: '12345' })).status, 401);
     const ok = await s.post('/api/auth/email/verify', { email: 'kim@example.com', code });

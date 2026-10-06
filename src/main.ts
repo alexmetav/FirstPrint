@@ -150,7 +150,7 @@ const scheduler = new Scheduler(
       const email = mailer instanceof ResendMailer ? service.getUser(n.userId).email : null;
       if (!email) continue;
       const mail = resultEmail(n, appUrl);
-      mailer!.send(email, mail.subject, mail.text).catch((err: Error) => log(`result email failed for ${n.userId}: ${err.message}`));
+      mailer!.send(email, mail.subject, mail.text, mail.html).catch((err: Error) => log(`result email failed for ${n.userId}: ${err.message}`));
     }
   },
   { tickMs: cfg.tickMs, liveMs: cfg.liveMs, trackEveryMs: cfg.trackEveryMs, tracker,

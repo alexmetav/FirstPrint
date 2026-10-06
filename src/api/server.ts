@@ -9,6 +9,7 @@ import type { Scheduler } from '../workers/scheduler.ts';
 import type { LiveFeed } from '../workers/liveFeed.ts';
 import { cachedGoogleJwks, verifyGoogleIdToken, type JwksFetcher } from '../auth/google.ts';
 import type { Mailer } from '../auth/mailer.ts';
+import { codeEmail } from '../auth/emailHtml.ts';
 import type { Bucket } from '../engine/engine.ts';
 import { linkSiteToApp } from '../site/links.ts';
 import { fetchImage, isPrivateAddress } from './fetchImage.ts';
@@ -379,7 +380,8 @@ export function createApiServer(opts: ServerOptions): Server {
     rateLimit(`emailcode:${email}`, 5, 60 * 60_000);
     const { code, expiresAt } = service.startEmailLogin(email);
     try {
-      await opts.mailer.send(email, `${code} is your Firstprint code`, `Your Firstprint sign-in code is ${code}.\n\nIt expires in 10 minutes. If you didn't ask for it, you can ignore this email.`);
+      const mail = codeEmail(code, siteOf(req));
+      await opts.mailer.send(email, mail.subject, mail.text, mail.html);
     } catch (err) {
       service.log(`email send failed: ${(err as Error).message}`);
       throw new AppError(502, 'email_failed', 'We couldn’t send the email. Try again in a moment.');
