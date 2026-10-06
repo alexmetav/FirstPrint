@@ -9664,15 +9664,7 @@ a.hero-badge-live:hover .i {
   white-space: nowrap;
 }
 
-/* Page changes: a short fade and rise, only when a new page opens. */
-#view.view-enter > * {
-  animation: view-in 0.34s var(--ease-out) both;
-}
-#view.view-enter > *:nth-child(2) { animation-delay: 40ms; }
-#view.view-enter > *:nth-child(3) { animation-delay: 80ms; }
-@keyframes view-in {
-  from { opacity: 0; transform: translateY(8px); }
-}
+/* Page changes: the fade and rise is run from app.js (enterView) with the Web Animations API. */
 
 /* Touch and scrolling feel. */
 html {
@@ -9691,7 +9683,6 @@ a,
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  #view.view-enter > *,
   .tn-coins i,
   .dot-live::after,
   .pts-hit,
@@ -13007,4 +12998,23 @@ html.in-maint body {
 }
 .see-more-guest p b {
   color: var(--text);
+}
+
+/* Long pages: blocks far below the screen skip layout and paint until they scroll near it (they
+   keep their last size, so the scrollbar doesn't jump). The margin keeps card shadows unclipped. */
+.grid > .mcard:nth-child(n + 7) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
+  overflow-clip-margin: 24px;
+}
+#how {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 900px;
+  overflow-clip-margin: 24px;
+}
+/* (Only skipped while off screen: on wide screens, where it sits beside the list, nothing changes.) */
+.home-rail {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 600px;
+  overflow-clip-margin: 24px;
 }
