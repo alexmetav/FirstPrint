@@ -233,11 +233,16 @@ test('without TestFPT: rewards go straight to the balance; referrals pay when th
   assert.equal(service.getUser(friend.id).referred_by, host.id);
   assert.equal(rewards.summary(host.id).referral.invited, 1);
 
-  const id = service.createManualMarket({ symbol: 'ABC', exchanges: ['exa'], basePrice: 1, closeAt: T0 + 3_600_000, publish: true });
-  service.placePrediction(id, friend.id, 'up', 100);
+  // Paid once the friend has predicted on three different markets (one prediction alone isn't enough).
+  const ids = ['ABC', 'DEF', 'GHI'].map((symbol) => service.createManualMarket({ symbol, exchanges: ['exa'], basePrice: 1, closeAt: T0 + 3_600_000, publish: true }));
+  service.placePrediction(ids[0], friend.id, 'up', 100);
+  service.placePrediction(ids[0], friend.id, 'down', 100);
+  service.placePrediction(ids[1], friend.id, 'up', 100);
+  assert.equal(service.getUser(host.id).points, START_POINTS, 'not yet: two markets so far');
+  service.placePrediction(ids[2], friend.id, 'up', 100);
   assert.equal(service.getUser(host.id).points, START_POINTS + REFERRAL_POINTS);
-  service.placePrediction(id, friend.id, 'down', 100);
-  assert.equal(service.getUser(host.id).points, START_POINTS + REFERRAL_POINTS, 'only the first prediction counts');
+  service.placePrediction(ids[2], friend.id, 'down', 100);
+  assert.equal(service.getUser(host.id).points, START_POINTS + REFERRAL_POINTS, 'paid only once');
 
   const { user: self } = await player(service, 'self@example.com', rewards.summary(friend.id).referral.code);
   assert.equal(service.getUser(self.id).referred_by, friend.id);

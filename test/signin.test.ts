@@ -26,7 +26,7 @@ test('email code: sign up, then the same email signs back into the same account'
   const first = service.verifyEmailCode('Alex@Example.com', codeOf(service, 'alex@example.com'));
   assert.equal(first.created, true);
   assert.equal(first.user.email, 'alex@example.com');
-  assert.equal(first.user.username, 'alex');
+  assert.match(first.user.username, /^player_[0-9a-f]{6}$/, 'a random name, never part of the email');
   assert.equal(first.user.needs_username, 1);
   assert.equal(first.user.points, START_POINTS);
 
@@ -190,7 +190,7 @@ test('HTTP: email code sign-in end to end, and the session works', async () => {
     assert.equal(ok.json.user.needsUsername, true);
     assert.ok(ok.cookie.startsWith('fp_session='), ok.cookie);
     const me = await (await fetch(`${s.base}/api/me`, { headers: { cookie: ok.cookie } })).json();
-    assert.equal(me.username ?? me.user?.username, 'kim');
+    assert.match(me.username ?? me.user?.username, /^player_[0-9a-f]{6}$/);
   } finally {
     s.close();
   }
@@ -237,6 +237,20 @@ test('HTTP: Google sign-in creates the account once; email code and Google reach
     const viaEmail = await s.post('/api/auth/email/verify', { email: 'sam@gmail.com', code });
     assert.equal(viaEmail.json.user.id, g.json.user.id);
     assert.equal(viaEmail.json.created, false);
+  } finally {
+    s.close();
+  }
+});
+
+test('HTTP: at most 10 new accounts per network a day; existing accounts still sign in', async () => {
+  const s = await serve();
+  try {
+    const signIn = (email: string) => s.post('/api/auth/email/verify', { email, code: s.service.startEmailLogin(email).code });
+    for (let i = 0; i < 10; i++) assert.equal((await signIn(`p${i}@example.com`)).status, 200);
+    const eleventh = await signIn('p10@example.com');
+    assert.equal(eleventh.status, 429);
+    assert.equal(eleventh.json.error, 'too_many_accounts');
+    assert.equal((await signIn('p3@example.com')).status, 200, 'signing back in is never limited');
   } finally {
     s.close();
   }

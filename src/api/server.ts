@@ -54,6 +54,8 @@ export interface ServerOptions {
   backupStatus?: () => { enabled: boolean; lastOkAt: number | null; lastError: string | null };
   /** Takes a database copy now (maintenance mode turns on just before a deploy). */
   backupNow?: () => Promise<boolean>;
+  /** New accounts allowed per network (IP) per day (NEW_ACCOUNTS_PER_DAY, default 10). Raise it for an event on shared Wi-Fi. */
+  newAccountsPerDay?: number;
   /** True when exchange auto-detection and live prices are off and admins run every market. */
   manualOnly?: boolean;
   /** New-listing checks (and the exchanges watched), when the server runs them. */
@@ -227,6 +229,22 @@ export function createApiServer(opts: ServerOptions): Server {
     if (++h.count > limit) throw new AppError(429, 'rate_limited', 'Too many requests. Try again in a few seconds.');
   }
 
+  // New accounts per network per day. Each one starts with points (and TestFPT, paid by the server),
+  // so a script making endless accounts could farm them; real players are never near this. Counted in
+  // memory (a restart clears it); checked before signing in and counted only when an account is made.
+  const NEW_ACCOUNTS_PER_DAY = opts.newAccountsPerDay ?? 10;
+  function checkNewAccount(req: IncomingMessage, isNew: boolean) {
+    if (!isNew) return;
+    const h = hits.get(`signup:${visitor(req)}`);
+    if (h && h.reset >= Date.now() && h.count >= NEW_ACCOUNTS_PER_DAY) {
+      throw new AppError(429, 'too_many_accounts', 'Too many new accounts from this network today. Sign in to an existing account, or try again tomorrow.');
+    }
+  }
+  function countNewAccount(req: IncomingMessage, created: boolean) {
+    if (created) rateLimit(`signup:${visitor(req)}`, Number.MAX_SAFE_INTEGER, 24 * 60 * 60_000);
+  }
+  const emailIsNew = (email: string) => !service.db.prepare('SELECT 1 FROM users WHERE email = ?').get(email.trim().toLowerCase());
+
   // --- Public routes -------------------------------------------------------------
 
   route('GET', '/api/health', () => {
@@ -361,7 +379,9 @@ export function createApiServer(opts: ServerOptions): Server {
     const b = await body();
     rateLimit(`emailverify:${visitor(req)}`, 20, 10 * 60_000);
     rateLimit(`emailverify:${String(b.email ?? '').trim().toLowerCase()}`, 10, 10 * 60_000);
+    checkNewAccount(req, emailIsNew(String(b.email ?? '')));
     const { user, created } = service.verifyEmailCode(String(b.email ?? ''), String(b.code ?? ''), refOf(b));
+    countNewAccount(req, created);
     const session = service.createSession(user.id, 'email');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
@@ -373,7 +393,9 @@ export function createApiServer(opts: ServerOptions): Server {
     const b = await body();
     const who = await verifyGoogleIdToken(String(b.credential ?? ''), opts.googleClientId, opts.googleJwks ?? (googleJwks ??= cachedGoogleJwks()));
     if (!who) throw new AppError(401, 'bad_google_token', 'Google sign-in failed. Try again.');
+    checkNewAccount(req, emailIsNew(who.email));
     const { user, created } = service.signInWithVerifiedEmail(who.email, who.name, refOf(b));
+    countNewAccount(req, created);
     const session = service.createSession(user.id, 'google');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
@@ -395,6 +417,7 @@ export function createApiServer(opts: ServerOptions): Server {
   route('POST', '/api/auth/wallet/verify', async ({ req, res, body }) => {
     rateLimit(`wallet:${visitor(req)}`, 20, 60_000);
     const b = await body();
+    checkNewAccount(req, !service.db.prepare('SELECT 1 FROM wallets WHERE address = ?').get(String(b.address ?? '')));
     const { user, created } = service.walletSignIn({
       address: String(b.address ?? ''),
       message: String(b.message ?? ''),
@@ -402,6 +425,7 @@ export function createApiServer(opts: ServerOptions): Server {
       walletName: b.walletName ? String(b.walletName).slice(0, 40) : undefined,
       ref: refOf(b),
     });
+    countNewAccount(req, created);
     const session = service.createSession(user.id, 'wallet');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
@@ -1336,8 +1360,11 @@ export function createApiServer(opts: ServerOptions): Server {
       const share = /^\/share\/pnl\/([^/]+)\/([^/]+?)(\.png)?$/.exec(url.pathname);
       if (share) {
         try {
+          // Each card works out the player's whole history, so floods are cut off (generous for link previews).
+          rateLimit(`share:${visitor(req)}`, 120, 60_000);
           return servePnl(req, res, share[1], share[2], Boolean(share[3]));
         } catch (err) {
+          if (err instanceof AppError && err.status === 429) return send(res, 429, { error: err.code, message: err.message });
           service.log(`500 GET ${url.pathname}: ${(err as Error).stack ?? err}`);
           return send(res, 500, { error: 'server_error', message: 'Something went wrong on our side. Try again.' });
         }

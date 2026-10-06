@@ -200,3 +200,15 @@ test('backups are gzip-compressed, old uncompressed copies still restore, daily 
   assert.equal(await restoreIfMissing(c, cfg, quiet, storage.fetchFn), 'restored');
   assert.equal((new DatabaseSync(c).prepare("SELECT points FROM users WHERE id = 'u1'").get() as { points: number }).points, 77);
 });
+
+test('restore: a missing backup in a bucket that has other copies refuses to start (likely a wrong name), unless ALLOW_EMPTY_DB', async () => {
+  const s = fakeStorage();
+  s.objects.set('firstprint-2026-10-01.db', Buffer.from('old daily copy'));
+  await assert.rejects(restoreIfMissing(join(dir(), 'a.db'), cfg, quiet, s.fetchFn), /ALLOW_EMPTY_DB/);
+  assert.equal(await restoreIfMissing(join(dir(), 'b.db'), cfg, quiet, s.fetchFn, true), 'none');
+
+  const unreachable = fakeStorage();
+  const listDown = (async (input: string | URL | Request, init?: RequestInit) =>
+    String(input).includes('/object/list/') ? new Response('boom', { status: 503 }) : unreachable.fetchFn(input, init)) as typeof fetch;
+  await assert.rejects(restoreIfMissing(join(dir(), 'c.db'), cfg, quiet, listDown), /couldn't check the bucket/);
+});

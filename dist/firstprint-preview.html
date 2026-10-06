@@ -17799,7 +17799,7 @@ function referralCard(r) {
   return `
     <section class="earn-card">
       <div class="card-head"><span class="card-ico">${ico('userPlus')}</span><h2>Invite friends</h2><span class="pill pill-pts">+${f.perReferral} each</span></div>
-      <p class="muted">You get <b>+${f.perReferral} points</b> when a friend signs up with your link and makes their first prediction (up to ${f.limit} friends).</p>
+      <p class="muted">You get <b>+${f.perReferral} points</b> when a friend signs up with your link and predicts on ${f.markets ?? 3} different markets (up to ${f.limit} friends).</p>
       <div class="copy-row"><input readonly value="${esc(f.link)}" aria-label="Your invite link" /><button class="btn" data-action="copy-text" data-text="${esc(f.link)}">${ico('copy')}Copy</button></div>
       <a class="btn" href="https://x.com/intent/tweet?text=${shareText}&url=${encodeURIComponent(f.link)}" target="_blank" rel="noopener noreferrer">${ico('x')}Share on X</a>
       <div class="ref-stats"><span><b>${fmtNum(f.invited)}</b> signed up</span><span><b>${fmtNum(f.rewarded)}</b> rewarded</span><span><b class="profit-pos">${signed(f.points)}</b> points</span></div>

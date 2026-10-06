@@ -90,6 +90,11 @@ function migrate(db: DB) {
   // Analytics groups predictions and daily claims by time.
   db.exec('CREATE INDEX IF NOT EXISTS predictions_time ON predictions(placed_at)');
   db.exec('CREATE INDEX IF NOT EXISTS ledger_reason_time ON ledger(reason, created_at)');
+  // Clean-ups and background checks that run often (expired sign-ins, unclaimed rewards, claims confirming).
+  db.exec('CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS auth_nonces_expiry ON auth_nonces(expires_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS rewards_unclaimed ON rewards(user_id) WHERE claim_id IS NULL');
+  db.exec('CREATE INDEX IF NOT EXISTS claims_status ON claims(status)');
   backfillStreaks(db);
 }
 
