@@ -1,3 +1,4 @@
+import { asAdmin } from '../exchanges/coingeckoGate.ts';
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
@@ -1327,7 +1328,8 @@ export function createApiServer(opts: ServerOptions): Server {
       if (req.method === 'POST' && !String(req.headers['content-type'] ?? '').startsWith('application/json')) {
         throw new AppError(415, 'json_required', 'Requests must use Content-Type: application/json.');
       }
-      const out = await match.r.handler(ctx);
+      // Admin tools use the smaller share of the CoinGecko budget; live-market work keeps the rest.
+      const out = await (url.pathname.startsWith('/api/admin/') ? asAdmin(() => match.r.handler(ctx)) : match.r.handler(ctx));
       send(res, 200, out);
     } catch (err) {
       if (err instanceof AppError) return send(res, err.status, { error: err.code, message: err.message });

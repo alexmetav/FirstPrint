@@ -46,7 +46,9 @@ services:
         sync: false
       - key: ADMIN_WALLETS
         sync: false
-      # Optional: a free CoinGecko demo key for Admin → Find tokens (works without one, with a lower rate limit).
+      # Optional: a free CoinGecko demo key (works without one, with a lower rate limit). All CoinGecko
+      # calls share one budget per minute: 10 without a key, 25 with one (COINGECKO_PER_MIN overrides it).
+      # Admin tools may use only half, so start and result prices for live markets always have room.
       - key: COINGECKO_API_KEY
         sync: false
       # Seals the keys of the Firstprint wallets made for email and Google players. Render makes it
