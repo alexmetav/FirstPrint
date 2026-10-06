@@ -76,28 +76,6 @@ function brand(x: number, y: number) {
 }
 
 
-/** The token: logo (or a letter avatar), the ticker, and its name underneath. Exchanges are named only in the app. */
-function tokenBlock(m: BannerMarket, logoPng: string | null, y: number) {
-  const size = 160;
-  const x = 80;
-  const sym = m.symbol.toUpperCase();
-  const symSize = Math.max(60, Math.min(110, Math.floor(780 / (Math.max(sym.length + 1, 4) * 0.64))));
-  // A name the font can't draw is left off; the ticker is checked before drawing (see renderBanner).
-  const name = drawable((m.name ?? '').trim()) ? (m.name ?? '').trim() : '';
-  const shortName = name.length > 30 ? `${name.slice(0, 29)}…` : name;
-  const cx = x + size / 2;
-  const cy = y + size / 2;
-  const avatar = logoPng
-    ? `<clipPath id="logo"><circle cx="${cx}" cy="${cy}" r="${size / 2}"/></clipPath>
-       <image href="${logoPng}" x="${x}" y="${y}" width="${size}" height="${size}" clip-path="url(#logo)" preserveAspectRatio="xMidYMid slice"/>`
-    : `<circle cx="${cx}" cy="${cy}" r="${size / 2}" fill="${avatarColor(sym)}"/>
-       <text x="${cx}" y="${cy + 28}" text-anchor="middle" font-size="80" font-weight="700" fill="#ffffff">${esc(sym.slice(0, 1))}</text>`;
-  const tx = x + size + 40;
-  return `${avatar}
-    <text x="${tx}" y="${y + 92}" font-size="${symSize}" font-weight="700" fill="${C.text}" letter-spacing="-2.5">${esc(sym)}</text>
-    ${shortName && shortName.toUpperCase() !== sym ? `<text x="${tx + 3}" y="${y + 142}" font-size="30" fill="${C.muted}">${esc(shortName)}</text>` : ''}`;
-}
-
 /**
  * Result: a small token line ("MOLT result"), then the price move as the big number in the winning
  * outcome's colour, with the winning outcome beside it.
@@ -132,28 +110,17 @@ function timeLeft(ms: number) {
 }
 
 /**
- * Last hour: the small token line (logo, ticker, "closing soon"), then the time left as the big
- * number, so the post reads at a glance as "47 min left to predict".
+ * Last hour: the token small at the top, then the time left as the big number in the middle, so the
+ * post reads at a glance as "47 min left to predict".
  */
 function closingHero(m: BannerMarket, logoPng: string | null, left: string, color: string) {
   const sym = m.symbol.toUpperCase();
-  const size = 64;
-  const x = 80;
-  const y = 176;
-  const logo = logoPng
-    ? `<clipPath id="logo"><circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}"/></clipPath>
-       <image href="${logoPng}" x="${x}" y="${y}" width="${size}" height="${size}" clip-path="url(#logo)" preserveAspectRatio="xMidYMid slice"/>`
-    : `<circle cx="${x + size / 2}" cy="${y + size / 2}" r="${size / 2}" fill="${avatarColor(sym)}"/>
-       <text x="${x + size / 2}" y="${y + size / 2 + 12}" text-anchor="middle" font-size="34" font-weight="700" fill="#ffffff">${esc(sym.slice(0, 1))}</text>`;
-  const name = drawable((m.name ?? '').trim()) ? (m.name ?? '').trim() : '';
-  const sub = name && name.toUpperCase() !== sym ? (name.length > 28 ? `${name.slice(0, 27)}…` : name) : '';
-  const bigSize = left.length > 6 ? 170 : 200;
-  const em: Record<string, number> = { ' ': 0.28, h: 0.56, m: 0.86, i: 0.25, n: 0.56 };
-  const bigEnd = x - 6 + [...left].reduce((w, ch) => w + (em[ch] ?? 0.62) * bigSize - 6, 0);
-  return `${logo}
-    <text x="${x + size + 22}" y="${y + 45}" font-size="40" font-weight="600" fill="${C.text}" letter-spacing="-0.8">${esc(sym)} <tspan fill="${C.muted}" font-weight="400">${esc(sub)}</tspan></text>
-    <text x="${x - 6}" y="452" font-size="${bigSize}" font-weight="700" fill="${color}" letter-spacing="-6">${esc(left)}</text>
-    <text x="${Math.min(bigEnd + 28, 960)}" y="452" font-size="44" font-weight="600" fill="${C.text}">left <tspan fill="${C.muted}" font-weight="400">to predict</tspan></text>`;
+  const name = displayName(m, 28);
+  const bigSize = left.length > 6 ? 170 : 196;
+  return `${centredLogo(sym, logoPng, W / 2, 186, 84, color)}
+    <text x="${W / 2}" y="278" text-anchor="middle" font-size="34" font-weight="600" fill="${C.text}" letter-spacing="-0.6">${esc(sym)}${name ? ` <tspan fill="${C.muted}" font-weight="400">${esc(name)}</tspan>` : ''}</text>
+    <text x="${W / 2}" y="${306 + bigSize * 0.86}" text-anchor="middle" font-size="${bigSize}" font-weight="700" fill="${color}" letter-spacing="-6">${esc(left)}</text>
+    <text x="${W / 2}" y="${306 + bigSize * 0.86 + 52}" text-anchor="middle" font-size="36" font-weight="600" fill="${C.text}">left <tspan fill="${C.muted}" font-weight="400">to predict</tspan></text>`;
 }
 
 /** Up to three label / value pairs along the bottom, like an exchange listing notice. */
@@ -167,6 +134,55 @@ function facts(items: [string, string][], y: number) {
       </g>`,
     )
     .join('');
+}
+
+/** Facts in centred columns along the bottom, for the centred banners. */
+function centredFacts(items: [string, string][], y: number, gap = 380) {
+  const list = items.slice(0, 3);
+  return list
+    .map(([label, value], i) => {
+      const x = W / 2 + (i - (list.length - 1) / 2) * gap;
+      return `<g transform="translate(${x},${y})">
+        <text text-anchor="middle" font-family="Geist Mono" font-size="16" font-weight="500" fill="${C.muted}" letter-spacing="1.8">${esc(label.toUpperCase())}</text>
+        <text text-anchor="middle" y="40" font-size="28" font-weight="600" fill="${C.text}">${esc(value)}</text>
+      </g>`;
+    })
+    .join('');
+}
+
+/** A round logo (or letter avatar) centred on cx, with a soft ring in the accent colour. */
+function centredLogo(sym: string, logoPng: string | null, cx: number, cy: number, size: number, color: string) {
+  const r = size / 2;
+  const face = logoPng
+    ? `<clipPath id="logo"><circle cx="${cx}" cy="${cy}" r="${r}"/></clipPath>
+       <image href="${logoPng}" x="${cx - r}" y="${cy - r}" width="${size}" height="${size}" clip-path="url(#logo)" preserveAspectRatio="xMidYMid slice"/>`
+    : `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${avatarColor(sym)}"/>
+       <text x="${cx}" y="${cy + size * 0.17}" text-anchor="middle" font-size="${Math.round(size * 0.48)}" font-weight="700" fill="#ffffff">${esc(sym.slice(0, 1))}</text>`;
+  return `<circle cx="${cx}" cy="${cy}" r="${r + 46}" fill="url(#halo)"/>
+    <circle cx="${cx}" cy="${cy}" r="${r + 10}" fill="none" stroke="${color}" stroke-opacity="0.35" stroke-width="2"/>
+    ${face}`;
+}
+
+/** The token's name, when the font can draw it and it isn't just the ticker again. */
+function displayName(m: BannerMarket, max: number) {
+  const sym = m.symbol.toUpperCase();
+  const name = drawable((m.name ?? '').trim()) ? (m.name ?? '').trim() : '';
+  if (!name || name.toUpperCase() === sym) return '';
+  return name.length > max ? `${name.slice(0, max - 1)}…` : name;
+}
+
+/**
+ * New market: the token is the whole point, so it sits in the middle, big: logo, ticker, name.
+ * A small label says what this is; when predictions close and the result comes sit small below.
+ */
+function liveBody(m: BannerMarket, logoPng: string | null, color: string, upcoming: boolean) {
+  const sym = m.symbol.toUpperCase();
+  const tickerSize = Math.max(64, Math.min(120, Math.floor(1000 / (Math.max(sym.length, 3) * 0.66))));
+  const name = displayName(m, 34);
+  return `<text x="${W / 2}" y="182" text-anchor="middle" font-family="Geist Mono" font-size="20" font-weight="500" fill="${color}" letter-spacing="4">${upcoming ? 'NEW MARKET · LISTS SOON' : 'NEW MARKET LISTED'}</text>
+    ${centredLogo(sym, logoPng, W / 2, 292, 164, color)}
+    <text x="${W / 2}" y="${name ? 500 : 516}" text-anchor="middle" font-size="${tickerSize}" font-weight="700" fill="${C.text}" letter-spacing="-3">${esc(sym)}</text>
+    ${name ? `<text x="${W / 2}" y="546" text-anchor="middle" font-size="30" fill="${C.muted}">${esc(name)}</text>` : ''}`;
 }
 
 /**
@@ -184,39 +200,40 @@ export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | n
       : kind === 'closing'
         ? { text: 'CLOSING SOON', color: '#ff9f0a' }
         : { text: 'RESULT', color: OUTCOME_COLORS[m.result?.winningBucket ?? 'flat'] ?? '#3987e5' };
-  let headline: string;
   let items: [string, string][];
-  // The result banner leads with what happened (the move and who played), not the token again.
-  let resultBody: string | null = null;
+  // What fills the middle: the token (new market), the time left (last hour) or the move (result).
+  let body = '';
+  // New market and last hour are centred on the token; the result keeps its two columns.
+  let centred = false;
   if (kind === 'live') {
-    headline = 'New Market Listed';
+    centred = true;
     items = [
-      ['Start price', m.basePrice !== null ? price(m.basePrice) : upcoming ? 'At listing' : 'At close'],
       ['Predictions close', utc(m.closeAt)],
       ['Result', utc(m.settleAt)],
     ];
+    body = liveBody(m, logoPng, status.color, upcoming);
   } else if (kind === 'closing') {
     // The time left is the story here, not the token: it leads, big, in the status colour.
-    headline = 'Last Hour to Predict';
+    centred = true;
     items = [
       ['Predictions close', utc(m.closeAt)],
       ['Participants', (m.predictors ?? 0).toLocaleString('en-US')],
       ['Pool', `${(m.pool ?? 0).toLocaleString('en-US')} pts`],
     ];
-    resultBody = closingHero(m, logoPng, timeLeft(m.closeAt - now), status.color);
+    body = closingHero(m, logoPng, timeLeft(m.closeAt - now), status.color);
   } else {
     const r = m.result;
     const won = r?.winningBucket ? (m.outcomes === 'binary' ? (r.winningBucket === 'up' ? 'Yes' : 'No') : OUTCOME_NAMES[r.winningBucket]) : 'Settled';
     const pct = r?.returnPct != null ? ` ${r.returnPct >= 0 ? '+' : ''}${(r.returnPct * 100).toFixed(1)}%` : '';
-    headline = 'Market Settled';
     // Only the token's price: start → final.
     items = r?.basePrice != null && r?.finalPrice != null ? [['Price', `${price(r.basePrice)} → ${price(r.finalPrice)}`]] : [];
-    resultBody = resultHero(m, logoPng, won, pct.trim(), status.color, r?.winningBucket ?? null);
+    body = resultHero(m, logoPng, won, pct.trim(), status.color, r?.winningBucket ?? null);
   }
   const pillW = status.text.length * 14 + 62;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Geist">
     <defs>
-      <radialGradient id="glow" cx="0.9" cy="0" r="0.6"><stop offset="0" stop-color="${status.color}" stop-opacity="0.10"/><stop offset="1" stop-color="${status.color}" stop-opacity="0"/></radialGradient>
+      <radialGradient id="glow" cx="${centred ? 0.5 : 0.9}" cy="${centred ? 0.42 : 0}" r="0.6"><stop offset="0" stop-color="${status.color}" stop-opacity="${centred ? 0.13 : 0.1}"/><stop offset="1" stop-color="${status.color}" stop-opacity="0"/></radialGradient>
+      <radialGradient id="halo"><stop offset="0.55" stop-color="${status.color}" stop-opacity="0.22"/><stop offset="1" stop-color="${status.color}" stop-opacity="0"/></radialGradient>
     </defs>
     <rect width="${W}" height="${H}" fill="${C.bg}"/>
     <rect width="${W}" height="${H}" fill="url(#glow)"/>
@@ -226,14 +243,15 @@ export function bannerSvg(kind: BannerKind, m: BannerMarket, logoPng: string | n
       <circle cx="28" cy="24" r="6" fill="${status.color}"/>
       <text x="46" y="31" font-family="Geist Mono" font-size="19" font-weight="500" fill="${status.color}" letter-spacing="2">${esc(status.text)}</text>
     </g>
+    ${body}
     ${
-      resultBody ??
-      `<text x="80" y="232" font-size="56" font-weight="600" fill="${C.text}" letter-spacing="-1.4">${esc(headline)}</text>
-    ${tokenBlock(m, logoPng, 286)}`
-    }
-    <line x1="80" y1="524" x2="${W - 80}" y2="524" stroke="${C.line}" stroke-width="1.5"/>
+      centred
+        ? `<line x1="${W / 2 - 420}" y1="${kind === 'live' ? 584 : 596}" x2="${W / 2 + 420}" y2="${kind === 'live' ? 584 : 596}" stroke="${C.line}" stroke-width="1.5"/>
+    ${centredFacts(items, kind === 'live' ? 628 : 636, kind === 'live' ? 400 : 360)}`
+        : `<line x1="80" y1="524" x2="${W - 80}" y2="524" stroke="${C.line}" stroke-width="1.5"/>
     ${facts(items, 576)}
-    <text x="${W - 80}" y="${H - 34}" text-anchor="end" font-family="Geist Mono" font-size="17" fill="${C.muted}" letter-spacing="1">firstprint.fun</text>
+    <text x="${W - 80}" y="${H - 34}" text-anchor="end" font-family="Geist Mono" font-size="17" fill="${C.muted}" letter-spacing="1">firstprint.fun</text>`
+    }
   </svg>`;
 }
 
@@ -255,10 +273,14 @@ export function summaryBannerSvg(tokens: { symbol: string; logoPng: string | nul
   const shown = tokens.filter((t) => drawable(t.symbol)).slice(0, 6);
   const size = 104;
   const gap = 28;
+  const extra = stats.count > shown.length ? `+${stats.count - shown.length}` : '';
+  // The row of logos (and a "+N" for the rest) sits in the middle.
+  const rowW = shown.length * size + Math.max(0, shown.length - 1) * gap + (extra ? gap + extra.length * 22 : 0);
+  const x0 = W / 2 - rowW / 2;
+  const y = 318;
   const row = shown
     .map((t, i) => {
-      const x = 80 + i * (size + gap);
-      const y = 300;
+      const x = x0 + i * (size + gap);
       const sym = t.symbol.toUpperCase();
       const logo = t.logoPng && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(t.logoPng) ? t.logoPng : null;
       const face = logo
@@ -268,7 +290,7 @@ export function summaryBannerSvg(tokens: { symbol: string; logoPng: string | nul
       return `${face}<text x="${x + size / 2}" y="${y + size + 40}" text-anchor="middle" font-size="24" font-weight="600" fill="${C.text}">${esc(label)}</text>`;
     })
     .join('');
-  const more = stats.count > shown.length ? `<text x="${80 + shown.length * (size + gap) + 4}" y="${300 + size / 2 + 12}" font-size="34" font-weight="600" fill="${C.muted}">+${stats.count - shown.length}</text>` : '';
+  const more = extra ? `<text x="${x0 + shown.length * (size + gap)}" y="${y + size / 2 + 12}" font-size="34" font-weight="600" fill="${C.muted}">${extra}</text>` : '';
   const items: [string, string][] = [
     ['Participants', stats.participants.toLocaleString('en-US')],
     ...(stats.next ? [['Closing next', `${drawable(stats.next.symbol) ? `${stats.next.symbol.toUpperCase()} · ` : ''}in ${longLeft(stats.next.closeAt - now)}`] as [string, string]] : []),
@@ -277,7 +299,7 @@ export function summaryBannerSvg(tokens: { symbol: string; logoPng: string | nul
   const pillText = 'LIVE NOW';
   const pillW = pillText.length * 14 + 62;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Geist">
-    <defs><radialGradient id="glow" cx="0.9" cy="0" r="0.6"><stop offset="0" stop-color="${green}" stop-opacity="0.12"/><stop offset="1" stop-color="${green}" stop-opacity="0"/></radialGradient></defs>
+    <defs><radialGradient id="glow" cx="0.5" cy="0.4" r="0.6"><stop offset="0" stop-color="${green}" stop-opacity="0.12"/><stop offset="1" stop-color="${green}" stop-opacity="0"/></radialGradient></defs>
     <rect width="${W}" height="${H}" fill="${C.bg}"/>
     <rect width="${W}" height="${H}" fill="url(#glow)"/>
     ${brand(80, 64)}
@@ -286,12 +308,10 @@ export function summaryBannerSvg(tokens: { symbol: string; logoPng: string | nul
       <circle cx="28" cy="24" r="6" fill="${green}"/>
       <text x="46" y="31" font-family="Geist Mono" font-size="19" font-weight="500" fill="${green}" letter-spacing="2">${pillText}</text>
     </g>
-    <text x="74" y="250" font-size="110" font-weight="700" fill="${green}" letter-spacing="-4">${stats.count}</text>
-    <text x="${80 + String(stats.count).length * 62 + 26}" y="250" font-size="60" font-weight="600" fill="${C.text}" letter-spacing="-1.5">market${stats.count === 1 ? '' : 's'} live <tspan fill="${C.muted}" font-weight="400">· pick yours</tspan></text>
+    <text x="${W / 2}" y="262" text-anchor="middle" font-size="64" font-weight="600" fill="${C.text}" letter-spacing="-1.6"><tspan fill="${green}" font-weight="700">${stats.count}</tspan> market${stats.count === 1 ? '' : 's'} live <tspan fill="${C.muted}" font-weight="400">· pick yours</tspan></text>
     ${row}${more}
-    <line x1="80" y1="524" x2="${W - 80}" y2="524" stroke="${C.line}" stroke-width="1.5"/>
-    ${facts(items, 576)}
-    <text x="${W - 80}" y="${H - 34}" text-anchor="end" font-family="Geist Mono" font-size="17" fill="${C.muted}" letter-spacing="1">firstprint.fun</text>
+    <line x1="${W / 2 - 420}" y1="${H - 124}" x2="${W / 2 + 420}" y2="${H - 124}" stroke="${C.line}" stroke-width="1.5"/>
+    ${centredFacts(items, H - 84, 360)}
   </svg>`;
 }
 
