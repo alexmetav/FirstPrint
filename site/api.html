@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Public API: Firstprint</title>
+    <meta name="description" content="A free, read-only API for Firstprint markets: tokens coming up, open and settled markets, pools, outcomes and the leaderboard. No key needed." />
+    <meta name="theme-color" content="#09090b" />
+    <link rel="canonical" href="https://www.firstprint.fun/api.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Public API: Firstprint" />
+    <meta property="og:description" content="A free, read-only API for Firstprint markets: tokens coming up, open and settled markets, pools, outcomes and the leaderboard. No key needed." />
+    <meta property="og:image" content="https://www.firstprint.fun/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        --bg: #09090b;
+        --text: #f5f5f7;
+        --muted: #a1a1aa;
+        --line: rgba(255, 255, 255, 0.09);
+        --link: #4da3ff;
+        color-scheme: dark;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f5f5f7;
+          --text: #1d1d1f;
+          --muted: #6e6e73;
+          --line: #e3e3e8;
+          --link: #0071e3;
+          color-scheme: light;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+      main { max-width: 720px; margin: 0 auto; padding: 40px 20px 64px; }
+      .home { color: var(--muted); text-decoration: none; font-size: 14px; }
+      .home:hover { color: var(--text); }
+      h1 { font-size: clamp(30px, 5vw, 40px); line-height: 1.15; letter-spacing: -0.02em; margin: 18px 0 6px; }
+      h2 { font-size: 20px; margin: 34px 0 6px; }
+      p, li { color: color-mix(in srgb, var(--text) 88%, var(--muted)); }
+      .updated { color: var(--muted); margin: 0 0 24px; }
+      a { color: var(--link); }
+      ul { padding-left: 22px; }
+      li { margin: 4px 0; }
+      footer { border-top: 1px solid var(--line); margin-top: 48px; padding-top: 18px; color: var(--muted); font-size: 14px; }
+      code, pre { font: 13.5px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      p code, li code, td code { background: var(--line); padding: 1px 5px; border-radius: 5px; }
+      pre { background: color-mix(in srgb, var(--line) 60%, transparent); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; }
+      .ep { margin: 22px 0 4px; font-weight: 600; }
+      .ep code { background: none; padding: 0; }
+      .verb { color: var(--muted); margin-right: 6px; }
+      .table { overflow-x: auto; }
+      table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+      th, td { text-align: left; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { color: var(--muted); font-weight: 500; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a class="home" href="/">← Firstprint</a>
+      <h1>Public API</h1>
+      <p class="updated">Version 1 · read-only · free</p>
+
+      <p>Everything public on Firstprint is also available as JSON: which tokens are coming up, every open market with its pool and outcomes, settled results, and the leaderboard. Use it for bots, dashboards, alerts or research.</p>
+      <ul>
+        <li><strong>Base URL:</strong> <code>https://www.firstprint.fun/api/v1</code></li>
+        <li><strong>No key, no sign-in.</strong> Only <code>GET</code> requests. Any website can call it from the browser (CORS is open).</li>
+        <li><strong>Limit:</strong> 60 requests a minute per address, and a shared limit for everyone together. Over a limit you get <code>429</code>; wait a minute and try again.</li>
+        <li><strong>Private data is never returned:</strong> no emails, wallets, or who predicted what.</li>
+        <li>Points have no cash value. Nothing here is financial advice.</li>
+      </ul>
+
+      <h2>Endpoints</h2>
+
+      <p class="ep"><span class="verb">GET</span><code>/api/v1/upcoming</code></p>
+      <p>Tokens that aren’t trading yet. Their opening price will be the start price. Sorted by when predictions close, soonest first.</p>
+      <pre>curl https://www.firstprint.fun/api/v1/upcoming</pre>
+
+      <p class="ep"><span class="verb">GET</span><code>/api/v1/markets?status=open&amp;limit=50</code></p>
+      <p>Markets, newest activity first.</p>
+      <ul>
+        <li><code>status</code>: <code>open</code> (taking predictions, the default), <code>closed</code> (predictions closed, waiting for the result), <code>settled</code> (result posted), or <code>all</code>.</li>
+        <li><code>limit</code>: 1 to 100, default 50.</li>
+      </ul>
+      <pre>curl "https://www.firstprint.fun/api/v1/markets?status=settled&amp;limit=10"</pre>
+
+      <p class="ep"><span class="verb">GET</span><code>/api/v1/markets/{id}</code></p>
+      <p>One market. Returns <code>404</code> if there is no such market.</p>
+
+      <p class="ep"><span class="verb">GET</span><code>/api/v1/leaderboard?period=week</code></p>
+      <p>Top players by profit. <code>period</code> is <code>day</code>, <code>week</code>, <code>month</code> or <code>all</code>. Each entry has <code>rank</code>, <code>username</code>, <code>profit</code>, <code>wins</code> and <code>predictions</code>.</p>
+
+      <p class="ep"><span class="verb">GET</span><code>/api/v1</code></p>
+      <p>A short index of the endpoints above.</p>
+
+      <h2>A market</h2>
+      <pre>{
+  "id": "m_abc123",
+  "url": "https://www.firstprint.fun/app/#/market/m_abc123",
+  "token": { "symbol": "ABC", "name": "Example Token", "logo": "https://…" },
+  "type": "five_outcomes",
+  "category": "listing",
+  "status": "open",
+  "upcoming": true,
+  "exchanges": [{ "id": "binance", "name": "Binance", "pair": "ABC/USDT" }],
+  "startPrice": null,
+  "startPriceFrom": "opening_price",
+  "predictionsClose": "2026-10-08T12:00:00.000Z",
+  "resultAt": "2026-10-09T12:00:00.000Z",
+  "feePercent": 2,
+  "pool": 1500,
+  "participants": 12,
+  "outcomes": [
+    { "outcome": "moon", "range": "+50% or better", "pool": 300, "share": 0.2, "payout": 4.9 },
+    …
+  ],
+  "result": null
+}</pre>
+
+      <div class="table">
+        <table>
+          <tr><th>Field</th><th>Meaning</th></tr>
+          <tr><td><code>type</code></td><td><code>yes_no</code> (above or below the start price) or <code>five_outcomes</code> (price ranges).</td></tr>
+          <tr><td><code>category</code></td><td><code>listing</code> for a new listing, <code>live</code> for a token that already trades.</td></tr>
+          <tr><td><code>status</code></td><td><code>open</code>, <code>closed</code>, <code>settled</code> or <code>cancelled</code>.</td></tr>
+          <tr><td><code>upcoming</code></td><td><code>true</code> while the token isn’t trading yet.</td></tr>
+          <tr><td><code>startPrice</code></td><td>The price outcomes are measured from, or <code>null</code> until it’s known.</td></tr>
+          <tr><td><code>startPriceFrom</code></td><td><code>set</code> (already known), <code>opening_price</code> (the first trading price) or <code>price_at_close</code> (the price when predictions close).</td></tr>
+          <tr><td><code>pool</code></td><td>Points predicted on this market in total.</td></tr>
+          <tr><td><code>outcomes[].share</code></td><td>Part of the pool on this outcome, from 0 to 1: the crowd’s view.</td></tr>
+          <tr><td><code>outcomes[].payout</code></td><td>What 1 point on this outcome would return if it won, as the pool stands now (after the fee). <code>null</code> when nothing is on it yet.</td></tr>
+          <tr><td><code>result</code></td><td>Once settled: <code>winningOutcome</code>, <code>startPrice</code>, <code>finalPrice</code>, and <code>cancelledReason</code> if it was cancelled.</td></tr>
+        </table>
+      </div>
+
+      <h2>Errors</h2>
+      <p>Errors come back as JSON with a short code, for example <code>{"error": "bad_status", "message": "…"}</code>, and a <code>4xx</code> status. Answers may be cached for up to 15 seconds, so checking every 15 to 30 seconds is plenty.</p>
+
+      <h2>Fair use</h2>
+      <p>Please keep to the limit, and link back to Firstprint if you show this data publicly. Version 1 won’t change in ways that break your code; new fields may be added. Questions or ideas: <a href="mailto:team@firstprint.fun">team@firstprint.fun</a></p>
+
+      <footer>Firstprint is independent and not affiliated with any exchange. Nothing here is financial advice. · <a href="/terms.html">Terms</a> · <a href="/privacy.html">Privacy</a></footer>
+    </main>
+  </body>
+</html>

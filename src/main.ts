@@ -195,6 +195,7 @@ const server = createApiServer({
   trustProxyHops: cfg.trustProxyHops,
   behindCloudflare: process.env.BEHIND_CLOUDFLARE === '1',
   newAccountsPerDay: Number(process.env.NEW_ACCOUNTS_PER_DAY) > 0 ? Number(process.env.NEW_ACCOUNTS_PER_DAY) : undefined,
+  publicApiPerMinute: Number(process.env.PUBLIC_API_PER_MINUTE) > 0 ? Number(process.env.PUBLIC_API_PER_MINUTE) : undefined,
   backupStatus: () => backup?.status() ?? { enabled: false, lastOkAt: null, lastError: null },
   backupNow: () => (backup ? backup.runOnce(true) : Promise.resolve(false)),
   googleClientId: cfg.googleClientId,

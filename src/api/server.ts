@@ -13,6 +13,7 @@ import type { Bucket } from '../engine/engine.ts';
 import { linkSiteToApp } from '../site/links.ts';
 import { fetchImage, isPrivateAddress } from './fetchImage.ts';
 import { isCloudflareAddress } from './cloudflare.ts';
+import { isUpcoming, publicMarket, PUBLIC_FILTERS, type MarketView, type PublicFilter } from './publicApi.ts';
 import { Discover } from '../services/discover.ts';
 import { drawable, renderBanner, renderPnl } from '../services/banner.ts';
 import { channelName, type Telegram } from '../services/telegram.ts';
@@ -56,6 +57,8 @@ export interface ServerOptions {
   backupNow?: () => Promise<boolean>;
   /** New accounts allowed per network (IP) per day (NEW_ACCOUNTS_PER_DAY, default 10). Raise it for an event on shared Wi-Fi. */
   newAccountsPerDay?: number;
+  /** Public API (/api/v1) calls a minute from everyone together (default 600). */
+  publicApiPerMinute?: number;
   /** True when exchange auto-detection and live prices are off and admins run every market. */
   manualOnly?: boolean;
   /** New-listing checks (and the exchanges watched), when the server runs them. */
@@ -492,6 +495,79 @@ export function createApiServer(opts: ServerOptions): Server {
     const p = url.searchParams.get('period') ?? 'week';
     const period = (LEADERBOARD_PERIODS as readonly string[]).includes(p) ? (p as LeaderboardPeriod) : 'week';
     return service.leaderboard(optionalUser()?.id, period);
+  });
+
+  // --- Public API (read-only, no key): markets, tokens coming up, the leaderboard. Docs: /api.html ----
+
+  /**
+   * Any site may call it from the browser; 60 calls a minute per visitor, and at most
+   * PUBLIC_API_PER_MINUTE in all, so callers spread over many addresses can't load the server (the
+   * app's own routes aren't counted). Answers may be cached for 15 seconds by Cloudflare or a browser.
+   */
+  const PUBLIC_API_PER_MINUTE = opts.publicApiPerMinute ?? 600;
+  const publicCall = (req: IncomingMessage, res: ServerResponse) => {
+    rateLimit(`pub:${visitor(req)}`, 60, 60_000);
+    rateLimit('pub:all', PUBLIC_API_PER_MINUTE, 60_000);
+    res.setHeader('access-control-allow-origin', '*');
+    (res as Negotiated).publicMaxAge = 15;
+  };
+  const siteOf = (req: IncomingMessage) => (opts.publicUrl ?? `http://${req.headers.host ?? 'localhost'}`).replace(/\/+$/, '');
+  const asPublic = (req: IncomingMessage, m: unknown) => publicMarket(m as MarketView, siteOf(req), service.clock.now());
+
+  route('GET', '/api/v1', ({ req, res }) => {
+    publicCall(req, res);
+    const site = siteOf(req);
+    return {
+      name: 'Firstprint public API',
+      version: 1,
+      docs: `${site}/api.html`,
+      endpoints: {
+        markets: `${site}/api/v1/markets?status=open`,
+        market: `${site}/api/v1/markets/{id}`,
+        upcoming: `${site}/api/v1/upcoming`,
+        leaderboard: `${site}/api/v1/leaderboard?period=week`,
+      },
+      note: 'Read-only, no key. Points have no cash value. 60 requests a minute per visitor.',
+    };
+  });
+
+  route('GET', '/api/v1/markets', ({ req, res, url }) => {
+    publicCall(req, res);
+    const status = url.searchParams.get('status') ?? 'open';
+    if (status !== 'all' && !(status in PUBLIC_FILTERS)) throw new AppError(400, 'bad_status', 'status must be open, closed, settled or all.');
+    const limit = Math.max(1, Math.min(100, Math.floor(Number(url.searchParams.get('limit') ?? 50)) || 50));
+    const filters = status === 'all' ? (Object.keys(PUBLIC_FILTERS) as PublicFilter[]) : [status as PublicFilter];
+    const markets = filters.flatMap((f) => service.listMarketsPage(PUBLIC_FILTERS[f], undefined, limit).markets).slice(0, limit);
+    return { status, count: markets.length, markets: markets.map((m) => asPublic(req, m)), serverTime: new Date(service.clock.now()).toISOString() };
+  });
+
+  route('GET', '/api/v1/markets/:id', ({ req, res, params }) => {
+    publicCall(req, res);
+    return asPublic(req, service.getMarket(params.id));
+  });
+
+  // Tokens that aren't trading yet: their market is open and the opening price will be the start.
+  route('GET', '/api/v1/upcoming', ({ req, res }) => {
+    publicCall(req, res);
+    const now = service.clock.now();
+    const markets = service
+      .listMarketsPage('open', undefined, 200)
+      .markets.filter((m) => isUpcoming(m as unknown as MarketView, now))
+      .sort((a, b) => a.closeAt - b.closeAt);
+    return { count: markets.length, markets: markets.map((m) => asPublic(req, m)), serverTime: new Date(now).toISOString() };
+  });
+
+  route('GET', '/api/v1/leaderboard', ({ req, res, url }) => {
+    publicCall(req, res);
+    const p = url.searchParams.get('period') ?? 'week';
+    if (!(LEADERBOARD_PERIODS as readonly string[]).includes(p)) throw new AppError(400, 'bad_period', `period must be one of: ${LEADERBOARD_PERIODS.join(', ')}.`);
+    const board = service.leaderboard(undefined, p as LeaderboardPeriod);
+    return {
+      period: board.period,
+      seasonStart: board.seasonStart ? new Date(board.seasonStart).toISOString() : null,
+      seasonEnd: board.seasonEnd ? new Date(board.seasonEnd).toISOString() : null,
+      entries: board.entries.map(({ rank, name, profit, wins, total }) => ({ rank, username: name, profit, wins, predictions: total })),
+    };
   });
 
   route('GET', '/api/users/:username', ({ params, optionalUser }) => service.publicProfile(params.username, optionalUser()?.id));
@@ -1512,7 +1588,12 @@ function sameEtag(header: string, etag: string) {
   return header.split(',').some((t) => t.trim() === '*' || bare(t) === bare(etag));
 }
 
-type Negotiated = ServerResponse & { gzipOk?: boolean; ifNoneMatch?: string | null };
+type Negotiated = ServerResponse & {
+  gzipOk?: boolean;
+  ifNoneMatch?: string | null;
+  /** Seconds a shared cache (Cloudflare) may keep this answer: only the public API, which is the same for everyone. */
+  publicMaxAge?: number;
+};
 
 const ZIPPABLE = /^(?:text\/|application\/(?:json|javascript|manifest\+json|xml)|image\/svg\+xml)/;
 
@@ -1528,12 +1609,15 @@ function send(res: ServerResponse, status: number, body: unknown) {
   const json = JSON.stringify(body);
   const type = 'application/json; charset=utf-8';
   // GETs that succeed carry an ETag: the 8-second refreshes then cost a few bytes when nothing changed.
-  // "private, no-cache" keeps them out of shared caches but lets the browser revalidate.
+  // "private, no-cache" keeps them out of shared caches but lets the browser revalidate; the public
+  // API's answers are the same for everyone, so Cloudflare may keep those for a few seconds.
   if (status === 200 && r.ifNoneMatch !== null && r.ifNoneMatch !== undefined) {
     // serverTime changes every call; leave it out so an unchanged list still matches.
     const tagged = json.includes('"serverTime"') ? JSON.stringify(body, (k, v) => (k === 'serverTime' ? 0 : v)) : json;
     const etag = `W/"${createHash('sha1').update(tagged).digest('base64url').slice(0, 22)}"`;
-    const headers = { 'cache-control': 'private, no-cache', etag, vary: 'accept-encoding, cookie' };
+    const headers = r.publicMaxAge
+      ? { 'cache-control': `public, max-age=${r.publicMaxAge}`, etag, vary: 'accept-encoding' }
+      : { 'cache-control': 'private, no-cache', etag, vary: 'accept-encoding, cookie' };
     if (r.ifNoneMatch === etag) {
       res.writeHead(304, headers);
       return res.end();
