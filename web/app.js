@@ -944,6 +944,17 @@ function marketResults() {
       : `<div class="empty"><div class="empty-art">${ico('search')}</div><p><strong>No markets match “${esc(S.query.trim())}”.</strong><br />Try a token symbol like BTC or a project name.</p></div>`;
   }
   const list = tabList(S.filter).filter(byExchange);
+  // Trending carries on into every other open market below it, so the first screen shows all there is to predict.
+  if (S.filter === 'trending') {
+    const seen = new Set(list.map((m) => m.id));
+    const rest = [...S.lists.open].filter((m) => !seen.has(m.id) && byExchange(m)).sort(ALL_SORTS[0][2]);
+    if (!list.length && !rest.length) return `<div class="empty">${emptyText()}</div>`;
+    return `${list.length ? `<div class="grid">${list.map(cardView).join('')}</div>` : ''}${
+      rest.length
+        ? `<div class="home-head home-subhead"><h2>${list.length ? 'All markets' : 'Open markets'}</h2><span class="side-n">${rest.length}</span></div><div class="grid">${rest.map(cardView).join('')}</div>`
+        : ''
+    }`;
+  }
   const intro = S.filter === 'live' && list.length ? `<p class="results-note countdown-note">${ico('lock')}<span>Predictions are closed on these markets and their start prices are locked. Each one counts down to its result; the price then decides who wins.</span></p>` : '';
   return list.length ? `${intro}<div class="grid">${list.map(cardView).join('')}</div>` : `<div class="empty">${emptyText()}</div>`;
 }
@@ -955,7 +966,7 @@ function homeView() {
   const count = (id) => (id === 'live' ? S.lists.live.length : id === 'settled' ? S.lists.settled.length : id === 'trending' ? trendingList().length : S.lists.open.length);
   const base = tabList(S.filter);
   const shown = base.filter((m) => S.exchange === 'all' || !S.exchange || venuesOf(m).includes(S.exchange));
-  const onlyFeatured = !S.query && featured && ['trending', 'new', 'all'].includes(S.filter) && shown.length === 1 && shown[0].id === featured.id;
+  const onlyFeatured = !S.query && featured && ['trending', 'new', 'all'].includes(S.filter) && shown.length === 1 && shown[0].id === featured.id && S.lists.open.length <= 1;
   const exchanges = [...new Set([...S.lists.open, ...S.lists.live, ...S.lists.settled].flatMap(venuesOf))].sort();
   // Only exchanges that have markets in this tab (plus the one currently chosen).
   const exList = exchanges.map((e) => [e, base.filter((m) => venuesOf(m).includes(e)).length]).filter(([e, n]) => n > 0 || S.exchange === e);

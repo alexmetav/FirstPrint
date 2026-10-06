@@ -12229,3 +12229,12 @@ svg.viz.viz-narrow {
   gap: 8px;
   margin-left: auto;
 }
+/* "All markets" under Trending on the home page. */
+.home-head.home-subhead {
+  margin-top: 32px;
+  align-items: center;
+  gap: 10px;
+}
+.home-subhead .side-n {
+  font-size: 13px;
+}
