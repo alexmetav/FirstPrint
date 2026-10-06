@@ -6,6 +6,7 @@
  * against current docs and each exchange's terms for commercial data use.
  * Parsing is covered by fixture tests in test/exchanges.test.ts.
  */
+import { coingeckoGate, type CoinGeckoGate } from './coingeckoGate.ts';
 import type { Candle } from '../engine/engine.ts';
 
 export const MINUTE = 60_000;
@@ -58,13 +59,13 @@ export interface Venue {
 // HTTP
 // ---------------------------------------------------------------------------
 
-export const defaultHttp: Http = async (url) => {
+const makeHttp = (retry429: boolean): Http => async (url) => {
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(url, {
       headers: { accept: 'application/json', 'user-agent': 'Firstprint/0.2 (+listing tracker)' },
       signal: AbortSignal.timeout(12_000),
     });
-    if ((res.status === 429 || res.status >= 500) && attempt < 2) {
+    if (((retry429 && res.status === 429) || res.status >= 500) && attempt < 2) {
       await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
       continue;
     }
@@ -72,6 +73,9 @@ export const defaultHttp: Http = async (url) => {
     return res.json();
   }
 };
+export const defaultHttp: Http = makeHttp(true);
+/** For CoinGecko: a 429 there means its per-minute budget is spent, so retrying at once only makes it worse. */
+const httpNo429Retry: Http = makeHttp(false);
 
 // ---------------------------------------------------------------------------
 // Parsing helpers
@@ -466,8 +470,10 @@ export function kucoin(http: Http = defaultHttp): Venue {
 // Its "pair" is the CoinGecko coin id (e.g. pudgy-penguins), which markets store as their pair.
 // ---------------------------------------------------------------------------
 
-export function coingecko(http: Http = defaultHttp, apiKey: string | null = null): Venue {
+export function coingecko(http: Http = httpNo429Retry, apiKey: string | null = null, gate: CoinGeckoGate | null = http === httpNo429Retry ? coingeckoGate : null): Venue {
   const base = 'https://api.coingecko.com/api/v3';
+  // Real calls go through the shared budget, so admin tools can't spend what live markets need.
+  const get = (url: string) => (gate ? gate.run(() => http(url)) : http(url));
   const key = apiKey ? `&x_cg_demo_api_key=${encodeURIComponent(apiKey)}` : '';
   const id = (pair: string) => encodeURIComponent(pair.trim().toLowerCase());
   return {
@@ -476,19 +482,19 @@ export function coingecko(http: Http = defaultHttp, apiKey: string | null = null
     priceOnly: true,
     pair: (b) => b.toLowerCase(),
     async fetchTicker(pair) {
-      const d = (await http(`${base}/simple/price?ids=${id(pair)}&vs_currencies=usd${key}`)) as Record<string, { usd?: number }>;
+      const d = (await get(`${base}/simple/price?ids=${id(pair)}&vs_currencies=usd${key}`)) as Record<string, { usd?: number }>;
       const price = d[pair.trim().toLowerCase()]?.usd;
       return typeof price === 'number' && price > 0 ? { price, ts: Date.now() } : null;
     },
     async fetchTickers(pairs) {
       const ids = [...new Set(pairs.map((p) => p.trim().toLowerCase()))].slice(0, 100);
       if (!ids.length) return {};
-      const d = (await http(`${base}/simple/price?ids=${ids.map(encodeURIComponent).join(',')}&vs_currencies=usd${key}`)) as Record<string, { usd?: number }>;
+      const d = (await get(`${base}/simple/price?ids=${ids.map(encodeURIComponent).join(',')}&vs_currencies=usd${key}`)) as Record<string, { usd?: number }>;
       return Object.fromEntries(ids.map((x) => [x, typeof d[x]?.usd === 'number' && d[x].usd! > 0 ? { price: d[x].usd!, ts: Date.now() } : null]));
     },
     async fetchCandles(pair, startMs, endMs) {
       // CoinGecko has no 1-minute candles; each price point (about every 5 minutes) becomes a flat candle.
-      const d = (await http(`${base}/coins/${id(pair)}/market_chart/range?vs_currency=usd&from=${Math.floor(startMs / 1000)}&to=${Math.ceil(endMs / 1000)}${key}`)) as { prices?: [number, number][] };
+      const d = (await get(`${base}/coins/${id(pair)}/market_chart/range?vs_currency=usd&from=${Math.floor(startMs / 1000)}&to=${Math.ceil(endMs / 1000)}${key}`)) as { prices?: [number, number][] };
       return (d.prices ?? [])
         .filter(([ts, p]) => ts >= startMs && ts <= endMs && p > 0)
         .map(([ts, p]) => ({ ts: Math.floor(ts / MINUTE) * MINUTE, close: p, volume: 0 }));
@@ -498,5 +504,5 @@ export function coingecko(http: Http = defaultHttp, apiKey: string | null = null
 }
 
 export function allVenues(http: Http = defaultHttp, opts: { coingeckoKey?: string | null } = {}): Venue[] {
-  return [binance(http), mexc(http), bybit(http), okx(http), gate(http), bitget(http), kucoin(http), coingecko(http, opts.coingeckoKey ?? null)];
+  return [binance(http), mexc(http), bybit(http), okx(http), gate(http), bitget(http), kucoin(http), coingecko(http === defaultHttp ? httpNo429Retry : http, opts.coingeckoKey ?? null)];
 }

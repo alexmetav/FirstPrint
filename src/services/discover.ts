@@ -6,6 +6,7 @@
  * higher rate limit). CoinMarketCap needs a paid key for the same data, so it is linked, not fetched.
  */
 import { AppError, type FirstprintService } from './firstprint.ts';
+import { coingeckoGate, CoinGeckoBusy, type CoinGeckoGate } from '../exchanges/coingeckoGate.ts';
 
 const TRENDING_URL = 'https://api.coingecko.com/api/v3/search/trending';
 const SEARCH_URL = 'https://api.coingecko.com/api/v3/search';
@@ -67,13 +68,30 @@ export class Discover {
   private service: FirstprintService;
   private fetchImpl: typeof fetch;
   private apiKey: string | null;
+  private gate: CoinGeckoGate | null;
   private cache: { at: number; coins: TrendingCoin[] } | null = null;
   private logos = new Map<string, { at: number; hit: TokenLogo | null }>();
 
-  constructor(service: FirstprintService, opts: { fetchImpl?: typeof fetch; apiKey?: string | null } = {}) {
+  constructor(service: FirstprintService, opts: { fetchImpl?: typeof fetch; apiKey?: string | null; gate?: CoinGeckoGate } = {}) {
     this.service = service;
+    // The shared budget for real CoinGecko calls; a stand-in fetch (tests) runs ungated unless given one.
+    this.gate = opts.gate ?? (opts.fetchImpl ? null : coingeckoGate);
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.apiKey = opts.apiKey ?? null;
+  }
+
+  /** One CoinGecko request through the shared budget; a 429 answer is noted so everyone backs off. */
+  private cg(url: string, init: RequestInit): Promise<Response> {
+    if (!this.gate) return this.fetchImpl(url, init);
+    return this.gate.run(async () => {
+      const res = await this.fetchImpl(url, init);
+      if (res.status === 429) throw Object.assign(new Error('429 from CoinGecko'), { res });
+      return res;
+    }).catch((err: unknown) => {
+      const res = (err as { res?: Response })?.res;
+      if (res) return res;
+      throw err;
+    });
   }
 
   /** The tokens trending on CoinGecko now (cached for five minutes, so the button can be pressed freely). */
@@ -82,7 +100,7 @@ export class Discover {
     if (this.cache && now - this.cache.at < CACHE_MS) return { coins: this.cache.coins, fetchedAt: this.cache.at, source: 'CoinGecko' };
     let body: { coins?: { item?: Record<string, unknown> }[] };
     try {
-      const res = await this.fetchImpl(TRENDING_URL, {
+      const res = await this.cg(TRENDING_URL, {
         headers: { accept: 'application/json', ...(this.apiKey ? { 'x-cg-demo-api-key': this.apiKey } : {}) },
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
@@ -91,6 +109,7 @@ export class Discover {
       body = (await res.json()) as typeof body;
     } catch (err) {
       if (err instanceof AppError) throw err;
+      if (err instanceof CoinGeckoBusy) throw new AppError(429, 'rate_limited', 'CoinGecko requests are being saved for live markets right now. Try again in a minute.');
       throw new AppError(502, 'source_failed', 'CoinGecko didn’t answer. Try again in a moment.');
     }
     const coins = (body.coins ?? [])
@@ -129,7 +148,7 @@ export class Discover {
     if (known && now - known.at < (known.hit ? LOGO_CACHE_MS : LOGO_MISS_MS)) return known.hit;
     let body: { coins?: Record<string, unknown>[] };
     try {
-      const res = await this.fetchImpl(`${SEARCH_URL}?query=${encodeURIComponent(sym)}`, {
+      const res = await this.cg(`${SEARCH_URL}?query=${encodeURIComponent(sym)}`, {
         headers: { accept: 'application/json', ...(this.apiKey ? { 'x-cg-demo-api-key': this.apiKey } : {}) },
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
@@ -138,6 +157,7 @@ export class Discover {
       body = (await res.json()) as typeof body;
     } catch (err) {
       if (err instanceof AppError) throw err;
+      if (err instanceof CoinGeckoBusy) throw new AppError(429, 'rate_limited', 'CoinGecko requests are being saved for live markets right now. Try again in a minute.');
       throw new AppError(502, 'source_failed', 'CoinGecko didn’t answer. Try again in a moment.');
     }
     const want = norm(name);

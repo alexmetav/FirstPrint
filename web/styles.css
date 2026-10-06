@@ -12481,3 +12481,41 @@ svg.viz.viz-narrow {
   font-size: 10px;
   opacity: 0.8;
 }
+
+/* Where to grab a logo by hand: the token's exchange pages, the announcement, an image search. */
+.logo-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.logo-sources .muted {
+  flex-basis: 100%;
+  font-size: 12px;
+}
+.logo-sources:empty {
+  display: none;
+}
+
+/* Admin → Overview: test points for the admin's own account. */
+.adm-topup .topup-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.topup-custom {
+  display: inline-flex;
+  gap: 6px;
+}
+.topup-custom {
+  align-items: center;
+}
+.topup-custom input {
+  width: 110px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 14px;
+}

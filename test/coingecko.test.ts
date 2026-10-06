@@ -141,3 +141,48 @@ test('logo for a new listing: CoinGecko search, same ticker only, name match fir
   clock.advance(2 * HOUR);
   await assert.rejects(d.tokenLogo('BP'), (e: unknown) => e instanceof AppError && e.code === 'rate_limited');
 });
+
+test('CoinGecko budget: admin tools get half the minute, live-market work keeps the rest and waits, a 429 backs everyone off', async () => {
+  const { CoinGeckoGate, CoinGeckoBusy, asAdmin, defaultPerMinute } = await import('../src/exchanges/coingeckoGate.ts');
+  let t = 0;
+  const slept: number[] = [];
+  const gate = new CoinGeckoGate({ perMinute: 6, now: () => t, sleep: async (ms) => { slept.push(ms); t += ms; } });
+  const call = () => gate.run(async () => 'ok');
+  // Admin tools: 3 of the 6, then "busy" without touching CoinGecko.
+  for (let i = 0; i < 3; i++) assert.equal(await asAdmin(call), 'ok');
+  await assert.rejects(asAdmin(call), (e: unknown) => e instanceof CoinGeckoBusy && /\b429\b/.test((e as Error).message));
+  // Market work still has the other 3, then waits for the oldest call to age out instead of failing.
+  for (let i = 0; i < 3; i++) assert.equal(await call(), 'ok');
+  assert.equal(slept.length, 0);
+  assert.equal(await call(), 'ok');
+  assert.equal(slept.length, 1, 'waited once for room');
+  assert.ok(t >= 60_000);
+  // CoinGecko answers 429: admin tools stop for two minutes, market work waits about 30 seconds.
+  t += 2 * 60_000;
+  await assert.rejects(gate.run(async () => { throw new Error('429 Too Many Requests for api.coingecko.com/x'); }));
+  await assert.rejects(asAdmin(call), (e: unknown) => e instanceof CoinGeckoBusy);
+  const before = t;
+  assert.equal(await call(), 'ok');
+  assert.ok(t - before >= 30_000 && t - before < 60_000, 'market work waited out the short cool-down');
+  await assert.rejects(asAdmin(call), (e: unknown) => e instanceof CoinGeckoBusy, 'admin still cooling');
+  t += 2 * 60_000;
+  assert.equal(await asAdmin(call), 'ok');
+  assert.equal(defaultPerMinute({}), 10);
+  assert.equal(defaultPerMinute({ COINGECKO_API_KEY: 'k' }), 25);
+  assert.equal(defaultPerMinute({ COINGECKO_PER_MIN: '40' }), 40);
+});
+
+test('CoinGecko venue and Discover go through a gate when given one', async () => {
+  const { CoinGeckoGate, asAdmin } = await import('../src/exchanges/coingeckoGate.ts');
+  const { Discover } = await import('../src/services/discover.ts');
+  const { AppError } = await import('../src/services/firstprint.ts');
+  const gate = new CoinGeckoGate({ perMinute: 2, now: () => 0, sleep: async () => { throw new Error('should not wait'); } });
+  let hits = 0;
+  const cg = coingecko(async () => (hits++, { pepe: { usd: 1 } }), null, gate);
+  assert.equal((await asAdmin(() => cg.fetchTicker('pepe')))?.price, 1);
+  await assert.rejects(asAdmin(() => cg.fetchTicker('pepe')), /busy/);
+  assert.equal(hits, 1, 'the refused call never reached CoinGecko');
+  const service = new FirstprintService(openDb(':memory:'), new ManualClock(0), []);
+  const d = new Discover(service, { gate, fetchImpl: (async () => new Response('{"coins":[]}', { status: 200 })) as typeof fetch });
+  await assert.rejects(asAdmin(() => d.tokenLogo('PEPE')), (e: unknown) => e instanceof AppError && e.code === 'rate_limited');
+});
