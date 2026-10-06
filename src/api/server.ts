@@ -322,6 +322,13 @@ export function createApiServer(opts: ServerOptions): Server {
     return rewardsOn().connectX(user().id, String(b.username ?? ''));
   });
 
+  // Checks the player's code on X (each check is a paid GetXAPI call, so they're limited per player).
+  route('POST', '/api/me/x/verify', async ({ user }) => {
+    const u = user();
+    rateLimit(`xcheck:${u.id}`, 15, 10 * 60_000);
+    return rewardsOn().verifyX(u.id);
+  });
+
   // The team makes the tasks, so its own accounts can't earn from them (they could otherwise add
   // tasks and complete them for unlimited points). Any email or wallet on the account counts here.
   const notTeam = (u: UserRow) => {
@@ -341,6 +348,8 @@ export function createApiServer(opts: ServerOptions): Server {
   route('POST', '/api/tasks/:id/verify', ({ req, user, params }) => {
     rateLimit(`task:${visitor(req)}`, 20, 60_000);
     notTeam(user());
+    // With X checks on, each confirm can be a paid call on X: limited per player too.
+    if (rewardsOn().xcheck) rateLimit(`xcheck:${user().id}`, 15, 10 * 60_000);
     return rewardsOn().verifyTask(user().id, params.id);
   });
 
@@ -994,9 +1003,10 @@ export function createApiServer(opts: ServerOptions): Server {
     throw new AppError(404, 'not_found', 'Unknown step.');
   });
 
-  route('GET', '/api/admin/tasks', ({ requireAdmin }) => {
+  route('GET', '/api/admin/tasks', async ({ requireAdmin }) => {
     requireAdmin('tasks');
-    return { tasks: rewardsOn().listTasksAdmin() };
+    const r = rewardsOn();
+    return { tasks: r.listTasksAdmin(), xChecks: Boolean(r.xcheck), xCredit: await r.xCredit() };
   });
 
   // A tasks-only team member can add tasks worth up to TEAM_TASK_MAX points; bigger ones need an admin.

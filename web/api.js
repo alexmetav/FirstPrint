@@ -116,6 +116,7 @@ export function createApi(baseUrl = '') {
     rewards: () => request('/api/me/rewards'),
     chain: () => request('/api/me/chain'),
     connectX: (username) => post('/api/me/x', { username }),
+    verifyX: () => post('/api/me/x/verify'),
     startTask: (t) => post(`/api/tasks/${id(t)}/start`),
     verifyTask: (t) => post(`/api/tasks/${id(t)}/verify`),
     startClaim: (wallet) => post('/api/me/claims', { wallet }),

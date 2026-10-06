@@ -194,23 +194,23 @@ test('tasks: link X, open the task, wait, confirm once; limits; rewards wait for
 
   const { user: a } = await player(service, 'a@example.com');
   const { user: b } = await player(service, 'b@example.com');
-  assert.throws(() => rewards.verifyTask(a.id, follow), failsWith('x_required'));
+  await assert.rejects(rewards.verifyTask(a.id, follow), failsWith('x_required'));
   assert.throws(() => rewards.connectX(a.id, 'not a name!'), failsWith('bad_x_username'));
   assert.equal(rewards.connectX(a.id, '@Ana_X').rewarded, X_CONNECT_POINTS);
   assert.equal(rewards.connectX(a.id, 'ana_x').rewarded, 0, 'linking again gives nothing more');
   assert.throws(() => rewards.connectX(b.id, 'ANA_X'), failsWith('x_taken'));
   rewards.connectX(b.id, 'bea');
 
-  assert.throws(() => rewards.verifyTask(a.id, follow), failsWith('task_not_started'));
+  await assert.rejects(rewards.verifyTask(a.id, follow), failsWith('task_not_started'));
   rewards.startTask(a.id, follow);
-  assert.throws(() => rewards.verifyTask(a.id, follow), failsWith('task_too_fast'));
+  await assert.rejects(rewards.verifyTask(a.id, follow), failsWith('task_too_fast'));
   clock.advance(TASK_MIN_WAIT_MS);
-  assert.equal(rewards.verifyTask(a.id, follow).points, 50);
-  assert.throws(() => rewards.verifyTask(a.id, follow), failsWith('task_done'));
+  assert.equal((await rewards.verifyTask(a.id, follow)).points, 50);
+  await assert.rejects(rewards.verifyTask(a.id, follow), failsWith('task_done'));
 
   rewards.startTask(b.id, follow);
   clock.advance(TASK_MIN_WAIT_MS);
-  assert.throws(() => rewards.verifyTask(b.id, follow), failsWith('task_full'), 'limit of 1 reached');
+  await assert.rejects(rewards.verifyTask(b.id, follow), failsWith('task_full'), 'limit of 1 reached');
   assert.equal(rewards.summary(b.id).tasks.find((t) => t.id === follow)?.remaining, 0);
 
   // TestFPT is on: task points wait to be claimed rather than landing in the balance.
@@ -439,4 +439,84 @@ test('the mint authority key is stored sealed (WALLET_ENCRYPTION_KEY), and an ol
   await legacy.init();
   assert.match(stored(), /^v1\./);
   assert.equal((await legacy.tokenStatus() as { authority: string }).authority, (status as { authority: string }).authority);
+});
+
+test('X checks (GetXAPI): prove the username with a code, then follow, repost and post tasks are checked on X', async () => {
+  const { clock, service, rewards } = await setup(false);
+  const { XCheckUnavailable } = await import('../src/services/xcheck.ts');
+  // A pretend X: who exists, their bios and posts, who follows whom, who reposted what.
+  const x = {
+    bios: new Map<string, string>([['ana_x', 'hello'], ['bea', '']]),
+    posts: new Map<string, string[]>(),
+    follows: new Set<string>(),
+    reposts: new Set<string>(),
+    down: false,
+    calls: 0,
+  };
+  const guard = () => {
+    x.calls++;
+    if (x.down) throw new XCheckUnavailable('down');
+  };
+  rewards.xcheck = {
+    profile: async (u) => (guard(), x.bios.has(u.toLowerCase()) ? { userName: u.toLowerCase() === 'ana_x' ? 'Ana_X' : u, description: x.bios.get(u.toLowerCase())! } : null),
+    follows: async (s, t) => (guard(), x.follows.has(`${s.toLowerCase()}>${t.toLowerCase()}`)),
+    reposted: async (u, id) => (guard(), x.reposts.has(`${u.toLowerCase()}:${id}`)),
+    recentPosts: async (u) => (guard(), (x.posts.get(u.toLowerCase()) ?? []).map((text) => ({ text, createdAt: clock.now() }))),
+    credit: async () => 0.14,
+  };
+  const { user: a } = await player(service, 'a@example.com');
+  const { user: b } = await player(service, 'b@example.com');
+
+  // Someone else typed in Ana's username before (no proof): it's still hers to verify.
+  service.db.prepare("UPDATE users SET x_username = 'ana_x' WHERE id = ?").run(b.id);
+  const started = rewards.connectX(a.id, '@Ana_X');
+  assert.equal(started.pending, true);
+  assert.match(started.code!, /^FP-[A-Z2-9]{6}$/);
+  assert.equal(rewards.connectX(a.id, 'ana_x').code, started.code, 'the same username keeps its code');
+  assert.deepEqual(rewards.summary(a.id).xPending, { username: 'ana_x', code: started.code });
+  await assert.rejects(rewards.verifyX(a.id), failsWith('x_code_missing'));
+  x.down = true;
+  await assert.rejects(rewards.verifyX(a.id), failsWith('x_check_unavailable'), 'X down is never "not done"');
+  x.down = false;
+  x.bios.set('ana_x', `crypto fan ${started.code!.toLowerCase()}`);
+  const ok = await rewards.verifyX(a.id);
+  assert.deepEqual([ok.verified, ok.rewarded], [true, X_CONNECT_POINTS]);
+  assert.equal(rewards.summary(a.id).xVerified, true);
+  assert.equal(service.getUser(b.id).x_username, null, 'the unproven claim is dropped');
+  assert.throws(() => rewards.connectX(b.id, 'ANA_X'), failsWith('x_taken'));
+  // A code in a post works as well as the bio.
+  const bc = rewards.connectX(b.id, 'bea').code!;
+  x.posts.set('bea', [`Verifying my Firstprint account: ${bc}`]);
+  assert.equal((await rewards.verifyX(b.id)).verified, true);
+  await assert.rejects((async () => { rewards.connectX(a.id, 'nobody_here'); return rewards.verifyX(a.id); })(), failsWith('x_not_found'));
+  assert.equal(rewards.connectX(a.id, 'ANA_X').pending, false, 'her own verified username needs no new code');
+  assert.equal(rewards.summary(a.id).xPending, null);
+  assert.equal(rewards.summary(a.id).xUsername, 'Ana_X');
+
+  const follow = rewards.createTask({ kind: 'follow', target: '@firstprint', points: 50 });
+  const repost = rewards.createTask({ kind: 'repost', target: 'https://x.com/firstprint/status/1975000000000000001', points: 30 });
+  const share = rewards.createTask({ kind: 'share', target: 'Calling listings on Firstprint', points: 20 });
+  const like = rewards.createTask({ kind: 'like', target: 'https://x.com/firstprint/status/1975000000000000001', points: 5 });
+  for (const t of [follow, repost, share, like]) rewards.startTask(b.id, t);
+  clock.advance(TASK_MIN_WAIT_MS);
+  await assert.rejects(rewards.verifyTask(b.id, follow), failsWith('task_not_done'));
+  x.follows.add('bea>firstprint');
+  assert.equal((await rewards.verifyTask(b.id, follow)).points, 50);
+  await assert.rejects(rewards.verifyTask(b.id, repost), failsWith('task_not_done'));
+  x.reposts.add('bea:1975000000000000001');
+  assert.equal((await rewards.verifyTask(b.id, repost)).points, 30);
+  await assert.rejects(rewards.verifyTask(b.id, share), failsWith('task_not_done'));
+  x.posts.set('bea', [`Calling listings on Firstprint https://firstprint.test/?ref=${rewards.summary(b.id).referral.code}`]);
+  assert.equal((await rewards.verifyTask(b.id, share)).points, 20);
+  const before = x.calls;
+  assert.equal((await rewards.verifyTask(b.id, like)).points, 5, 'likes can’t be checked: honour-based');
+  assert.equal(x.calls, before, 'no X call for a like');
+
+  // An X username that was only typed in (from before checks were on) must be verified first.
+  const { user: c } = await player(service, 'c@example.com');
+  service.db.prepare("UPDATE users SET x_username = 'cee' WHERE id = ?").run(c.id);
+  rewards.startTask(c.id, follow);
+  clock.advance(TASK_MIN_WAIT_MS);
+  await assert.rejects(rewards.verifyTask(c.id, follow), failsWith('x_unverified'));
+  assert.equal(await rewards.xCredit(), 0.14);
 });

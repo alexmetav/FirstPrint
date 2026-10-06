@@ -18,6 +18,7 @@ import type { Venue } from './exchanges/types.ts';
 import { ConsoleMailer, ResendMailer, type Mailer } from './auth/mailer.ts';
 import { resultEmail } from './services/notify.ts';
 import { RewardsService } from './services/rewards.ts';
+import { GetXApi } from './services/xcheck.ts';
 import { Telegram, newListingText, resultDueText } from './services/telegram.ts';
 import { ChannelPoster } from './services/channel.ts';
 import { rpcChain, rpcUrlFor, type Cluster } from './solana/testfpt.ts';
@@ -71,6 +72,9 @@ const rewards = new RewardsService(
   cfg.publicUrl ?? 'https://www.firstprint.fun',
 );
 await rewards.init();
+// X checks (GetXAPI): players prove their X username, and follow, repost and post tasks are checked.
+// Without the key both stay honour-based.
+if (process.env.GETXAPI_KEY?.trim()) rewards.xcheck = new GetXApi(process.env.GETXAPI_KEY);
 // Server-paid TestFPT: daily streak mints, Firstprint-wallet reward claims, and confirmations.
 // Paused in maintenance: a mint sent on chain but not yet saved could otherwise be sent twice after a deploy.
 const paused = () => service.maintenance().on;
