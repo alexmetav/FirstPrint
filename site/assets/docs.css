@@ -114,8 +114,8 @@ svg {
 .doc-cta {
   padding: 7px 14px;
   border-radius: 999px;
-  background: var(--cta);
-  color: #fff;
+  background: var(--text);
+  color: var(--bg, #09090b);
   font-size: 14px;
   font-weight: 500;
   text-decoration: none;
@@ -407,8 +407,8 @@ svg {
 }
 .btn.primary {
   border-color: transparent;
-  background: var(--cta);
-  color: #fff;
+  background: var(--text);
+  color: var(--bg, #09090b);
 }
 .deck-nav {
   position: fixed;

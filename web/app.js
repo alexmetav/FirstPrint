@@ -1335,7 +1335,7 @@ function howItWorks() {
       <ol class="steps">
         <li><span class="step-ico" style="--c:var(--up)">${ico('target')}</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}, or a simple Yes or No.</p></li>
         <li><span class="step-ico" style="--c:var(--warn)">${ico('coins')}</span><b>Stake free points</b><p>Everyone gets ${startPoints()}, plus up to 200 more every day with a daily streak. No real money.</p></li>
-        <li><span class="step-ico" style="--c:var(--brand)">${ico('trophy')}</span><b>Win the pool</b><p>If you’re right, you split the pool with the other winners. Earlier picks earn more.</p></li>
+        <li><span class="step-ico" style="--c:var(--text)">${ico('trophy')}</span><b>Win the pool</b><p>If you’re right, you split the pool with the other winners. Earlier picks earn more.</p></li>
       </ol>
       <details class="full-rules"><summary>Full rules</summary>`;
   if (S.cfg?.manualOnly) {
