@@ -13132,6 +13132,7 @@ function createAdminApi(key, baseUrl = '') {
     priceCheck: (body) => post('/api/admin/price-check', body),
     trending: () => request('/api/admin/discover/trending'),
     exchangeNew: (venue) => request(`/api/admin/discover/exchange?venue=${encodeURIComponent(venue)}`),
+    tokenLogo: (symbol, name = '') => request(`/api/admin/discover/logo?symbol=${encodeURIComponent(symbol)}&name=${encodeURIComponent(name)}`),
     marketChecks: () => request('/api/admin/market-checks'),
     fetchImage: (url) => request(`/api/admin/fetch-image?url=${encodeURIComponent(url)}`),
     setStartPrice: (id, basePrice) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/start-price`, { basePrice }),
@@ -18183,6 +18184,33 @@ async function copyLogo(form, url) {
   }
 }
 
+/**
+ * Finds the token's logo on CoinGecko by its ticker (and name) and saves a copy, so a market made
+ * from a new listing needs no logo pasted by hand. Runs by itself when a listing is reviewed (only
+ * if the form has no logo yet), and from the Find button.
+ */
+async function findLogo(form, { force = false } = {}) {
+  if (!form || !A.api) return;
+  if (!force && form.querySelector('[name=logoUrl]').value) return;
+  const symbol = form.querySelector('[name=symbol]')?.value.trim() ?? '';
+  const name = form.querySelector('[name=name]')?.value.trim() ?? '';
+  const status = form.querySelector('[data-logo-status]');
+  const say = (text, cls = '') => status && ((status.textContent = text), (status.className = `logo-status ${cls}`));
+  if (!symbol) return force && say('Fill in the symbol first.', 'bad');
+  say(`Looking for ${symbol}’s logo on CoinGecko…`);
+  try {
+    const { logo } = await A.api.tokenLogo(symbol, name);
+    if (!form.isConnected || (!force && form.querySelector('[name=logoUrl]').value)) return;
+    if (!logo) return say(`CoinGecko doesn’t list ${symbol} yet. Paste a logo link or upload one.`, 'bad');
+    form.querySelector('[data-logo-link]').value = logo.logo;
+    setLogo(form, logo.logo, { keepLink: true });
+    await copyLogo(form, logo.logo);
+    if (form.isConnected && form.querySelector('[name=logoUrl]').value) say(`Logo from CoinGecko (${logo.name}). Check it’s the right token.`, 'ok');
+  } catch (err) {
+    if (form.isConnected) say(`Couldn’t look up the logo (${err.message}). Paste a link or upload one.`, 'bad');
+  }
+}
+
 /** The long explanation behind a setting, folded away until asked for. */
 const how = (html, label = 'How it works') => `<details class="adm-how"><summary>${label}</summary><p>${html}</p></details>`;
 
@@ -18616,6 +18644,7 @@ function marketForm(m, pre = null) {
             <input type="hidden" name="logoUrl" value="${esc(v?.logoUrl ?? '')}" />
             <input class="logo-link" data-logo-link type="url" inputmode="url" placeholder="Paste an image link (https://…)" value="${v?.logoUrl && !v.logoUrl.startsWith('data:') ? esc(v.logoUrl) : ''}" autocomplete="off" />
             <label class="btn btn-sm logo-upload">${ico('upload')}<span>Upload</span><input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-logo-file hidden /></label>
+            <button class="btn btn-sm" type="button" data-action="logo-find" title="Look the token up on CoinGecko by its ticker and name">${ico('search')}<span>Find</span></button>
             <button class="btn btn-sm" type="button" data-action="logo-clear"${v?.logoUrl ? '' : ' hidden'}>Remove</button>
           </div>
           <small class="logo-status" data-logo-status></small>
@@ -18933,6 +18962,7 @@ async function makeFromDiscovery(el) {
   A.tab = 'create';
   await renderAdmin();
   window.scrollTo({ top: 0 });
+  findLogo($('#admin-market'));
 }
 
 /** Starting values for a market made from a detected listing. */
@@ -19310,7 +19340,8 @@ async function onAdminAction(action, el) {
       A.edit = null;
       A.tab = 'create';
       await renderAdmin();
-      return window.scrollTo({ top: 0 });
+      window.scrollTo({ top: 0 });
+      return findLogo($('#admin-market'));
     case 'admin-review-ignore':
       if (!confirm('Skip this listing? It leaves the list and no market is made.')) return;
       try {
@@ -19919,6 +19950,8 @@ document.addEventListener('click', async (e) => {
       return;
     case 'logo-clear':
       return setLogo(t.closest('form'), '');
+    case 'logo-find':
+      return findLogo(t.closest('form'), { force: true });
     case 'retry':
       return loadRoute();
     case 'skip':

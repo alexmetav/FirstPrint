@@ -108,3 +108,36 @@ test('a fixed start price nobody predicted against switches to the price at the 
   const again = Object.fromEntries((await service.marketChecks()).map((c) => [c.id, c]));
   assert.deepEqual(again[empty].warnings, [], 'no live price needed until the close is near');
 });
+
+test('logo for a new listing: CoinGecko search, same ticker only, name match first, then biggest', async () => {
+  const { Discover } = await import('../src/services/discover.ts');
+  const { AppError } = await import('../src/services/firstprint.ts');
+  const clock = new ManualClock(Date.UTC(2026, 9, 6, 12));
+  const service = new FirstprintService(openDb(':memory:'), clock, []);
+  const urls: string[] = [];
+  let status = 200;
+  const fetchImpl = (async (url: string) => {
+    urls.push(url);
+    return new Response(
+      JSON.stringify({
+        coins: [
+          { id: 'bp-other', name: 'BP Swap', symbol: 'BP', market_cap_rank: 300, large: 'https://img/other.png' },
+          { id: 'backpack', name: 'Backpack', symbol: 'bp', market_cap_rank: 900, large: 'https://img/backpack.png' },
+          { id: 'bpx', name: 'Backpack X', symbol: 'BPX', market_cap_rank: 5, large: 'https://img/bpx.png' },
+        ],
+      }),
+      { status, headers: { 'content-type': 'application/json' } },
+    );
+  }) as typeof fetch;
+  const d = new Discover(service, { fetchImpl });
+  assert.deepEqual(await d.tokenLogo('bp', 'Backpack'), { logo: 'https://img/backpack.png', coinId: 'backpack', name: 'Backpack', url: 'https://www.coingecko.com/en/coins/backpack' });
+  assert.match(urls[0], /\/search\?query=BP$/);
+  assert.equal((await d.tokenLogo('BP'))?.coinId, 'bp-other', 'no name: the biggest coin with that ticker');
+  assert.equal(await d.tokenLogo('ZZZ'), null, 'no coin with that exact ticker');
+  await d.tokenLogo('bp', 'Backpack');
+  assert.equal(urls.length, 3, 'cached');
+  await assert.rejects(d.tokenLogo('../x'), (e: unknown) => e instanceof AppError && e.code === 'bad_symbol');
+  status = 429;
+  clock.advance(2 * HOUR);
+  await assert.rejects(d.tokenLogo('BP'), (e: unknown) => e instanceof AppError && e.code === 'rate_limited');
+});

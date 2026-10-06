@@ -1008,6 +1008,13 @@ export function createApiServer(opts: ServerOptions): Server {
     return discover.trending();
   });
 
+  // A token's logo, found on CoinGecko by its ticker (and name), for markets made from new listings.
+  route('GET', '/api/admin/discover/logo', async ({ req, url, requireAdmin }) => {
+    requireAdmin('listings');
+    rateLimit(`discover-logo:${visitor(req)}`, 30, 60_000);
+    return { logo: await discover.tokenLogo(url.searchParams.get('symbol') ?? '', url.searchParams.get('name') ?? '') };
+  });
+
   route('GET', '/api/admin/discover/exchange', async ({ req, url, requireAdmin }) => {
     requireAdmin('listings');
     rateLimit(`discover:${visitor(req)}`, 20, 60_000);
