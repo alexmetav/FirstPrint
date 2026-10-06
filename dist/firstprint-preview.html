@@ -12721,6 +12721,32 @@ svg.viz.viz-narrow {
   z-index: 75;
 }
 
+/* Dashboard chart ranges: easy to tap on a phone (at least 32px tall). */
+@media (pointer: coarse), (max-width: 900px) {
+  .pnl-range button {
+    min-width: 40px;
+    min-height: 32px;
+  }
+}
+
+/* Phones: a more solid top bar, so text scrolling under it doesn't show through, and the
+   "Closes in" line on the market page stays on one line on the narrowest screens. */
+@media (max-width: 640px) {
+  .topbar {
+    background: color-mix(in srgb, var(--bg) 97%, transparent);
+  }
+}
+@media (max-width: 360px) {
+  .mobile-bar p {
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .mobile-bar .cta {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
 </style>
   </head>
   <body>
