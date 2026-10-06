@@ -251,6 +251,13 @@ test('HTTP: at most 10 new accounts per network a day; existing accounts still s
     assert.equal(eleventh.status, 429);
     assert.equal(eleventh.json.error, 'too_many_accounts');
     assert.equal((await signIn('p3@example.com')).status, 200, 'signing back in is never limited');
+    // Kept in the database (a restart doesn't reset it), as a hash, never the address itself.
+    const rows = s.service.db.prepare('SELECT network FROM signups').all() as { network: string }[];
+    assert.equal(rows.length, 10);
+    assert.ok(rows.every((r) => /^[0-9a-f]{32}$/.test(r.network) && !r.network.includes('127')));
+    // A day later the network can make new accounts again.
+    s.clock.advance(24 * 60 * 60_000 + 1);
+    assert.equal((await signIn('p10@example.com')).status, 200);
   } finally {
     s.close();
   }

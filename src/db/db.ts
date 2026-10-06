@@ -90,6 +90,9 @@ function migrate(db: DB) {
   // Analytics groups predictions and daily claims by time.
   db.exec('CREATE INDEX IF NOT EXISTS predictions_time ON predictions(placed_at)');
   db.exec('CREATE INDEX IF NOT EXISTS ledger_reason_time ON ledger(reason, created_at)');
+  // New accounts per network (a salted hash, never the address), for the daily sign-up limit.
+  db.exec('CREATE TABLE IF NOT EXISTS signups (network TEXT NOT NULL, at INTEGER NOT NULL)');
+  db.exec('CREATE INDEX IF NOT EXISTS signups_network ON signups(network, at)');
   // Clean-ups and background checks that run often (expired sign-ins, unclaimed rewards, claims confirming).
   db.exec('CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at)');
   db.exec('CREATE INDEX IF NOT EXISTS auth_nonces_expiry ON auth_nonces(expires_at)');
