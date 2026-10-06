@@ -3637,7 +3637,8 @@ async function renderAdmin() {
   A.markets = markets;
   void backfillLogoPngs(markets);
   A.detected = detected;
-  // Tokens that already have a live market show "Market made" in Find tokens.
+  // Tokens with a market that isn't finished show "Market made" in Find tokens: open, a draft, or closed
+  // and counting down to its result. Only a settled or cancelled market frees the token for a new one.
   A.made = Object.fromEntries(markets.filter((m) => m.status === 'open' || m.status === 'locked').map((m) => [m.symbol.toUpperCase(), m.id]));
   const venues = A.info.venues;
   const editing = markets.find((m) => m.id === A.edit && m.mode === 'manual' && m.status === 'open') ?? null;
@@ -3744,7 +3745,8 @@ async function runPriceCheck() {
   const closeAt = new Date(form.querySelector('[name=closeAt]').value).getTime();
   const notes = [];
   const usePrice = median !== null ? `<button class="btn btn-sm" type="button" data-action="admin-use-price" data-price="${median}">Use ${fmtPrice(median)} as start price</button>` : '';
-  if (median === null) notes.push(['ok', upcoming ? 'Not trading on these exchanges yet. That’s right for an upcoming token.' : 'Not trading on these exchanges yet. If it lists later, tick “Upcoming token” instead of guessing a start price.']);
+  if (median === null && prices.some((p) => p.error)) notes.push(['medium', 'Couldn’t reach the price source just now, so this isn’t a sign the token stopped trading. Try again in a minute.']);
+  else if (median === null) notes.push(['ok', upcoming ? 'Not trading on these exchanges yet. That’s right for an upcoming token.' : 'Not trading on these exchanges yet. If it lists later, tick “Upcoming token” instead of guessing a start price.']);
   else {
     if (upcoming) notes.push(['high', `${esc(symbol.toUpperCase())} is already trading, so it isn’t upcoming. Players could see the price before they pick. ${usePrice}`]);
     if (atClose) notes.push(['ok', `Trading at ${fmtPrice(median)} now. The start price is taken by itself when predictions close.`]);
@@ -3757,7 +3759,7 @@ async function runPriceCheck() {
     if (!atClose && Number.isFinite(closeAt) && closeAt - Date.now() > 48 * 3_600_000) notes.push(['medium', `Predictions stay open ${Math.round((closeAt - Date.now()) / 86_400_000)} days against a fixed start price, so late players can follow the trend. Tick “Start price is the price when predictions close”.`]);
   }
   out.innerHTML = `
-    <div class="pc-prices">${prices.map((p) => `<span class="pc-chip${p.price === null ? ' off' : ''}"><b>${esc(p.name)}</b> ${p.price === null ? 'not trading' : fmtPrice(p.price)}</span>`).join('')}</div>
+    <div class="pc-prices">${prices.map((p) => `<span class="pc-chip${p.price === null ? ' off' : ''}"${p.error ? ` title="${esc(p.error)}"` : ''}><b>${esc(p.name)}</b> ${p.price !== null ? fmtPrice(p.price) : p.error ? `no answer: ${esc(p.error)}` : 'not trading'}</span>`).join('')}</div>
     <ul class="check-list compact">${notes.map(([lvl, html]) => `<li class="lvl-${lvl}"><span class="check-dot" aria-hidden="true"></span><p>${html}</p></li>`).join('')}</ul>`;
 }
 
@@ -5283,6 +5285,9 @@ async function submitAdminMarket(form, intent) {
     };
   }
   if (!Number.isFinite(body.closeAt) || !Number.isFinite(body.resultAt)) return toast('Choose the close time and the expected result time.', true);
+  // A second market on a token that still has one running is almost always a mistake.
+  const sym = String(body.symbol ?? '').toUpperCase();
+  if (!form.dataset.id && sym && A.made?.[sym] && !confirm(`${sym} already has a market that hasn’t had its result yet. Make another one anyway?`)) return;
   if (autoOpen && intent === 'publish') {
     if (!confirm(`Schedule this market? It stays a draft, then opens by itself about 3 minutes after trading starts (${new Date(body.autoOpenAt).toLocaleString()}). Its start price is the price when predictions close.`)) return;
     intent = 'save';

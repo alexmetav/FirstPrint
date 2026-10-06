@@ -820,6 +820,12 @@ export class FirstprintService {
 
   /** Calls every real exchange adapter once and reports what works. */
   /** Live price of a symbol on each chosen exchange; price is null where it doesn't trade or the exchange didn't answer. */
+  /**
+   * Live prices kept for a minute, so the admin's checks don't use up CoinGecko's small free allowance
+   * (one Markets page used to ask it once per open market, and the next price check then failed).
+   */
+  private priceCache = new Map<string, { at: number; price: number }>();
+
   async exchangePrices(symbol: string, exchanges: string[], pairs: Record<string, string> = {}) {
     const sym = String(symbol ?? '').trim().toUpperCase();
     if (!validSymbol(sym)) throw new AppError(400, 'bad_symbol', SYMBOL_RULE);
@@ -828,11 +834,38 @@ export class FirstprintService {
       ids.map(async (id) => {
         const venue = this.venues.get(id)!;
         const pair = pairs[id] || venue.pair(sym);
+        const cached = this.priceCache.get(`${id}:${pair}`);
+        if (cached && Date.now() - cached.at < 60_000) return { id, name: venue.name, pair, price: cached.price, error: null as string | null };
         try {
           const t = await Promise.race([venue.fetchTicker(pair), new Promise<never>((_, rej) => setTimeout(() => rej(new Error('no answer within 8s')), 8_000))]);
-          return { id, name: venue.name, pair, price: t && t.price > 0 ? t.price : null, error: null as string | null };
+          const price = t && t.price > 0 ? t.price : null;
+          if (price !== null) this.priceCache.set(`${id}:${pair}`, { at: Date.now(), price });
+          return { id, name: venue.name, pair, price, error: null as string | null };
         } catch (err) {
-          return { id, name: venue.name, pair, price: null, error: (err as Error).message.slice(0, 120) };
+          const msg = (err as Error).message;
+          return { id, name: venue.name, pair, price: null, error: /\b429\b/.test(msg) ? 'busy (rate limit), try again in a minute' : msg.slice(0, 120) };
+        }
+      }),
+    );
+  }
+
+  /** Fills the price cache for many pairs of one source in a single call, where the source allows it. */
+  private async prefetchPrices(refs: { venue: string; symbol: string }[]) {
+    const byVenue = new Map<string, string[]>();
+    for (const r of refs) {
+      const v = this.venues.get(r.venue);
+      if (!v?.fetchTickers) continue;
+      const c = this.priceCache.get(`${r.venue}:${r.symbol}`);
+      if (c && Date.now() - c.at < 60_000) continue;
+      byVenue.set(r.venue, [...(byVenue.get(r.venue) ?? []), r.symbol]);
+    }
+    await Promise.all(
+      [...byVenue].map(async ([id, list]) => {
+        try {
+          const got = await this.venues.get(id)!.fetchTickers!(list);
+          for (const [pair, t] of Object.entries(got)) if (t && t.price > 0) this.priceCache.set(`${id}:${pair}`, { at: Date.now(), price: t.price });
+        } catch {
+          /* the single lookups report the error */
         }
       }),
     );
@@ -847,9 +880,13 @@ export class FirstprintService {
     const now = this.clock.now();
     const rows = as<MarketRow[]>(this.db.prepare("SELECT * FROM markets WHERE mode = 'manual' AND status = 'open'").all());
     const fmt = (n: number) => `$${Number(n.toPrecision(4))}`;
+    // A market priced at the close needs no live price until its close is near.
+    const needsPrice = (m: MarketRow) => m.start_at_close !== 1 || m.listing_at - now < 6 * 3_600_000;
+    await this.prefetchPrices(rows.filter(needsPrice).flatMap((m) => JSON.parse(m.venues) as VenueRef[]));
     return Promise.all(
       rows.map(async (m) => {
         const venues = JSON.parse(m.venues) as VenueRef[];
+        if (!needsPrice(m)) return { id: m.id, symbol: m.symbol, published: m.published === 1, startPrice: m.base_price, livePrice: null, prices: [], warnings: [] };
         const prices = await this.exchangePrices(m.symbol, venues.map((v) => v.venue), Object.fromEntries(venues.map((v) => [v.venue, v.symbol])));
         const live = prices.filter((p) => p.price !== null);
         const sorted = live.map((p) => p.price!).sort((a, b) => a - b);
