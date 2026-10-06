@@ -13358,3 +13358,86 @@ html.in-maint body {
   width: 15px;
   height: 15px;
 }
+
+/* Testnet: one slim line under the hero instead of a big card. */
+.tn-strip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 22px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--gold) 28%, var(--line));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--gold) 9%, var(--surface)), var(--surface) 60%);
+}
+.tn-strip-coin {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: var(--earn, var(--gold));
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+}
+.tn-strip-coin .i {
+  width: 16px;
+  height: 16px;
+}
+.tn-strip p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+  font-size: 14px;
+}
+.tn-strip p b {
+  font-weight: 600;
+}
+.tn-strip-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--up);
+}
+.tn-strip-sub {
+  font-size: 13px;
+}
+.tn-strip .btn {
+  flex: none;
+}
+.tn-strip .tn-close {
+  position: static;
+  flex: none;
+  width: 28px;
+  height: 28px;
+}
+@media (max-width: 640px) {
+  .tn-strip {
+    flex-wrap: wrap;
+    padding: 12px;
+  }
+  .tn-strip p {
+    flex-basis: calc(100% - 46px);
+  }
+  .tn-strip .btn {
+    margin-left: 46px;
+  }
+  .tn-strip .tn-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+  }
+  .tn-strip-sub {
+    display: none;
+  }
+}
