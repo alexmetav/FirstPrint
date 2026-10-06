@@ -12910,6 +12910,56 @@ html.in-maint body {
   object-fit: contain;
 }
 
+/* Loading: the Firstprint mark in the middle of the screen, its five bars rising and falling like a
+   volume meter. It fades in only if loading takes longer than a moment, so quick pages never flash it. */
+.fp-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  animation: ld-in 200ms ease-out 180ms forwards;
+}
+.ld-mark {
+  display: grid;
+  gap: 5px;
+  width: 44px;
+  padding: 16px 14px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-lg);
+}
+.ld-mark i {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  transform-origin: left center;
+  animation: ld-bar 900ms cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+.ld-mark i:nth-child(1) { background: var(--moon); animation-delay: 0ms; }
+.ld-mark i:nth-child(2) { background: var(--up); animation-delay: 120ms; }
+.ld-mark i:nth-child(3) { background: var(--flat); animation-delay: 240ms; }
+.ld-mark i:nth-child(4) { background: var(--down); animation-delay: 360ms; }
+.ld-mark i:nth-child(5) { background: var(--crash); animation-delay: 480ms; }
+@keyframes ld-bar {
+  0%, 100% { transform: scaleX(0.3); }
+  50% { transform: scaleX(1); }
+}
+@keyframes ld-in {
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ld-mark i { animation-duration: 2.4s; }
+}
+.ld-mark {
+  width: auto;
+  grid-template-columns: 40px;
+  padding: 18px 20px;
+}
+
 </style>
   </head>
   <body>
@@ -12917,7 +12967,7 @@ html.in-maint body {
     <div id="app">
       <header class="topbar" id="topbar"></header>
       <div id="demo-bar"></div>
-      <main id="view" tabindex="-1"><div class="skeleton" aria-busy="true" aria-label="Loading markets"><div class="sk-hero"><i class="sk sk-line w30"></i><i class="sk sk-title"></i><i class="sk sk-line w50"></i></div><div class="sk-grid"><div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div><div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div><div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div></div></div></main>
+      <main id="view" tabindex="-1"><div class="fp-loader" role="status" aria-label="Loading"><span class="ld-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></div><div class="skeleton" aria-busy="true" aria-label="Loading markets"><div class="sk-hero"><i class="sk sk-line w30"></i><i class="sk sk-title"></i><i class="sk sk-line w50"></i></div><div class="sk-grid"><div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div><div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div><div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div></div></div></main>
       <footer class="footer">
         <p>Points have no cash value. Firstprint is independent and not affiliated with any exchange. <a href="/terms.html">Terms</a> · <a href="/privacy.html">Privacy</a></p>
       </footer>
@@ -15037,12 +15087,15 @@ function parseRoute() {
 }
 
 /** Placeholders shaped like the page that is loading, instead of a spinner. */
+/** The Firstprint mark with its five bars rising and falling like a volume meter: "loading". */
+const loaderMark = (label = 'Loading') => `<div class="fp-loader" role="status" aria-label="${esc(label)}"><span class="ld-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></div>`;
+
 function skeletonView(name) {
   const card = '<div class="sk-card"><div class="sk-row"><i class="sk sk-circle"></i><span class="sk-col"><i class="sk sk-line w40"></i><i class="sk sk-line w25"></i></span></div><i class="sk sk-line w70"></i><i class="sk sk-bar"></i><i class="sk sk-line w50"></i></div>';
   const grid = `<div class="sk-grid">${card.repeat(6)}</div>`;
-  if (name === 'home') return `<div class="skeleton" aria-busy="true" aria-label="Loading markets"><div class="sk-hero"><i class="sk sk-line w30"></i><i class="sk sk-title"></i><i class="sk sk-line w50"></i></div>${grid}</div>`;
-  if (name === 'portfolio') return `<div class="skeleton" aria-busy="true" aria-label="Loading your dashboard"><div class="sk-row"><i class="sk sk-circle lg"></i><span class="sk-col"><i class="sk sk-line w20"></i><i class="sk sk-title w30"></i></span></div><div class="sk-grid two"><div class="sk-card tall"></div><div class="sk-card tall"></div></div><div class="sk-card block"></div></div>`;
-  return `<div class="skeleton" aria-busy="true" aria-label="Loading"><i class="sk sk-title w40"></i><i class="sk sk-line w60"></i><div class="sk-card block"></div></div>`;
+  if (name === 'home') return `${loaderMark('Loading markets')}<div class="skeleton" aria-busy="true" aria-label="Loading markets"><div class="sk-hero"><i class="sk sk-line w30"></i><i class="sk sk-title"></i><i class="sk sk-line w50"></i></div>${grid}</div>`;
+  if (name === 'portfolio') return `${loaderMark('Loading your dashboard')}<div class="skeleton" aria-busy="true" aria-label="Loading your dashboard"><div class="sk-row"><i class="sk sk-circle lg"></i><span class="sk-col"><i class="sk sk-line w20"></i><i class="sk sk-title w30"></i></span></div><div class="sk-grid two"><div class="sk-card tall"></div><div class="sk-card tall"></div></div><div class="sk-card block"></div></div>`;
+  return `${loaderMark()}<div class="skeleton" aria-busy="true" aria-label="Loading"><i class="sk sk-title w40"></i><i class="sk sk-line w60"></i><div class="sk-card block"></div></div>`;
 }
 
 /** A short fade-and-rise when a new page appears (not on live updates of the same page). */
@@ -15158,10 +15211,15 @@ function setHtml(el, html) {
 
 async function loadRoute() {
   const view = $('#view');
+  // Quick taps from page to page: only the latest page may draw, so a slow earlier one can't
+  // land on top of it (or leave the screen blank) when its data finally arrives.
+  const seq = (S.routeSeq = (S.routeSeq ?? 0) + 1);
+  const stale = () => seq !== S.routeSeq;
   try {
     if (S.route.name === 'home') {
       await loadHome();
       await heroFlipDone();
+      if (stale()) return;
       setHtml(view, homeView());
     } else if (S.route.name === 'market') {
       await loadMarket(S.route.id);
@@ -15170,6 +15228,7 @@ async function loadRoute() {
         S.pendingPick = null;
         if (S.market.status === 'open' && bucketsOf(S.market).includes(pending.bucket)) S.trade.bucket = pending.bucket;
       }
+      if (stale()) return;
       renderMarket();
       if (pending?.id === S.route.id && S.trade.bucket) {
         requestQuote();
@@ -15178,9 +15237,11 @@ async function loadRoute() {
       }
     } else if (S.route.name === 'leaderboard') {
       const lb = await S.api.leaderboard(S.lbPeriod);
+      if (stale()) return;
       setHtml(view, leaderboardView(lb));
     } else if (S.route.name === 'profile') {
       S.profile = await S.api.profile(S.route.id);
+      if (stale()) return;
       setHtml(view, profileView(S.profile));
     } else if (S.route.name === 'admin') {
       await renderAdmin();
@@ -15193,8 +15254,11 @@ async function loadRoute() {
           view.innerHTML = dead('This stats link isn’t complete.');
         } else {
           try {
-            view.innerHTML = analyticsView(await S.api.publicAnalytics(S.route.key, S.vizDays ?? 30), { shared: true });
+            const data = await S.api.publicAnalytics(S.route.key, S.vizDays ?? 30);
+            if (stale()) return;
+            view.innerHTML = analyticsView(data, { shared: true });
           } catch (err) {
+    if (stale()) return;
             view.innerHTML =
               err.status === 404
                 ? dead('This stats link is no longer active.')
@@ -15207,9 +15271,11 @@ async function loadRoute() {
       return;
     } else if (S.route.name === 'radar') {
       const { listings } = await S.api.detectedListings();
+      if (stale()) return;
       setHtml(view, radarView(listings));
     } else if (S.route.name === 'earn') {
       await Promise.all([refreshRewards(), loadDaily()]);
+      if (stale()) return;
       setHtml(view, earnView());
     } else if (S.route.name === 'portfolio') {
       const preds = S.me ? (await S.api.myPredictions()).predictions : [];
@@ -15223,6 +15289,7 @@ async function loadRoute() {
         if (live) S.lists.live = live.markets;
       }
       S.dashData = [preds, history, stats, chain];
+      if (stale()) return;
       setHtml(view, portfolioView(preds, history, stats, chain));
     }
     document.title = titleFor();
