@@ -48,3 +48,35 @@ test('a trending market keeps its CoinGecko coin id, prices from it, and is neve
   assert.equal(asked.length, 0);
   assert.equal(service.exchangeSettings().find((e) => e.id === 'coingecko')?.priceOnly, true);
 });
+
+test('admin checks ask CoinGecko once for every market, reuse prices for a minute, and say when it is busy', async () => {
+  const clock = new ManualClock(Date.now());
+  const urls: string[] = [];
+  let busy = false;
+  const http = async (url: string) => {
+    urls.push(url);
+    if (busy) throw new Error('429 Too Many Requests for api.coingecko.com/api/v3/simple/price');
+    const ids = new URL(url).searchParams.get('ids')!.split(',');
+    return Object.fromEntries(ids.map((id, i) => [id, { usd: 1 + i }]));
+  };
+  const service = new FirstprintService(openDb(':memory:'), clock, [coingecko(http)]);
+  for (const id of ['aaa-coin', 'bbb-coin', 'ccc-coin']) {
+    service.createManualMarket({ symbol: id.slice(0, 3).toUpperCase(), exchanges: ['coingecko'], pairs: { coingecko: id }, basePrice: 1, closeAt: clock.now() + 48 * HOUR, resultAt: clock.now() + 20 * 24 * HOUR, publish: true });
+  }
+  // Priced at the close and far from closing: no live price needed.
+  service.createManualMarket({ symbol: 'DDD', exchanges: ['coingecko'], pairs: { coingecko: 'ddd-coin' }, basePrice: null, startAtClose: true, closeAt: clock.now() + 48 * HOUR, resultAt: clock.now() + 20 * 24 * HOUR, publish: true } as never);
+
+  const checks = await service.marketChecks();
+  assert.equal(urls.length, 1, 'one call for all of them');
+  assert.match(urls[0], /ids=aaa-coin,bbb-coin,ccc-coin&/);
+  assert.equal(checks.filter((c) => c.livePrice !== null).length, 3);
+
+  const again = await service.exchangePrices('BBB', ['coingecko'], { coingecko: 'bbb-coin' });
+  assert.equal(again[0].price, 2);
+  assert.equal(urls.length, 1, 'the price check right after reuses it');
+
+  busy = true;
+  const fresh = await service.exchangePrices('NEW', ['coingecko'], { coingecko: 'new-coin' });
+  assert.equal(fresh[0].price, null);
+  assert.match(fresh[0].error ?? '', /busy \(rate limit\)/, 'not "not trading"');
+});

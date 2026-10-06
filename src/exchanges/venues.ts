@@ -50,6 +50,8 @@ export interface Venue {
   fetchAnnouncements?(): Promise<Announcement[]>;
   /** A price source, not an exchange: never scanned for new listings (CoinGecko, for trending tokens). */
   priceOnly?: boolean;
+  /** Prices for many pairs in one call (CoinGecko, whose free plan allows few calls a minute). */
+  fetchTickers?(pairs: string[]): Promise<Record<string, Ticker | null>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -477,6 +479,12 @@ export function coingecko(http: Http = defaultHttp, apiKey: string | null = null
       const d = (await http(`${base}/simple/price?ids=${id(pair)}&vs_currencies=usd${key}`)) as Record<string, { usd?: number }>;
       const price = d[pair.trim().toLowerCase()]?.usd;
       return typeof price === 'number' && price > 0 ? { price, ts: Date.now() } : null;
+    },
+    async fetchTickers(pairs) {
+      const ids = [...new Set(pairs.map((p) => p.trim().toLowerCase()))].slice(0, 100);
+      if (!ids.length) return {};
+      const d = (await http(`${base}/simple/price?ids=${ids.map(encodeURIComponent).join(',')}&vs_currencies=usd${key}`)) as Record<string, { usd?: number }>;
+      return Object.fromEntries(ids.map((x) => [x, typeof d[x]?.usd === 'number' && d[x].usd! > 0 ? { price: d[x].usd!, ts: Date.now() } : null]));
     },
     async fetchCandles(pair, startMs, endMs) {
       // CoinGecko has no 1-minute candles; each price point (about every 5 minutes) becomes a flat candle.
