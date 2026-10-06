@@ -151,6 +151,31 @@ function toast(msg, isError = false) {
 }
 
 /**
+ * The toast after a prediction: the token, the pick in its colour and the stake leaving the
+ * balance in red. Small and quiet, so it confirms without covering the market.
+ */
+function pickToast(m, bucket, stake, payout) {
+  const el = $('#toast');
+  const yn = isYesNo(m);
+  const said = `You picked ${oName(bucket, yn)} on ${m.symbol} for ${fmtPts(stake)}.${payout ? ` Win about ${fmtPts(payout)}.` : ''}`;
+  el.innerHTML = `
+    <span class="sr-only">${esc(said)}</span>
+    <span class="pt" aria-hidden="true">
+      ${tokenAvatar(m, 'pt-logo')}
+      <span class="pt-body">
+        <span class="pt-pick" style="--c:${oVar(bucket, yn)}">${icon(bucket, yn)}${oName(bucket, yn)}<small>${esc(m.symbol)}</small></span>
+        ${payout ? `<span class="pt-win">Win ~${fmtPts(payout)}</span>` : ''}
+      </span>
+      <b class="pt-amt">−${fmtPts(stake)}</b>
+    </span>`;
+  el.className = 'pick';
+  void el.offsetWidth; // restart the entrance
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+/**
  * The toast for earned points: the brand coin, the amount counting up in gold, and a short line
  * under it. With `streak`, it also shows the week's progress as seven pips.
  */
@@ -1926,8 +1951,7 @@ async function submitPrediction() {
     const payout = S.trade.quote?.payout;
     await S.api.predict(m.id, bucket, stake);
     celebrate(isYesNo(m) && bucket === 'down' ? 'crash' : bucket);
-    const onChain = S.me?.wallets?.some((w) => w.walletName === 'Firstprint wallet');
-    toast(`You’re in! ${oName(bucket, isYesNo(m))} for ${fmtPts(stake)}${payout ? `. Win about ${fmtPts(payout)} if it lands.` : '.'}${onChain ? ' Your stake goes on chain as TestFPT.' : ''}`);
+    pickToast(m, bucket, stake, payout);
     $('#trade-error').textContent = '';
     closeSheet();
     await refreshMe();
