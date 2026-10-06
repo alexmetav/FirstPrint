@@ -186,41 +186,27 @@ function pickToast(m, bucket, stake, payout) {
 }
 
 /**
- * The toast for earned points: the brand coin, the amount counting up in gold, and a short line
- * under it. With `streak`, it also shows the week's progress as seven pips.
+ * The toast for earned points, in the same quiet style as the prediction toast: a small coin,
+ * what it was for (and one short line under it), and the amount arriving in green on the right.
  */
-function rewardToast({ amount, unit = 'points', sub = '', note = '', streak = 0 }) {
+function rewardToast({ amount, unit = 'pts', title = 'Points added', sub = '' }) {
   const el = $('#toast');
-  const pos = Math.min(streak, DAILY_SCHEDULE.length);
-  const week = streak
-    ? `<span class="rt-week">${DAILY_SCHEDULE.map((_, i) => `<i class="${i < pos ? 'on' : ''}${i === pos - 1 ? ' now' : ''}"></i>`).join('')}</span>`
-    : '';
-  const said = [`+${fmtNum(amount)} ${unit}`, sub.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(), note].filter(Boolean).join('. ');
+  const said = [`+${fmtNum(amount)} ${unit}`, title, sub].filter(Boolean).join('. ');
   el.innerHTML = `
     <span class="sr-only">${esc(said)}</span>
-    <span class="rt" aria-hidden="true">
-      <span class="rt-coin">${ico('coins')}</span>
-      <span class="rt-body">
-        <b class="rt-amt">+<span class="rt-n">${fmtNum(REDUCED_MOTION.matches ? amount : 0)}</span><small>${esc(unit)}</small></b>
-        ${sub ? `<span class="rt-sub">${sub}</span>` : ''}
-        ${note ? `<span class="rt-note">${esc(note)}</span>` : ''}
+    <span class="pt" aria-hidden="true">
+      <span class="pt-coin">${ico('coins')}</span>
+      <span class="pt-body">
+        <b class="pt-sym">${esc(title)}</b>
+        ${sub ? `<span class="pt-win">${esc(sub)}</span>` : ''}
       </span>
-      ${week}
+      <b class="pt-amt pt-gain">+${fmtNum(amount)} ${esc(unit)}</b>
     </span>`;
-  el.className = 'reward';
+  el.className = 'pick';
   void el.offsetWidth; // restart the entrance
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 4200);
-  if (REDUCED_MOTION.matches) return;
-  const n = el.querySelector('.rt-n');
-  const start = performance.now();
-  const step = (t) => {
-    const k = Math.min(1, (t - start) / 700);
-    n.textContent = fmtNum(Math.round(amount * (1 - Math.pow(1 - k, 3))));
-    if (k < 1 && n.isConnected) requestAnimationFrame(step);
-  };
-  setTimeout(() => requestAnimationFrame(step), 120);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
 
 function syncClock(serverTime) {
@@ -551,7 +537,7 @@ function titleFor() {
   if (S.route.name === 'portfolio') return 'Your dashboard: Firstprint';
   if (S.route.name === 'earn') return 'Earn points: Firstprint';
   if (S.route.name === 'stats') return 'Live stats: Firstprint';
-  return 'Firstprint: predict new exchange listings';
+  return 'Firstprint: predict crypto prices';
 }
 
 /** A market's token logo, falling back to the letter circle. Takes a market, or a row with symbol + marketId. */
@@ -628,8 +614,17 @@ function renderTop() {
   }
 }
 
+/** Something to collect on the Earn page: today's claim, or a task not done yet (and for visitors, always). */
+function earnWaiting() {
+  if (!S.me) return true;
+  if (S.daily && !S.daily.claimedToday) return true;
+  return Boolean(S.rewards?.tasks?.some((t) => !t.done && t.remaining !== 0));
+}
+
 function drawTop() {
   const cur = (name) => (S.route.name === name || (name === 'home' && S.route.name === 'market') ? ' aria-current="page"' : '');
+  // Earn glows next to Markets, so it's where the eye goes next; a dot when there's something to collect.
+  const navCls = (name) => (name === 'earn' ? ` class="nav-earn${earnWaiting() ? ' has-more' : ''}"` : '');
   const wallet = S.me?.wallets?.[0]?.address;
   const pages = [
     ['home', '#/', 'Markets', 'Markets'],
@@ -640,7 +635,7 @@ function drawTop() {
   ];
   setHtml(
     $('#tabbar'),
-    pages.map(([name, href, , short]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}<span>${short}</span></a>`).join(''),
+    pages.map(([name, href, , short]) => `<a href="${href}"${cur(name)}${navCls(name)}>${ico(NAV_ICONS[name])}<span>${short}</span></a>`).join(''),
   );
   setHtml(
     $('#topbar'),
@@ -663,7 +658,7 @@ function drawTop() {
       ${S.streakOpen && S.me ? streakPop() : ''}
     </div>
     <nav class="subnav" aria-label="Main">
-      ${pages.map(([name, href, label]) => `<a href="${href}"${cur(name)}>${ico(NAV_ICONS[name])}${label}</a>`).join('')}
+      ${pages.map(([name, href, label]) => `<a href="${href}"${cur(name)}${navCls(name)}>${ico(NAV_ICONS[name])}${label}</a>`).join('')}
     </nav>`,
   );
 }
@@ -727,6 +722,13 @@ function streakCard(compact = false) {
   const today = d.today;
   const cur = d.claimedToday ? d.streak : d.streak + 1; // the streak day today counts as
   const pos = Math.min(cur, 7);
+  // In the side column: one small circle per day (like the streak pop-up), the points under it.
+  const dots = DAILY_SCHEDULE.map((pts, i) => {
+    const n = i + 1;
+    const done = n < pos || (n === pos && d.claimedToday);
+    const state = done ? 'done' : n === pos ? 'today' : 'next';
+    return `<li class="sp-day ${state}"><span class="sp-dot" title="Day ${n === 7 ? '7+' : n}">${done ? ico('check') : ''}</span><b>+${pts}</b></li>`;
+  }).join('');
   const tiles = DAILY_SCHEDULE.map((pts, i) => {
     const n = i + 1;
     const state = n < pos ? 'done' : n === pos ? (d.claimedToday ? 'done today' : 'today') : 'next';
@@ -756,11 +758,13 @@ function streakCard(compact = false) {
         <div><span class="eyebrow">Daily streak</span><b class="st-count">${d.streak ? `${d.streak} day${d.streak === 1 ? '' : 's'}` : 'No streak yet'}</b></div>
         ${d.claimedToday ? `<span class="st-note">${ico('check')}Claimed today · +${d.next} tomorrow</span>` : `<button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim +${d.next}</button>`}
       </div>
-      <ol class="st-days">${tiles}</ol>
-      <p class="st-rule muted">Claim once a day (UTC): 50 points on day 1, 25 more each day, 200 a day from day 7. Miss a day and it starts again at 50.</p>
+      ${compact ? `<ol class="sp-days st-dots">${dots}</ol>` : `<ol class="st-days">${tiles}</ol>`}
+      <p class="st-rule muted">${compact ? 'One claim a day (UTC). Miss a day and it resets.' : 'Claim once a day (UTC): 50 points on day 1, 25 more each day, 200 a day from day 7. Miss a day and it starts again at 50.'}</p>
       ${
         compact
-          ? ''
+          ? `<details class="st-cal-more"><summary>${ico('calendar')}${month}<span class="muted">${claimedThisMonth} day${claimedThisMonth === 1 ? '' : 's'} claimed</span></summary>
+              <div class="cal-grid">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((w) => `<span class="cal-wd">${w}</span>`).join('')}${cells.join('')}</div>
+            </details>`
           : `<div class="st-cal">
               <div class="st-cal-head"><b>${month}</b><span class="muted">${claimedThisMonth} day${claimedThisMonth === 1 ? '' : 's'} claimed</span></div>
               <div class="cal-grid">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((w) => `<span class="cal-wd">${w}</span>`).join('')}${cells.join('')}</div>
@@ -871,7 +875,7 @@ function analyticsView(d, { shared = false } = {}) {
     <div class="viz-page${shared ? ' shared' : ''}">
       ${
         shared
-          ? `<header class="viz-head"><div><span class="eyebrow">Firstprint · live stats</span><h1 class="page-title">How Firstprint is growing</h1><p class="page-lede">A free prediction game on new crypto exchange listings, on Solana testnet. Updated ${fmtAgo(d.generatedAt)}.</p></div></header>`
+          ? `<header class="viz-head"><div><span class="eyebrow">Firstprint · live stats</span><h1 class="page-title">How Firstprint is growing</h1><p class="page-lede">A free prediction game on crypto tokens, on Solana testnet. Updated ${fmtAgo(d.generatedAt)}.</p></div></header>`
           : ''
       }
       <div class="viz-filters">${seg(shared ? 'viz-days' : 'admin-viz-days')}<span class="muted">${range}</span></div>
@@ -1197,9 +1201,9 @@ function homeHero(showLive = true) {
         ${
           showLive && testnetLive()
             ? `<a class="hero-badge hero-badge-live" href="#/earn"><span class="dot-live" aria-hidden="true"></span>Testnet live<span class="hero-badge-more"> · Claim 1,000 TestFPT</span> ${ico('arrowRight')}</a>`
-            : `<p class="hero-badge">${ico('sparkles')}Listing prediction markets<span class="hero-badge-more"> · Free to play</span></p>`
+            : `<p class="hero-badge">${ico('sparkles')}Crypto prediction markets<span class="hero-badge-more"> · Free to play</span></p>`
         }
-        <h1 id="hero-title">Predict where new listings land<span class="soft"> before the price settles</span></h1>
+        <h1 id="hero-title">Predict where crypto prices land<span class="soft"> and win the pool</span></h1>
         <p class="hero-sub">Pick one of five outcomes (${LADDER.map(word).join(', ')}) on new and trending tokens. Points only, no real money.</p>
         ${stats.length ? `<dl class="hero-stats">${stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
       </div>
@@ -1531,7 +1535,7 @@ function howItWorks() {
     return `
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
-        <li>Firstprint opens markets on newly listed tokens on major exchanges, including new listings it spots automatically on MEXC, OKX, Gate, Bitget and KuCoin. Log in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
+        <li>Firstprint opens markets on crypto tokens: new exchange listings, trending tokens and well-known ones. Log in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
         <li>Pick one of five outcomes for where the price ends up compared with the start price, from Crash to Moon. Predictions stay open up to three days, and earlier predictions earn a bigger share.</li>
         <li>The start price is locked when predictions close, so a move while they are open doesn’t count. The market then counts down to its result, usually 7 to 30 days later.</li>
         <li>When the result is due, the final price and the winners appear on the market page.</li>
@@ -1542,7 +1546,7 @@ function howItWorks() {
   return `
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
-        <li>Firstprint watches seven exchanges for new listings and opens a market when one is confirmed. Sign in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
+        <li>Firstprint opens markets on crypto tokens, including new listings it spots on seven exchanges. Sign in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
         <li>Pick one of five outcomes for where the price lands at the result time shown on the market, from Crash to Moon. Predictions stay open until the time shown, and earlier predictions earn a bigger share.</li>
         <li>The starting price is the average over the first hour of trading. The final price is the average over the last hour, so a single spike can’t decide a market.</li>
         <li>Everyone who picked the winning outcome splits the pool, minus the fee shown on the market (usually 4%). Everyone gets their points back if nobody picked the winner, everyone picked the same outcome, or the market is cancelled.</li>
@@ -2893,15 +2897,14 @@ function earnView() {
         <h1 class="page-title">Earn points</h1>
         <p class="page-lede">${r.onChain ? `Rewards arrive as <b>TestFPT</b> on Solana ${clusterName()} when you claim them, and go into your Firstprint balance too.` : 'Complete tasks and invite friends. Points go straight to your balance.'}</p>
       </header>
-      ${streakCard()}
-      ${r.onChain ? claimCard(r) : ''}
       <div class="earn2-grid">
         <div class="earn2-main">
           ${tasksCard(r)}
+          ${r.onChain ? claimCard(r) : ''}
           ${r.onChain ? claimsList(r) : ''}
         </div>
         <aside class="earn2-side">
-          ${xCard(r)}
+          ${streakCard(true)}
           ${referralCard(r)}
         </aside>
       </div>
@@ -2934,42 +2937,9 @@ function claimCard(r) {
     </section>`;
 }
 
-function xCard(r) {
-  const pts = r.xConnectPoints && !(r.xUsername && (r.xVerified || !r.xChecks)) ? `<span class="pill pill-pts">+${r.xConnectPoints}</span>` : '';
-  const form = (label, value = '') =>
-    `<form id="x-form" class="inline-form" novalidate><span class="input-wrap"><span class="input-prefix">@</span><input name="x" placeholder="yourname" maxlength="16" autocomplete="off" aria-label="X username" value="${esc(value)}" /></span><button class="btn btn-solid" type="submit">${ico('link')}${label}</button></form>
-     <p class="form-error" id="x-error" role="alert"></p>`;
-  let body;
-  if (!r.xChecks) {
-    // Honour-based: the username is simply linked.
-    body = r.xUsername
-      ? `<p class="linked">${ico('checkCircle')}Linked as <b>@${esc(r.xUsername)}</b></p><p class="fine">Tasks on X use this account. Each task pays once.</p>`
-      : `<p class="muted">Link your X username to unlock X tasks${r.xConnectPoints ? ` and get <b>+${r.xConnectPoints} points</b>` : ''}. No password or login needed.</p>${form('Link')}`;
-  } else if (r.xVerified && r.xUsername && !r.xPending) {
-    body = `<p class="linked">${ico('checkCircle')}Verified as <b>@${esc(r.xUsername)}</b></p><p class="fine">Tasks on X are checked on this account. Each task pays once.</p>`;
-  } else if (r.xPending) {
-    const p = r.xPending;
-    const postText = encodeURIComponent(`Verifying my Firstprint account: ${p.code}`);
-    body = `<p class="muted">Prove <b>@${esc(p.username)}</b> is yours: add this code to your X bio, or post it. You can remove it once you’re verified.</p>
-      <div class="x-code"><code>${esc(p.code)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(p.code)}">${ico('copy')}Copy</button><a class="btn btn-sm" href="https://x.com/intent/tweet?text=${postText}" target="_blank" rel="noopener noreferrer">${ico('x')}Post it</a></div>
-      <button class="btn btn-solid" data-action="x-verify"${S.xBusy ? ' disabled' : ''}>${S.xBusy ? `<span class="spin" aria-hidden="true"></span>Checking on X…` : `${ico('checkCircle')}Verify @${esc(p.username)}`}</button>
-      <p class="form-error" id="x-verify-error" role="alert"></p>
-      <details class="x-change"><summary>Use a different username</summary>${form('Get a code')}</details>`;
-  } else {
-    body = `<p class="muted">${
-      r.xUsername ? `Linked as <b>@${esc(r.xUsername)}</b>, but not verified yet. Verify it to unlock X tasks.` : `Verify your X username to unlock X tasks${r.xConnectPoints ? ` and get <b>+${r.xConnectPoints} points</b>` : ''}.`
-    } You’ll add a short code to your X bio; no password or login needed.</p>${form('Get a code', r.xUsername ?? '')}`;
-  }
-  return `
-    <section class="earn-card" id="x-card">
-      <div class="card-head"><span class="card-ico">${ico('x')}</span><h2>Your X account</h2>${pts}</div>
-      ${body}
-    </section>`;
-}
-
 function referralCard(r) {
   const f = r.referral;
-  const shareText = encodeURIComponent('I’m calling new crypto listings on Firstprint. Join me and get free points:');
+  const shareText = encodeURIComponent('I’m calling crypto prices on Firstprint. Join me and get free points:');
   return `
     <section class="earn-card">
       <div class="card-head"><span class="card-ico">${ico('userPlus')}</span><h2>Invite friends</h2><span class="pill pill-pts">+${f.perReferral} each</span></div>
@@ -2980,33 +2950,85 @@ function referralCard(r) {
     </section>`;
 }
 
+/** While the player waits after too many checks on X: a disabled button counting down to the next try. */
+const xWait = (r) => (r.xCooldownUntil && r.xCooldownUntil > now() ? `<button class="btn" disabled>${ico('clock')}Try again in ${until(r.xCooldownUntil)}</button>` : '');
+
+/** True once the player's X account counts for tasks (proven with a code when X checks are on). */
+const xConnected = (r) => Boolean(r.xUsername && (!r.xChecks || r.xVerified));
+
+/**
+ * Connecting X, shown inside a task that needs it (or under the list to change account): the
+ * username, then with X checks on the code to put in the bio and Verify. Only what the step needs.
+ */
+function xConnectPanel(r) {
+  const form = (label, value = '') =>
+    `<form id="x-form" class="inline-form" novalidate><span class="input-wrap"><span class="input-prefix">@</span><input name="x" placeholder="yourname" maxlength="16" autocomplete="off" aria-label="Your X username" value="${esc(value)}" /></span><button class="btn btn-solid" type="submit">${r.xChecks ? 'Next' : 'Connect'}</button></form>
+     <p class="form-error" id="x-error" role="alert"></p>`;
+  if (r.xChecks && r.xPending) {
+    const p = r.xPending;
+    const postText = encodeURIComponent(`Verifying my Firstprint account: ${p.code}`);
+    return `<div class="x-connect">
+      <p class="muted">Add this code to your X bio (or post it), then press Verify. You can remove it after.</p>
+      <div class="x-code"><code>${esc(p.code)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(p.code)}">${ico('copy')}Copy</button><a class="btn btn-sm" href="https://x.com/intent/tweet?text=${postText}" target="_blank" rel="noopener noreferrer">${ico('x')}Post it</a></div>
+      <div class="x-connect-row">${xWait(r) || `<button class="btn btn-solid" data-action="x-verify"${S.xBusy ? ' disabled' : ''}>${S.xBusy ? '<span class="spin" aria-hidden="true"></span>Checking…' : `${ico('check')}Verify @${esc(p.username)}`}</button>`}<button class="link-btn" data-action="x-restart">Different account</button></div>
+      <p class="form-error" id="x-verify-error" role="alert"></p>
+    </div>`;
+  }
+  return `<div class="x-connect">
+      <p class="muted">Connect your X account first${r.xConnectPoints && !r.xUsername ? ` (<b class="pts">+${r.xConnectPoints} points</b>)` : ''}, so we can check your tasks. No password needed.</p>
+      ${form(r.xChecks ? 'Next' : 'Connect', r.xUsername ?? '')}
+    </div>`;
+}
+
 function tasksCard(r) {
-  const rows = r.tasks;
+  // Open tasks first, then finished ones, then ones that are full.
+  const rank = (t) => (t.done ? 1 : t.remaining === 0 ? 2 : 0);
+  const rows = [...r.tasks].sort((a, b) => rank(a) - rank(b));
+  const connected = xConnected(r);
+  const open = rows.filter((t) => !t.done && t.remaining !== 0).reduce((sum, t) => sum + t.points, 0);
   return `
-    <section class="section panel">
-      <div class="section-head"><span class="section-ico">${ico('list')}</span><div><h2>Tasks</h2><p class="muted">Open a task, do it on X, then come back and press Verify.</p></div>${(() => { const n = rows.filter((t) => !t.done && t.remaining !== 0).reduce((sum, t) => sum + t.points, 0); return n ? `<span class="pill pill-pts head-action">+${fmtNum(n)} available</span>` : ''; })()}</div>
+    <section class="section panel tasks-card">
+      <div class="section-head"><span class="section-ico">${ico('list')}</span><div><h2>Tasks</h2><p class="muted">Do a task on X, then press Verify.</p></div>${open ? `<span class="pill pill-pts head-action">+${fmtNum(open)} to earn</span>` : ''}</div>
       ${
         rows.length
           ? `<ul class="tasks">${rows
               .map((t) => {
                 const full = t.remaining === 0 && !t.done;
+                const needsX = t.kind !== 'link' && !connected && !t.done && !full;
+                const expanded = needsX && S.xOpenTask === t.id;
                 let action;
                 if (t.done) action = `<span class="task-done">${ico('checkCircle')}Done</span>`;
-                else if (full) action = '<span class="muted">Limit reached</span>';
-                else if (t.startedAt) action = `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}Open again</a><button class="btn btn-solid" data-action="task-verify" data-task="${esc(t.id)}">${ico('check')}Verify</button>`;
-                else action = `<a class="btn btn-solid" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer" data-action="task-go" data-task="${esc(t.id)}">Start ${ico('chevronRight')}</a>`;
-                return `<li class="task${t.done ? ' is-done' : ''}">
+                else if (full) action = '<span class="muted">Full</span>';
+                else if (needsX) action = expanded ? '' : `<button class="btn btn-solid" data-action="task-connect" data-task="${esc(t.id)}">${ico('x')}Connect X</button>`;
+                else if (t.startedAt) {
+                  // Follow, repost and post tasks are checked on X: after too many misses the player waits.
+                  const wait = r.xChecks && X_CHECKED.has(t.kind) ? xWait(r) : '';
+                  action = `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}Open</a>${wait || `<button class="btn btn-solid" data-action="task-verify" data-task="${esc(t.id)}">${ico('check')}Verify</button>`}`;
+                }
+                else action = `<a class="btn btn-solid" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer" data-action="task-go" data-task="${esc(t.id)}">${TASK_GO[t.kind] ?? 'Start'} ${ico('chevronRight')}</a>`;
+                return `<li class="task${t.done ? ' is-done' : ''}${full ? ' is-full' : ''}${expanded ? ' is-open' : ''}">
                   <span class="task-ico">${ico(TASK_ICONS[t.kind] ?? 'star')}</span>
-                  <div class="task-body"><b>${esc(t.title)}</b><small><span class="pts">+${fmtNum(t.points)} points</span>${t.remaining !== null && !t.done ? ` · ${fmtNum(t.remaining)} spots left` : ''}</small></div>
+                  <div class="task-body"><b>${esc(t.title)}</b><small><span class="pts">+${fmtNum(t.points)} points</span>${t.remaining !== null && !t.done && !full && t.remaining <= 20 ? ` · ${fmtNum(t.remaining)} left` : ''}</small></div>
                   <div class="task-actions">${action}</div>
+                  ${expanded ? `<div class="task-connect">${xConnectPanel(r)}</div>` : ''}
                 </li>`;
               })
               .join('')}</ul>
-             <p class="fine">We check your linked X username; tasks done with another account don’t count.</p>`
+             ${
+               connected
+                 ? `<p class="fine tasks-x">${ico('x')}Checked on <b>@${esc(r.xUsername)}</b>${S.xOpenTask === 'change' ? '' : ' · <button class="link-btn" data-action="task-connect" data-task="change">Change</button>'}</p>${S.xOpenTask === 'change' ? `<div class="task-connect">${xConnectPanel({ ...r, xUsername: null })}</div>` : ''}`
+                 : ''
+             }`
           : `<div class="earn2-empty">${ico('list')}<p><b>No tasks right now.</b> New tasks on X show up here. Inviting friends earns points meanwhile.</p></div>`
       }
     </section>`;
 }
+
+/** Tasks whose Verify asks X (likes and links can't be checked there). */
+const X_CHECKED = new Set(['follow', 'repost', 'share']);
+
+/** What the button says before a task is opened. */
+const TASK_GO = { follow: 'Follow', repost: 'Repost', like: 'Like', share: 'Post', link: 'Open' };
 
 function claimsList(r) {
   if (!r.claims.length) return '';
@@ -3062,7 +3084,7 @@ async function claimTokens() {
     if (res.status === 'confirmed') {
       await collectPoints(from, res.amount);
       celebrate('moon');
-      rewardToast({ amount: res.amount, unit: 'TestFPT', sub: 'Claimed. Check your wallet!' });
+      rewardToast({ amount: res.amount, unit: 'TestFPT', title: 'Claimed', sub: 'Check your wallet' });
     } else if (res.status === 'submitted') {
       toast('Still confirming on Solana. It will show up shortly.');
     } else {
@@ -3087,13 +3109,10 @@ async function onTaskVerify(taskId, btn) {
     await refreshMe();
     if (S.route.name === 'earn') $('#view').innerHTML = earnView();
     if (out.onChain) await collectPoints(from, out.points, '.claim-card .claim-ico');
-    rewardToast({ amount: out.points, sub: out.onChain ? 'Ready to claim as TestFPT' : 'Task done' });
+    rewardToast({ amount: out.points, title: 'Task done', sub: out.onChain ? 'Sent as TestFPT' : '' });
   } catch (err) {
     toast(err.message, true);
-    if (err.code === 'x_required' || err.code === 'x_unverified') {
-      $('#x-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      $('#x-form input')?.focus();
-    }
+    if (err.code === 'x_required' || err.code === 'x_unverified') S.xOpenTask = taskId;
     await refreshMe();
     if (S.route.name === 'earn') $('#view').innerHTML = earnView();
   }
@@ -3103,8 +3122,11 @@ async function submitX(form) {
   const err = $('#x-error');
   try {
     const out = await S.api.connectX(String(new FormData(form).get('x') ?? ''));
-    if (out.pending) toast(`Add ${out.code} to your X bio (or post it), then press Verify`);
-    else toast(out.rewarded ? `+${out.rewarded} points for linking @${out.xUsername}` : `Linked @${out.xUsername}`);
+    if (!out.pending) {
+      // Connected straight away (no X checks): the task can be started now.
+      if (S.xOpenTask === 'change') S.xOpenTask = null;
+      if (out.rewarded) rewardToast({ amount: out.rewarded, title: `@${out.xUsername} connected` });
+    }
     await refreshMe();
     if (S.route.name === 'earn') $('#view').innerHTML = earnView();
   } catch (e) {
@@ -3120,12 +3142,14 @@ async function onXVerify() {
   try {
     const out = await S.api.verifyX();
     S.xBusy = false;
+    if (S.xOpenTask === 'change') S.xOpenTask = null;
     await refreshMe();
     if (S.route.name === 'earn') $('#view').innerHTML = earnView();
-    if (out.rewarded) rewardToast({ amount: out.rewarded, sub: `Verified @${out.xUsername}` });
+    if (out.rewarded) rewardToast({ amount: out.rewarded, title: `@${out.xUsername} connected` });
     else toast(`Verified @${out.xUsername}`);
   } catch (err) {
     S.xBusy = false;
+    await refreshRewards(); // a miss can start the wait before the next check
     if (S.route.name === 'earn') $('#view').innerHTML = earnView();
     const box = $('#x-verify-error');
     if (box) box.textContent = err.message;
@@ -4321,7 +4345,7 @@ function watchTopUp() {
       A.topup = (await A.api.topUpStatus()) ?? A.topup;
       if (A.topup.pending < before) {
         await refreshMe();
-        rewardToast({ amount: before - A.topup.pending, sub: 'Test points arrived in your balance' });
+        rewardToast({ amount: before - A.topup.pending, title: 'Test points arrived' });
       }
       paintTopUp();
     } catch {
@@ -4355,7 +4379,7 @@ async function adminTopUp(amount) {
     const out = await A.api.topUp(n);
     A.topup = out;
     await refreshMe();
-    if (!out.onChain) rewardToast({ amount: out.points, sub: 'Test points added to your balance' });
+    if (!out.onChain) rewardToast({ amount: out.points, title: 'Test points added' });
     else if (out.autoClaim)
       toast(`${stillPending ? 'Your earlier top-up is still processing; this one is added too. ' : ''}+${fmtNum(out.points)} test points on the way. They show in your balance in about a minute.`);
     else toast(`+${fmtNum(out.points)} test points are waiting on the Earn page. Claim them to see them in your balance.`);
@@ -6002,9 +6026,8 @@ document.addEventListener('click', async (e) => {
         S.daily = null;
         rewardToast({
           amount: got,
-          sub: `${ico('flame')}Day ${day} streak<span class="rt-dot">·</span>Tomorrow <b>+${me.daily?.next ?? got}</b>`,
-          note: S.rewards?.onChain && me.wallets?.length ? 'Sent to your wallet as TestFPT' : '',
-          streak: day,
+          title: `Day ${day} streak`,
+          sub: `Tomorrow +${me.daily?.next ?? got}${S.rewards?.onChain && me.wallets?.length ? ' · sent as TestFPT' : ''}`,
         });
         renderTop();
         return loadRoute();
@@ -6068,6 +6091,14 @@ document.addEventListener('click', async (e) => {
       return copyText(t.closest('[data-text]').dataset.text);
     case 'x-verify':
       return onXVerify();
+    case 'task-connect':
+      S.xOpenTask = t.closest('[data-task]').dataset.task;
+      if (S.route.name === 'earn') $('#view').innerHTML = earnView();
+      return $('#x-form input')?.focus();
+    case 'x-restart':
+      S.rewards = { ...S.rewards, xPending: null };
+      if (S.route.name === 'earn') $('#view').innerHTML = earnView();
+      return $('#x-form input')?.focus();
     case 'predict':
       return submitPrediction();
     case 'open-sheet':

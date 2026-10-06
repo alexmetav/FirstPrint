@@ -4,12 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Firstprint whitepaper</title>
-    <meta name="description" content="How Firstprint works: listing markets, the five-outcome ladder, start and result prices, parimutuel pools with early-bird weights, the on-chain layer on Solana, integrity rules and the roadmap." />
+    <meta name="description" content="How Firstprint works: markets on crypto tokens, the five-outcome ladder, start and result prices, parimutuel pools with early-bird weights, the on-chain layer on Solana, integrity rules and the roadmap." />
     <meta name="theme-color" content="#09090b" />
     <link rel="canonical" href="https://www.firstprint.fun/whitepaper" />
     <meta property="og:type" content="article" />
     <meta property="og:title" content="Firstprint whitepaper" />
-    <meta property="og:description" content="Prediction markets for new crypto listings: market design, pricing, payouts, the on-chain layer and the roadmap." />
+    <meta property="og:description" content="Prediction markets on crypto tokens: market design, pricing, payouts, the on-chain layer and the roadmap." />
     <meta property="og:image" content="https://www.firstprint.fun/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
@@ -33,12 +33,12 @@
       <nav class="toc" aria-label="Contents">
         <b>Contents</b>
         <a href="#abstract">Abstract</a>
-        <a href="#problem">1. The listing moment</a>
+        <a href="#problem">1. The problem</a>
         <a href="#markets">2. Market design</a>
         <a href="#prices">3. Start and result prices</a>
         <a href="#payouts">4. Pools and payouts</a>
         <a href="#integrity">5. Integrity rules</a>
-        <a href="#listings">6. Finding listings</a>
+        <a href="#listings">6. Tokens and listings</a>
         <a href="#accounts">7. Accounts and wallets</a>
         <a href="#chain">8. The on-chain layer</a>
         <a href="#growth">9. Growth loops</a>
@@ -50,22 +50,22 @@
 
       <article class="doc-body">
         <p class="eyebrow">Whitepaper · v1.0</p>
-        <h1>Firstprint: prediction markets for new crypto listings</h1>
-        <p class="sub">A public, scored way to call where a newly listed token’s price lands, with no capital at risk.</p>
+        <h1>Firstprint: prediction markets on crypto tokens</h1>
+        <p class="sub">A public, scored way to call where a crypto token’s price lands, with no capital at risk.</p>
         <div class="meta-row"><span>Version 1.0</span><span>October 2026</span><span>firstprint.fun</span></div>
 
         <h2 id="abstract">Abstract</h2>
-        <p>In trading, the <em>first print</em> is a token’s very first trade. The hours around it are the most watched and most volatile in a token’s life, yet there is no venue to express a view on them other than trading the listing itself. Firstprint opens a prediction market on each new listing. Players stake points on where the price will be at the result time compared with a start price, across five outcomes from Crash to Moon (or a Yes/No question). Correct predictions share the pool, with a bonus for calling it early. Every result is public, so a player’s record becomes a track record.</p>
+        <p>In trading, the <em>first print</em> is a token’s very first trade. Firstprint started with that moment, the most watched hours in a token’s life, and now runs prediction markets on crypto tokens in general: new exchange listings, trending tokens and established tokens with a live price. Players stake points on where the price will be at the result time compared with a start price, across five outcomes from Crash to Moon (or a Yes/No question). Correct predictions share the pool, with a bonus for calling it early. Every result is public, so a player’s record becomes a track record.</p>
         <p>The product is live with free points, no cash value, and an on-chain layer on Solana’s test network where points move as the TestFPT token. This paper describes the market design, how prices and payouts work, the rules that keep markets fair, the on-chain layer, the business model and the path to value-backed markets.</p>
 
-        <h2 id="problem"><span class="n">1</span>The listing moment</h2>
-        <p>Every week, major centralised exchanges list new tokens. Each listing is a short, high-attention event: announcements spread across X and Telegram, opinions are loud, and the first hours of trading see thin order books, wide spreads and violent wicks.</p>
+        <h2 id="problem"><span class="n">1</span>The problem</h2>
+        <p>Crypto trades around the clock, and everyone has a view on where a token goes next. Calls spread across X and Telegram, opinions are loud and prices move fast. New listings are the sharpest case: every week major centralised exchanges list new tokens, and the first hours of trading see thin order books, wide spreads and violent wicks.</p>
         <ul>
           <li><b>Opinions are unscored.</b> Calls in group chats are never checked, so there is no way to tell skill from noise.</li>
-          <li><b>Expressing a view is costly.</b> Trading a fresh listing means real capital in the worst liquidity of the token’s life.</li>
-          <li><b>General prediction markets don’t cover it.</b> Their inventory is elections, sports and macro; a market for one token’s first days, on several exchanges, is too short-lived and too frequent for them.</li>
+          <li><b>Expressing a view is costly.</b> Trading means real capital, fees and often leverage; for a fresh listing, it also means the worst liquidity of the token’s life.</li>
+          <li><b>General prediction markets don’t cover it.</b> Their inventory is elections, sports and macro; a market on one token’s price over the next days, across several exchanges, is too short-lived and too frequent for them.</li>
         </ul>
-        <p>Firstprint turns each listing into a clean, time-boxed question with a public answer.</p>
+        <p>Firstprint turns a token’s next move into a clean, time-boxed question with a public answer.</p>
 
         <h2 id="markets"><span class="n">2</span>Market design</h2>
         <h3>The five-outcome ladder</h3>
@@ -87,15 +87,15 @@
         <p>A binary market asks one question, such as “will the price be at or above $0.25 when the result is posted?”. The target is the market’s start price; Yes and No stakes go into one pool, shared by whoever is right.</p>
         <h3>Market life cycle</h3>
         <ol>
-          <li><b>Draft and review.</b> A detected listing becomes a draft. An operator checks the token, logo, exchanges and times, then publishes it.</li>
-          <li><b>Upcoming.</b> A market can open before the token trades. Its start price is unknown until trading begins.</li>
+          <li><b>Draft and review.</b> A market starts as a draft, either from a detected listing or set up by an operator for a trending or established token. An operator checks the token, logo, exchanges and times, then publishes it.</li>
+          <li><b>Upcoming.</b> A listing market can open before the token trades. Its start price is unknown until trading begins.</li>
           <li><b>Open.</b> Players predict until predictions close, at most three days.</li>
           <li><b>Countdown.</b> Predictions are closed and the start price is locked; the market counts down to its result time, usually 7 to 30 days later.</li>
           <li><b>Settled or cancelled.</b> The result is posted and the pool is paid out, or the market is cancelled and every stake is refunded.</li>
         </ol>
 
         <h2 id="prices"><span class="n">3</span>Start and result prices</h2>
-        <p>A listing’s first minutes are the noisiest. Firstprint never uses a single trade as a reference.</p>
+        <p>Prices are noisy, and a new listing’s first minutes are the noisiest of all. Firstprint never uses a single trade as a reference.</p>
         <ul>
           <li><b>Start price at the close.</b> For a token that is already trading, the start price is its price when predictions close: the median of the last three one-minute closes before the close on each source (or the last three price points on CoinGecko), across the market’s sources. A token that climbs while predictions are open gives nobody an edge, because the move is measured from the close.</li>
           <li><b>Opening price for upcoming markets.</b> When a token starts trading, the start price is the median of the closes of its 2nd to 4th one-minute candles, skipping the chaotic first minute. A market only opens once trades have been flowing for a few minutes and the live price is within 10% of that reference.</li>
@@ -120,18 +120,18 @@
         <div class="callout" style="--c: var(--up)"><p><b>Example.</b> A 10,000-point pool, 4% fee: 9,600 points are shared. If the winners staked 2,000 points at equal weight, each winning point returns 4.8 points.</p></div>
 
         <h2 id="integrity"><span class="n">5</span>Integrity rules</h2>
-        <p>New listings are easy to push around. The rules are written so that the cheapest manipulation doesn’t pay.</p>
+        <p>Token prices can be pushed around, new listings and smaller tokens most of all. The rules are written so that the cheapest manipulation doesn’t pay.</p>
         <ul>
           <li><b>Predictions close before the result window.</b> Nobody can predict once the answer is forming.</li>
           <li><b>The move counts from the close.</b> The start price is taken when predictions close, so following a trend while they are open earns nothing.</li>
           <li><b>Averages and medians, not last trades.</b> Moving a one-hour, multi-exchange median costs far more than a market could pay.</li>
-          <li><b>Cancellation rules.</b> An automatic market is cancelled and refunded if the listing is delayed by more than a day, trading halts for more than six hours in total, or price data is too thin. Admin-run markets are cancelled and refunded by the operator.</li>
+          <li><b>Cancellation rules.</b> An automatic market is cancelled and refunded if a listing is delayed by more than a day, trading halts for more than six hours in total, or price data is too thin. Admin-run markets are cancelled and refunded by the operator.</li>
           <li><b>One account, one player.</b> Sign-in is verified (Google, email code or a signed wallet message); tasks are honour-based, with one X username per account and each task paying once; referral rewards need the friend to make a real prediction.</li>
           <li><b>Public results.</b> Every settled market shows its start price, result price and winning outcome.</li>
         </ul>
 
-        <h2 id="listings"><span class="n">6</span>Finding listings</h2>
-        <p>A listing tracker reads new-listing announcements and watches exchanges for new USDT trading pairs. Supported venues include Binance, Bybit, OKX, Bitget, KuCoin, MEXC and Gate. New pairs land in a review queue with their exchanges, links and a suggested schedule; operators can schedule a market to open automatically once the token is trading. Each new market is posted to the Telegram channel with a banner, a reminder in its last hour and its result.</p>
+        <h2 id="listings"><span class="n">6</span>Tokens and listings</h2>
+        <p>Markets can run on any token with a live exchange price. Operators open markets on trending and established tokens, and new listings are found automatically. A listing tracker reads new-listing announcements and watches exchanges for new USDT trading pairs. Supported venues include Binance, Bybit, OKX, Bitget, KuCoin, MEXC and Gate. New pairs land in a review queue with their exchanges, links and a suggested schedule; operators can schedule a market to open automatically once the token is trading. Each new market is posted to the Telegram channel with a banner, a reminder in its last hour and its result.</p>
 
         <h2 id="accounts"><span class="n">7</span>Accounts and wallets</h2>
         <ul>
@@ -167,9 +167,9 @@
           <table>
             <thead><tr><th>Stream</th><th>Who pays</th><th>Stage</th></tr></thead>
             <tbody>
-              <tr><td>Featured listings and launch promotion</td><td>Projects, exchanges</td><td>Now</td></tr>
+              <tr><td>Featured markets and launch promotion</td><td>Projects, exchanges</td><td>Now</td></tr>
               <tr><td>Exchange referral share</td><td>Exchanges</td><td>Now</td></tr>
-              <tr><td>Listing sentiment data API</td><td>Funds, market makers, researchers</td><td>Now</td></tr>
+              <tr><td>Market sentiment data API</td><td>Funds, market makers, researchers</td><td>Now</td></tr>
               <tr><td>Pro membership</td><td>Players</td><td>Next</td></tr>
               <tr><td>Sponsored tournaments</td><td>Partners</td><td>Next</td></tr>
               <tr><td>4% fee on value-backed pools, shared with market creators</td><td>Pools</td><td>Later, where permitted</td></tr>
@@ -178,11 +178,11 @@
         </div>
 
         <h2 id="token"><span class="n">11</span>The FPT token</h2>
-        <p>A future FPT token would align players, market creators and the protocol: rewards for play, a bond for creating markets, a share of fees through buy-backs, and a say in which listings and parameters the protocol uses. The full proposal, with supply, allocation and vesting, is on the <a href="/tokenomics">tokenomics page</a>. It is a draft: no token has been issued and none is for sale.</p>
+        <p>A future FPT token would align players, market creators and the protocol: rewards for play, a bond for creating markets, a share of fees through buy-backs, and a say in which tokens get markets and which parameters the protocol uses. The full proposal, with supply, allocation and vesting, is on the <a href="/tokenomics">tokenomics page</a>. It is a draft: no token has been issued and none is for sale.</p>
 
         <h2 id="roadmap"><span class="n">12</span>Roadmap</h2>
         <ul>
-          <li><b>Now:</b> points markets on new listings; TestFPT on testnet with fees paid by Firstprint; streaks, referrals, tasks, PnL cards and Telegram alerts.</li>
+          <li><b>Now:</b> points markets on new listings, trending tokens and established tokens; TestFPT on testnet with fees paid by Firstprint; streaks, referrals, tasks, PnL cards and Telegram alerts.</li>
           <li><b>Next:</b> user-created markets with a creator fee share; exchange and project partnerships; a sentiment data API; Pro membership; sponsored tournaments.</li>
           <li><b>Later:</b> value-backed markets with on-chain pools and oracle settlement, only where licensed and permitted; the FPT token.</li>
         </ul>
@@ -191,7 +191,7 @@
         <ul>
           <li>Firstprint is a free game today. Points and TestFPT have no cash value and can’t be bought, sold or withdrawn as money.</li>
           <li>Real-value prediction markets are regulated differently in different countries and may be treated as gambling or derivatives. Firstprint will only offer them where it is licensed and allowed.</li>
-          <li>Listing data comes from third-party exchanges, which can be wrong, delayed or unavailable.</li>
+          <li>Price and listing data comes from third-party exchanges, which can be wrong, delayed or unavailable.</li>
           <li>Smart contracts and custodial wallets carry technical risk. The on-chain pool program is an unaudited prototype.</li>
           <li>This paper describes plans that may change. It is not financial advice and not an offer to sell or a solicitation to buy any token or security.</li>
         </ul>

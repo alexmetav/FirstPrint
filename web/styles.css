@@ -13083,3 +13083,263 @@ html.in-maint body {
 .x-check-note:not(.form-error) > svg {
   color: var(--up);
 }
+
+/* The Earn link's colour: gold on dark, a deeper amber on light so it stays readable. */
+:root {
+  --earn: var(--gold);
+}
+:root[data-theme='light'] {
+  --earn: #b7791f;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --earn: #b7791f;
+  }
+}
+/* Earn, next to Markets, glows so the eye goes there next; a pulsing dot when there's something to collect. */
+.subnav a.nav-earn,
+#tabbar a.nav-earn {
+  color: var(--earn);
+}
+.subnav a.nav-earn {
+  text-shadow: 0 0 14px color-mix(in srgb, var(--earn) 55%, transparent);
+}
+.subnav a.nav-earn .i,
+#tabbar a.nav-earn .i {
+  color: var(--earn);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--earn) 70%, transparent));
+}
+.subnav a.nav-earn[aria-current='page']::after {
+  background: var(--earn);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--earn) 70%, transparent);
+}
+.subnav a.nav-earn.has-more::before,
+#tabbar a.nav-earn.has-more::before {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--earn);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--earn) 60%, transparent);
+  animation: earn-ping 1.8s ease-out infinite;
+}
+.subnav a.nav-earn.has-more::before {
+  top: 9px;
+  right: -9px;
+}
+#tabbar a.nav-earn {
+  position: relative;
+}
+#tabbar a.nav-earn.has-more::before {
+  top: 6px;
+  left: calc(50% + 9px);
+}
+@keyframes earn-ping {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--earn) 60%, transparent); }
+  80%, 100% { box-shadow: 0 0 0 7px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .subnav a.nav-earn.has-more::before,
+  #tabbar a.nav-earn.has-more::before {
+    animation: none;
+  }
+}
+
+/* The points toast: same shape as the prediction toast, with a small gold coin and the gain in green. */
+.pt .pt-coin {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  color: var(--earn, var(--gold));
+  background: color-mix(in srgb, var(--earn, var(--gold)) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--earn, var(--gold)) 30%, transparent);
+}
+.pt .pt-coin .i {
+  width: 17px;
+  height: 17px;
+}
+.pt .pt-amt.pt-gain {
+  margin-left: 18px;
+  color: var(--up);
+}
+
+/* Earn: tasks first. A task that needs X opens the connect step inside its own row. */
+.task-connect {
+  grid-column: 1 / -1;
+}
+.tasks-card .task.is-full {
+  opacity: 0.55;
+}
+.task-connect {
+  margin-top: 2px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.x-connect {
+  display: grid;
+  gap: 10px;
+}
+.x-connect p {
+  margin: 0;
+  font-size: 13px;
+}
+.x-connect .x-code {
+  margin: 0;
+}
+.x-connect-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.link-btn:hover {
+  color: var(--text);
+}
+.tasks-x {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tasks-x .i {
+  width: 13px;
+  height: 13px;
+}
+/* The daily streak, small in the side column; the month's calendar folds away. */
+.earn2-side .streak-card {
+  margin: 0;
+  gap: 12px;
+  padding: 18px;
+}
+.earn2-side .st-head {
+  gap: 10px;
+}
+.earn2-side .st-flame {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+}
+.earn2-side .st-flame svg {
+  width: 19px;
+  height: 19px;
+}
+.earn2-side .st-count {
+  font-size: 17px;
+}
+.earn2-side .st-days {
+  gap: 4px;
+}
+.earn2-side .st-day {
+  padding: 7px 0 6px;
+  border-radius: 10px;
+  gap: 2px;
+}
+.earn2-side .st-day .st-n {
+  font-size: 9px;
+  letter-spacing: 0;
+}
+.earn2-side .st-day b {
+  font-size: 12px;
+}
+.earn2-side .st-day .st-ico {
+  width: 14px;
+  height: 14px;
+}
+.earn2-side .st-day .st-ico svg {
+  width: 10px;
+  height: 10px;
+}
+.earn2-side .st-rule {
+  margin: 0;
+  font-size: 12px;
+}
+.st-cal-more summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  list-style: none;
+}
+.st-cal-more summary::-webkit-details-marker {
+  display: none;
+}
+.st-cal-more summary .i {
+  width: 14px;
+  height: 14px;
+}
+.st-cal-more summary .muted {
+  margin-left: auto;
+  font-size: 12px;
+}
+.st-cal-more[open] .cal-grid {
+  margin-top: 10px;
+}
+.earn2-side .st-cal-more .cal-grid {
+  gap: 2px;
+  font-size: 11px;
+}
+/* In the narrow side column the claim button or "claimed" note sits on its own row. */
+.earn2-side .st-head {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.earn2-side .st-head > .st-note,
+.earn2-side .st-head > .btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+.earn2-side .st-head > .btn {
+  justify-self: stretch;
+  justify-content: center;
+}
+/* Side streak, v2: quiet text, one circle per day. */
+.earn2-side .streak-card .eyebrow {
+  font-size: 10.5px;
+}
+.earn2-side .st-count {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.earn2-side .st-note {
+  font-weight: 500;
+  font-size: 12.5px;
+}
+.earn2-side .st-dots {
+  gap: 2px;
+  padding: 2px 0;
+}
+.earn2-side .st-dots .sp-dot {
+  width: 24px;
+  height: 24px;
+}
+.earn2-side .st-dots .sp-dot .i {
+  width: 12px;
+  height: 12px;
+}
+.earn2-side .st-dots .sp-day b {
+  font-size: 10.5px;
+  font-weight: 400;
+}
+.earn2-side .st-dots .sp-day small {
+  font-size: 9.5px;
+}
+.earn2-side .st-head > .btn {
+  font-weight: 500;
+}

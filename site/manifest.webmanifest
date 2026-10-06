@@ -1,7 +1,7 @@
 {
   "name": "Firstprint",
   "short_name": "Firstprint",
-  "description": "Predict how newly listed crypto tokens trade. Free points, no real money.",
+  "description": "Predict where crypto prices land. Free points, no real money.",
   "start_url": "./?source=pwa",
   "scope": "./",
   "display": "standalone",

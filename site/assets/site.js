@@ -217,7 +217,7 @@ function heroMarket() {
     rows.forEach((li) => li.classList.remove('won', 'dim'));
     phase.textContent = 'Predictions open';
     phase.style.color = '';
-    sub.textContent = 'Newly listed token';
+    sub.textContent = 'Crypto token';
     clockLabel.textContent = 'Closes in';
     clock.textContent = '02:14:09';
     clock.style.color = '';
@@ -308,7 +308,7 @@ function practiceMarket() {
 
   const NAMES = { crash: 'Crash', down: 'Down', flat: 'Flat', up: 'Up', moon: 'Moon' };
   const TOKENS = ['VELA', 'NOVA', 'KORA', 'ARCO', 'TIDE', 'MOSS', 'QUILL', 'LUMA'];
-  // Roughly how often each outcome shows up, based on how listings usually behave.
+  // Roughly how often each outcome shows up, based on how new tokens usually behave.
   const ODDS = [
     ['crash', 0.18],
     ['down', 0.26],
