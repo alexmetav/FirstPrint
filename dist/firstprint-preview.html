@@ -15873,7 +15873,7 @@ function cardView(m) {
   } else if (yn) {
     body = `${upcoming ? upcomingLine(m) : ''}${quickPicks(m, 'qp-card')}`;
   } else if (!m.pool) {
-    body = `${upcoming ? upcomingLine(m) : '<p class="card-quiet">No predictions yet. Early picks get the biggest bonus.</p>'}${quickPicks(m, 'qp-mini')}`;
+    body = `${upcoming ? upcomingLine(m) : '<p class="card-quiet">No predictions yet.</p>'}${quickPicks(m, 'qp-mini')}`;
   } else {
     // The two outcomes the crowd backs most (Up and Down before anyone predicts).
     const top = m.pool ? [...bucketsOf(m)].sort((a, b) => m.totals[b] - m.totals[a]).slice(0, 2) : ['up', 'down'];
