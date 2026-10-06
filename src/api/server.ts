@@ -11,7 +11,8 @@ import { cachedGoogleJwks, verifyGoogleIdToken, type JwksFetcher } from '../auth
 import type { Mailer } from '../auth/mailer.ts';
 import type { Bucket } from '../engine/engine.ts';
 import { linkSiteToApp } from '../site/links.ts';
-import { fetchImage } from './fetchImage.ts';
+import { fetchImage, isPrivateAddress } from './fetchImage.ts';
+import { isCloudflareAddress } from './cloudflare.ts';
 import { Discover } from '../services/discover.ts';
 import { drawable, renderBanner, renderPnl } from '../services/banner.ts';
 import { channelName, type Telegram } from '../services/telegram.ts';
@@ -137,13 +138,22 @@ export function createApiServer(opts: ServerOptions): Server {
    * fewer entries than expected, fall back to the connecting address instead of trusting it.
    */
   function clientIp(req: IncomingMessage): string {
-    const direct = req.socket.remoteAddress ?? 'unknown';
+    const edge = proxiedIp(req);
     // Behind Cloudflare every request reaches the host from a Cloudflare address; the visitor's own
     // address is in CF-Connecting-IP. Without this, all visitors share one rate-limit bucket.
+    // The header is believed only when the request really came from Cloudflare (or from the host's own
+    // internal network, which can't be checked): someone calling the host directly with a made-up
+    // header is counted by their own address instead.
     if (opts.behindCloudflare) {
       const cf = String(req.headers['cf-connecting-ip'] ?? '').trim();
-      if (/^[0-9a-f:.]{3,45}$/i.test(cf)) return cf;
+      if (/^[0-9a-f:.]{3,45}$/i.test(cf) && (isCloudflareAddress(edge) || isPrivateAddress(edge))) return cf;
     }
+    return edge;
+  }
+
+  /** The address that reached this host's proxies (or this server, with none): the visitor, or Cloudflare. */
+  function proxiedIp(req: IncomingMessage): string {
+    const direct = req.socket.remoteAddress ?? 'unknown';
     if (proxyHops === 0) return direct;
     const chain = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
     return chain.length >= proxyHops ? chain[chain.length - proxyHops] : direct;
@@ -265,7 +275,11 @@ export function createApiServer(opts: ServerOptions): Server {
     audit(req, on ? 'maintenance_on' : 'maintenance_off', null, m.message || null);
     let backedUp = false;
     if (on && opts.backupNow) {
-      // A moment for any write already in progress to finish, then the copy (once more if one was mid-upload).
+      // Any TestFPT send in progress finishes first (one can take up to 30 seconds to confirm), so the
+      // copy records it and the new server doesn't send it again. Then a moment for any other write
+      // already in progress, then the copy (once more if one was mid-upload).
+      const chainStopped = opts.rewards?.chainIdle() ?? Promise.resolve();
+      await Promise.race([chainStopped, new Promise((r) => setTimeout(r, 45_000))]);
       await new Promise((r) => setTimeout(r, 1500));
       backedUp = (await opts.backupNow().catch(() => false)) || (await opts.backupNow().catch(() => false));
     }
@@ -290,10 +304,25 @@ export function createApiServer(opts: ServerOptions): Server {
     return rewardsOn().connectX(user().id, String(b.username ?? ''));
   });
 
-  route('POST', '/api/tasks/:id/start', ({ user, params }) => rewardsOn().startTask(user().id, params.id));
+  // The team makes the tasks, so its own accounts can't earn from them (they could otherwise add
+  // tasks and complete them for unlimited points). Any email or wallet on the account counts here.
+  const notTeam = (u: UserRow) => {
+    const email = u.email?.toLowerCase() ?? null;
+    const wallets = service.walletsFor(u.id).map((w) => w.address);
+    const owner = (email && (opts.adminEmails ?? []).includes(email)) || wallets.some((w) => (opts.adminWallets ?? []).includes(w));
+    if (owner || service.teamRoleFor(email, wallets)) {
+      throw new AppError(403, 'team_no_tasks', 'Team accounts can’t complete tasks: they’re for players. Use a test top-up in the admin panel instead.');
+    }
+  };
+
+  route('POST', '/api/tasks/:id/start', ({ user, params }) => {
+    notTeam(user());
+    return rewardsOn().startTask(user().id, params.id);
+  });
 
   route('POST', '/api/tasks/:id/verify', ({ req, user, params }) => {
     rateLimit(`task:${visitor(req)}`, 20, 60_000);
+    notTeam(user());
     return rewardsOn().verifyTask(user().id, params.id);
   });
 

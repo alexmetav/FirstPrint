@@ -242,6 +242,15 @@ test('team: the owner gives admin or tasks-only access by email or wallet from S
     assert.equal((await (await call('/api/me', h)).json()).adminLevel, 'tasks');
     // A password sign-in never proves the email.
     assert.equal((await call('/api/admin/ping', { token: service.createSession(helper.id, 'password').token })).status, 403);
+    // Team accounts can't complete tasks (they make them), however they signed in; players can.
+    for (const who of [h, { token: service.createSession(helper.id, 'password').token }, o]) {
+      const r = await call('/api/tasks/t1/verify', who, {});
+      assert.equal(r.status, 403);
+      assert.equal((await r.json()).error, 'team_no_tasks');
+      assert.equal((await call('/api/tasks/t1/start', who, {})).status, 403);
+    }
+    const player = { token: service.createSession((await service.createUser({ username: 'player1' })).id, 'email').token };
+    assert.equal((await call('/api/tasks/t1/verify', player, {})).status, 404, 'players get through (tasks are off in this test server)');
 
     // Admin by wallet: everything but the team.
     assert.equal((await (await call('/api/admin/ping', o)).json()).level, 'admin');

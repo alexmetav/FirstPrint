@@ -311,6 +311,17 @@ test('Firstprint wallets: email players get a wallet, their rewards and daily st
   await rewards.runChain();
   assert.equal(rewards.chainCounts().mintsWaiting, 0);
   assert.equal(rewards.chainCounts().wallets, 1);
+
+  // Maintenance mode (before a deploy): nothing is sent, so the copy for the new server misses no send.
+  clock.advance(24 * 60 * 60_000);
+  service.claimDaily(user.id);
+  service.setMaintenance(true, '');
+  await rewards.runChain();
+  await rewards.chainIdle();
+  assert.equal(rewards.chainCounts().mintsWaiting, 1, 'held while maintenance is on');
+  service.setMaintenance(false, '');
+  await rewards.runChain();
+  assert.equal(rewards.chainCounts().mintsWaiting, 0, 'sent once it is off');
 });
 
 test('predictions on chain: stakes move TestFPT from Firstprint wallets to the escrow, payouts and refunds move it back', async () => {

@@ -323,7 +323,7 @@ export class RewardsService {
    * the rewards of players with a Firstprint wallet by itself; and settles claims still confirming.
    */
   runChain(): Promise<void> {
-    if (!this.ready() || !this.token) return Promise.resolve();
+    if (!this.ready() || !this.token || this.paused()) return Promise.resolve();
     if (this.chainRun) {
       this.chainNext ??= this.chainRun.then(() => {
         this.chainNext = null;
@@ -335,6 +335,21 @@ export class RewardsService {
     return this.chainRun;
   }
 
+  /** Maintenance mode is on: no new chain sends, so the copy taken for a deploy can't miss one. */
+  private paused() {
+    return this.service.maintenance().on;
+  }
+
+  /**
+   * Resolves once the chain work in progress (if any) has stopped. Maintenance mode waits for this
+   * before copying the database, so every send already made is recorded in the copy.
+   */
+  chainIdle(): Promise<void> {
+    const running = this.chainNext ?? this.chainRun;
+    if (!running) return Promise.resolve();
+    return running.catch(() => {}).then(() => this.chainIdle());
+  }
+
   private async chainWork() {
     const token = this.token!;
     let funded = true;
@@ -344,7 +359,11 @@ export class RewardsService {
     } catch {
       return; // network down: try again next time
     }
-    for (const m of as<MintRow[]>(this.db.prepare("SELECT * FROM chain_mints WHERE status = 'submitted' ORDER BY created_at LIMIT 50").all())) await this.checkMint(m);
+    // Each loop stops as soon as maintenance mode is switched on, so a deploy waits seconds, not minutes.
+    for (const m of as<MintRow[]>(this.db.prepare("SELECT * FROM chain_mints WHERE status = 'submitted' ORDER BY created_at LIMIT 50").all())) {
+      if (this.paused()) return;
+      await this.checkMint(m);
+    }
     if (funded) {
       // Rewards first (the welcome bonus funds a new wallet), then stakes, payouts and mints in order.
       const owed = as<{ user_id: string }[]>(
@@ -356,15 +375,20 @@ export class RewardsService {
           .all(),
       );
       for (const { user_id } of owed) {
+        if (this.paused()) return;
         try {
           await this.serverClaim(user_id);
         } catch (err) {
           this.service.log(`auto-claim for ${user_id} failed: ${(err as Error).message}`);
         }
       }
-      for (const m of as<MintRow[]>(this.db.prepare("SELECT * FROM chain_mints WHERE status = 'queued' ORDER BY created_at LIMIT 20").all())) await this.sendMint(m);
+      for (const m of as<MintRow[]>(this.db.prepare("SELECT * FROM chain_mints WHERE status = 'queued' ORDER BY created_at LIMIT 20").all())) {
+        if (this.paused()) return;
+        await this.sendMint(m);
+      }
     }
     for (const c of as<{ id: string; user_id: string }[]>(this.db.prepare("SELECT id, user_id FROM claims WHERE status = 'submitted' LIMIT 50").all())) {
+      if (this.paused()) return;
       await this.refreshClaim(c.user_id, c.id).catch(() => {});
     }
   }
