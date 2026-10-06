@@ -912,6 +912,12 @@ export function createApiServer(opts: ServerOptions): Server {
     }
   };
 
+  route('GET', '/api/admin/top-up', ({ requireAdmin, optionalUser }) => {
+    requireAdmin();
+    const me = optionalUser();
+    return me ? rewardsOn().adminTopUpStatus(me.id) : null;
+  });
+
   // Extra test points for the admin's own signed-in account (testing tasks and markets).
   route('POST', '/api/admin/top-up', async ({ req, body, requireAdmin, optionalUser }) => {
     requireAdmin();

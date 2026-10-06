@@ -376,7 +376,7 @@ test('admin test points: straight to the balance without TestFPT, a claimable re
   const off = await setup(false);
   const { user } = await player(off.service, 'admin-off@example.com');
   const before = off.service.getUser(user.id).points;
-  assert.deepEqual(off.rewards.adminTopUp(user.id, 500), { points: 500, onChain: false, addedToday: 500 });
+  assert.deepEqual(off.rewards.adminTopUp(user.id, 500), { points: 500, onChain: false, pending: 0, autoClaim: false, addedToday: 500, dayLimit: 50_000 });
   assert.equal(off.service.getUser(user.id).points, before + 500);
   assert.throws(() => off.rewards.adminTopUp(user.id, 0), (e: unknown) => e instanceof AppError && e.code === 'bad_amount');
   assert.throws(() => off.rewards.adminTopUp(user.id, 10_001), (e: unknown) => e instanceof AppError && e.code === 'bad_amount');
@@ -395,4 +395,7 @@ test('admin test points: straight to the balance without TestFPT, a claimable re
   assert.equal(on.rewards.adminTopUp(u2.id, 1000).onChain, true);
   assert.equal(on.service.getUser(u2.id).points, pts, 'waits as a reward to claim, like a task');
   assert.ok(on.rewards.summary(u2.id).rewards.some((r) => r.kind === 'admin_topup' && r.amount === 1000));
+  const status = on.rewards.adminTopUpStatus(u2.id);
+  assert.equal(status.pending, 1000, 'shown as processing until claimed');
+  assert.equal(status.autoClaim, false, 'no Firstprint wallet: claimed on Earn');
 });

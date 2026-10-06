@@ -3719,6 +3719,7 @@ async function renderAdmin() {
 
   let body;
   if (tab === 'overview') body = adminOverview({ markets, waiting, drafts, token, tasks, log, pending, tooLong });
+  if (tab === 'overview') setTimeout(loadTopUp, 0);
   else if (tab === 'markets') body = adminMarketsTab(markets, waiting, pending, counting, tooLong);
   else if (tab === 'analytics') {
     try {
@@ -4045,32 +4046,108 @@ function adminOverview({ markets, waiting, drafts, token, tasks, log, pending, t
 /** Extra points for the admin's own account while testing tasks and markets. Only admins see it. */
 function topUpPanel() {
   const me = S.me;
-  const chips = [100, 500, 1000, 5000].map((n) => `<button class="btn btn-sm" type="button" data-action="admin-top-up" data-amount="${n}">+${fmtNum(n)}</button>`).join('');
+  if (!me) {
+    return `<section class="panel adm-topup"><div class="topup-head"><span class="section-ico">${ico('coins')}</span><div><h2>Test points</h2><p class="muted">Sign in to the app on this browser first: the points go to that account.</p></div><a class="btn btn-sm" href="#/">${ico('user')}Sign in</a></div></section>`;
+  }
+  const busy = A.topupBusy;
+  const chips = [100, 500, 1000, 5000]
+    .map((n) => `<button class="btn btn-sm topup-chip${busy === n ? ' is-busy' : ''}" type="button" data-action="admin-top-up" data-amount="${n}"${busy ? ' disabled' : ''}>${busy === n ? '<i class="spin" aria-hidden="true"></i>Adding' : `+${fmtNum(n)}`}</button>`)
+    .join('');
   return `<section class="panel adm-topup">
-    <div class="section-head"><span class="section-ico">${ico('coins')}</span><div><h2>Test points</h2><p class="muted">${
-      me ? `For testing tasks and markets on your own account, <b>${esc(me.username)}</b>: ${fmtPts(me.points)} now. Only admins can do this.` : 'Sign in to the app on this browser first: the points go to that account.'
-    }</p></div></div>
-    ${
-      me
-        ? `<div class="topup-row">${chips}<form class="topup-custom"><input name="amount" type="number" inputmode="numeric" min="1" max="10000" step="1" placeholder="Amount" aria-label="Points to add" /><button class="btn btn-sm" type="submit">Add</button></form></div>
-           <p class="fine">Up to 10,000 at a time and 50,000 a day. ${S.cfg?.rewards?.onChain ? 'They arrive as TestFPT, like a task reward, so on-chain predictions still work.' : 'They go straight to your balance.'} They show as “Admin test points” in your history.</p>`
-        : `<a class="btn btn-sm" href="#/">${ico('user')}Sign in</a>`
-    }
+    <div class="topup-head">
+      <span class="section-ico">${ico('coins')}</span>
+      <div><h2>Test points</h2><p class="muted">For testing on your own account, <b>${esc(me.username)}</b>. Only admins see this.</p></div>
+      <div class="topup-bal"><small>Balance</small><b data-topup-bal>${fmtNum(me.points)}</b></div>
+    </div>
+    <div class="topup-row">${chips}<form class="topup-custom"><input name="amount" type="number" inputmode="numeric" min="1" max="10000" step="1" placeholder="Amount" aria-label="Points to add"${busy ? ' disabled' : ''} /><button class="btn btn-sm" type="submit"${busy ? ' disabled' : ''}>Add</button></form></div>
+    <div class="topup-status" id="topup-status" aria-live="polite">${topUpStatus(A.topup)}</div>
   </section>`;
 }
 
-/** Adds test points to the admin's own account, then refreshes the balance everywhere. */
+/** Where the last top-ups are: processing on chain, waiting on Earn, or all in the balance. */
+function topUpStatus(t) {
+  if (!t) return '';
+  const day = `<span class="muted">${fmtNum(t.addedToday)} of ${fmtNum(t.dayLimit)} added today</span>`;
+  if (t.pending > 0 && t.autoClaim)
+    return `<span class="topup-pending"><i class="spin" aria-hidden="true"></i><b>${fmtPts(t.pending)}</b> processing as TestFPT. They show in your balance in about a minute.</span>${day}`;
+  if (t.pending > 0)
+    return `<span class="topup-pending">${ico('gift')}<b>${fmtPts(t.pending)}</b> waiting for you. <a href="#/earn">Claim them on Earn</a> to see them in your balance.</span>${day}`;
+  return `<span class="topup-done">${ico('checkCircle')}All test points are in your balance.</span>${day}`;
+}
+
+/** Redraws just the status line and balance, so a waiting top-up never redraws the whole page. */
+function paintTopUp() {
+  const box = $('#topup-status');
+  if (box) box.innerHTML = topUpStatus(A.topup);
+  const bal = $('[data-topup-bal]');
+  if (bal && S.me) bal.textContent = fmtNum(S.me.points);
+}
+
+/** While test points are processing on chain, checks every few seconds and says when they land. */
+function watchTopUp() {
+  clearTimeout(watchTopUp.timer);
+  if (!(A.topup?.pending > 0 && A.topup.autoClaim)) return;
+  watchTopUp.timer = setTimeout(async () => {
+    if (S.route.name !== 'admin' || !$('#topup-status')) return;
+    try {
+      const before = A.topup.pending;
+      A.topup = (await A.api.topUpStatus()) ?? A.topup;
+      if (A.topup.pending < before) {
+        await refreshMe();
+        rewardToast({ amount: before - A.topup.pending, sub: 'Test points arrived in your balance' });
+      }
+      paintTopUp();
+    } catch {
+      /* try again next round */
+    }
+    watchTopUp();
+  }, 5000);
+}
+
+/** Loads the top-up status after the Overview is drawn. */
+async function loadTopUp() {
+  if (!S.me || !$('#topup-status')) return;
+  try {
+    A.topup = await A.api.topUpStatus();
+    paintTopUp();
+    watchTopUp();
+  } catch {
+    /* the panel still works without it */
+  }
+}
+
+/** Adds test points to the admin's own account, with clear feedback while it processes. */
 async function adminTopUp(amount) {
   const n = Math.floor(Number(amount));
   if (!(n >= 1 && n <= 10_000)) return toast('Choose between 1 and 10,000 points.', true);
+  if (A.topupBusy) return toast('Still adding your last top-up. One moment.');
+  const stillPending = A.topup?.pending > 0 && A.topup.autoClaim;
+  A.topupBusy = n;
+  repaintTopUpPanel();
   try {
     const out = await A.api.topUp(n);
+    A.topup = out;
     await refreshMe();
-    rewardToast({ amount: out.points, sub: out.onChain ? 'Test points, as TestFPT' : 'Test points added' });
+    if (!out.onChain) rewardToast({ amount: out.points, sub: 'Test points added to your balance' });
+    else if (out.autoClaim)
+      toast(`${stillPending ? 'Your earlier top-up is still processing; this one is added too. ' : ''}+${fmtNum(out.points)} test points on the way. They show in your balance in about a minute.`);
+    else toast(`+${fmtNum(out.points)} test points are waiting on the Earn page. Claim them to see them in your balance.`);
   } catch (err) {
-    return toast(err.message, true);
+    toast(err.message, true);
+  } finally {
+    A.topupBusy = 0;
+    repaintTopUpPanel();
+    watchTopUp();
   }
-  return renderAdmin();
+}
+
+/** Swaps in a fresh panel without reloading the rest of the admin page. */
+function repaintTopUpPanel() {
+  const old = $('.adm-topup');
+  if (!old) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = topUpPanel();
+  old.replaceWith(tmp.firstElementChild);
 }
 
 /** One panel with tabs, so lists that are often empty don’t each take a whole frame. */
