@@ -1321,15 +1321,12 @@ function cardView(m) {
     : m.phase === 'awaiting_result' ? `<span class="st st-wait">${m.settleAt > now() ? 'Countdown' : 'Awaiting'}</span>`
     : soon ? `<span class="st st-hot">${ico('flame')}${upcoming ? 'Listing soon' : 'Closing soon'}</span>`
     : upcoming ? '<span class="st st-soon"><i aria-hidden="true"></i>Upcoming</span>'
-    : '<span class="st st-live"><i aria-hidden="true"></i>Open</span>';
+    : ''; // Open markets show a live dot on the token logo instead.
 
   // New predictors since this card was last drawn float up as "+N": real activity, never made up.
   const seen = S.cardSeen.get(m.id);
   const joined = seen === undefined ? 0 : m.predictors - seen;
   S.cardSeen.set(m.id, m.predictors);
-  const activity = m.predictors
-    ? `<span class="card-act">${ico('users')}${tick(`pred:${m.id}`, m.predictors)}<span>${m.predictors === 1 ? 'participant' : 'participants'}</span></span>`
-    : '';
   // When the result comes, so it's clear from the card how long a pick is held.
   const result = open && m.settleAt
     ? `<span class="card-result" title="Result ${esc(fmtDate(m.settleAt))}">${ico('calendar')}Result<b>${esc(new Date(m.settleAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</b></span>`
@@ -1349,12 +1346,12 @@ function cardView(m) {
     <article class="card mcard${soon ? ' soon' : ''}${joined > 0 ? ' has-new' : ''}">
       ${joined > 0 ? `<span class="card-bump" aria-hidden="true">+${joined}</span>` : ''}
       <div class="card-top">
-        ${tokenAvatar(m, 'avatar-md')}
+        ${open && !upcoming ? `<span class="av-live" title="Open for predictions">${tokenAvatar(m, 'avatar-md')}<i class="live-dot" aria-hidden="true"></i><span class="sr-only">Open</span></span>` : tokenAvatar(m, 'avatar-md')}
         <a class="card-link" href="${href}"><span class="sym">${esc(m.symbol)}${yn ? ' <span class="tag tag-yn">Yes / No</span>' : ''}</span><span class="card-name">${esc(m.name || '')}${m.kind === 'live_test' ? ' <span class="tag tag-test">Live test</span>' : ''}</span></a>
         ${g}
       </div>
       ${body}
-      <div class="card-foot"><span class="foot-l">${state}${timer}</span>${activity || result ? `<span class="foot-r">${activity}${result}</span>` : ''}</div>
+      <div class="card-foot"><span class="foot-l">${state}${timer}</span>${result ? `<span class="foot-r">${result}</span>` : ''}</div>
     </article>`;
 }
 
