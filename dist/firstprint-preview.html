@@ -13012,6 +13012,33 @@ html.in-maint body {
   .ld-mark i:nth-child(n) { animation-duration: 3s; }
 }
 
+/* After a page of cards: "Show more" for players, an invitation to sign up for guests. */
+.see-more {
+  display: flex;
+  justify-content: center;
+  margin: 18px 0 6px;
+}
+.see-more .btn .muted {
+  margin-left: 4px;
+  font-weight: 400;
+}
+.see-more-guest {
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 18px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 16px;
+  text-align: center;
+}
+.see-more-guest p {
+  margin: 0;
+  color: var(--muted);
+}
+.see-more-guest p b {
+  color: var(--text);
+}
+
 </style>
   </head>
   <body>
@@ -15077,6 +15104,9 @@ async function loadHome() {
   const [open, live, settled] = await Promise.all(['open', 'live', 'settled'].map((f) => S.api.markets(f)));
   syncClock(open.serverTime);
   S.lists = { open: open.markets, live: live.markets, settled: settled.markets };
+  // Guests get a short list from the server; the totals say how many there really are.
+  S.totals = { open: open.total ?? open.markets.length, live: live.total ?? live.markets.length, settled: settled.total ?? settled.markets.length };
+  S.limited = Boolean(open.limited || live.limited || settled.limited);
   const featured = featuredMarket();
   const [odds, leaders] = await Promise.all([
     featured && S.api.odds ? S.api.odds(featured.id).catch(() => null) : null,
@@ -15907,6 +15937,27 @@ function tabList(tab) {
 }
 
 /** The cards under the tabs: the chosen tab, or every market matching the search. */
+/**
+ * A grid of cards, in pages: signed-in players see 24 at a time with "Show more"; guests see the
+ * short list the server sends, then an invitation to sign up to see every market.
+ */
+const PAGE = 24;
+function pagedGrid(list, total = list.length) {
+  if (!S.me && S.limited) {
+    const more = Math.max(0, total - list.length);
+    return `<div class="grid">${list.map(cardView).join('')}</div>${
+      more
+        ? `<div class="see-more"><button class="btn" data-action="connect" title="Sign in to see all ${fmtNum(total)} markets">Show more markets</button></div>`
+        : ''
+    }`;
+  }
+  const shown = Math.max(PAGE, S.showN ?? PAGE);
+  const left = list.length - shown;
+  return `<div class="grid">${list.slice(0, shown).map(cardView).join('')}</div>${
+    left > 0 ? `<div class="see-more"><button class="btn" data-action="show-more">Show more markets</button></div>` : ''
+  }`;
+}
+
 function marketResults() {
   const q = (S.query ?? '').trim().toLowerCase();
   if (q) {
@@ -15922,21 +15973,24 @@ function marketResults() {
     const seen = new Set(list.map((m) => m.id));
     const rest = [...S.lists.open].filter((m) => !seen.has(m.id)).sort(ALL_SORTS[0][2]);
     if (!list.length && !rest.length) return `<div class="empty">${emptyText()}</div>`;
+    const restTotal = S.limited ? Math.max(rest.length, (S.totals?.open ?? 0) - list.length) : rest.length;
     return `${list.length ? `<div class="grid">${list.map(cardView).join('')}</div>` : ''}${
       rest.length
-        ? `<div class="home-head home-subhead"><h2>${list.length ? 'All markets' : 'Open markets'}</h2><span class="side-n">${rest.length}</span></div><div class="grid">${rest.map(cardView).join('')}</div>`
+        ? `<div class="home-head home-subhead"><h2>${list.length ? 'All markets' : 'Open markets'}</h2><span class="side-n">${fmtNum(restTotal)}</span></div>${pagedGrid(rest, restTotal)}`
         : ''
     }`;
   }
   const intro = S.filter === 'live' && list.length ? `<p class="results-note countdown-note">${ico('lock')}<span>Predictions are closed on these markets and their start prices are locked. Each one counts down to its result; the price then decides who wins.</span></p>` : '';
-  return list.length ? `${intro}<div class="grid">${list.map(cardView).join('')}</div>` : `<div class="empty">${emptyText()}</div>`;
+  const tabTotal = S.limited ? ({ live: S.totals?.live, settled: S.totals?.settled, all: S.totals?.open, new: S.totals?.open }[S.filter] ?? list.length) : list.length;
+  return list.length ? `${intro}${pagedGrid(list, tabTotal)}` : `<div class="empty">${emptyText()}</div>`;
 }
 
 function homeView() {
   const tnCard = startChecklist();
   if (![...HOME_TABS, LISTINGS_TAB].some(([id]) => id === S.filter)) S.filter = 'trending';
   const featured = featuredMarket();
-  const count = (id) => (id === 'live' ? S.lists.live.length : id === 'settled' ? S.lists.settled.length : id === 'trending' ? trendingList().length : id === 'listings' ? S.lists.open.filter(isListing).length : S.lists.open.length);
+  const tot = (k) => S.totals?.[k] ?? S.lists[k].length;
+  const count = (id) => (id === 'live' ? tot('live') : id === 'settled' ? tot('settled') : id === 'trending' ? trendingList().length : id === 'listings' ? S.lists.open.filter(isListing).length : tot('open'));
   const base = tabList(S.filter);
   const onlyFeatured = !S.query && featured && ['trending', 'new', 'all'].includes(S.filter) && base.length === 1 && base[0].id === featured.id && S.lists.open.length <= 1;
   const filterBtn = ([id, icon, label]) =>
@@ -15970,8 +16024,9 @@ function homeHero(showLive = true) {
   const best = Math.max(0, ...open.flatMap((m) => bucketsOf(m).map((b) => poolMultiple(m, b) ?? 0)));
   const word = (b) => `<b style="color:${oVar(b, false)}">${oName(b, false)}</b>`;
   const stats = [
-    open.length ? ['Open markets', fmtNum(open.length)] : null,
-    inPlay ? ['In play', `${fmtNum(inPlay)} pts`] : null,
+    open.length ? ['Open markets', fmtNum(S.totals?.open ?? open.length)] : null,
+    // A guest's short list would undercount the points in play, so it's left out for them.
+    inPlay && !S.limited ? ['In play', `${fmtNum(inPlay)} pts`] : null,
     best >= 1 ? ['Top payout now', `${best.toFixed(1)}×`] : null,
   ].filter(Boolean);
   const next = [...open].filter((m) => m.phase !== 'awaiting_result').sort((a, b) => a.closeAt - b.closeAt)[0];
@@ -20642,6 +20697,7 @@ document.addEventListener('click', async (e) => {
   }
   if (filter) {
     S.filter = filter;
+    S.showN = PAGE;
     S.query = '';
     if ($('#market-search')) $('#market-search').value = '';
     $('#view').innerHTML = homeView();
@@ -20695,6 +20751,12 @@ document.addEventListener('click', async (e) => {
       return walletFlow(t.closest('[data-purpose]').dataset.purpose, null);
     case 'close-modal':
       return closeModal();
+    case 'show-more': {
+      S.showN = Math.max(PAGE, S.showN ?? PAGE) + PAGE;
+      const out = $('#market-results');
+      if (out) out.innerHTML = marketResults();
+      return;
+    }
     case 'logout':
       await S.api.logout();
       A.api = null;
