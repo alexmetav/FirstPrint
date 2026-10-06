@@ -213,7 +213,7 @@ test('banners: each market gets its own PNG for new market, last hour and result
   assert.ok(isPng(renderBanner('result', { ...m, result: { winningBucket: 'up', returnPct: 0.2, basePrice: 1, finalPrice: 1.2, pool: 100 } })));
   const svg = bannerSvg('live', m, null);
   assert.match(svg, />AGENCY</);
-  assert.match(svg, /New Market Listed/);
+  assert.match(svg, /NEW MARKET LISTED/);
   assert.match(svg, />LIVE</);
   assert.match(bannerSvg('live', { ...m, basePrice: null }), />UPCOMING</, 'no start price yet: upcoming');
   assert.doesNotMatch(svg, /Moon or Crash/, 'no slogans');
@@ -221,7 +221,8 @@ test('banners: each market gets its own PNG for new market, last hour and result
   assert.match(res, />\+23\.4%</, 'the move is the headline');
   assert.match(res, /\$1 → \$1\.234/, 'the price is the only fact');
   assert.doesNotMatch(res, /PARTICIPANTS|PREDICTORS|PAID OUT/, 'no participants or payout on the result banner');
-  assert.doesNotMatch(res, /New Market Listed/);
+  assert.doesNotMatch(res, /NEW MARKET LISTED/);
+  assert.doesNotMatch(svg, /Start price/i, 'the new-market banner shows no start price');
   assert.match(svg, /Agency &lt;x&gt;/, 'names are escaped');
   assert.match(svg, /5 Oct, 12:00 UTC/);
   assert.ok(isPng(renderBanner('live', { ...m, logoUrl: 'x' } as typeof m, 'data:image/webp;base64,AAAA')), 'a non-PNG logo falls back to the letter');
