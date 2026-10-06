@@ -350,7 +350,11 @@ async function onRoute() {
 function setHtml(el, html) {
   const key = html.replace(/(data-until="\d+">)[^<]*/g, '$1');
   if (el.__html === key && el.firstElementChild && el.firstElementChild === el.__first) return;
+  // A redraw (new odds, "1m ago") must not snap shut a section the reader opened.
+  const tag = (d, i) => `${d.className}#${i}`;
+  const opened = new Set([...el.querySelectorAll('details')].map((d, i) => (d.open ? tag(d, i) : '')).filter(Boolean));
   el.innerHTML = html;
+  if (opened.size) el.querySelectorAll('details').forEach((d, i) => opened.has(tag(d, i)) && (d.open = true));
   el.__html = key;
   el.__first = el.firstElementChild;
 }
@@ -1690,7 +1694,10 @@ function oddsPlot(m, o) {
   const yn = isYesNo(m);
   const lines = yn ? ['up'] : bucketsOf(m).filter((b) => o.series.some((p) => (p.shares[b] ?? 0) > 0));
   const t0 = o.series[0].t;
-  const t1 = Math.max(o.series[o.series.length - 1].t, Math.min(now(), m.closeAt));
+  // "Now" moves on in coarse steps (a 200th of the span, at least a minute), so the chart doesn't
+  // change on every refresh: each change redraws the page.
+  const step = Math.max(60_000, Math.floor((Math.max(m.closeAt, now()) - t0) / 200 / 60_000) * 60_000);
+  const t1 = Math.max(o.series[o.series.length - 1].t, Math.min(Math.ceil(now() / step) * step, m.closeAt));
   const x = (t) => ((t - t0) / (t1 - t0 || 1)) * 100;
   const y = (v) => 100 - v * 100;
   const last = o.series[o.series.length - 1].shares;
