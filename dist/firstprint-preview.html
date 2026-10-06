@@ -12684,6 +12684,43 @@ svg.viz.viz-narrow {
   }
 }
 
+/* Prediction toast, v2: token on the left; the pick as a chip above the stake on the right. */
+.pt-sym {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.pt-side {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  margin-left: 18px;
+}
+.pt-side .pt-pick {
+  gap: 4px;
+  padding: 2px 9px 2px 7px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 18px;
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 30%, transparent);
+}
+.pt-side .pt-pick .i {
+  width: 13px;
+  height: 13px;
+}
+.pt-side .pt-amt {
+  margin-left: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+/* The prediction toast stays readable above the celebration confetti. */
+#toast.pick {
+  z-index: 75;
+}
+
 </style>
   </head>
   <body>
@@ -14650,10 +14687,13 @@ function pickToast(m, bucket, stake, payout) {
     <span class="pt" aria-hidden="true">
       ${tokenAvatar(m, 'pt-logo')}
       <span class="pt-body">
-        <span class="pt-pick" style="--c:${oVar(bucket, yn)}">${icon(bucket, yn)}${oName(bucket, yn)}<small>${esc(m.symbol)}</small></span>
+        <b class="pt-sym">${esc(m.symbol)}</b>
         ${payout ? `<span class="pt-win">Win ~${fmtPts(payout)}</span>` : ''}
       </span>
-      <b class="pt-amt">−${fmtPts(stake)}</b>
+      <span class="pt-side">
+        <span class="pt-pick" style="--c:${oVar(bucket, yn)}">${icon(bucket, yn)}${oName(bucket, yn)}</span>
+        <b class="pt-amt">−${fmtPts(stake)}</b>
+      </span>
     </span>`;
   el.className = 'pick';
   void el.offsetWidth; // restart the entrance

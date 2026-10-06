@@ -162,10 +162,13 @@ function pickToast(m, bucket, stake, payout) {
     <span class="pt" aria-hidden="true">
       ${tokenAvatar(m, 'pt-logo')}
       <span class="pt-body">
-        <span class="pt-pick" style="--c:${oVar(bucket, yn)}">${icon(bucket, yn)}${oName(bucket, yn)}<small>${esc(m.symbol)}</small></span>
+        <b class="pt-sym">${esc(m.symbol)}</b>
         ${payout ? `<span class="pt-win">Win ~${fmtPts(payout)}</span>` : ''}
       </span>
-      <b class="pt-amt">−${fmtPts(stake)}</b>
+      <span class="pt-side">
+        <span class="pt-pick" style="--c:${oVar(bucket, yn)}">${icon(bucket, yn)}${oName(bucket, yn)}</span>
+        <b class="pt-amt">−${fmtPts(stake)}</b>
+      </span>
     </span>`;
   el.className = 'pick';
   void el.offsetWidth; // restart the entrance
