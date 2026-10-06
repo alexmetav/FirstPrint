@@ -3637,7 +3637,8 @@ async function renderAdmin() {
   A.markets = markets;
   void backfillLogoPngs(markets);
   A.detected = detected;
-  // Tokens that already have a live market show "Market made" in Find tokens.
+  // Tokens with a market that isn't finished show "Market made" in Find tokens: open, a draft, or closed
+  // and counting down to its result. Only a settled or cancelled market frees the token for a new one.
   A.made = Object.fromEntries(markets.filter((m) => m.status === 'open' || m.status === 'locked').map((m) => [m.symbol.toUpperCase(), m.id]));
   const venues = A.info.venues;
   const editing = markets.find((m) => m.id === A.edit && m.mode === 'manual' && m.status === 'open') ?? null;
@@ -5283,6 +5284,9 @@ async function submitAdminMarket(form, intent) {
     };
   }
   if (!Number.isFinite(body.closeAt) || !Number.isFinite(body.resultAt)) return toast('Choose the close time and the expected result time.', true);
+  // A second market on a token that still has one running is almost always a mistake.
+  const sym = String(body.symbol ?? '').toUpperCase();
+  if (!form.dataset.id && sym && A.made?.[sym] && !confirm(`${sym} already has a market that hasn’t had its result yet. Make another one anyway?`)) return;
   if (autoOpen && intent === 'publish') {
     if (!confirm(`Schedule this market? It stays a draft, then opens by itself about 3 minutes after trading starts (${new Date(body.autoOpenAt).toLocaleString()}). Its start price is the price when predictions close.`)) return;
     intent = 'save';
