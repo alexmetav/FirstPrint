@@ -12213,3 +12213,19 @@ svg.viz.viz-narrow {
   background: color-mix(in srgb, var(--text) 10%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 18%, transparent);
 }
+/* Old markets: "Close now" is the destructive one, in red; the "all" buttons sit together. */
+.btn.btn-close-now {
+  color: #fff;
+  background: var(--crash);
+  border-color: var(--crash);
+}
+.btn.btn-close-now:hover {
+  background: color-mix(in srgb, var(--crash) 85%, #000);
+  border-color: color-mix(in srgb, var(--crash) 85%, #000);
+}
+.adm-fix-all {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
