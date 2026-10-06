@@ -490,7 +490,9 @@ export class FirstprintService {
       return { user: this.getUser(found.id), created: false };
     }
     if (found) return { user: found, created: false };
-    const base = (name ?? email.split('@')[0]).replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 16) || 'player';
+    // Without a name (an email code sign-up), a random one: never part of the email address, which
+    // would show on public pages (leaderboard, profiles) until the player picks a name.
+    const base = (name ?? '').replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 16) || `player_${randomBytes(3).toString('hex')}`;
     let username = base.length >= 3 ? base : `${base}_user`.slice(0, 16);
     for (let i = 2; this.db.prepare('SELECT 1 FROM users WHERE username = ? COLLATE NOCASE').get(username); i++) {
       username = `${base.slice(0, 16)}${i}`;
@@ -1638,28 +1640,33 @@ export class FirstprintService {
     const closed: string[] = [];
     const markets = as<MarketRow[]>(this.db.prepare("SELECT * FROM markets WHERE status = 'open' AND published = 1").all());
     for (const m of markets) {
-      const cfg = parseConfig(m);
-      const w = windows(cfg, m.listing_at);
-      if (now < w.closeAt) continue;
+      // One broken market must never hold up the others: it is skipped (and reported) each time.
+      try {
+        const cfg = parseConfig(m);
+        const w = windows(cfg, m.listing_at);
+        if (now < w.closeAt) continue;
 
-      tx(this.db, () => {
-        const candles = this.candlesByVenue(m.id);
-        const baselineVolume = Object.values(candles).reduce(
-          (s, list) => s + twap(list, w.baseline.start, w.baseline.end).volume,
-          0,
-        );
-        const hardCap = hardCapFor(cfg, baselineVolume);
-        const accepted = applyCaps(this.predictions(m.id).map(toEnginePrediction), hardCap, cfg, m.opened_at, w.closeAt);
-        const update = this.db.prepare('UPDATE predictions SET accepted = ?, refund = ?, weight = ? WHERE id = ?');
-        for (const p of accepted) {
-          update.run(p.accepted, p.refund, p.weight, p.id);
-          if (p.refund > 0) this.credit(p.userId, p.refund, 'refund', p.id);
-        }
-        this.db.prepare("UPDATE markets SET status = 'locked', hard_cap = ? WHERE id = ?").run(hardCap, m.id);
-      });
-      closed.push(m.id);
-      this.marketChanged(m.id);
-      this.log(`market closed ${m.id}`);
+        tx(this.db, () => {
+          const candles = this.candlesByVenue(m.id);
+          const baselineVolume = Object.values(candles).reduce(
+            (s, list) => s + twap(list, w.baseline.start, w.baseline.end).volume,
+            0,
+          );
+          const hardCap = hardCapFor(cfg, baselineVolume);
+          const accepted = applyCaps(this.predictions(m.id).map(toEnginePrediction), hardCap, cfg, m.opened_at, w.closeAt);
+          const update = this.db.prepare('UPDATE predictions SET accepted = ?, refund = ?, weight = ? WHERE id = ?');
+          for (const p of accepted) {
+            update.run(p.accepted, p.refund, p.weight, p.id);
+            if (p.refund > 0) this.credit(p.userId, p.refund, 'refund', p.id);
+          }
+          this.db.prepare("UPDATE markets SET status = 'locked', hard_cap = ? WHERE id = ?").run(hardCap, m.id);
+        });
+        closed.push(m.id);
+        this.marketChanged(m.id);
+        this.log(`market closed ${m.id}`);
+      } catch (err) {
+        this.reportStuck(m.id, 'close', err);
+      }
     }
     if (closed.length) {
       queueMicrotask(() => {
@@ -1680,33 +1687,49 @@ export class FirstprintService {
     const markets = as<MarketRow[]>(this.db.prepare("SELECT * FROM markets WHERE mode = 'auto' AND status = 'locked'").all());
 
     for (const m of markets) {
-      const cfg = parseConfig(m);
-      const w = windows(cfg, m.listing_at);
-      if (now < w.settleAt) continue;
+      try {
+        const cfg = parseConfig(m);
+        const w = windows(cfg, m.listing_at);
+        if (now < w.settleAt) continue;
 
-      const rows = this.predictions(m.id);
-      const accepted = rows.map((r) => ({
-        ...toEnginePrediction(r),
-        accepted: r.accepted ?? 0,
-        refund: r.refund ?? 0,
-        weight: r.weight ?? 1,
-      }));
-      const candles = this.candlesByVenue(m.id);
-      const input = {
-        cfg,
-        announcedListingAt: m.announced_listing_at,
-        listingAt: m.listing_at,
-        openedAt: m.opened_at,
-        retracted: m.retracted === 1,
-        haltedMs: m.halted_ms,
-        candles,
-        accepted,
-      };
-      const result = settleMarket(input);
-      const dataHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
-      notes.push(...this.commitSettlement(m, rows, result, dataHash, now));
+        const rows = this.predictions(m.id);
+        const accepted = rows.map((r) => ({
+          ...toEnginePrediction(r),
+          accepted: r.accepted ?? 0,
+          refund: r.refund ?? 0,
+          weight: r.weight ?? 1,
+        }));
+        const candles = this.candlesByVenue(m.id);
+        const input = {
+          cfg,
+          announcedListingAt: m.announced_listing_at,
+          listingAt: m.listing_at,
+          openedAt: m.opened_at,
+          retracted: m.retracted === 1,
+          haltedMs: m.halted_ms,
+          candles,
+          accepted,
+        };
+        const result = settleMarket(input);
+        const dataHash = createHash('sha256').update(JSON.stringify(input)).digest('hex');
+        notes.push(...this.commitSettlement(m, rows, result, dataHash, now));
+      } catch (err) {
+        this.reportStuck(m.id, 'settle', err);
+      }
     }
     return notes;
+  }
+
+  private stuckLogged = new Map<string, number>();
+
+  /** A market failed to close or settle: logged (at most every 10 minutes per market) and skipped. */
+  private reportStuck(marketId: string, action: string, err: unknown) {
+    const key = `${action}:${marketId}`;
+    const at = Date.now();
+    if (at - (this.stuckLogged.get(key) ?? 0) < 10 * MINUTE) return;
+    if (this.stuckLogged.size > 500) this.stuckLogged.clear();
+    this.stuckLogged.set(key, at);
+    this.log(`market ${marketId} couldn't ${action}, skipped for now: ${(err as Error)?.message ?? err}`);
   }
 
 
@@ -2054,6 +2077,7 @@ export class FirstprintService {
   /** A market changed: rebuild the lists on the next request, and tell open pages (live updates). */
   private marketChanged(marketId: string) {
     this.listCache.clear();
+    this.boardCache.clear();
     this.onEvent('market', { marketId });
   }
   private listCache = new Map<string, { at: number; markets: ReturnType<FirstprintService['view']>[]; total: number }>();
@@ -2370,10 +2394,33 @@ export class FirstprintService {
     return { outcomes: cfg.outcomes ?? 'ladder', buckets, openedAt: m.opened_at, series };
   }
 
+  /** How long (ms) a leaderboard is reused; any market change rebuilds it sooner. 0 (tests) builds it every time. */
+  leaderboardCacheMs = 0;
+  private boardCache = new Map<string, { at: number; rows: { user_id: string; name: string | null; profit: number; wins: number; total: number }[] }>();
+
   leaderboard(userId?: string, period: LeaderboardPeriod = 'week') {
     const now = this.clock.now();
     const { start, end } = periodRange(period, now);
-    const rows = as<{ user_id: string; name: string | null; profit: number; wins: number; total: number }[]>(
+    const key = `${period}:${start}`;
+    const at = Date.now();
+    const hit = this.boardCache.get(key);
+    const rows = hit && at - hit.at < this.leaderboardCacheMs ? hit.rows : this.leaderboardRows(start);
+    if (this.leaderboardCacheMs > 0 && rows !== hit?.rows) {
+      if (this.boardCache.size > 20) this.boardCache.clear();
+      this.boardCache.set(key, { at, rows });
+    }
+    const ranked = rows.map((r, i) => ({ rank: i + 1, userId: r.user_id, name: r.name, profit: r.profit, wins: r.wins, total: r.total }));
+    return {
+      period,
+      seasonStart: start,
+      seasonEnd: end,
+      entries: ranked.slice(0, 50).map(({ userId: _u, ...rest }) => ({ ...rest, isMe: _u === userId })),
+      me: userId ? (ranked.find((r) => r.userId === userId) ?? null) : null,
+    };
+  }
+
+  private leaderboardRows(start: number) {
+    return as<{ user_id: string; name: string | null; profit: number; wins: number; total: number }[]>(
       this.db
         .prepare(
           `SELECT p.user_id, u.username AS name,
@@ -2391,14 +2438,6 @@ export class FirstprintService {
         )
         .all(start),
     );
-    const ranked = rows.map((r, i) => ({ rank: i + 1, userId: r.user_id, name: r.name, profit: r.profit, wins: r.wins, total: r.total }));
-    return {
-      period,
-      seasonStart: start,
-      seasonEnd: end,
-      entries: ranked.slice(0, 50).map(({ userId: _u, ...rest }) => ({ ...rest, isMe: _u === userId })),
-      me: userId ? (ranked.find((r) => r.userId === userId) ?? null) : null,
-    };
   }
 
   // --- Helpers ------------------------------------------------------------------

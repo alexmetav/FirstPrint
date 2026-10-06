@@ -30,7 +30,7 @@ if (cfg.dbPath !== ':memory:') mkdirSync(dirname(cfg.dbPath), { recursive: true 
 // Hosts without a persistent disk (Render's free plan) lose the database file on every restart,
 // so it is restored from, and regularly copied to, a private Supabase Storage bucket.
 const backupCfg = cfg.dbPath === ':memory:' ? null : backupConfigFromEnv();
-if (backupCfg) await restoreIfMissing(cfg.dbPath, backupCfg, log);
+if (backupCfg) await restoreIfMissing(cfg.dbPath, backupCfg, log, fetch, process.env.ALLOW_EMPTY_DB === '1');
 else if (process.env.NODE_ENV === 'production') {
   log('WARNING: no SUPABASE_URL / SUPABASE_SERVICE_KEY set. Unless DB_PATH is on a persistent disk, accounts and points are lost whenever this server restarts.');
 }
@@ -53,6 +53,8 @@ const devEmailCodes = !production && !(cfg.resendApiKey && cfg.mailFrom);
 const service = new FirstprintService(db, systemClock, venues, log);
 // Market lists are built once every few seconds for everyone (each player's own picks are added fresh).
 service.listCacheMs = 3_000;
+// The leaderboard changes only when a market settles (which rebuilds it at once); otherwise once a minute.
+service.leaderboardCacheMs = 60_000;
 // Tasks, referrals and TestFPT claims. TestFPT lives on a Solana test network (testnet unless
 // TOKEN_CLUSTER=devnet); an admin creates it from the admin panel, or sets TESTFPT_MINT and
 // TESTFPT_AUTHORITY_KEY. Until then rewards go straight to players' balances.
@@ -178,6 +180,7 @@ const server = createApiServer({
   channel,
   trustProxyHops: cfg.trustProxyHops,
   behindCloudflare: process.env.BEHIND_CLOUDFLARE === '1',
+  newAccountsPerDay: Number(process.env.NEW_ACCOUNTS_PER_DAY) > 0 ? Number(process.env.NEW_ACCOUNTS_PER_DAY) : undefined,
   backupStatus: () => backup?.status() ?? { enabled: false, lastOkAt: null, lastError: null },
   backupNow: () => (backup ? backup.runOnce(true) : Promise.resolve(false)),
   googleClientId: cfg.googleClientId,

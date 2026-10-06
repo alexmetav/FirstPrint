@@ -55,6 +55,8 @@ Set `MANUAL_ONLY=0` to bring back the exchange scanner, live prices and live tes
 
 ### Deploying a big change safely (maintenance mode)
 
+If the database copy can't be found at start-up but the backup bucket holds other copies (for example a mistyped `BACKUP_OBJECT`), the server refuses to start rather than quietly beginning with an empty database. Set `ALLOW_EMPTY_DB=1` only if you really want a fresh start.
+
 On Render's free plan a deploy starts the new server from the latest database copy before the old one stops, so anything written in between can be lost, and for a moment both servers would send TestFPT (the same queued send could go out twice). (Before mainnet, turn auto-deploy off in Render and start every deploy by hand with **Manual Deploy**, after the steps below.) For a big change, turn on **Admin → Settings → Maintenance mode** first (with an optional note for players). Players then see an update screen and can read but not write (sign-ups, predictions, claims); the closing/settling, auto-open, TestFPT and channel-reminder workers pause; and a fresh database copy is taken once any TestFPT send in progress has finished (wait for "Backup taken"; it can take up to a minute). Deploy, test the new version (admins, by key or admin account, still use the site normally, with a reminder banner), then turn it off: open pages return by themselves within 20 seconds, and anything that came due in between catches up. Maintenance is stored in the database, so the new server starts in it too.
 
 ## Quick start

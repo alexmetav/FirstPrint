@@ -35,6 +35,8 @@ export const X_CONNECT_POINTS = 100;
 export const REFERRAL_POINTS = 200;
 /** Most referral rewards one player can earn. */
 export const REFERRAL_LIMIT = 25;
+/** How many different markets a referred player predicts on before their referrer is rewarded. */
+export const REFERRAL_MARKETS = 3;
 /** Test points an admin can add to their own account: per top-up, and per day. */
 export const ADMIN_TOPUP_MAX = 10_000;
 const ADMIN_TOPUP_DAY = 50_000;
@@ -635,12 +637,17 @@ export class RewardsService {
     }
   }
 
-  /** A referred player's first prediction earns their referrer a reward, up to the limit. */
+  /**
+   * A referred player who has predicted on REFERRAL_MARKETS different markets earns their referrer a
+   * reward, up to the limit. (Not on the first prediction: a script could make throwaway accounts that
+   * each place one prediction just to pay the referrer.)
+   */
   private onPredicted(userId: string) {
     const u = as<{ referred_by: string | null }>(this.db.prepare('SELECT referred_by FROM users WHERE id = ?').get(userId));
     if (!u?.referred_by) return;
-    const count = as<{ n: number }>(this.db.prepare('SELECT COUNT(*) AS n FROM predictions WHERE user_id = ?').get(userId)).n;
-    if (count !== 1) return;
+    const markets = as<{ n: number }>(this.db.prepare('SELECT COUNT(DISTINCT market_id) AS n FROM predictions WHERE user_id = ?').get(userId)).n;
+    if (markets < REFERRAL_MARKETS) return;
+    if (this.db.prepare("SELECT 1 FROM rewards WHERE user_id = ? AND kind = 'referral' AND ref = ?").get(u.referred_by, userId)) return;
     const given = as<{ n: number }>(this.db.prepare("SELECT COUNT(*) AS n FROM rewards WHERE user_id = ? AND kind = 'referral'").get(u.referred_by)).n;
     if (given >= REFERRAL_LIMIT) return;
     this.award(u.referred_by, 'referral', userId, REFERRAL_POINTS);
@@ -676,7 +683,7 @@ export class RewardsService {
       welcomeClaimed: welcome ? welcome.claim_id !== null && this.isClaimed(welcome.claim_id) : true,
       xUsername: user.x_username,
       xConnectPoints: X_CONNECT_POINTS,
-      referral: { code, link, invited, rewarded: referrals.n, points: referrals.pts ?? 0, limit: REFERRAL_LIMIT, perReferral: REFERRAL_POINTS },
+      referral: { code, link, invited, rewarded: referrals.n, points: referrals.pts ?? 0, limit: REFERRAL_LIMIT, perReferral: REFERRAL_POINTS, markets: REFERRAL_MARKETS },
       rewards: rewards.map((r) => ({ kind: r.kind, ref: r.ref, amount: r.amount, at: r.created_at, claimed: r.claim_id !== null && this.isClaimed(r.claim_id) })),
       claims: claims.map((c) => this.publicClaim(c)),
       tasks: this.tasksFor(userId, code),

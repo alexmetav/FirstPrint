@@ -382,3 +382,18 @@ test('market lists are built once for everyone for a few seconds; each player st
   assert.deepEqual(service.listMarketsPage('open', bob.id, 200).markets[0].mine, [], 'nobody sees another player’s picks');
   assert.deepEqual(service.listMarketsPage('open', undefined, 200).markets[0].mine, []);
 });
+
+test('a broken market is skipped (and reported) instead of stopping the others from closing', () => {
+  const { clock, service } = setup();
+  const logs: string[] = [];
+  service.log = (msg: string) => void logs.push(msg);
+  const broken = service.createManualMarket({ symbol: 'BRK', exchanges: ['exa'], basePrice: 1, closeAt: T0 + 10 * MIN, resultAt: T0 + 9 * 24 * 60 * MIN, publish: true } as never);
+  const fine = service.createManualMarket({ symbol: 'OK', exchanges: ['exa'], basePrice: 1, closeAt: T0 + 20 * MIN, resultAt: T0 + 9 * 24 * 60 * MIN, publish: true } as never);
+  service.db.prepare('UPDATE markets SET config = ? WHERE id = ?').run('{not json', broken);
+  clock.advance(30 * MIN);
+  assert.deepEqual(service.closeDueMarkets(), [fine]);
+  assert.equal(service.getMarket(fine).status, 'locked');
+  assert.ok(logs.some((l) => l.includes(broken) && l.includes("couldn't close")));
+  service.closeDueMarkets();
+  assert.equal(logs.filter((l) => l.includes("couldn't close")).length, 1, 'reported once, not every tick');
+});

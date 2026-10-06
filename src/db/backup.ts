@@ -26,6 +26,8 @@ export interface BackupConfig {
 type Fetch = typeof fetch;
 const SQLITE_MAGIC = 'SQLite format 3\u0000';
 const KEEP_DAILY = 30;
+// Generous, so a database that has grown still downloads and uploads in one go.
+const TIMEOUT_MS = 120_000;
 const isGzip = (b: Buffer) => b.length > 2 && b[0] === 0x1f && b[1] === 0x8b;
 
 export function backupConfigFromEnv(env: NodeJS.ProcessEnv = process.env): BackupConfig | null {
@@ -52,13 +54,24 @@ export async function restoreIfMissing(
   cfg: BackupConfig,
   log: (msg: string) => void,
   fetchFn: Fetch = fetch,
+  allowEmpty = false,
 ): Promise<'skipped' | 'none' | 'restored'> {
   if (existsSync(path)) return 'skipped';
-  const res = await fetchFn(objectUrl(cfg, cfg.object, true), { headers: headers(cfg), signal: AbortSignal.timeout(30_000) });
+  const res = await fetchFn(objectUrl(cfg, cfg.object, true), { headers: headers(cfg), signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (res.status === 404 || res.status === 400) {
     // Storage answers 400 with "Object not found" for a missing object; check the body before trusting it.
     const text = await res.text();
     if (res.status === 404 || /not.?found/i.test(text)) {
+      // A missing backup is normal only on the very first start, when the bucket is still empty. If it
+      // holds other copies, the name is probably wrong (a typo in BACKUP_OBJECT, a renamed file):
+      // starting empty would quietly begin a second, empty site. ALLOW_EMPTY_DB=1 starts anyway.
+      const others = await listObjects(cfg, fetchFn);
+      if (others.length && !allowEmpty) {
+        throw new Error(
+          `backup restore refused: "${cfg.object}" was not found, but the bucket has other copies (${others.slice(0, 5).join(', ')}). ` +
+            'Check BACKUP_OBJECT, or set ALLOW_EMPTY_DB=1 to start with a new, empty database.',
+        );
+      }
       log('backup: none found, starting with a new database');
       return 'none';
     }
@@ -80,6 +93,26 @@ export async function restoreIfMissing(
   writeFileSync(path, bytes);
   log(`backup: restored ${bytes.length} bytes`);
   return 'restored';
+}
+
+/** The object names in the bucket ([] when the bucket doesn't exist yet). Throws when it can't tell. */
+async function listObjects(cfg: BackupConfig, fetchFn: Fetch): Promise<string[]> {
+  const res = await fetchFn(`${cfg.url}/storage/v1/object/list/${encodeURIComponent(cfg.bucket)}`, {
+    method: 'POST',
+    headers: { ...headers(cfg), 'content-type': 'application/json' },
+    body: JSON.stringify({ prefix: '', search: '', limit: 100 }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (res.status === 404 || res.status === 400) {
+    const text = await res.text();
+    if (/not.?found/i.test(text) || res.status === 404) return [];
+    throw new Error(`backup restore refused: couldn't check the bucket (HTTP ${res.status} ${text.slice(0, 200)})`);
+  }
+  if (!res.ok) throw new Error(`backup restore refused: couldn't check the bucket (HTTP ${res.status}). Not starting, to avoid beginning with an empty database.`);
+  return ((await res.json()) as { name?: string; id?: string | null }[])
+    .filter((o) => o.id !== null) // folders have no id
+    .map((o) => String(o.name ?? ''))
+    .filter(Boolean);
 }
 
 export class DbBackup {
@@ -170,7 +203,7 @@ export class DbBackup {
       method: 'POST',
       headers: { ...headers(this.cfg), 'content-type': 'application/json' },
       body: JSON.stringify({ prefix: '', search: `${stem}-`, limit: 1000 }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!res.ok) throw new Error(`list failed: HTTP ${res.status}`);
     const cutoff = new Date(Date.parse(`${today}T00:00:00Z`) - KEEP_DAILY * 86_400_000).toISOString().slice(0, 10);
@@ -185,7 +218,7 @@ export class DbBackup {
       method: 'DELETE',
       headers: { ...headers(this.cfg), 'content-type': 'application/json' },
       body: JSON.stringify({ prefixes: old }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!del.ok) throw new Error(`delete failed: HTTP ${del.status}`);
     this.log(`backup: removed ${old.length} daily cop${old.length === 1 ? 'y' : 'ies'} older than ${KEEP_DAILY} days`);
@@ -196,7 +229,7 @@ export class DbBackup {
       method: 'POST',
       headers: { ...headers(this.cfg), 'content-type': 'application/octet-stream', 'x-upsert': String(overwrite) },
       body: new Uint8Array(bytes),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     // Storage answers 409 (or 400 "Duplicate") when a create-only upload already exists.
     if (!overwrite && (res.status === 409 || res.status === 400)) {
