@@ -18389,9 +18389,9 @@ function adminOverview({ markets, waiting, drafts, token, tasks, log, pending, t
       ${stat('brand', 'Predictions', fmtNum(predictors), 'In open markets', 'analytics')}
       ${stat('down', 'Active tasks', fmtNum(activeTasks.length), `${fmtNum(tasks.reduce((n, t) => n + t.completions, 0))} done`, 'tasks')}
     </div>
+    ${canAdmin('admin') ? topUpPanel() : ''}
     <div id="admin-checks"></div>
     ${adminInbox(panes)}
-    ${canAdmin('admin') ? topUpPanel() : ''}
     ${adminLogView(log.slice(0, 5), true)}`;
 }
 
