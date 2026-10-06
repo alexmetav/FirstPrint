@@ -1335,7 +1335,7 @@ function howItWorks() {
       <ol class="steps">
         <li><span class="step-ico" style="--c:var(--up)">${ico('target')}</span><b>Pick an outcome</b><p>Where will the price land? Five choices, from ${outcome('crash')} to ${outcome('moon')}, or a simple Yes or No.</p></li>
         <li><span class="step-ico" style="--c:var(--warn)">${ico('coins')}</span><b>Stake free points</b><p>Everyone gets ${startPoints()}, plus up to 200 more every day with a daily streak. No real money.</p></li>
-        <li><span class="step-ico" style="--c:var(--brand)">${ico('trophy')}</span><b>Win the pool</b><p>If you’re right, you split the pool with the other winners. Earlier picks earn more.</p></li>
+        <li><span class="step-ico" style="--c:var(--text)">${ico('trophy')}</span><b>Win the pool</b><p>If you’re right, you split the pool with the other winners. Earlier picks earn more.</p></li>
       </ol>
       <details class="full-rules"><summary>Full rules</summary>`;
   if (S.cfg?.manualOnly) {
@@ -3933,11 +3933,11 @@ function adminInbox(panes) {
 function adminMarketsTab(markets, waiting, pending, counting = [], tooLong = []) {
   // Made before the three-day limit: still open for days against a fixed start price. One click closes each.
   const fix = tooLong.length
-    ? `<section class="panel adm-results adm-toolong"><div class="section-head"><span class="section-ico">${ico('alert')}</span><h2>Open longer than 3 days <span class="count-badge">${tooLong.length}</span></h2>${tooLong.length > 1 ? '<button class="btn btn-sm" type="button" data-action="admin-close-all">Close all now</button>' : ''}</div>
+    ? `<section class="panel adm-results adm-toolong"><div class="section-head"><span class="section-ico">${ico('alert')}</span><h2>Open longer than 3 days <span class="count-badge">${tooLong.length}</span></h2>${tooLong.length > 1 ? `<span class="adm-fix-all"><button class="btn btn-sm btn-close-now" type="button" data-action="admin-close-all">${ico('lock')}Close all now</button><button class="btn btn-sm" type="button" data-action="admin-close-all" data-hours="24">${ico('clock')}Close all in 24h</button></span>` : ''}</div>
         <p class="muted adm-fix-note">Made before the 3-day limit. While predictions stay open, late players can see the token’s trend. Close them now (or give players 24 hours’ notice); predictions stay and the result date doesn’t change.</p>
         <ul class="todo">${tooLong
           .map((m) => `<li style="--c:var(--down)"><span class="todo-ico">${tokenAvatar(m, 'avatar-sm')}</span><div><b>${esc(m.symbol)}</b><span class="muted">Closes in <span data-until="${m.closeAt}">${fmtDur(m.closeAt - now())}</span> · result ${fmtDate(m.settleAt)} · ${fmtPts(m.pool)} from ${m.predictors} participant${m.predictors === 1 ? '' : 's'}</span></div>
-            <span class="todo-actions"><button class="btn btn-sm btn-solid" type="button" data-action="admin-close-now" data-id="${esc(m.id)}">${ico('lock')}Close now</button><button class="btn btn-sm" type="button" data-action="admin-close-24" data-id="${esc(m.id)}">Close in 24h</button></span></li>`)
+            <span class="todo-actions"><button class="btn btn-sm btn-close-now" type="button" data-action="admin-close-now" data-id="${esc(m.id)}">${ico('lock')}Close now</button><button class="btn btn-sm" type="button" data-action="admin-close-24" data-id="${esc(m.id)}">Close in 24h</button></span></li>`)
           .join('')}</ul></section>`
     : '';
   const results = waiting.length
@@ -5156,7 +5156,7 @@ async function onAdminAction(action, el) {
     case 'admin-close-24':
     case 'admin-close-all': {
       // Older markets open for days: close predictions now or in 24 hours. The result date stays.
-      const hours = el.dataset.action === 'admin-close-24' ? 24 : 0;
+      const hours = el.dataset.action === 'admin-close-24' ? 24 : Number(el.dataset.hours ?? 0);
       const ids = el.dataset.action === 'admin-close-all' ? (A.markets ?? []).filter(openTooLong).map((m) => m.id) : [el.dataset.id];
       const what = ids.length === 1 ? `${(A.markets ?? []).find((m) => m.id === ids[0])?.symbol ?? 'this market'}` : `${ids.length} markets`;
       if (!ids.length || !confirm(`${hours ? `Close predictions on ${what} in 24 hours?` : `Close predictions on ${what} now?`}\n\nPlayers keep their predictions and the result date stays the same.`)) return;

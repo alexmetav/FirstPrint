@@ -20,8 +20,9 @@
   --focus: #4da3ff;
   --brand: #0a84ff;
   --brand-2: #ffd60a;
-  --cta: #0a84ff;
-  --on-cta: #ffffff;
+  /* Main buttons: white on dark, black on light. Blue is kept for links only. */
+  --cta: #f5f5f7;
+  --on-cta: #09090b;
   --gold: #ffd60a;
   --on-gold: #1d1d1f;
   --on-solid: #09090b;
@@ -65,7 +66,7 @@
     --focus: #0071e3;
     --brand: #0071e3;
     --brand-2: #a2670a;
-    --cta: #0071e3;
+    --cta: #1d1d1f;
     --on-cta: #ffffff;
     --gold: #ffcc00;
     --on-gold: #1d1d1f;
@@ -97,7 +98,7 @@
     --focus: #0071e3;
     --brand: #0071e3;
     --brand-2: #a2670a;
-    --cta: #0071e3;
+    --cta: #1d1d1f;
     --on-cta: #ffffff;
     --gold: #ffcc00;
     --on-gold: #1d1d1f;
@@ -6564,8 +6565,8 @@ h3,
   transition-duration: 80ms;
 }
 .btn-gold:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--cta) 88%, #ffffff);
-  border-color: color-mix(in srgb, var(--cta) 88%, #ffffff);
+  background: color-mix(in srgb, var(--cta) 88%, var(--bg));
+  border-color: color-mix(in srgb, var(--cta) 88%, var(--bg));
   filter: none;
 }
 .btn:disabled {
@@ -12196,4 +12197,35 @@ svg.viz.viz-narrow {
   height: 13px;
   margin-right: 3px;
   vertical-align: -2px;
+}
+/* Icon tiles without their own colour use the text colour, not blue. */
+.card-ico,
+.tile-ico,
+.todo-ico,
+.start-ico,
+.claim-ico {
+  color: var(--c, var(--text));
+  background: color-mix(in srgb, var(--c, var(--text)) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c, var(--text)) 18%, transparent);
+}
+.task-ico {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 18%, transparent);
+}
+/* Old markets: "Close now" is the destructive one, in red; the "all" buttons sit together. */
+.btn.btn-close-now {
+  color: #fff;
+  background: var(--crash);
+  border-color: var(--crash);
+}
+.btn.btn-close-now:hover {
+  background: color-mix(in srgb, var(--crash) 85%, #000);
+  border-color: color-mix(in srgb, var(--crash) 85%, #000);
+}
+.adm-fix-all {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
 }

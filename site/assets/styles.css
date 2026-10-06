@@ -12,7 +12,7 @@
   --text: #f5f5f7;
   --muted: #a1a1aa;
   --focus: #4da3ff;
-  --cta: #0a84ff;
+  --cta: #f5f5f7;
 
   --crash: #ff453a;
   --down: #ff9f0a;
@@ -1932,15 +1932,15 @@ body[data-view='landing'] .app {
   }
 }
 
-/* The main call to action: one clear blue. */
+/* The main call to action: solid white, like the selected tabs. */
 .btn-gold {
   background: var(--cta);
   border-color: var(--cta);
-  color: #ffffff;
+  color: #09090b;
 }
 .btn-gold:hover {
-  background: #2b95ff;
-  box-shadow: 0 10px 30px -14px rgba(10, 132, 255, 0.7);
+  background: #ffffff;
+  box-shadow: 0 10px 30px -14px rgba(255, 255, 255, 0.45);
 }
 
 /* ===== Type system: Geist for words, Geist Mono for labels and numbers =====
