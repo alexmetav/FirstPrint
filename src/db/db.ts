@@ -85,6 +85,11 @@ function migrate(db: DB) {
   ensure('users', 'x_username', 'x_username TEXT');
   ensure('users', 'referral_code', 'referral_code TEXT');
   ensure('users', 'referred_by', 'referred_by TEXT');
+  // X account checks (GetXAPI): 1 once the player proved the username is theirs (a code in their bio
+  // or a post); the username and code waiting for that proof.
+  ensure('users', 'x_verified', 'x_verified INTEGER NOT NULL DEFAULT 0');
+  ensure('users', 'x_pending', 'x_pending TEXT');
+  ensure('users', 'x_code', 'x_code TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_x ON users(x_username COLLATE NOCASE) WHERE x_username IS NOT NULL');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_ref ON users(referral_code) WHERE referral_code IS NOT NULL');
   // Analytics groups predictions and daily claims by time.

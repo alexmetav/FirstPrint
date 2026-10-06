@@ -15,6 +15,7 @@ import { AppError, type FirstprintService } from './firstprint.ts';
 import { tx } from '../db/db.ts';
 import { isSolanaAddress } from '../solana/base58.ts';
 import { WalletVault } from '../solana/vault.ts';
+import { XCheckUnavailable, type XChecker } from './xcheck.ts';
 import {
   buildClaimTransaction,
   buildServerMint,
@@ -133,6 +134,11 @@ export class RewardsService {
   confirmWaitMs = 20_000;
   /** Claims to a player's own wallet are signed and paid by the server (no wallet pop-up, no fee) while it has test SOL. */
   serverPaysClaims = true;
+  /**
+   * Checks on X (GetXAPI, when GETXAPI_KEY is set): players prove the X username is theirs, and
+   * follow, repost and post tasks are checked before they pay. Without it both stay honour-based.
+   */
+  xcheck: XChecker | null = null;
 
   constructor(service: FirstprintService, token: TokenOptions | null, siteUrl = 'https://www.firstprint.fun') {
     this.service = service;
@@ -684,7 +690,9 @@ export class RewardsService {
   /** Everything the Earn page shows. */
   summary(userId: string) {
     this.expireStaleClaims(userId);
-    const user = as<{ x_username: string | null; referred_by: string | null }>(this.db.prepare('SELECT x_username, referred_by FROM users WHERE id = ?').get(userId));
+    const user = as<{ x_username: string | null; referred_by: string | null; x_verified: number; x_pending: string | null; x_code: string | null }>(
+      this.db.prepare('SELECT x_username, referred_by, x_verified, x_pending, x_code FROM users WHERE id = ?').get(userId),
+    );
     const code = this.referralCode(userId);
     const rewards = as<{ kind: string; ref: string | null; amount: number; created_at: number; claim_id: string | null }[]>(
       this.db.prepare('SELECT kind, ref, amount, created_at, claim_id FROM rewards WHERE user_id = ? ORDER BY id DESC LIMIT 50').all(userId),
@@ -711,6 +719,10 @@ export class RewardsService {
       welcomeClaimed: welcome ? welcome.claim_id !== null && this.isClaimed(welcome.claim_id) : true,
       xUsername: user.x_username,
       xConnectPoints: X_CONNECT_POINTS,
+      // With X checks on: whether the linked username is proven, and the code waiting to be found.
+      xChecks: Boolean(this.xcheck),
+      xVerified: user.x_verified === 1,
+      xPending: this.xcheck && user.x_pending && user.x_code ? { username: user.x_pending, code: user.x_code } : null,
       referral: { code, link, invited, rewarded: referrals.n, points: referrals.pts ?? 0, limit: REFERRAL_LIMIT, perReferral: REFERRAL_POINTS, markets: REFERRAL_MARKETS },
       rewards: rewards.map((r) => ({ kind: r.kind, ref: r.ref, amount: r.amount, at: r.created_at, claimed: r.claim_id !== null && this.isClaimed(r.claim_id) })),
       claims: claims.map((c) => this.publicClaim(c)),
@@ -739,17 +751,97 @@ export class RewardsService {
 
   // --- X username ----------------------------------------------------------------------
 
-  /** Links an X username (one account per username) and rewards the first link. */
-  connectX(userId: string, input: string) {
+  private cleanX(input: string) {
     const name = String(input ?? '').trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?(x|twitter)\.com\//i, '').replace(/[/?#].*$/, '');
     if (!/^[A-Za-z0-9_]{1,15}$/.test(name)) throw new AppError(400, 'bad_x_username', 'Enter your X username, like @firstprint (letters, numbers and _ only).');
+    return name;
+  }
+
+  /**
+   * Links an X username (one account per username) and rewards the first link. With X checks on,
+   * this only starts the link: the player gets a code to put in their X bio (or post), and
+   * verifyX makes it theirs once the code is found.
+   */
+  connectX(userId: string, input: string) {
+    const name = this.cleanX(input);
     return tx(this.db, () => {
+      if (this.xcheck) {
+        const taken = as<{ id: string } | undefined>(this.db.prepare('SELECT id FROM users WHERE x_username = ? COLLATE NOCASE AND x_verified = 1 AND id != ?').get(name, userId));
+        if (taken) throw new AppError(409, 'x_taken', 'That X account is already verified on another Firstprint account.');
+        const cur = as<{ x_pending: string | null; x_code: string | null; x_username: string | null; x_verified: number }>(
+          this.db.prepare('SELECT x_pending, x_code, x_username, x_verified FROM users WHERE id = ?').get(userId),
+        );
+        // Already verified as this username: nothing to prove again.
+        if (cur.x_verified === 1 && cur.x_username?.toLowerCase() === name.toLowerCase()) {
+          this.db.prepare('UPDATE users SET x_pending = NULL, x_code = NULL WHERE id = ?').run(userId);
+          return { xUsername: cur.x_username, pending: false, code: null, rewarded: 0 };
+        }
+        // The same username keeps its code, so a code already in the bio still counts.
+        const code = cur.x_code && cur.x_pending?.toLowerCase() === name.toLowerCase() ? cur.x_code : `FP-${Array.from({ length: 6 }, () => REF_ALPHABET[randomInt(REF_ALPHABET.length)]).join('')}`;
+        this.db.prepare('UPDATE users SET x_pending = ?, x_code = ? WHERE id = ?').run(name, code, userId);
+        return { xUsername: name, pending: true, code, rewarded: 0 };
+      }
       const taken = as<{ id: string } | undefined>(this.db.prepare('SELECT id FROM users WHERE x_username = ? COLLATE NOCASE AND id != ?').get(name, userId));
       if (taken) throw new AppError(409, 'x_taken', 'That X account is already linked to another Firstprint account.');
       this.db.prepare('UPDATE users SET x_username = ? WHERE id = ?').run(name, userId);
       const rewarded = this.award(userId, 'x_connect', 'x', X_CONNECT_POINTS);
-      return { xUsername: name, rewarded: rewarded ? X_CONNECT_POINTS : 0 };
+      return { xUsername: name, pending: false, code: null, rewarded: rewarded ? X_CONNECT_POINTS : 0 };
     });
+  }
+
+  /**
+   * Proves the pending X username belongs to the player: their code must be in the account's bio or
+   * one of its latest posts. The username then becomes theirs (taken from any account that only
+   * claimed it without proof) and the first link is rewarded.
+   */
+  async verifyX(userId: string) {
+    const x = this.requireX();
+    const cur = as<{ x_pending: string | null; x_code: string | null }>(this.db.prepare('SELECT x_pending, x_code FROM users WHERE id = ?').get(userId));
+    if (!cur.x_pending || !cur.x_code) throw new AppError(409, 'x_not_started', 'Enter your X username first to get your code.');
+    const name = cur.x_pending;
+    const code = cur.x_code.toLowerCase();
+    let canonical = name;
+    const found = await this.xCall(async () => {
+      const profile = await x.profile(name);
+      if (!profile) throw new AppError(404, 'x_not_found', `There’s no X account @${name}. Check the spelling.`);
+      // Stored as X writes it (capitals and all), whatever the player typed.
+      if (profile.userName.toLowerCase() === name.toLowerCase()) canonical = profile.userName;
+      if (profile.description.toLowerCase().includes(code)) return true;
+      return (await x.recentPosts(name)).some((p) => p.text.toLowerCase().includes(code));
+    });
+    if (!found) throw new AppError(409, 'x_code_missing', `We couldn’t find ${cur.x_code} on @${name} yet. Add it to your X bio (or post it), wait a few seconds, then press Verify.`);
+    return tx(this.db, () => {
+      const taken = as<{ id: string } | undefined>(this.db.prepare('SELECT id FROM users WHERE x_username = ? COLLATE NOCASE AND x_verified = 1 AND id != ?').get(name, userId));
+      if (taken) throw new AppError(409, 'x_taken', 'That X account is already verified on another Firstprint account.');
+      // Someone who only typed this username in (no proof) loses it to its real owner.
+      this.db.prepare('UPDATE users SET x_username = NULL WHERE x_username = ? COLLATE NOCASE AND id != ?').run(name, userId);
+      this.db.prepare('UPDATE users SET x_username = ?, x_verified = 1, x_pending = NULL, x_code = NULL WHERE id = ?').run(canonical, userId);
+      const rewarded = this.award(userId, 'x_connect', 'x', X_CONNECT_POINTS);
+      return { xUsername: canonical, verified: true, rewarded: rewarded ? X_CONNECT_POINTS : 0 };
+    });
+  }
+
+  private requireX(): XChecker {
+    if (!this.xcheck) throw new AppError(404, 'x_checks_off', 'X checks aren’t set up on this server.');
+    return this.xcheck;
+  }
+
+  /** Runs a check on X; when X can't be reached it says so (never "not done"). */
+  private async xCall<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof XCheckUnavailable) {
+        this.service.log(`X check failed: ${err.message}`);
+        throw new AppError(503, 'x_check_unavailable', 'We couldn’t check X just now. Try again in a minute.');
+      }
+      throw err;
+    }
+  }
+
+  /** Credit left for X checks (GetXAPI, in dollars), for the admin page; null when off or unknown. */
+  async xCredit() {
+    return this.xcheck ? this.xcheck.credit() : null;
   }
 
   // --- Tasks ------------------------------------------------------------------------
@@ -808,23 +900,52 @@ export class RewardsService {
     return { ok: true };
   }
 
-  /** Confirms a task. Needs a linked X username for X tasks, and the task open for a few seconds. */
-  verifyTask(userId: string, taskId: string) {
-    return tx(this.db, () => {
-      const t = this.activeTask(taskId);
-      const user = as<{ x_username: string | null }>(this.db.prepare('SELECT x_username FROM users WHERE id = ?').get(userId));
-      if (t.kind !== 'link' && !user.x_username) throw new AppError(409, 'x_required', 'Link your X username first, so we know which account did it.');
-      const mine = as<{ started_at: number; completed_at: number | null } | undefined>(
-        this.db.prepare('SELECT started_at, completed_at FROM task_completions WHERE task_id = ? AND user_id = ?').get(taskId, userId),
+  /**
+   * Confirms a task. Needs a linked X username for X tasks, and the task open for a few seconds.
+   * With X checks on, follow, repost and post tasks are checked on X first (likes can't be, so they
+   * stay honour-based), using the player's verified X username.
+   */
+  async verifyTask(userId: string, taskId: string) {
+    const { t, xUsername } = this.taskReady(userId, taskId);
+    if (this.xcheck && (t.kind === 'follow' || t.kind === 'repost' || t.kind === 'share')) {
+      const x = this.xcheck;
+      const verified = as<{ x_verified: number }>(this.db.prepare('SELECT x_verified FROM users WHERE id = ?').get(userId)).x_verified === 1;
+      if (!verified) throw new AppError(409, 'x_unverified', 'Verify your X account first (Earn → Your X account), so we can check the task.');
+      const name = xUsername!;
+      const code = this.referralCode(userId).toLowerCase();
+      const done = await this.xCall(async () =>
+        t.kind === 'follow'
+          ? x.follows(name, t.target)
+          : t.kind === 'repost'
+            ? x.reposted(name, t.target)
+            : (await x.recentPosts(name)).some((p) => p.text.toLowerCase().includes(`ref=${code}`)),
       );
-      if (mine?.completed_at) throw new AppError(409, 'task_done', 'You already completed this task.');
-      if (!mine) throw new AppError(409, 'task_not_started', 'Open the task first, then come back to confirm it.');
-      if (this.now() - mine.started_at < TASK_MIN_WAIT_MS) throw new AppError(429, 'task_too_fast', 'Give it a few seconds: finish the task on X, then confirm.');
-      if (t.max_completions !== null && this.completions(taskId) >= t.max_completions) throw new AppError(409, 'task_full', 'This task has reached its limit.');
-      this.db.prepare('UPDATE task_completions SET completed_at = ?, x_username = ? WHERE task_id = ? AND user_id = ?').run(this.now(), user.x_username, taskId, userId);
-      this.award(userId, 'task', taskId, t.points);
-      return { points: t.points, onChain: this.ready() };
+      if (!done) {
+        const what = t.kind === 'follow' ? `following @${t.target}` : t.kind === 'repost' ? 'your repost' : 'your post with your invite link';
+        throw new AppError(409, 'task_not_done', `We can’t see ${what} on @${name} yet. Finish it on X, wait a few seconds, then confirm again.`);
+      }
+    }
+    return tx(this.db, () => {
+      const { t: task, xUsername: x } = this.taskReady(userId, taskId);
+      this.db.prepare('UPDATE task_completions SET completed_at = ?, x_username = ? WHERE task_id = ? AND user_id = ?').run(this.now(), x, taskId, userId);
+      this.award(userId, 'task', taskId, task.points);
+      return { points: task.points, onChain: this.ready() };
     });
+  }
+
+  /** Throws unless the task can be confirmed now; checked before asking X and again when paying. */
+  private taskReady(userId: string, taskId: string) {
+    const t = this.activeTask(taskId);
+    const user = as<{ x_username: string | null }>(this.db.prepare('SELECT x_username FROM users WHERE id = ?').get(userId));
+    if (t.kind !== 'link' && !user.x_username) throw new AppError(409, 'x_required', 'Link your X username first, so we know which account did it.');
+    const mine = as<{ started_at: number; completed_at: number | null } | undefined>(
+      this.db.prepare('SELECT started_at, completed_at FROM task_completions WHERE task_id = ? AND user_id = ?').get(taskId, userId),
+    );
+    if (mine?.completed_at) throw new AppError(409, 'task_done', 'You already completed this task.');
+    if (!mine) throw new AppError(409, 'task_not_started', 'Open the task first, then come back to confirm it.');
+    if (this.now() - mine.started_at < TASK_MIN_WAIT_MS) throw new AppError(429, 'task_too_fast', 'Give it a few seconds: finish the task on X, then confirm.');
+    if (t.max_completions !== null && this.completions(taskId) >= t.max_completions) throw new AppError(409, 'task_full', 'This task has reached its limit.');
+    return { t, xUsername: user.x_username };
   }
 
   // --- Admin: tasks --------------------------------------------------------------------

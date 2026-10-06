@@ -2935,16 +2935,35 @@ function claimCard(r) {
 }
 
 function xCard(r) {
+  const pts = r.xConnectPoints && !(r.xUsername && (r.xVerified || !r.xChecks)) ? `<span class="pill pill-pts">+${r.xConnectPoints}</span>` : '';
+  const form = (label, value = '') =>
+    `<form id="x-form" class="inline-form" novalidate><span class="input-wrap"><span class="input-prefix">@</span><input name="x" placeholder="yourname" maxlength="16" autocomplete="off" aria-label="X username" value="${esc(value)}" /></span><button class="btn btn-solid" type="submit">${ico('link')}${label}</button></form>
+     <p class="form-error" id="x-error" role="alert"></p>`;
+  let body;
+  if (!r.xChecks) {
+    // Honour-based: the username is simply linked.
+    body = r.xUsername
+      ? `<p class="linked">${ico('checkCircle')}Linked as <b>@${esc(r.xUsername)}</b></p><p class="fine">Tasks on X use this account. Each task pays once.</p>`
+      : `<p class="muted">Link your X username to unlock X tasks${r.xConnectPoints ? ` and get <b>+${r.xConnectPoints} points</b>` : ''}. No password or login needed.</p>${form('Link')}`;
+  } else if (r.xVerified && r.xUsername && !r.xPending) {
+    body = `<p class="linked">${ico('checkCircle')}Verified as <b>@${esc(r.xUsername)}</b></p><p class="fine">Tasks on X are checked on this account. Each task pays once.</p>`;
+  } else if (r.xPending) {
+    const p = r.xPending;
+    const postText = encodeURIComponent(`Verifying my Firstprint account: ${p.code}`);
+    body = `<p class="muted">Prove <b>@${esc(p.username)}</b> is yours: add this code to your X bio, or post it. You can remove it once you’re verified.</p>
+      <div class="x-code"><code>${esc(p.code)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(p.code)}">${ico('copy')}Copy</button><a class="btn btn-sm" href="https://x.com/intent/tweet?text=${postText}" target="_blank" rel="noopener noreferrer">${ico('x')}Post it</a></div>
+      <button class="btn btn-solid" data-action="x-verify"${S.xBusy ? ' disabled' : ''}>${S.xBusy ? `<span class="spin" aria-hidden="true"></span>Checking on X…` : `${ico('checkCircle')}Verify @${esc(p.username)}`}</button>
+      <p class="form-error" id="x-verify-error" role="alert"></p>
+      <details class="x-change"><summary>Use a different username</summary>${form('Get a code')}</details>`;
+  } else {
+    body = `<p class="muted">${
+      r.xUsername ? `Linked as <b>@${esc(r.xUsername)}</b>, but not verified yet. Verify it to unlock X tasks.` : `Verify your X username to unlock X tasks${r.xConnectPoints ? ` and get <b>+${r.xConnectPoints} points</b>` : ''}.`
+    } You’ll add a short code to your X bio; no password or login needed.</p>${form('Get a code', r.xUsername ?? '')}`;
+  }
   return `
-    <section class="earn-card">
-      <div class="card-head"><span class="card-ico">${ico('x')}</span><h2>Your X account</h2>${r.xConnectPoints && !r.xUsername ? `<span class="pill pill-pts">+${r.xConnectPoints}</span>` : ''}</div>
-      ${
-        r.xUsername
-          ? `<p class="linked">${ico('checkCircle')}Linked as <b>@${esc(r.xUsername)}</b></p><p class="fine">Tasks on X use this account. Each task pays once.</p>`
-          : `<p class="muted">Link your X username to unlock X tasks${r.xConnectPoints ? ` and get <b>+${r.xConnectPoints} points</b>` : ''}. No password or login needed.</p>
-             <form id="x-form" class="inline-form" novalidate><span class="input-wrap"><span class="input-prefix">@</span><input name="x" placeholder="yourname" maxlength="16" autocomplete="off" aria-label="X username" /></span><button class="btn btn-solid" type="submit">${ico('link')}Link</button></form>
-             <p class="form-error" id="x-error" role="alert"></p>`
-      }
+    <section class="earn-card" id="x-card">
+      <div class="card-head"><span class="card-ico">${ico('x')}</span><h2>Your X account</h2>${pts}</div>
+      ${body}
     </section>`;
 }
 
@@ -3071,7 +3090,10 @@ async function onTaskVerify(taskId, btn) {
     rewardToast({ amount: out.points, sub: out.onChain ? 'Ready to claim as TestFPT' : 'Task done' });
   } catch (err) {
     toast(err.message, true);
-    if (err.code === 'x_required') $('#x-form input')?.focus();
+    if (err.code === 'x_required' || err.code === 'x_unverified') {
+      $('#x-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      $('#x-form input')?.focus();
+    }
     await refreshMe();
     if (S.route.name === 'earn') $('#view').innerHTML = earnView();
   }
@@ -3081,11 +3103,33 @@ async function submitX(form) {
   const err = $('#x-error');
   try {
     const out = await S.api.connectX(String(new FormData(form).get('x') ?? ''));
-    toast(out.rewarded ? `+${out.rewarded} points for linking @${out.xUsername}` : `Linked @${out.xUsername}`);
+    if (out.pending) toast(`Add ${out.code} to your X bio (or post it), then press Verify`);
+    else toast(out.rewarded ? `+${out.rewarded} points for linking @${out.xUsername}` : `Linked @${out.xUsername}`);
     await refreshMe();
     if (S.route.name === 'earn') $('#view').innerHTML = earnView();
   } catch (e) {
     if (err) err.textContent = e.message;
+  }
+}
+
+/** Checks the player's code on X and, once found, makes the X username theirs. */
+async function onXVerify() {
+  if (S.xBusy) return;
+  S.xBusy = true;
+  if (S.route.name === 'earn') $('#view').innerHTML = earnView();
+  try {
+    const out = await S.api.verifyX();
+    S.xBusy = false;
+    await refreshMe();
+    if (S.route.name === 'earn') $('#view').innerHTML = earnView();
+    if (out.rewarded) rewardToast({ amount: out.rewarded, sub: `Verified @${out.xUsername}` });
+    else toast(`Verified @${out.xUsername}`);
+  } catch (err) {
+    S.xBusy = false;
+    if (S.route.name === 'earn') $('#view').innerHTML = earnView();
+    const box = $('#x-verify-error');
+    if (box) box.textContent = err.message;
+    else toast(err.message, true);
   }
 }
 
@@ -3671,7 +3715,8 @@ async function submitUsername(form) {
     const x = String(data.get('x') ?? '').trim();
     if (x) {
       const out = await S.api.connectX(x);
-      if (out.rewarded) toast(`+${out.rewarded} points for linking @${out.xUsername}`);
+      if (out.pending) toast(`To verify @${out.xUsername}, add ${out.code} to your X bio, then press Verify on the Earn page`);
+      else if (out.rewarded) toast(`+${out.rewarded} points for linking @${out.xUsername}`);
     }
     await refreshRewards();
     renderTop();
@@ -3824,7 +3869,9 @@ async function renderAdmin() {
     view.innerHTML = `<div class="empty"><div class="empty-art">${ico('alert')}</div><p><strong>Couldn’t load the admin panel.</strong><br />${esc(err.message)}</p><button class="btn btn-solid" data-action="admin-token-refresh">${ico('refresh')}Try again</button></div>`;
     return;
   }
-  const [{ markets }, detected, { log }, token, { tasks }, teamData] = loaded;
+  const [{ markets }, detected, { log }, token, tasksData, teamData] = loaded;
+  const { tasks } = tasksData;
+  A.xCheck = { on: Boolean(tasksData.xChecks), credit: tasksData.xCredit ?? null };
   A.markets = markets;
   void backfillLogoPngs(markets);
   A.detected = detected;
@@ -4463,9 +4510,18 @@ function saveKeysNote(t) {
 const TASK_TARGET_HINT = { follow: 'X handle, e.g. @firstprint', repost: 'Link to the post on X', like: 'Link to the post on X', share: 'Text of the post (the player’s invite link is added)', link: 'https:// link' };
 
 /** Tasks players complete for points: create, set a limit, switch off. */
+/** Whether tasks are checked on X (GetXAPI), and the credit left for those checks. */
+function xCheckNote() {
+  const x = A.xCheck;
+  if (!x?.on) return `<p class="muted x-check-note">${ico('info')} Tasks are honour-based. Set <code>GETXAPI_KEY</code> in Render to check follows, reposts and posts on X.</p>`;
+  const low = x.credit !== null && x.credit < 1;
+  return `<p class="x-check-note${low ? ' form-error' : ''}">${ico(low ? 'alert' : 'checkCircle')} <span><b>Checked on X</b> <span class="muted">Follow, repost and post tasks are checked before they pay (likes stay honour-based); players verify their X username with a code in their bio.${x.credit !== null ? ` GetXAPI credit: <b>$${x.credit.toFixed(2)}</b> (about ${fmtNum(Math.floor(x.credit * 1000))} checks)${low ? ', top it up at getxapi.com' : ''}.` : ''}</span></span></p>`;
+}
+
 function tasksAdminSection(tasks) {
   return `<section class="panel">
     <div class="section-head"><span class="section-ico">${ico('plusCircle')}</span><div><h2>Add a task</h2></div></div>
+    ${xCheckNote()}
     <form id="admin-task" class="admin-form task-form" novalidate>
       <label><span class="field-label">Type</span><select name="kind">
         <option value="follow">Follow on X</option><option value="repost">Repost on X</option><option value="like">Like on X</option><option value="share">Post on X (with invite link)</option><option value="link">Visit a link</option>
@@ -4476,7 +4532,7 @@ function tasksAdminSection(tasks) {
       <label><span class="field-label">Limit <span class="muted">(players)</span></span><input name="maxCompletions" type="number" min="1" placeholder="No limit" /></label>
       <button class="btn btn-solid" type="submit">${ico('plus')}Add task</button>
     </form>
-    ${how('Players open the task, do it on X, then press Verify. X has no free API to check, so it’s honour-based: each X username can only be linked to one account, and each task pays once per player.')}
+    ${how(A.xCheck?.on ? 'Players open the task, do it on X, then press Verify. Follow, repost and post tasks are checked on X through GetXAPI (about $0.001 a check); likes can’t be checked, so they stay honour-based. Players first prove their X username with a code in their bio, each X account can be verified by one Firstprint account only, and each task pays once per player.' : 'Players open the task, do it on X, then press Verify. Without GETXAPI_KEY it’s honour-based: each X username can only be linked to one account, and each task pays once per player.')}
   </section>
   <section class="panel panel-flush">
     <div class="section-head"><span class="section-ico">${ico('sparkles')}</span><h2>Tasks <span class="count-badge">${tasks.length}</span></h2></div>
@@ -4532,7 +4588,9 @@ const ADMIN_ACTIONS = {
 async function renderTasksOnly(view) {
   let tasks = [];
   try {
-    ({ tasks } = await A.api.tasks());
+    const data = await A.api.tasks();
+    tasks = data.tasks;
+    A.xCheck = { on: Boolean(data.xChecks), credit: data.xCredit ?? null };
   } catch (err) {
     view.innerHTML = `<div class="empty"><p><strong>Couldn’t load tasks.</strong><br />${esc(err.message)}</p></div>`;
     return;
@@ -6008,6 +6066,8 @@ document.addEventListener('click', async (e) => {
       return onTaskVerify(t.closest('[data-task]').dataset.task, t.closest('[data-action]'));
     case 'copy-text':
       return copyText(t.closest('[data-text]').dataset.text);
+    case 'x-verify':
+      return onXVerify();
     case 'predict':
       return submitPrediction();
     case 'open-sheet':

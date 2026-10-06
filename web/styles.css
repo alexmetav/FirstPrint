@@ -13035,3 +13035,51 @@ html.in-maint body {
   margin-top: 1px;
   color: var(--up);
 }
+
+/* Earn → Your X account: the code to put in the X bio. */
+.x-code {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+.x-code code {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 16px;
+  letter-spacing: 0.06em;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line, rgba(127, 127, 127, 0.3));
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  user-select: all;
+}
+.x-change {
+  margin-top: 12px;
+  font-size: 13px;
+}
+.x-change summary {
+  cursor: pointer;
+  color: var(--muted, inherit);
+}
+.x-change form {
+  margin-top: 8px;
+}
+/* Admin → Tasks: whether tasks are checked on X, and the credit left. */
+.x-check-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.x-check-note > svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+.x-check-note:not(.form-error) > svg {
+  color: var(--up);
+}

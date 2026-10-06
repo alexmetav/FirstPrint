@@ -73,6 +73,10 @@ services:
         sync: false
       - key: MAIL_FROM
         sync: false
+      # Optional: a GetXAPI key (getxapi.com). Players then prove their X username with a code in
+      # their bio, and follow, repost and post tasks are checked on X. Secret, enter in Render only.
+      - key: GETXAPI_KEY
+        sync: false
       # Telegram bot token from @BotFather: admin alerts and the public player channel. Secret, enter in Render only.
       - key: TELEGRAM_BOT_TOKEN
         sync: false
