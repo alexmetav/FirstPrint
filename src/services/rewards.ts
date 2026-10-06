@@ -582,8 +582,21 @@ export class RewardsService {
       if (today + pts > ADMIN_TOPUP_DAY) throw new AppError(429, 'topup_limit', `That passes the ${ADMIN_TOPUP_DAY.toLocaleString('en-US')} points a day test limit (${today.toLocaleString('en-US')} added today).`);
       this.award(userId, 'admin_topup', `${this.now()}-${randomInt(1e9)}`, pts);
       this.service.log(`admin top-up: ${pts} points to ${userId}`);
-      return { points: pts, onChain: this.ready(), addedToday: today + pts };
+      return { points: pts, ...this.adminTopUpStatus(userId) };
     });
+  }
+
+  /**
+   * Where the admin's test points are: with TestFPT on they wait as a reward until claimed. A
+   * Firstprint wallet claims by itself within a minute or so; any other wallet claims on Earn.
+   */
+  adminTopUpStatus(userId: string) {
+    const rows = as<{ amount: number; claim_id: string | null; created_at: number }[]>(
+      this.db.prepare("SELECT amount, claim_id, created_at FROM rewards WHERE user_id = ? AND kind = 'admin_topup' AND created_at > ?").all(userId, this.now() - 7 * 86_400_000),
+    );
+    const pending = rows.filter((r) => r.claim_id === null || !this.isClaimed(r.claim_id)).reduce((n, r) => n + r.amount, 0);
+    const addedToday = rows.filter((r) => r.created_at > this.now() - 86_400_000).reduce((n, r) => n + r.amount, 0);
+    return { onChain: this.ready(), pending, autoClaim: this.ready() && this.embeddedAddress(userId) !== null, addedToday, dayLimit: ADMIN_TOPUP_DAY };
   }
 
   private referralCode(userId: string): string {
