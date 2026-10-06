@@ -6,11 +6,15 @@
  * higher rate limit). CoinMarketCap needs a paid key for the same data, so it is linked, not fetched.
  */
 import { AppError, type FirstprintService } from './firstprint.ts';
-import { coingeckoGate, CoinGeckoBusy, type CoinGeckoGate } from '../exchanges/coingeckoGate.ts';
+import { asAdmin, coingeckoGate, CoinGeckoBusy, type CoinGeckoGate } from '../exchanges/coingeckoGate.ts';
+import { fetchImage } from '../api/fetchImage.ts';
 
 const TRENDING_URL = 'https://api.coingecko.com/api/v3/search/trending';
 const SEARCH_URL = 'https://api.coingecko.com/api/v3/search';
 const LOGO_CACHE_MS = 60 * 60_000;
+/** Our exchange ids → CoinGecko's, whose exchange pages carry each exchange's logo. */
+const CG_EXCHANGES: Record<string, string> = { binance: 'binance', mexc: 'mxc', bybit: 'bybit_spot', okx: 'okex', gate: 'gate', bitget: 'bitget', kucoin: 'kucoin' };
+const EXCHANGE_LOGO_MAX = 60_000;
 const LOGO_MISS_MS = 10 * 60_000;
 const CACHE_MS = 5 * 60_000;
 const TIMEOUT_MS = 8_000;
@@ -179,6 +183,43 @@ export class Discover {
       : null;
     this.logos.set(key, { at: now, hit });
     return hit;
+  }
+
+  /** Each exchange's logo saved so far (data URLs), for the small "listed on" badges. */
+  exchangeLogos(): Record<string, string> {
+    try {
+      const v = JSON.parse(this.service.getSetting('exchange_logos') ?? '{}') as Record<string, unknown>;
+      return Object.fromEntries(Object.entries(v).filter(([, x]) => typeof x === 'string' && x.startsWith('data:image/'))) as Record<string, string>;
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Saves a copy of each exchange's logo from CoinGecko, once: one call per missing exchange, on the
+   * admin share of the CoinGecko budget so it never takes from live markets. Missing ones keep their
+   * letter badge and are tried again next time.
+   */
+  async fillExchangeLogos(): Promise<string[]> {
+    const have = this.exchangeLogos();
+    const added: string[] = [];
+    for (const [id, cgId] of Object.entries(CG_EXCHANGES)) {
+      if (have[id] || !this.service.venues.has(id)) continue;
+      try {
+        const res = await asAdmin(() => this.cg(`https://api.coingecko.com/api/v3/exchanges/${cgId}`, { headers: { accept: 'application/json', ...(this.apiKey ? { 'x-cg-demo-api-key': this.apiKey } : {}) }, signal: AbortSignal.timeout(TIMEOUT_MS) }));
+        if (!res.ok) continue;
+        const image = ((await res.json()) as { image?: unknown }).image;
+        if (typeof image !== 'string' || !image.startsWith('https://')) continue;
+        const img = await fetchImage(image, this.fetchImpl);
+        if (img.data.length > EXCHANGE_LOGO_MAX) continue;
+        have[id] = `data:${img.contentType};base64,${img.data}`;
+        added.push(id);
+      } catch {
+        /* busy or unreachable: the letter badge stays, and this is tried again later */
+      }
+    }
+    if (added.length) this.service.setSetting('exchange_logos', JSON.stringify(have));
+    return added;
   }
 
   /** What the listing tracker found on one exchange in the last week, with live and opening prices. */

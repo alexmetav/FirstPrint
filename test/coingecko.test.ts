@@ -186,3 +186,30 @@ test('CoinGecko venue and Discover go through a gate when given one', async () =
   const d = new Discover(service, { gate, fetchImpl: (async () => new Response('{"coins":[]}', { status: 200 })) as typeof fetch });
   await assert.rejects(asAdmin(() => d.tokenLogo('PEPE')), (e: unknown) => e instanceof AppError && e.code === 'rate_limited');
 });
+
+test('exchange logos: saved once from CoinGecko for the exchanges we use, retried when missing', async () => {
+  const { Discover } = await import('../src/services/discover.ts');
+  const stub = (id: string, name: string) => ({ id, name, pair: (b: string) => `${b}USDT`, fetchTicker: async () => null, fetchCandles: async () => [], listPairs: async () => [] });
+  const service = new FirstprintService(openDb(':memory:'), new ManualClock(0), [stub('mexc', 'MEXC'), stub('gate', 'Gate')]);
+  const png = Buffer.from('89504e470d0a1a0a', 'hex');
+  const urls: string[] = [];
+  let gateUp = false;
+  const fetchImpl = (async (url: string | URL) => {
+    const u = String(url);
+    urls.push(u);
+    if (u.endsWith('/exchanges/mxc')) return Response.json({ image: 'https://8.8.8.8/mexc.png' });
+    if (u.endsWith('/exchanges/gate')) return gateUp ? Response.json({ image: 'https://8.8.8.8/gate.png' }) : new Response('busy', { status: 429 });
+    if (u.endsWith('.png')) return new Response(png, { headers: { 'content-type': 'image/png' } });
+    return new Response('nope', { status: 404 });
+  }) as typeof fetch;
+  const d = new Discover(service, { fetchImpl });
+  assert.deepEqual(await d.fillExchangeLogos(), ['mexc']);
+  assert.deepEqual(Object.keys(d.exchangeLogos()), ['mexc']);
+  assert.equal(d.exchangeLogos().mexc, `data:image/png;base64,${png.toString('base64')}`);
+  assert.ok(!urls.some((u) => /binance|okex|kucoin/.test(u)), 'only exchanges this server uses');
+  gateUp = true;
+  const before = urls.length;
+  assert.deepEqual(await d.fillExchangeLogos(), ['gate'], 'the missing one is tried again; MEXC is not fetched twice');
+  assert.ok(!urls.slice(before).some((u) => u.includes('mxc')));
+  assert.deepEqual(Object.keys(d.exchangeLogos()).sort(), ['gate', 'mexc']);
+});

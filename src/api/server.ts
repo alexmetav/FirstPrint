@@ -235,6 +235,8 @@ export function createApiServer(opts: ServerOptions): Server {
     // Public Telegram channel where new markets and results are posted (username, no @).
     telegramChannel: opts.telegram ? service.getSetting('telegram_channel') : null,
     maintenance: publicMaintenance(),
+    // Exchange logos for the "listed on" badges (saved once from CoinGecko; missing ones show a letter).
+    exchangeLogos: discover.exchangeLogos(),
   }));
 
   /** What players see during maintenance: on or off, and the admin's short note. */
