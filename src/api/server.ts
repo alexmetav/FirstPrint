@@ -13,6 +13,7 @@ import type { Bucket } from '../engine/engine.ts';
 import { linkSiteToApp } from '../site/links.ts';
 import { fetchImage, isPrivateAddress } from './fetchImage.ts';
 import { isCloudflareAddress } from './cloudflare.ts';
+import { isUpcoming, publicMarket, PUBLIC_FILTERS, type MarketView, type PublicFilter } from './publicApi.ts';
 import { Discover } from '../services/discover.ts';
 import { drawable, renderBanner, renderPnl } from '../services/banner.ts';
 import { channelName, type Telegram } from '../services/telegram.ts';
@@ -492,6 +493,72 @@ export function createApiServer(opts: ServerOptions): Server {
     const p = url.searchParams.get('period') ?? 'week';
     const period = (LEADERBOARD_PERIODS as readonly string[]).includes(p) ? (p as LeaderboardPeriod) : 'week';
     return service.leaderboard(optionalUser()?.id, period);
+  });
+
+  // --- Public API (read-only, no key): markets, tokens coming up, the leaderboard. Docs: /api.html ----
+
+  /** Any site may call it from the browser; 60 calls a minute per visitor. */
+  const publicCall = (req: IncomingMessage, res: ServerResponse) => {
+    rateLimit(`pub:${visitor(req)}`, 60, 60_000);
+    res.setHeader('access-control-allow-origin', '*');
+  };
+  const siteOf = (req: IncomingMessage) => (opts.publicUrl ?? `http://${req.headers.host ?? 'localhost'}`).replace(/\/+$/, '');
+  const asPublic = (req: IncomingMessage, m: unknown) => publicMarket(m as MarketView, siteOf(req), service.clock.now());
+
+  route('GET', '/api/v1', ({ req, res }) => {
+    publicCall(req, res);
+    const site = siteOf(req);
+    return {
+      name: 'Firstprint public API',
+      version: 1,
+      docs: `${site}/api.html`,
+      endpoints: {
+        markets: `${site}/api/v1/markets?status=open`,
+        market: `${site}/api/v1/markets/{id}`,
+        upcoming: `${site}/api/v1/upcoming`,
+        leaderboard: `${site}/api/v1/leaderboard?period=week`,
+      },
+      note: 'Read-only, no key. Points have no cash value. 60 requests a minute per visitor.',
+    };
+  });
+
+  route('GET', '/api/v1/markets', ({ req, res, url }) => {
+    publicCall(req, res);
+    const status = url.searchParams.get('status') ?? 'open';
+    if (status !== 'all' && !(status in PUBLIC_FILTERS)) throw new AppError(400, 'bad_status', 'status must be open, closed, settled or all.');
+    const limit = Math.max(1, Math.min(100, Math.floor(Number(url.searchParams.get('limit') ?? 50)) || 50));
+    const filters = status === 'all' ? (Object.keys(PUBLIC_FILTERS) as PublicFilter[]) : [status as PublicFilter];
+    const markets = filters.flatMap((f) => service.listMarketsPage(PUBLIC_FILTERS[f], undefined, limit).markets).slice(0, limit);
+    return { status, count: markets.length, markets: markets.map((m) => asPublic(req, m)), serverTime: new Date(service.clock.now()).toISOString() };
+  });
+
+  route('GET', '/api/v1/markets/:id', ({ req, res, params }) => {
+    publicCall(req, res);
+    return asPublic(req, service.getMarket(params.id));
+  });
+
+  // Tokens that aren't trading yet: their market is open and the opening price will be the start.
+  route('GET', '/api/v1/upcoming', ({ req, res }) => {
+    publicCall(req, res);
+    const now = service.clock.now();
+    const markets = service
+      .listMarketsPage('open', undefined, 200)
+      .markets.filter((m) => isUpcoming(m as unknown as MarketView, now))
+      .sort((a, b) => a.closeAt - b.closeAt);
+    return { count: markets.length, markets: markets.map((m) => asPublic(req, m)), serverTime: new Date(now).toISOString() };
+  });
+
+  route('GET', '/api/v1/leaderboard', ({ req, res, url }) => {
+    publicCall(req, res);
+    const p = url.searchParams.get('period') ?? 'week';
+    if (!(LEADERBOARD_PERIODS as readonly string[]).includes(p)) throw new AppError(400, 'bad_period', `period must be one of: ${LEADERBOARD_PERIODS.join(', ')}.`);
+    const board = service.leaderboard(undefined, p as LeaderboardPeriod);
+    return {
+      period: board.period,
+      seasonStart: board.seasonStart ? new Date(board.seasonStart).toISOString() : null,
+      seasonEnd: board.seasonEnd ? new Date(board.seasonEnd).toISOString() : null,
+      entries: board.entries.map(({ rank, name, profit, wins, total }) => ({ rank, username: name, profit, wins, predictions: total })),
+    };
   });
 
   route('GET', '/api/users/:username', ({ params, optionalUser }) => service.publicProfile(params.username, optionalUser()?.id));
