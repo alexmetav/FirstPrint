@@ -66,7 +66,14 @@ const now = () => Date.now() + S.skew;
 function esc(v) {
   return String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
-const fmtNum = (n) => Math.round(n ?? 0).toLocaleString('en-US');
+// Number and date formats are built once: toLocaleString makes a new formatter on every call, and
+// a page draws hundreds of numbers and dates.
+const NUM_FMT = new Intl.NumberFormat('en-US');
+const PRICE_FMT_2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const PRICE_FMT_4 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+const DATE_FMT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const DAY_FMT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
+const fmtNum = (n) => NUM_FMT.format(Math.round(n ?? 0));
 const fmtPts = (n) => `${fmtNum(n)} pts`;
 
 /** A number that counts smoothly to its new value when it changes (see the ticker observer below). */
@@ -85,7 +92,7 @@ function fmtPct(r, digits = 1) {
 function fmtPrice(p) {
   if (!p) return '–';
   if (p < 1) return `$${p.toPrecision(4)}`;
-  return `$${p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: p >= 100 ? 2 : 4 })}`;
+  return `$${(p >= 100 ? PRICE_FMT_2 : PRICE_FMT_4).format(p)}`;
 }
 
 function fmtDur(ms) {
@@ -108,7 +115,8 @@ function fmtSpan(ms) {
 }
 
 function fmtDate(ts) {
-  return new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? 'Invalid Date' : DATE_FMT.format(d);
 }
 
 const until = (ts) => `<span data-until="${ts}">${fmtDur(ts - now())}</span>`;
@@ -321,15 +329,22 @@ function skeletonView(name) {
   return `${loaderMark()}<div class="skeleton" aria-busy="true" aria-label="Loading"><i class="sk sk-title w40"></i><i class="sk sk-line w60"></i><div class="sk-card block"></div></div>`;
 }
 
-/** A short fade-and-rise when a new page appears (not on live updates of the same page). */
+/**
+ * A short fade-and-rise when a new page appears (not on live updates of the same page). Run with the
+ * Web Animations API on the first few blocks only: opacity and transform stay on the compositor, and
+ * nothing forces a layout or restyles the whole page (a class toggle on #view did both).
+ */
 function enterView() {
   const view = $('#view');
-  if (!view) return;
-  view.classList.remove('view-enter');
-  void view.offsetWidth;
-  view.classList.add('view-enter');
-  clearTimeout(enterView.timer);
-  enterView.timer = setTimeout(() => view.classList.remove('view-enter'), 500);
+  if (!view?.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  [...view.children].slice(0, 4).forEach((el, i) =>
+    el.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], {
+      duration: 340,
+      delay: Math.min(i, 2) * 40,
+      easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      fill: 'backwards',
+    }),
+  );
 }
 
 // --- Maintenance -------------------------------------------------------------------
@@ -1468,7 +1483,7 @@ function cardView(m) {
   S.cardSeen.set(m.id, m.predictors);
   // When the result comes, so it's clear from the card how long a pick is held.
   const result = open && m.settleAt
-    ? `<span class="card-result" title="Result ${esc(fmtDate(m.settleAt))}">${ico('calendar')}Result<b>${esc(new Date(m.settleAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</b></span>`
+    ? `<span class="card-result" title="Result ${esc(fmtDate(m.settleAt))}">${ico('calendar')}Result<b>${esc(DAY_FMT.format(m.settleAt))}</b></span>`
     : '';
 
   // A countdown to when predictions close (or, for an upcoming token, to its listing), so the
@@ -6408,16 +6423,31 @@ function runTicker(el) {
   requestAnimationFrame(step);
 }
 
-/** Moves the sliding highlight of a tab group to its selected tab. */
-function syncSeg(group) {
-  const on = group.querySelector('[aria-selected="true"]');
-  if (!on) return group.classList.remove('seg-on');
-  group.style.setProperty('--seg-x', `${on.offsetLeft}px`);
-  group.style.setProperty('--seg-w', `${on.offsetWidth}px`);
-  if (!group.classList.contains('seg-on')) requestAnimationFrame(() => group.classList.add('seg-on', 'seg-ready'));
-}
+/**
+ * Moves the sliding highlight of each tab group to its selected tab. Once per frame at most, and all
+ * positions are read before any is written, so the page is laid out once instead of once per group.
+ */
 const SEG_GROUPS = '.tabs, .dash-tabs';
-const syncAllSegs = () => document.querySelectorAll(SEG_GROUPS).forEach(syncSeg);
+let segFrame = 0;
+function syncAllSegs() {
+  if (segFrame) return;
+  segFrame = requestAnimationFrame(() => {
+    segFrame = 0;
+    const read = [...document.querySelectorAll(SEG_GROUPS)].map((group) => {
+      const on = group.querySelector('[aria-selected="true"]');
+      return { group, on, x: on?.offsetLeft ?? 0, w: on?.offsetWidth ?? 0 };
+    });
+    for (const { group, on, x, w } of read) {
+      if (!on) {
+        group.classList.remove('seg-on');
+        continue;
+      }
+      group.style.setProperty('--seg-x', `${x}px`);
+      group.style.setProperty('--seg-w', `${w}px`);
+      if (!group.classList.contains('seg-on')) requestAnimationFrame(() => group.classList.add('seg-on', 'seg-ready'));
+    }
+  });
+}
 
 new MutationObserver((records) => {
   let segs = false;
