@@ -3776,6 +3776,13 @@ async function renderAdmin() {
   const counting = closed.filter((m) => !needsYou(m)).sort((a, b) => a.settleAt - b.settleAt);
   const drafts = markets.filter((m) => m.phase === 'draft');
   const tab = adminTabs().some(([id]) => id === A.tab) ? A.tab : 'overview';
+  // The admin tabs visited, so Back returns to the previous one (Review → Create market → Back → Overview).
+  A.history ??= [];
+  if (A.lastTab && A.lastTab !== tab && !A.goingBack) A.history = [...A.history, A.lastTab].slice(-20);
+  A.goingBack = false;
+  A.lastTab = tab;
+  const backTo = A.history.length ? A.history[A.history.length - 1] : tab !== 'overview' ? 'overview' : null;
+  const backLabel = backTo ? ADMIN_TABS.find(([id]) => id === backTo)?.[2] ?? 'Back' : null;
   // New exchange listings waiting for review (manual-only servers); the old scanner shows its own list in Settings.
   const pending = manualOnly ? detected : [];
   if (A.review && !pending.some((d) => d.id === A.review.id)) A.review = null;
@@ -3837,7 +3844,10 @@ async function renderAdmin() {
       </aside>
       <div class="admin-main">
         <header class="admin-top">
-          <div><h1 class="page-title">${title}</h1><p class="muted">${lede}</p></div>
+          <div class="admin-head">
+            ${backTo ? `<button type="button" class="admin-back" data-action="admin-back" aria-label="Back to ${esc(backLabel)}" title="Back to ${esc(backLabel)}">${ico('arrowLeft')}</button>` : ''}
+            <div><h1 class="page-title">${title}</h1><p class="muted">${lede}</p></div>
+          </div>
           <div class="admin-status">${statusChips(token, A.info.backup)}</div>
         </header>
         ${body}
@@ -5170,6 +5180,17 @@ async function onAdminAction(action, el) {
     return renderAdmin();
   }
   switch (action) {
+    case 'admin-back': {
+      // Back to the previous admin tab (or Overview), leaving any half-filled form behind.
+      const prev = A.history?.length ? A.history.pop() : 'overview';
+      A.goingBack = true;
+      A.tab = prev;
+      A.edit = null;
+      A.review = null;
+      A.prefill = null;
+      await renderAdmin();
+      return window.scrollTo({ top: 0 });
+    }
     case 'admin-tab':
       // The sidebar and "New market" always start clean (Make market and Edit set these themselves).
       A.tab = el.dataset.tab;
