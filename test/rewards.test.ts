@@ -415,3 +415,28 @@ test('admin test points: straight to the balance without TestFPT, a claimable re
   assert.equal(status.pending, 1000, 'shown as processing until claimed');
   assert.equal(status.autoClaim, false, 'no Firstprint wallet: claimed on Earn');
 });
+
+test('the mint authority key is stored sealed (WALLET_ENCRYPTION_KEY), and an old plain one is sealed when read', async () => {
+  const KEY = 'a-long-test-secret-for-wallets';
+  const service = new FirstprintService(openDb(':memory:'), new ManualClock(T0), [venue]);
+  const { chain } = liteChain();
+  const make = () => new RewardsService(service, { cluster: 'testnet', chain, walletKey: KEY }, 'https://firstprint.test');
+  const stored = () => (service.db.prepare("SELECT value FROM app_settings WHERE key = 'testfpt.authority'").get() as { value: string }).value;
+
+  const first = make();
+  await first.init();
+  const status = await first.setupAuthority();
+  assert.match(stored(), /^v1\./, 'never in plain text in the database or its backups');
+  assert.ok(status.enabled && /^[0-9a-f]{64}$/.test(status.authorityKey ?? ''), 'the owner still sees the key to save it in the host');
+
+  const again = make();
+  await again.init();
+  assert.equal((await again.tokenStatus() as { authority: string }).authority, (status as { authority: string }).authority, 'the same key after a restart');
+
+  // A key saved in plain text before this change is sealed the first time it's read.
+  service.db.prepare("UPDATE app_settings SET value = ? WHERE key = 'testfpt.authority'").run(status.enabled ? status.authorityKey : '');
+  const legacy = make();
+  await legacy.init();
+  assert.match(stored(), /^v1\./);
+  assert.equal((await legacy.tokenStatus() as { authority: string }).authority, (status as { authority: string }).authority);
+});

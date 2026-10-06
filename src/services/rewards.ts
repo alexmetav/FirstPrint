@@ -157,7 +157,7 @@ export class RewardsService {
   /** Loads the mint authority and mint from the environment or the database. */
   async init() {
     if (!this.token) return;
-    const secret = this.token.authoritySecret || this.setting('testfpt.authority');
+    const secret = this.token.authoritySecret || this.storedAuthority();
     if (secret) this.authority = await signerFromSecret(secret);
     const mint = this.token.mint || this.setting('testfpt.mint');
     if (mint && isSolanaAddress(mint)) this.mint = address(mint);
@@ -170,6 +170,34 @@ export class RewardsService {
   /** True when claims mint TestFPT. */
   ready() {
     return Boolean(this.token && this.authority && this.mint);
+  }
+
+  /**
+   * The mint authority key kept in the database (when it isn't in the host's settings). It is sealed
+   * with WALLET_ENCRYPTION_KEY, like the Firstprint wallet keys, so the database and its backups never
+   * hold a usable key; one saved in plain text before this is sealed the first time it's read.
+   */
+  private storedAuthority(): string | null {
+    const stored = this.setting('testfpt.authority');
+    if (!stored) return null;
+    if (stored.startsWith('v1.')) {
+      if (!this.vault) {
+        this.service.log('TestFPT: the saved mint authority key is sealed, but WALLET_ENCRYPTION_KEY is not set, so it cannot be used');
+        return null;
+      }
+      try {
+        return this.vault.open(stored);
+      } catch {
+        this.service.log('TestFPT: the saved mint authority key could not be opened (WALLET_ENCRYPTION_KEY changed?)');
+        return null;
+      }
+    }
+    if (this.vault) this.saveSetting('testfpt.authority', this.vault.seal(stored));
+    return stored;
+  }
+
+  private saveAuthority(secret: string) {
+    this.saveSetting('testfpt.authority', this.vault ? this.vault.seal(secret) : secret);
   }
 
   private setting(key: string): string | null {
@@ -205,7 +233,7 @@ export class RewardsService {
       // Without these in the environment, the key and mint live only in the database, which a host
       // without a disk or backups wipes on restart. The admin copies them into the host's settings.
       savedInEnv: { authority: Boolean(token.authoritySecret), mint: Boolean(token.mint) },
-      authorityKey: this.authority && !token.authoritySecret ? this.setting('testfpt.authority') : null,
+      authorityKey: this.authority && !token.authoritySecret ? this.storedAuthority() : null,
       balanceError,
       authorityUrl: this.authority ? explorerAddress(this.authority.address, token.cluster) : null,
       mint: this.mint,
@@ -222,7 +250,7 @@ export class RewardsService {
     this.requireToken();
     if (!this.authority) {
       const secret = await newAuthoritySecret();
-      this.saveSetting('testfpt.authority', secret);
+      this.saveAuthority(secret);
       this.authority = await signerFromSecret(secret);
     }
     return this.tokenStatus();
