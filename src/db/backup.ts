@@ -8,8 +8,10 @@ import type { DB } from './db.ts';
  * Render's free plan) by copying it to a private Supabase Storage bucket and
  * restoring it at start-up. Works with any project on Supabase's free plan.
  *
- * Copies are gzip-compressed (a SQLite file shrinks about 5×) and taken every 5 minutes when
- * something changed, plus one on shutdown, to stay well inside a free host's monthly bandwidth.
+ * Copies are gzip-compressed (a SQLite file shrinks about 5×) and taken every minute when
+ * something changed, plus one on shutdown. A deploy starts the new server from the latest copy
+ * before the old one stops, so the gap between copies is what a deploy can lose: a minute keeps
+ * it small while staying inside a free host's monthly bandwidth.
  * One dated copy is kept per day for the last 30 days.
  */
 export interface BackupConfig {
@@ -101,7 +103,7 @@ export class DbBackup {
     this.fetchFn = fetchFn;
   }
 
-  start(everyMs = 5 * 60_000) {
+  start(everyMs = 60_000) {
     this.timer = setInterval(() => void this.runOnce(), everyMs);
     this.timer.unref();
   }
