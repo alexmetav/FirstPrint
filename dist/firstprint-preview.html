@@ -18993,7 +18993,7 @@ function maintenancePanel() {
         ? `<button class="btn btn-sm btn-solid" type="button" data-action="admin-maint" data-on="0"${busy ? ' disabled' : ''}>${busy ? '<i class="spin" aria-hidden="true"></i>Turning off' : `${ico('power')}Turn off: go live`}</button>`
         : `<button class="btn btn-sm btn-close-now" type="button" data-action="admin-maint" data-on="1"${busy ? ' disabled' : ''}>${busy ? '<i class="spin" aria-hidden="true"></i>Turning on, backing up' : `${ico('power')}Turn on`}</button>`}
     </form>
-    ${how('1. Turn it on and wait for “Backup taken”. 2. Merge and deploy. 3. When the new version is live, test it (you still see the site). 4. Turn it off: players come back by themselves. Markets keep their times; anything that came due in between (closing, start prices, results) catches up when it ends.', 'How to deploy safely')}
+    ${how('1. Turn it on and wait for “Backup taken” (up to a minute, while any TestFPT send finishes). 2. Merge, then start the deploy in Render with Manual Deploy. 3. When the new version is live, test it (you still see the site). 4. Turn it off: players come back by themselves. Markets keep their times; anything that came due in between (closing, start prices, results) catches up when it ends.', 'How to deploy safely')}
   </section>`;
 }
 

@@ -20,6 +20,9 @@ services:
     name: firstprint-app
     runtime: node
     plan: free
+    # Deploy by hand (Manual Deploy), with Maintenance mode on first: during a deploy the old and new
+    # servers overlap, each with its own copy of the database, and both would send queued TestFPT.
+    autoDeploy: false
     buildCommand: npm ci --omit=dev
     startCommand: npm start
     healthCheckPath: /api/health

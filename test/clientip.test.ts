@@ -116,3 +116,60 @@ test('an empty TRUST_PROXY_HOPS (as in .env.example) means the default, not zero
   assert.equal(loadConfig({ ...prod, TRUST_PROXY_HOPS: '2' }).trustProxyHops, 2);
   assert.equal(loadConfig({ TRUST_PROXY_HOPS: '' }).trustProxyHops, 0);
 });
+
+/** Behind Cloudflare and one host proxy: each attempt carries its own CF-Connecting-IP and forwarded-for. */
+async function serveCloudflare() {
+  const service = new FirstprintService(openDb(':memory:'), new ManualClock(Date.UTC(2026, 8, 14, 12)), []);
+  const server = createApiServer({ service, adminKey: null, secureCookies: false, webDir: new URL('../web', import.meta.url).pathname, trustProxyHops: 1, behindCloudflare: true });
+  await new Promise<void>((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  let n = 0;
+  const overLimitWith = async (headers: (i: number) => { cf: string; xff: string }) => {
+    const out: number[] = [];
+    for (let i = 0; i < LIMIT + 1; i++) {
+      const h = headers(i);
+      n++;
+      const r = await fetch(`${base}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'cf-connecting-ip': h.cf, 'x-forwarded-for': h.xff },
+        body: JSON.stringify({ email: `u${n}@example.com`, password: 'a-long-password' }),
+      });
+      out.push(r.status);
+    }
+    return out;
+  };
+  return { overLimitWith, close: () => server.close() };
+}
+
+test('behind Cloudflare, each visitor gets their own limit when the request came from Cloudflare', async () => {
+  const s = await serveCloudflare();
+  try {
+    // Different visitors, all through Cloudflare addresses: nobody is limited.
+    const r = await s.overLimitWith((i) => ({ cf: `203.0.113.${i + 1}`, xff: '162.158.1.1' }));
+    assert.ok(r.every((x) => x === 401));
+    // One visitor through Cloudflare (any of its addresses) still hits their limit.
+    assert.deepEqual(await s.overLimitWith((i) => ({ cf: '198.51.100.50', xff: `104.16.0.${i + 1}` })), LIMITED);
+  } finally {
+    s.close();
+  }
+});
+
+test('a made-up CF-Connecting-IP sent straight to the host cannot dodge the limit', async () => {
+  const s = await serveCloudflare();
+  try {
+    // The caller is not Cloudflare (the host proxy saw 198.51.100.7), so the header is ignored.
+    assert.deepEqual(await s.overLimitWith((i) => ({ cf: `203.0.113.${i + 1}`, xff: '198.51.100.7' })), LIMITED);
+  } finally {
+    s.close();
+  }
+});
+
+test('isCloudflareAddress', async () => {
+  const { isCloudflareAddress } = await import('../src/api/cloudflare.ts');
+  assert.equal(isCloudflareAddress('162.158.10.20'), true);
+  assert.equal(isCloudflareAddress('::ffff:104.16.5.5'), true);
+  assert.equal(isCloudflareAddress('2606:4700:10::1'), true);
+  assert.equal(isCloudflareAddress('203.0.113.9'), false);
+  assert.equal(isCloudflareAddress('2001:db8::1'), false);
+  assert.equal(isCloudflareAddress('not an ip'), false);
+});
