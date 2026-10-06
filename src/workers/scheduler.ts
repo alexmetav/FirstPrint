@@ -54,6 +54,8 @@ export class Scheduler {
   }
 
   tick() {
+    // Maintenance (a deploy is coming): nothing is closed or settled until it ends; it all catches up then.
+    if (this.service.maintenance().on) return Promise.resolve();
     return this.guard('tick', async () => {
       await this.service.ingestPrices();
       const closed = this.service.closeDueMarkets();
@@ -70,6 +72,7 @@ export class Scheduler {
   }
 
   track() {
+    if (this.service.maintenance().on) return Promise.resolve();
     return this.guard('track', async () => {
       if (this.tracker) await this.tracker.run();
     });

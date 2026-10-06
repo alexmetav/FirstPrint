@@ -68,7 +68,9 @@ const rewards = new RewardsService(
 );
 await rewards.init();
 // Server-paid TestFPT: daily streak mints, Firstprint-wallet reward claims, and confirmations.
-setInterval(() => void rewards.runChain().catch((err: Error) => log(`chain work failed: ${err.message}`)), 15_000).unref();
+// Paused in maintenance: a mint sent on chain but not yet saved could otherwise be sent twice after a deploy.
+const paused = () => service.maintenance().on;
+setInterval(() => void (paused() ? null : rewards.runChain().catch((err: Error) => log(`chain work failed: ${err.message}`))), 15_000).unref();
 const live = new LiveFeed(service);  // still serves the browser event stream; prices are only polled when not manual-only
 // Results are stored for the in-app bell by the service. Here they are logged and, where the player
 // signed in with email and a real mailer is set up, sent as a short email.
@@ -91,6 +93,7 @@ service.onAnnounce = (kind, id) => {
 };
 // "Last hour" reminders in the channel.
 setInterval(() => {
+  if (paused()) return;
   try {
     channel.remindClosing();
   } catch (err) {
@@ -100,7 +103,7 @@ setInterval(() => {
 
 // Upcoming tokens the admin scheduled: opened by themselves once trading has really started.
 const autoOpener = new AutoOpener(service, venues, alert, (id) => resultDueText(service.getMarket(id), adminUrl));
-setInterval(() => void autoOpener.run(), 30_000).unref();
+setInterval(() => void (paused() ? null : autoOpener.run()), 30_000).unref();
 
 // Manual-only servers still watch some exchanges for new listings (LISTING_VENUES: MEXC, OKX, Gate,
 // Bitget and KuCoin by default). By default each one waits in the admin's review queue (with a Telegram
@@ -168,6 +171,7 @@ const server = createApiServer({
   trustProxyHops: cfg.trustProxyHops,
   behindCloudflare: process.env.BEHIND_CLOUDFLARE === '1',
   backupStatus: () => backup?.status() ?? { enabled: false, lastOkAt: null, lastError: null },
+  backupNow: () => (backup ? backup.runOnce(true) : Promise.resolve(false)),
   googleClientId: cfg.googleClientId,
   mailer,
   devEmailCodes,

@@ -24,6 +24,20 @@ const WAKE_RETRIES = 16;
 const WAKE_WAIT_MS = 4_000;
 const GATEWAY = new Set([502, 503, 504, 520, 521, 522, 523, 524]);
 
+/**
+ * An admin testing the site during maintenance: their own actions still go through, so the key
+ * (kept for this tab only) rides along on writes.
+ */
+function adminHeader(init) {
+  if (!init.method || init.method === 'GET') return {};
+  try {
+    const key = sessionStorage.getItem('fp_admin_key');
+    return key ? { 'x-admin-key': key } : {};
+  } catch {
+    return {};
+  }
+}
+
 export function createApi(baseUrl = '') {
   async function request(path, init = {}) {
     const canRetry = !init.method || init.method === 'GET';
@@ -34,7 +48,7 @@ export function createApi(baseUrl = '') {
         res = await fetch(baseUrl + path, {
           ...init,
           credentials: 'same-origin',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', ...adminHeader(init) },
         });
       } catch {
         if (canRetry && attempt < WAKE_RETRIES) {
@@ -62,6 +76,7 @@ export function createApi(baseUrl = '') {
     // The header has whole seconds: add half a second to land in the middle.
     if (Number.isFinite(date)) serverClock.skew = date + 500 - Date.now();
     const data = await res.json().catch(() => ({}));
+    if (res.status === 503 && data.error === 'maintenance') wake.onMaintenance?.(data.message);
     if (!res.ok) throw new ApiError(res.status, data.error ?? 'error', data.message ?? 'Request failed.');
     return data;
   }
@@ -71,6 +86,7 @@ export function createApi(baseUrl = '') {
   return {
     demo: false,
     config: () => request('/api/config'),
+    status: () => request('/api/status'),
     me: () => request('/api/me'),
     login: (body) => post('/api/auth/login', body),
     logout: () => post('/api/auth/logout'),
@@ -158,6 +174,7 @@ export function createAdminApi(key, baseUrl = '') {
     telegramConnect: (code) => post('/api/admin/telegram/connect', { code }),
     telegramTest: () => post('/api/admin/telegram/test'),
     topUp: (amount) => post('/api/admin/top-up', { amount }),
+    maintenance: (on, message = '') => post('/api/admin/maintenance', { on, message }),
     topUpStatus: () => request('/api/admin/top-up'),
     telegramChannel: (channel) => post('/api/admin/telegram/channel', { channel }),
     bannerPreview: (body) => post('/api/admin/banner-preview', body),

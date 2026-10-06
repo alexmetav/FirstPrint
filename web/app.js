@@ -325,8 +325,72 @@ function enterView() {
   enterView.timer = setTimeout(() => view.classList.remove('view-enter'), 500);
 }
 
+// --- Maintenance -------------------------------------------------------------------
+// While an admin deploys a big change, players see a quiet screen (and can't write); admins keep
+// using the site, with a banner reminding them it's on. Pages check every 20 seconds and come back
+// by themselves when it ends.
+
+const isAdminViewer = () => Boolean(readAdminKey()) || Boolean(S.me?.isAdmin);
+
+function applyMaintenance(m) {
+  const was = Boolean(S.maint?.on);
+  S.maint = m?.on ? { on: true, message: m.message ?? '', since: m.since ?? null } : { on: false };
+  const blocked = S.maint.on && !isAdminViewer() && S.route.name !== 'admin';
+  let screen = $('#maint');
+  if (blocked) {
+    if (!screen) {
+      screen = document.createElement('div');
+      screen.id = 'maint';
+      screen.setAttribute('role', 'alertdialog');
+      screen.setAttribute('aria-modal', 'true');
+      document.body.append(screen);
+    }
+    const note = S.maint.message || 'We’re making Firstprint better. Back in a few minutes.';
+    screen.innerHTML = `<div class="maint-card">
+      <span class="maint-ico">${ico('sliders')}</span>
+      <h1>Updating Firstprint</h1>
+      <p>${esc(note)}</p>
+      <p class="muted">Your points and predictions are safe. This page comes back by itself.</p>
+      <span class="maint-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    </div>`;
+    document.documentElement.classList.add('in-maint');
+  } else {
+    screen?.remove();
+    document.documentElement.classList.remove('in-maint');
+  }
+  let bar = $('#maint-admin');
+  if (S.maint.on && isAdminViewer()) {
+    if (!bar) {
+      bar = document.createElement('a');
+      bar.id = 'maint-admin';
+      bar.href = '#/admin';
+      document.body.append(bar);
+    }
+    bar.innerHTML = `${ico('alert')}<span>Maintenance is on: players see the update screen. Turn it off in Admin → Settings.</span>`;
+  } else bar?.remove();
+  // Back from maintenance: reload what's on screen, so prices, pools and balances are current.
+  if (was && !S.maint.on) {
+    toast('Firstprint is back. Thanks for waiting.');
+    void loadRoute();
+  }
+}
+
+function watchMaintenance() {
+  clearInterval(watchMaintenance.timer);
+  watchMaintenance.timer = setInterval(async () => {
+    if (document.hidden || !S.api.status) return;
+    try {
+      const { maintenance } = await S.api.status();
+      if (Boolean(maintenance?.on) !== Boolean(S.maint?.on) || (maintenance?.on && maintenance.message !== S.maint.message)) applyMaintenance(maintenance);
+    } catch {
+      /* offline or waking: try again next round */
+    }
+  }, 20_000);
+}
+
 async function onRoute() {
   const next = parseRoute();
+  if (S.maint?.on) queueMicrotask(() => applyMaintenance(S.maint));
   const changed = next.name !== S.route.name || next.id !== S.route.id;
   S.route = next;
   S.menuOpen = false;
@@ -3741,6 +3805,7 @@ async function renderAdmin() {
   else if (tab === 'tasks') body = tasksAdminSection(tasks);
   else if (tab === 'settings')
     body = `
+      ${canAdmin('admin') ? maintenancePanel() : ''}
       ${autoListingsPanel(A.info.autoListings)}
       ${telegramPanel(A.info.telegram)}
       <section class="panel">
@@ -3993,6 +4058,42 @@ function refreshLogoSources(form) {
   } catch {}
   const exchanges = [...form.querySelectorAll('[name=exchanges]:checked')].map((c) => c.value);
   box.innerHTML = logoSources(get('symbol'), get('name'), exchanges, pairs, get('detectionId') || null);
+}
+
+/** Admin → Settings: maintenance on/off, with the note players see. */
+function maintenancePanel() {
+  const m = S.maint ?? { on: false };
+  const busy = A.busy === 'maint';
+  return `<section class="panel adm-maint${m.on ? ' is-on' : ''}">
+    <div class="section-head"><span class="section-ico">${ico('sliders')}</span><div><h2>Maintenance mode ${m.on ? '<span class="pill pill-warn">On</span>' : '<span class="pill pill-off">Off</span>'}</h2>
+      <p class="muted">${m.on ? `On since ${m.since ? fmtDate(m.since) : 'just now'}. Players see the update screen and can’t sign up, predict or claim. You can still use the site to test.` : 'Turn it on before deploying a big change. Players see an update screen, nothing new is written, and a fresh backup is taken, so the deploy loses nothing.'}</p></div></div>
+    <form class="maint-form" data-maint-form>
+      <input name="message" maxlength="200" placeholder="Note for players (optional), e.g. Back in 15 minutes" value="${esc(m.message ?? '')}"${m.on ? ' disabled' : ''} />
+      ${m.on
+        ? `<button class="btn btn-sm btn-solid" type="button" data-action="admin-maint" data-on="0"${busy ? ' disabled' : ''}>${busy ? '<i class="spin" aria-hidden="true"></i>Turning off' : `${ico('power')}Turn off: go live`}</button>`
+        : `<button class="btn btn-sm btn-close-now" type="button" data-action="admin-maint" data-on="1"${busy ? ' disabled' : ''}>${busy ? '<i class="spin" aria-hidden="true"></i>Turning on, backing up' : `${ico('power')}Turn on`}</button>`}
+    </form>
+    ${how('1. Turn it on and wait for “Backup taken”. 2. Merge and deploy. 3. When the new version is live, test it (you still see the site). 4. Turn it off: players come back by themselves. Markets keep their times; anything that came due in between (closing, start prices, results) catches up when it ends.', 'How to deploy safely')}
+  </section>`;
+}
+
+/** Turns maintenance on (with a fresh backup) or off. */
+async function adminMaintenance(on) {
+  if (on && !confirm('Turn on maintenance? Players see an update screen until you turn it off.')) return;
+  const message = $('[data-maint-form] [name=message]')?.value ?? '';
+  A.busy = 'maint';
+  renderAdmin();
+  try {
+    const out = await A.api.maintenance(on, message);
+    applyMaintenance(out);
+    if (on) toast(out.backedUp ? 'Maintenance is on. Backup taken: safe to deploy now.' : out.backups ? 'Maintenance is on, but the backup didn’t go through. Wait a minute before deploying.' : 'Maintenance is on. (No backups on this server.)', on && out.backups && !out.backedUp);
+    else toast('Maintenance is off. Players are back.');
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    A.busy = '';
+    renderAdmin();
+  }
 }
 
 /** The long explanation behind a setting, folded away until asked for. */
@@ -5235,6 +5336,8 @@ async function onAdminAction(action, el) {
       await renderAdmin();
       window.scrollTo({ top: 0 });
       return findLogo($('#admin-market'));
+    case 'admin-maint':
+      return adminMaintenance(el.dataset.on === '1');
     case 'admin-top-up':
       return adminTopUp(el.dataset.amount);
     case 'admin-review-ignore':
@@ -5447,6 +5550,7 @@ async function onAdminAction(action, el) {
 
 async function onAdminSubmit(form, submitter) {
   if (form.matches('.topup-custom')) return adminTopUp(new FormData(form).get('amount'));
+  if (form.matches('[data-maint-form]')) return adminMaintenance(!S.maint?.on);
   if (form.id === 'admin-login') {
     const key = String(new FormData(form).get('key') || '');
     A.api = createAdminApi(key);
@@ -6165,6 +6269,7 @@ setInterval(() => {
   };
   S.cfg = await S.api.config().catch(() => ({}));
   S.signIn = S.cfg.signIn ?? S.signIn;
+  wake.onMaintenance = (message) => applyMaintenance({ on: true, message: message ?? '' });
   try {
     await refreshMe();
   } catch (err) {
@@ -6172,6 +6277,8 @@ setInterval(() => {
   }
   window.addEventListener('hashchange', onRoute);
   await onRoute();
+  applyMaintenance(S.cfg.maintenance);
+  watchMaintenance();
   maybeTourVisitor();
   S.api.subscribe(onLive, (ok) => {
     if (S.live !== ok) {
