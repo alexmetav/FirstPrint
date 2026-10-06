@@ -12127,6 +12127,37 @@ svg.viz.viz-narrow {
   min-width: 0;
 }
 
+/* Markets priced at the close: the note on the market page, the Countdown tab intro and the result timer. */
+.m-upcoming.m-atclose {
+  border-color: color-mix(in srgb, var(--up) 30%, var(--line));
+  background: color-mix(in srgb, var(--up) 6%, transparent);
+}
+.m-upcoming.m-atclose > .i {
+  color: var(--up);
+}
+.countdown-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.5;
+}
+.countdown-note .i {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+}
+.card-timer.card-timer-result {
+  color: var(--text);
+}
+.mf-presets .mf-presets-gap {
+  margin-left: 10px;
+}
+.mf .start-close-check {
+  width: fit-content;
+  max-width: 100%;
+}
+
 </style>
   </head>
   <body>
@@ -14047,9 +14078,12 @@ const rangeLabel = (b, t) => bucketRangeLabel(b, t).replace(/-/g, '−');
 /** A market created before its token traded has no start price yet: it's the opening price. */
 const hasStart = (m) => m.basePrice != null;
 /** A token that isn't trading yet: predictions close when it lists, and its opening price is the start. */
-const isUpcoming = (m) => m.mode === 'manual' && !hasStart(m) && m.status === 'open' && m.phase !== 'awaiting_result' && m.closeAt > now();
-const startText = (m, short = false) => (hasStart(m) ? fmtPrice(m.basePrice) : short ? 'opening price' : 'its opening price');
-const rangeOf = (m, b) => (isYesNo(m) ? (b === 'up' ? `At or above ${hasStart(m) ? fmtPrice(m.basePrice) : 'open'}` : `Below ${hasStart(m) ? fmtPrice(m.basePrice) : 'open'}`) : rangeLabel(b, m.thresholds));
+const isUpcoming = (m) => m.mode === 'manual' && !hasStart(m) && !m.startAtClose && m.status === 'open' && m.phase !== 'awaiting_result' && m.closeAt > now();
+/** The start price before it is known: the price when predictions close, or an upcoming token's opening price. */
+const startText = (m, short = false) => (hasStart(m) ? fmtPrice(m.basePrice) : m.startAtClose ? (short ? 'close price' : 'its price when predictions close') : short ? 'opening price' : 'its opening price');
+/** Short label for an unknown start price, for fact rows. */
+const startLater = (m) => (m.startAtClose ? 'At the close' : 'At listing');
+const rangeOf = (m, b) => (isYesNo(m) ? (b === 'up' ? `At or above ${hasStart(m) ? fmtPrice(m.basePrice) : m.startAtClose ? 'close' : 'open'}` : `Below ${hasStart(m) ? fmtPrice(m.basePrice) : m.startAtClose ? 'close' : 'open'}`) : rangeLabel(b, m.thresholds));
 const userLink = (name, cls = '') => `<a class="user-link${cls ? ` ${cls}` : ''}" href="#/u/${encodeURIComponent(name)}">${esc(name)}</a>`;
 const share = (m, b) => (m.pool ? m.totals[b] / m.pool : 0);
 
@@ -14817,7 +14851,7 @@ const HOME_TABS = [
   ['trending', 'flame', 'Trending'],
   ['new', 'sparkles', 'New'],
   ['all', 'grid', 'All markets'],
-  ['live', 'history', 'Awaiting result'],
+  ['live', 'clock', 'Countdown'],
   ['settled', 'checkCircle', 'Settled'],
 ];
 
@@ -14846,7 +14880,8 @@ const ALL_SORTS = [
 const venuesOf = (m) => (m.venues?.length ? m.venues.map((v) => v.name) : [m.exchange]);
 
 function tabList(tab) {
-  if (tab === 'live') return [...S.lists.live];
+  // Closed markets counting down to their result, the soonest result first.
+  if (tab === 'live') return [...S.lists.live].sort((a, b) => a.settleAt - b.settleAt);
   if (tab === 'settled') return [...S.lists.settled];
   const open = [...S.lists.open];
   if (tab === 'new') return open.sort((a, b) => b.openedAt - a.openedAt);
@@ -14866,7 +14901,8 @@ function marketResults() {
       : `<div class="empty"><div class="empty-art">${ico('search')}</div><p><strong>No markets match “${esc(S.query.trim())}”.</strong><br />Try a token symbol like BTC or a project name.</p></div>`;
   }
   const list = tabList(S.filter).filter(byExchange);
-  return list.length ? `<div class="grid">${list.map(cardView).join('')}</div>` : `<div class="empty">${emptyText()}</div>`;
+  const intro = S.filter === 'live' && list.length ? `<p class="results-note countdown-note">${ico('lock')}<span>Predictions are closed on these markets and their start prices are locked. Each one counts down to its result; the price then decides who wins.</span></p>` : '';
+  return list.length ? `${intro}<div class="grid">${list.map(cardView).join('')}</div>` : `<div class="empty">${emptyText()}</div>`;
 }
 
 function homeView() {
@@ -15016,7 +15052,7 @@ function homeRail() {
 }
 
 function emptyText() {
-  if (S.filter === 'live') return `<div class="empty-art">${ico('clock')}</div><p>No markets are waiting for a result. Markets move here once predictions close.</p><button class="btn" data-filter="trending">See open markets</button>`;
+  if (S.filter === 'live') return `<div class="empty-art">${ico('clock')}</div><p>Nothing is counting down yet. Markets move here once predictions close, and wait for their result.</p><button class="btn" data-filter="trending">See open markets</button>`;
   if (S.filter === 'settled') return `<div class="empty-art">${ico('checkCircle')}</div><p>No settled markets yet. Results appear here after Firstprint posts them.</p>`;
   return `<div class="empty-art">${ico('satellite')}</div>
     <p><strong>No open markets right now.</strong><br />New markets land here as soon as Firstprint opens them.</p>
@@ -15053,7 +15089,7 @@ function heroFacts(m, whenLabel, whenValue) {
           ? `<div>${ico('coins')}<dt>Pool</dt><dd>${tick(`pool:hero:${m.id}`, m.pool)} pts</dd></div>
              <div>${ico('users')}<dt>Participants</dt><dd>${fmtNum(m.predictors)}</dd></div>`
           : isManual(m)
-          ? `<div>${ico('dollar')}<dt>${isYesNo(m) ? 'Target' : 'Start price'}</dt><dd>${hasStart(m) ? fmtPrice(m.basePrice) : 'At listing'}</dd></div>`
+          ? `<div>${ico('dollar')}<dt>${isYesNo(m) ? 'Target' : 'Start price'}</dt><dd>${hasStart(m) ? fmtPrice(m.basePrice) : startLater(m)}</dd></div>`
           : ''
       }
       <div>${ico('clock')}<dt>${whenLabel}</dt><dd>${whenValue}</dd></div>
@@ -15094,7 +15130,7 @@ function featuredView(m, rank = null) {
 
   const fact = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
   const facts = [
-    manual ? fact(yn ? 'Target price' : 'Start price', hasStart(m) ? fmtPrice(m.basePrice) : 'At listing <span class="feat-sub">opening price</span>') : '',
+    manual ? fact(yn ? 'Target price' : 'Start price', hasStart(m) ? fmtPrice(m.basePrice) : m.startAtClose ? 'At the close' : 'At listing <span class="feat-sub">opening price</span>') : '',
     pre ? fact(m.kind === 'live_test' ? 'Starts' : 'Lists', atAndIn(isUpcoming(m) ? m.closeAt : m.listingAt)) : fact('Predictions close', atAndIn(m.closeAt)),
     manual && !pre ? fact('Result', fmtDate(m.settleAt)) : '',
     m.pool ? fact('Pool', `${tick(`pool:hero:${m.id}`, m.pool)} pts <span class="feat-sub">${fmtNum(m.predictors)} player${m.predictors === 1 ? '' : 's'}</span>`) : '',
@@ -15138,6 +15174,7 @@ function featuredView(m, rank = null) {
 function cardStatus(m) {
   if (m.status === 'resolved') return '<span class="pill pill-done">Settled</span>';
   if (m.status === 'void') return '<span class="pill pill-off">Cancelled</span>';
+  if (m.phase === 'awaiting_result' && m.settleAt > now()) return `<span class="pill pill-wait">${ico('clock')}Result in<span data-until="${m.settleAt}">${fmtDur(m.settleAt - now())}</span></span>`;
   if (m.phase === 'awaiting_result') return '<span class="pill pill-wait">Awaiting result</span>';
   if (m.phase === 'pre_listing' || isUpcoming(m)) return `<span class="pill pill-soon">${ico('clock')}Upcoming</span>`;
   if (m.phase === 'running') return '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Live</span>';
@@ -15202,7 +15239,7 @@ function cardView(m) {
   const state =
     m.status === 'resolved' ? '<span class="st st-done">Settled</span>'
     : m.status === 'void' ? '<span class="st st-off">Cancelled</span>'
-    : m.phase === 'awaiting_result' ? '<span class="st st-wait">Awaiting</span>'
+    : m.phase === 'awaiting_result' ? `<span class="st st-wait">${m.settleAt > now() ? 'Countdown' : 'Awaiting'}</span>`
     : soon ? `<span class="st st-hot">${ico('flame')}${upcoming ? 'Listing soon' : 'Closing soon'}</span>`
     : upcoming ? '<span class="st st-soon"><i aria-hidden="true"></i>Upcoming</span>'
     : '<span class="st st-live"><i aria-hidden="true"></i>Open</span>';
@@ -15220,8 +15257,11 @@ function cardView(m) {
   // A countdown to when predictions close (or, for an upcoming token, to its listing), so the
   // markets running out of time stand out.
   const left = m.closeAt - now();
+  const toResult = m.settleAt - now();
   const timer = open && left > 0
     ? `<span class="card-timer${left < 3_600_000 ? ' urgent' : left < 86_400_000 ? ' today' : ''}" title="${upcoming ? 'Lists' : 'Predictions close'} ${esc(fmtDate(m.closeAt))}">${ico('clock')}<span data-until="${m.closeAt}">${fmtDur(left)}</span></span>`
+    : m.phase === 'awaiting_result' && toResult > 0
+    ? `<span class="card-timer card-timer-result" title="Result ${esc(fmtDate(m.settleAt))}">${ico('clock')}Result in<span data-until="${m.settleAt}">${fmtDur(toResult)}</span></span>`
     : '';
 
   return `
@@ -15260,7 +15300,8 @@ function howItWorks() {
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
         <li>Firstprint opens markets on newly listed tokens on major exchanges, including new listings it spots automatically on MEXC, OKX, Gate, Bitget and KuCoin. Log in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
-        <li>Pick one of five outcomes for where the price ends up compared with the start price, from Crash to Moon. Predictions close at the time shown, and earlier predictions earn a bigger share.</li>
+        <li>Pick one of five outcomes for where the price ends up compared with the start price, from Crash to Moon. Predictions stay open a day or two, and earlier predictions earn a bigger share.</li>
+        <li>The start price is locked when predictions close, so a move while they are open doesn’t count. The market then counts down to its result, usually 15 or 30 days later.</li>
         <li>When the result is due, the final price and the winners appear on the market page.</li>
         <li>Everyone who picked the winning outcome splits the pool, minus the fee shown on the market (usually 4%). Everyone gets their points back if nobody picked the winner, everyone picked the same outcome, or the market is cancelled.</li>
       </ol></details>
@@ -15304,12 +15345,13 @@ function statusLine(m) {
         ? `Starts in <strong>${until(m.listingAt)}</strong>. Predictions close ${fmtSpan(m.closeAt - m.listingAt)} after it starts.`
         : `Lists in <strong>${until(m.listingAt)}</strong>. Predictions close ${fmtSpan(m.closeAt - m.listingAt)} after trading starts.`;
     case 'baseline':
-      if (isManual(m)) return `Predictions close in <strong>${until(m.closeAt)}</strong>. The result is expected around ${fmtDate(m.settleAt)}.`;
+      if (isManual(m)) return `Predictions close in <strong>${until(m.closeAt)}</strong>.${m.startAtClose && !hasStart(m) ? ' The start price is the price then.' : ''} The result is expected around ${fmtDate(m.settleAt)}.`;
       return `${m.kind === 'live_test' ? 'The market has started.' : 'Trading started.'} Predictions close in <strong>${until(m.closeAt)}</strong>.`;
     case 'running':
       return `Predictions are closed. Result in <strong>${until(m.settleAt)}</strong>.`;
     case 'awaiting_result':
-      return `Predictions are closed. Waiting for Firstprint to post the final price. Expected around <strong>${fmtDate(m.settleAt)}</strong>.`;
+      if (m.settleAt > now()) return `Predictions are closed${hasStart(m) ? ` at a start price of <strong>${fmtPrice(m.basePrice)}</strong>` : ''}. Result in <strong>${until(m.settleAt)}</strong>, on ${fmtDate(m.settleAt)}.`;
+      return `Predictions are closed. Waiting for Firstprint to post the final price, due <strong>${fmtDate(m.settleAt)}</strong>.`;
     case 'resolved':
       if (isYesNo(m)) return `Result posted: final price <strong>${fmtPrice(m.result.finalPrice)}</strong> against a target of ${fmtPrice(m.result.basePrice)}, so ${outcome(m.result.winningBucket, true)} wins.`;
       if (isManual(m)) return `Result posted: ${fmtPrice(m.result.basePrice)} → <strong>${fmtPrice(m.result.finalPrice)}</strong> (${fmtPct(m.result.returnPct)}), so ${outcome(m.result.winningBucket)} wins.`;
@@ -15363,7 +15405,7 @@ function marketMain(m) {
   const question = yn
     ? `Will ${esc(m.name || m.symbol)} be at or above ${startText(m)} at the result?`
     : isManual(m)
-    ? `Where will ${esc(m.name || m.symbol)} be priced at the result, compared with ${hasStart(m) ? `the start price of ${fmtPrice(m.basePrice)}` : 'its opening price when trading starts'}?`
+    ? `Where will ${esc(m.name || m.symbol)} be priced at the result, compared with ${hasStart(m) ? `the start price of ${fmtPrice(m.basePrice)}` : m.startAtClose ? 'its price when predictions close' : 'its opening price when trading starts'}?`
     : m.kind === 'live_test'
     ? `Where will ${esc(m.name || m.symbol)} trade ${span} after this market starts?`
     : `Where will ${esc(m.name || m.symbol)} trade ${span} after listing on ${esc(m.exchange)}?`;
@@ -15371,10 +15413,10 @@ function marketMain(m) {
   // One line of facts: price, timing, where the price comes from, and the pool once it exists.
   const fact = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
   const facts = [
-    isManual(m) ? fact(yn ? 'Target price' : 'Start price', hasStart(m) ? fmtPrice(m.basePrice) : 'Opening price') : fact(m.kind === 'live_test' ? 'Starts' : 'Listing', fmtDate(m.listingAt)),
+    isManual(m) ? fact(yn ? 'Target price' : 'Start price', hasStart(m) ? fmtPrice(m.basePrice) : m.startAtClose ? 'At the close' : 'Opening price') : fact(m.kind === 'live_test' ? 'Starts' : 'Listing', fmtDate(m.listingAt)),
     m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running'
       ? fact(isUpcoming(m) ? 'Lists & closes' : 'Closes', `${fmtDate(m.closeAt)} <span class="muted">· in ${until(m.closeAt)}</span>`)
-      : fact('Result', fmtDate(m.settleAt)),
+      : fact('Result', !settled && m.settleAt > now() ? `${fmtDate(m.settleAt)} <span class="muted">· in ${until(m.settleAt)}</span>` : fmtDate(m.settleAt)),
     settled || m.phase === 'awaiting_result' ? '' : fact('Result expected', fmtDate(m.settleAt)),
     m.pool ? fact('Pool', `${tick(`pool:page:${m.id}`, m.pool)} pts <span class="muted">· ${fmtNum(m.predictors)} participant${m.predictors === 1 ? '' : 's'}</span>`) : '',
   ].join('');
@@ -15390,7 +15432,11 @@ function marketMain(m) {
         isUpcoming(m)
           ? `<div class="m-upcoming">${ico('clock')}<div><b>Upcoming: ${esc(m.symbol)} isn’t trading yet</b><p>It lists on ${esc(venueNames(m))} around ${fmtDate(m.closeAt)}. Predictions close at listing, and its first trading price becomes the start price. The result is expected ${fmtDate(m.settleAt)}.</p></div></div>`
           : !hasStart(m) && isManual(m) && m.status === 'locked'
-          ? `<div class="m-upcoming">${ico('clock')}<div><b>Listed. Opening price coming soon</b><p>Predictions are closed. Firstprint posts ${esc(m.symbol)}’s opening price here, then the result after ${fmtDate(m.settleAt)}.</p></div></div>`
+          ? m.startAtClose
+            ? `<div class="m-upcoming">${ico('clock')}<div><b>Predictions closed. Locking the start price</b><p>${esc(m.symbol)}’s price at the close is being read from ${esc(venueNames(m))}. It shows here in a few minutes, and the result comes ${fmtDate(m.settleAt)}.</p></div></div>`
+            : `<div class="m-upcoming">${ico('clock')}<div><b>Listed. Opening price coming soon</b><p>Predictions are closed. Firstprint posts ${esc(m.symbol)}’s opening price here, then the result after ${fmtDate(m.settleAt)}.</p></div></div>`
+          : m.startAtClose && m.status === 'open' && m.phase !== 'awaiting_result'
+          ? `<div class="m-upcoming m-atclose">${ico('lock')}<div><b>The start price is locked when predictions close</b><p>The result compares ${esc(m.symbol)}’s price on ${fmtDate(m.settleAt)} with its price at the close, ${fmtDate(m.closeAt)}. A move while predictions are open doesn’t count, so watching the chart now gives no edge.</p></div></div>`
           : ''
       }
       ${m.status === 'resolved' || m.status === 'void' || m.phase === 'awaiting_result' ? `<p class="m-status">${statusLine(m)}</p>` : ''}
@@ -15529,9 +15575,9 @@ function manualRules(m) {
     return `
     ${m.note ? `<p class="m-note">${esc(m.note)}</p>` : ''}
     <ol class="rules">
-      <li>Yes wins if the final price is at or above ${hasStart(m) ? fmtPrice(m.basePrice) : `the opening price when ${esc(m.symbol)} starts trading (posted here once known)`}. No wins if it is below.</li>
+      <li>Yes wins if the final price is at or above ${hasStart(m) ? fmtPrice(m.basePrice) : m.startAtClose ? `${esc(m.symbol)}’s price when predictions close (posted here then)` : `the opening price when ${esc(m.symbol)} starts trading (posted here once known)`}. No wins if it is below.</li>
       <li>Predictions close ${fmtDate(m.closeAt)}. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
-      <li>After that the market waits for Firstprint to post the final price. The result and winners appear on this page.</li>
+      <li>After that the market counts down to its result on ${fmtDate(m.settleAt)}, when Firstprint posts the final price. The result and winners appear on this page.</li>
       <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
       <li>The market is cancelled and refunded if nobody picks the winning answer, everyone picks the same answer, or Firstprint cancels it.</li>
     </ol>`;
@@ -15539,9 +15585,9 @@ function manualRules(m) {
   return `
     ${m.note ? `<p class="m-note">${esc(m.note)}</p>` : ''}
     <ol class="rules">
-      <li>${hasStart(m) ? `Start price: ${fmtPrice(m.basePrice)}.` : `Start price: the opening price when ${esc(m.symbol)} starts trading on ${esc(venueNames(m))}. Firstprint posts it here once trading opens.`} The result is the final price compared with it, using the ranges shown above.</li>
+      <li>${hasStart(m) ? `Start price: ${fmtPrice(m.basePrice)}${m.startAtClose ? ', the price when predictions closed' : ''}.` : m.startAtClose ? `Start price: ${esc(m.symbol)}’s price on ${esc(venueNames(m))} when predictions close. It is read automatically and posted here then, so a move while predictions are open doesn’t count.` : `Start price: the opening price when ${esc(m.symbol)} starts trading on ${esc(venueNames(m))}. Firstprint posts it here once trading opens.`} The result is the final price compared with it, using the ranges shown above.</li>
       <li>Predictions close ${fmtDate(m.closeAt)}. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
-      <li>After that the market waits for Firstprint to post the final price. The result and winners appear on this page.</li>
+      <li>After that the market counts down to its result on ${fmtDate(m.settleAt)}, when Firstprint posts the final price. The result and winners appear on this page.</li>
       <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
       <li>The market is cancelled and refunded if nobody picks the winning outcome, everyone picks the same outcome, or Firstprint cancels it.</li>
     </ol>`;
@@ -17552,7 +17598,12 @@ async function renderAdmin() {
   const venues = A.info.venues;
   const editing = markets.find((m) => m.id === A.edit && m.mode === 'manual' && m.status === 'open') ?? null;
   if (A.edit && !editing) A.edit = null;
-  const waiting = markets.filter((m) => m.mode === 'manual' && m.phase === 'awaiting_result');
+  // Closed markets need the admin once their result is due (or their start price couldn't be read);
+  // until then they count down by themselves.
+  const closed = markets.filter((m) => m.mode === 'manual' && m.phase === 'awaiting_result');
+  const needsYou = (m) => m.settleAt <= now() || (m.basePrice == null && /not found/i.test(m.autoOpenNote ?? ''));
+  const waiting = closed.filter(needsYou);
+  const counting = closed.filter((m) => !needsYou(m)).sort((a, b) => a.settleAt - b.settleAt);
   const drafts = markets.filter((m) => m.phase === 'draft');
   const tab = adminTabs().some(([id]) => id === A.tab) ? A.tab : 'overview';
   // New exchange listings waiting for review (manual-only servers); the old scanner shows its own list in Settings.
@@ -17564,7 +17615,7 @@ async function renderAdmin() {
 
   let body;
   if (tab === 'overview') body = adminOverview({ markets, waiting, drafts, token, tasks, log, pending });
-  else if (tab === 'markets') body = adminMarketsTab(markets, waiting, pending);
+  else if (tab === 'markets') body = adminMarketsTab(markets, waiting, pending, counting);
   else if (tab === 'analytics') {
     try {
       const data = await A.api.analytics(S.vizDays ?? 30);
@@ -17643,6 +17694,7 @@ async function runPriceCheck() {
   const live = prices.filter((p) => p.price !== null).map((p) => p.price).sort((a, b) => a - b);
   const median = live.length ? live[Math.floor((live.length - 1) / 2)] : null;
   const upcoming = form.querySelector('[data-upcoming]')?.checked;
+  const atClose = !upcoming && Boolean(form.querySelector('[data-start-close]')?.checked);
   const base = Number(form.querySelector('[name=basePrice]')?.value || 0);
   const closeAt = new Date(form.querySelector('[name=closeAt]').value).getTime();
   const notes = [];
@@ -17650,13 +17702,14 @@ async function runPriceCheck() {
   if (median === null) notes.push(['ok', upcoming ? 'Not trading on these exchanges yet. That’s right for an upcoming token.' : 'Not trading on these exchanges yet. If it lists later, tick “Upcoming token” instead of guessing a start price.']);
   else {
     if (upcoming) notes.push(['high', `${esc(symbol.toUpperCase())} is already trading, so it isn’t upcoming. Players could see the price before they pick. ${usePrice}`]);
-    if (!upcoming && base > 0) {
+    if (atClose) notes.push(['ok', `Trading at ${fmtPrice(median)} now. The start price is taken by itself when predictions close.`]);
+    if (!upcoming && !atClose && base > 0) {
       const diff = (median - base) / base;
       if (Math.abs(diff) > 0.2) notes.push([Math.abs(diff) > 0.5 ? 'high' : 'medium', `Your start price ${fmtPrice(base)} is ${Math.round(Math.abs(diff) * 100)}% ${diff > 0 ? 'below' : 'above'} the live price. ${usePrice}`]);
       else notes.push(['ok', `Start price is within ${Math.round(Math.abs(diff) * 100)}% of the live price.`]);
     }
-    if (!upcoming && !(base > 0)) notes.push(['medium', `Enter a start price. ${usePrice}`]);
-    if (Number.isFinite(closeAt) && closeAt - Date.now() > 48 * 3_600_000 && !d.get('pairs')) notes.push(['medium', `Predictions stay open ${Math.round((closeAt - Date.now()) / 86_400_000)} days while the price is visible. 1–2 days is fairer.`]);
+    if (!upcoming && !atClose && !(base > 0)) notes.push(['medium', `Enter a start price. ${usePrice}`]);
+    if (!atClose && Number.isFinite(closeAt) && closeAt - Date.now() > 48 * 3_600_000) notes.push(['medium', `Predictions stay open ${Math.round((closeAt - Date.now()) / 86_400_000)} days against a fixed start price, so late players can follow the trend. Tick “Start price is the price when predictions close”.`]);
   }
   out.innerHTML = `
     <div class="pc-prices">${prices.map((p) => `<span class="pc-chip${p.price === null ? ' off' : ''}"><b>${esc(p.name)}</b> ${p.price === null ? 'not trading' : fmtPrice(p.price)}</span>`).join('')}</div>
@@ -17699,7 +17752,8 @@ async function runBannerPreview() {
       symbol,
       name: String(d.get('name') || '').trim(),
       exchanges: d.getAll('exchanges').map(String),
-      basePrice: d.has('upcoming') ? null : d.get('basePrice') || null,
+      basePrice: d.has('upcoming') || d.has('startAtClose') ? null : d.get('basePrice') || null,
+      startAtClose: d.has('startAtClose') && !d.has('upcoming'),
       closeAt: inputMs(d.get('closeAt')),
       resultAt: inputMs(d.get('resultAt')),
       outcomes: d.get('outcomes') === 'binary' ? 'binary' : 'ladder',
@@ -17830,7 +17884,7 @@ function adminInbox(panes) {
   </section>`;
 }
 
-function adminMarketsTab(markets, waiting, pending) {
+function adminMarketsTab(markets, waiting, pending, counting = []) {
   const results = waiting.length
     ? `<section class="panel adm-results"><div class="section-head"><span class="section-ico">${ico('alert')}</span><h2>Waiting for your result <span class="count-badge">${waiting.length}</span></h2></div>
         ${
@@ -17846,11 +17900,20 @@ function adminMarketsTab(markets, waiting, pending) {
             : `<p class="muted">${waiting.map((m) => esc(m.symbol)).join(', ')}: an admin posts the result.</p>`
         }</section>`
     : '';
+  // Closed markets still counting down: nothing to do until the result is due (they move up then).
+  const countdown = counting.length
+    ? `<details class="adm-collapse"><summary>${ico('clock')}<b>Counting down</b><span class="count-badge">${counting.length}</span><span class="muted">closed, result not due yet</span></summary>
+        <ul class="todo">${counting
+          .map((m) => `<li style="--c:var(--flat)"><span class="todo-ico">${tokenAvatar(m, 'avatar-sm')}</span><div><b>${esc(m.symbol)}</b><span class="muted">Start ${m.basePrice != null ? fmtPrice(m.basePrice) : 'being read'} · result ${fmtDate(m.settleAt)} · in <span data-until="${m.settleAt}">${fmtDur(m.settleAt - now())}</span> · ${fmtPts(m.pool)}</span></div>
+            ${canAdmin('admin') ? `<span class="todo-actions"><button class="btn btn-sm" type="button" data-action="admin-cancel" data-id="${esc(m.id)}">Cancel and refund</button></span>` : ''}</li>`)
+          .join('')}</ul></details>`
+    : '';
   const listings = pending.length
     ? `<details class="adm-collapse"><summary>${ico('zap')}<b>New listings</b><span class="count-badge">${pending.length}</span><span class="muted">found on the exchanges</span></summary>${listingsList(pending)}</details>`
     : '';
   return `
     ${results}
+    ${countdown}
     <div id="admin-checks"></div>
     ${listings}
     <section class="panel panel-flush">
@@ -18147,9 +18210,14 @@ function marketForm(m, pre = null) {
   const lock = locked ? ' disabled' : '';
   const t = v?.thresholds ?? { crash: -0.5, down: -0.1, up: 0.1, moon: 0.5 };
   const chosen = new Set(v?.venues ? v.venues.map((x) => x.id) : A.info.exchanges.filter((e) => e.enabled && !e.priceOnly).map((e) => e.id));
-  const soon = Math.ceil((Date.now() + 24 * 3_600_000) / 3_600_000) * 3_600_000;
+  const soon = roundUpHour(Date.now() + OPEN_HOURS_DEFAULT * 3_600_000);
   const pct = (n) => String(Math.round(n * 1000) / 10);
-  const upcoming = Boolean(v) && v.basePrice == null;
+  // The start price: taken when predictions close (the default), a fixed price, or an upcoming token's opening price.
+  const atClose = v ? Boolean(v.startAtClose) : true;
+  const upcoming = Boolean(v) && v.basePrice == null && !atClose;
+  const fixedPrice = !upcoming && !atClose;
+  const openOn = pre?.openHours ?? (m ? null : OPEN_HOURS_DEFAULT);
+  const resultOn = pre?.resultDays ?? (m ? null : RESULT_DAYS_DEFAULT);
   // A market priced from CoinGecko keeps its coin id (e.g. pudgy-penguins) as the "pair".
   const cgPair = pre?.pairs?.coingecko ?? m?.venues?.find((x) => x.id === 'coingecko')?.pair ?? null;
   const verifyUrl = pre?.verifyUrl ?? (cgPair ? TRADE_URLS.coingecko('', { pair: cgPair }) : null);
@@ -18187,24 +18255,27 @@ function marketForm(m, pre = null) {
       <section class="mf-group">
         <h3 class="mf-h">Price and timing</h3>
         <div class="mf-cols mf-cols-3">
-          <label><span class="field-label"><span class="ladder-only">Start price (USD)</span><span class="binary-only">Target price (USD)</span></span><input name="basePrice" type="number" step="any" min="0" placeholder="${upcoming ? 'Set when trading opens' : '0.25'}" value="${v?.basePrice ?? ''}"${upcoming ? ' disabled' : ' required'}${lock} /></label>
+          <label><span class="field-label"><span class="ladder-only">Start price (USD)</span><span class="binary-only">Target price (USD)</span></span><input name="basePrice" type="number" step="any" min="0" placeholder="${upcoming ? 'Set when trading opens' : atClose ? 'Taken at the close' : '0.25'}" value="${fixedPrice ? (v?.basePrice ?? '') : ''}"${fixedPrice ? ' required' : ' disabled'}${lock} /></label>
           <label><span class="field-label">Predictions close</span><input name="closeAt" type="datetime-local" value="${toLocalInput(v?.closeAt ?? soon)}" required /><small class="utc-hint" data-utc-for="closeAt"></small></label>
-          <label><span class="field-label">Result by</span><input name="resultAt" type="datetime-local" value="${toLocalInput(v?.settleAt ?? soon + 24 * 3_600_000)}" required /><small class="utc-hint" data-utc-for="resultAt"></small></label>
+          <label><span class="field-label">Result</span><input name="resultAt" type="datetime-local" value="${toLocalInput(v?.settleAt ?? soon + RESULT_DAYS_DEFAULT * 86_400_000)}" required /><small class="utc-hint" data-utc-for="resultAt"></small></label>
         </div>
-        <div class="mf-presets" role="group" aria-label="Predictions close in">
-          <span class="muted">Close in</span>${CLOSE_PRESETS.map((d) => `<button type="button" class="chip-btn${pre?.days === d ? ' on' : ''}" data-action="admin-close-in" data-days="${d}">${d} days</button>`).join('')}
+        <div class="mf-presets" role="group" aria-label="How long predictions stay open">
+          <span class="muted">Predictions open</span>${OPEN_PRESETS.map((h) => `<button type="button" class="chip-btn${openOn === h ? ' on' : ''}" data-action="admin-open-for" data-hours="${h}">${h} hours</button>`).join('')}
+          <span class="muted mf-presets-gap">Result after</span>${RESULT_PRESETS.map((d) => `<button type="button" class="chip-btn${resultOn === d ? ' on' : ''}" data-action="admin-result-after" data-days="${d}">${d} days</button>`).join('')}
         </div>
-        ${verifyUrl ? `<p class="mf-verify">${ico('checkCircle')}Start price is the live price now. <a href="${esc(verifyUrl)}" target="_blank" rel="noopener noreferrer">Verify it on CoinGecko ${ico('external')}</a></p>` : ''}
+        <label class="check start-close-check"${upcoming ? ' hidden' : ''}><input type="checkbox" name="startAtClose" data-start-close${atClose ? ' checked' : ''}${lock} /> <b>Start price is the price when predictions close</b> <span class="muted">(recommended)</span></label>
+        <details class="adm-how start-close-how"${upcoming ? ' hidden' : ''}><summary>Why at the close</summary><p>The result is measured from the moment predictions close, so a token that climbs while predictions are open gives nobody an edge. The price is read by itself from the market’s sources in the minutes before the close; if they don’t answer, you’re asked for it. Untick it only for a fixed target price.</p></details>
+        ${verifyUrl ? `<p class="mf-verify">${ico('checkCircle')}The start price will be the CoinGecko price when predictions close. <a href="${esc(verifyUrl)}" target="_blank" rel="noopener noreferrer">See it on CoinGecko ${ico('external')}</a></p>` : ''}
         <div class="upcoming-opt"${cgPair ? ' hidden' : ''}>
           <label class="check upcoming-check"><input type="checkbox" name="upcoming" data-upcoming${upcoming ? ' checked' : ''}${lock} /> Upcoming token: not trading yet</label>
           <details class="adm-how"><summary>How upcoming works</summary><p>No price needed now: set predictions to close when trading starts. Once the token trades, its opening price (from its first minutes of trading) is read from the exchange and becomes the start price by itself. You’re asked for the result only when it is due.</p></details>
           <div class="auto-open"${upcoming && !(m && m.published) ? '' : ' hidden'}>
             <label class="check"><input type="checkbox" name="autoOpen" data-auto-open${v?.autoOpenAt ? ' checked' : ''} /> <b>Open by itself when trading starts</b></label>
             <label class="auto-open-at"${v?.autoOpenAt ? '' : ' hidden'}><span class="field-label">Trading starts</span><input name="autoOpenAt" type="datetime-local" value="${toLocalInput(v?.autoOpenAt ?? v?.listingStart ?? soon)}" /><small class="utc-hint" data-utc-for="autoOpenAt"></small></label>
-            <details class="adm-how"><summary>How this works</summary><p>The market waits as a draft. Once the token has traded for 3 minutes, its live price (checked against those minutes, so an opening spike is skipped) becomes the start price and predictions open, with the channel post. You get a Telegram message either way. Needs the logo, and predictions must stay open at least 30 minutes after trading starts.</p></details>
+            <details class="adm-how"><summary>How this works</summary><p>The market waits as a draft. Once the token has traded for 3 minutes (checked against those minutes, so an opening spike is skipped), predictions open, with the channel post. The start price is the price when predictions close. You get a Telegram message either way. Needs the logo, and predictions must stay open at least 30 minutes after trading starts.</p></details>
           </div>
         </div>
-        <p class="mf-fine">Times are in your time zone. Players can pick until predictions close; the result comes after.</p>
+        <p class="mf-fine">Times are in your time zone. Players pick for ${OPEN_PRESETS.join(' to ')} hours, then the market counts down to its result.</p>
       </section>
 
       <section class="mf-group">
@@ -18271,7 +18342,7 @@ function resultForm(m) {
       ${
         hasStart(m)
           ? ''
-          : `<label><span class="field-label">Opening price (USD)</span><input name="basePrice" type="number" step="any" min="0" value="${esc(v.basePrice ?? '')}" placeholder="First trade price" />${liveFillButton(m, 'basePrice')}</label>`
+          : `<label><span class="field-label">${m.startAtClose ? 'Start price at the close (USD)' : 'Opening price (USD)'}</span><input name="basePrice" type="number" step="any" min="0" value="${esc(v.basePrice ?? '')}" placeholder="${m.startAtClose ? `Price at ${esc(fmtDate(m.closeAt))}` : 'First trade price'}" />${m.startAtClose ? '' : liveFillButton(m, 'basePrice')}</label>`
       }
       <label><span class="field-label">Final price (USD)</span><input name="finalPrice" type="number" step="any" min="0" value="${esc(v.finalPrice ?? '')}"${hasStart(m) ? ' required' : ''} />${liveFillButton(m, 'finalPrice')}</label>
       <label><span class="field-label">Winning outcome</span>
@@ -18287,7 +18358,7 @@ function resultForm(m) {
           : ''
       }
       <div class="admin-actions" style="grid-column:1/-1">
-        ${hasStart(m) ? '' : '<button class="btn" type="submit" name="intent" value="start">Save opening price</button>'}
+        ${hasStart(m) ? '' : `<button class="btn" type="submit" name="intent" value="start">${m.startAtClose ? 'Save start price' : 'Save opening price'}</button>`}
         <button class="btn${s ? '' : ' btn-solid'}" type="submit" name="intent" value="preview">Preview result</button>
         ${s ? '<button class="btn btn-solid" type="submit" name="intent" value="resolve">Confirm and pay winners</button>' : ''}
         <button class="btn" type="button" data-action="admin-cancel" data-id="${esc(m.id)}">Cancel and refund</button>
@@ -18343,11 +18414,14 @@ const TRACKER_PAGES = [
 ];
 const roundUpHour = (t) => Math.ceil(t / 3_600_000) * 3_600_000;
 
-/** "Close in" buttons on the market form; a trending token starts on 15 days. */
-const CLOSE_PRESETS = [3, 7, 15, 30];
-const TRENDING_DAYS = 15;
-/** The result comes this long after predictions close. */
-const RESULT_AFTER_CLOSE = 24 * 3_600_000;
+/**
+ * Market timing: predictions stay open a day or two, then the market counts down to its result,
+ * 15 or 30 days after the close, measured from the price at the close.
+ */
+const OPEN_PRESETS = [24, 48];
+const OPEN_HOURS_DEFAULT = 48;
+const RESULT_PRESETS = [15, 30];
+const RESULT_DAYS_DEFAULT = 15;
 
 async function loadDiscover(key, fetcher) {
   A.discover = { ...(A.discover ?? {}), [key]: { loading: true } };
@@ -18432,32 +18506,28 @@ async function makeFromDiscovery(el) {
     const l = A.discover?.[`ex:${A.discoverVenue}`]?.data?.listings?.[i];
     if (!l) return;
     const upcoming = Boolean(l.listingAt && l.listingAt > now);
-    const closeAt = upcoming ? l.listingAt : roundHour(now + 24 * hour);
+    const closeAt = upcoming ? l.listingAt : roundHour(now + OPEN_HOURS_DEFAULT * hour);
     pre = {
       symbol: l.symbol,
       name: l.name ?? '',
       venues: [{ id: l.exchange }],
-      basePrice: upcoming ? null : l.price ?? '',
+      basePrice: null,
+      startAtClose: !upcoming,
+      openHours: upcoming ? null : OPEN_HOURS_DEFAULT,
+      resultDays: RESULT_DAYS_DEFAULT,
       closeAt,
-      settleAt: closeAt + 72 * hour,
+      settleAt: closeAt + RESULT_DAYS_DEFAULT * 24 * hour,
       listingStart: upcoming ? l.listingAt : null,
-      note: `New on ${l.exchangeName}. The start price is the ${l.exchangeName} ${l.symbol}/USDT price when predictions open, and the result is its price at the result time.`,
+      note: upcoming
+        ? `New on ${l.exchangeName}. The start price is the ${l.exchangeName} ${l.symbol}/USDT opening price, and the result is its price at the result time.`
+        : `New on ${l.exchangeName}. The start price is the ${l.exchangeName} ${l.symbol}/USDT price when predictions close, and the result is its price at the result time.`,
     };
   } else {
     // Trending on CoinGecko: everything comes from CoinGecko (name, logo, live price), so the token
     // needn't trade on any of our exchanges. The admin only checks the price and publishes.
     const c = A.discover?.trending?.data?.coins?.[i];
     if (!c) return;
-    el.disabled = true;
-    el.textContent = 'Getting price…';
-    let live = c.priceUsd;
-    try {
-      const { prices } = await A.api.priceCheck({ symbol: c.symbol, exchanges: ['coingecko'], pairs: { coingecko: c.id } });
-      live = prices.find((p) => p.price != null)?.price ?? live;
-    } catch {
-      /* keep the trending list's price */
-    }
-    const closeAt = roundHour(now + TRENDING_DAYS * 24 * hour);
+    const closeAt = roundHour(now + OPEN_HOURS_DEFAULT * hour);
     pre = {
       symbol: c.symbol,
       name: c.name,
@@ -18465,12 +18535,14 @@ async function makeFromDiscovery(el) {
       venues: [{ id: 'coingecko' }],
       pairs: { coingecko: c.id },
       verifyUrl: c.url,
-      days: TRENDING_DAYS,
       trending: true,
-      basePrice: live ?? '',
+      basePrice: null,
+      startAtClose: true,
+      openHours: OPEN_HOURS_DEFAULT,
+      resultDays: RESULT_DAYS_DEFAULT,
       closeAt,
-      settleAt: closeAt + RESULT_AFTER_CLOSE,
-      note: `Trending on CoinGecko. The start price is the CoinGecko price when the market opened; the result is the CoinGecko price at the result time.`,
+      settleAt: closeAt + RESULT_DAYS_DEFAULT * 24 * hour,
+      note: `Trending on CoinGecko. The start price is the CoinGecko price when predictions close; the result is the CoinGecko price at the result time.`,
     };
   }
   A.prefill = { ...pre, from: 'discover' };
@@ -18486,20 +18558,22 @@ function reviewPrefill(d) {
   const now = Date.now();
   const hour = 3_600_000;
   const upcoming = Boolean(d.listingAt && d.listingAt > now);
-  // Upcoming: predictions close when trading starts. Already trading: give players an hour from now.
-  const closeAt = upcoming ? d.listingAt : Math.ceil((now + hour) / (15 * 60_000)) * 15 * 60_000;
-  const settleAt = (d.listingAt && d.listingAt > now - hour ? d.listingAt : closeAt) + 72 * hour;
+  // Upcoming: predictions close when trading starts. Already trading: predictions stay open two days.
+  const closeAt = upcoming ? d.listingAt : roundUpHour(now + OPEN_HOURS_DEFAULT * hour);
   const pair = `${d.symbol}/USDT`;
   return {
     detectionId: d.id,
     symbol: d.symbol,
     name: d.name ?? '',
     venues: [{ id: d.exchange }],
-    basePrice: upcoming ? null : '',
+    basePrice: null,
+    startAtClose: !upcoming,
+    openHours: upcoming ? null : OPEN_HOURS_DEFAULT,
+    resultDays: RESULT_DAYS_DEFAULT,
     closeAt,
-    settleAt,
+    settleAt: closeAt + RESULT_DAYS_DEFAULT * 24 * hour,
     listingStart: upcoming ? d.listingAt : null,
-    note: `New on ${d.exchangeName}. The start price is the ${d.exchangeName} ${pair} price when ${upcoming ? 'trading opens' : 'predictions open'}, and the result is the ${d.exchangeName} ${pair} price at the result time.`,
+    note: `New on ${d.exchangeName}. The start price is the ${d.exchangeName} ${pair} ${upcoming ? 'opening price' : 'price when predictions close'}, and the result is the ${d.exchangeName} ${pair} price at the result time.`,
   };
 }
 
@@ -18599,7 +18673,7 @@ function adminPhase(m) {
   if (m.mode === 'manual') {
     if (m.phase === 'draft') return 'Draft, not published';
     if (m.phase === 'baseline') return `Open, closes ${fmtDate(m.closeAt)} (in ${fmtDur(m.closeAt - now())})`;
-    if (m.phase === 'awaiting_result' && m.basePrice == null && !/not found/i.test(m.autoOpenNote ?? '')) return 'Reading the opening price';
+    if (m.phase === 'awaiting_result' && m.basePrice == null && !/not found/i.test(m.autoOpenNote ?? '')) return m.startAtClose ? 'Reading the price at the close' : 'Reading the opening price';
     if (m.phase === 'awaiting_result' && m.basePrice != null && m.settleAt > now()) return `Closed, result due ${fmtDate(m.settleAt)}`;
     if (m.phase === 'awaiting_result') return 'Awaiting your result';
   }
@@ -18767,12 +18841,18 @@ async function onAdminAction(action, el) {
         toast(err.message, true);
       }
       return renderAdmin();
-    case 'admin-close-in': {
+    case 'admin-open-for':
+    case 'admin-result-after': {
+      // Predictions open N hours from now; the result N days after the close (kept when the close moves).
       const form = el.closest('form');
-      const close = roundUpHour(Date.now() + Number(el.dataset.days) * 86_400_000);
-      form.querySelector('[name=closeAt]').value = toLocalInput(close);
-      form.querySelector('[name=resultAt]').value = toLocalInput(close + RESULT_AFTER_CLOSE);
-      form.querySelectorAll('[data-action="admin-close-in"]').forEach((b) => b.classList.toggle('on', b === el));
+      const closeIn = form.querySelector('[name=closeAt]');
+      const resultIn = form.querySelector('[name=resultAt]');
+      const days = Number(el.dataset.days ?? form.querySelector('[data-action="admin-result-after"].on')?.dataset.days ?? RESULT_DAYS_DEFAULT);
+      const close = el.dataset.hours ? roundUpHour(Date.now() + Number(el.dataset.hours) * 3_600_000) : inputMs(closeIn.value);
+      if (!Number.isFinite(close)) return toast('Choose when predictions close first.', true);
+      closeIn.value = toLocalInput(close);
+      resultIn.value = toLocalInput(close + days * 86_400_000);
+      form.querySelectorAll(`[data-action="${el.dataset.action}"]`).forEach((b) => b.classList.toggle('on', b === el));
       updateUtcHints();
       return;
     }
@@ -18827,6 +18907,11 @@ async function onAdminAction(action, el) {
       if (up?.checked) {
         up.checked = false;
         up.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      const close = form?.querySelector('[data-start-close]');
+      if (close?.checked && !close.disabled) {
+        close.checked = false;
+        close.dispatchEvent(new Event('change', { bubbles: true }));
       }
       const input = form?.querySelector('[name=basePrice]');
       if (input && !input.disabled) input.value = el.dataset.price;
@@ -19089,7 +19174,10 @@ async function submitAdminMarket(form, intent) {
   if (d.get('detectionId')) body.detectionId = Number(d.get('detectionId'));
   if (d.get('pairs')) body.pairs = JSON.parse(String(d.get('pairs')));
   // "Upcoming token": no start price yet; the opening price is added once trading starts.
-  if (d.has('upcoming')) body.basePrice = null;
+  // "At the close": no start price yet either; it is read when predictions close.
+  const atClose = form.querySelector('[data-start-close]');
+  if (atClose && !atClose.disabled && !d.has('upcoming')) body.startAtClose = atClose.checked;
+  if (d.has('upcoming') || body.startAtClose) body.basePrice = null;
   else if (d.has('basePrice')) body.basePrice = Number(d.get('basePrice'));
   // Opens by itself when trading starts: saved as a scheduled draft, never published from here.
   const autoOpen = d.has('upcoming') && d.has('autoOpen');
@@ -19108,9 +19196,9 @@ async function submitAdminMarket(form, intent) {
   }
   if (!Number.isFinite(body.closeAt) || !Number.isFinite(body.resultAt)) return toast('Choose the close time and the expected result time.', true);
   if (autoOpen && intent === 'publish') {
-    if (!confirm(`Schedule this market? It stays a draft, then opens by itself about 3 minutes after trading starts (${new Date(body.autoOpenAt).toLocaleString()}), with the live price as its start price.`)) return;
+    if (!confirm(`Schedule this market? It stays a draft, then opens by itself about 3 minutes after trading starts (${new Date(body.autoOpenAt).toLocaleString()}). Its start price is the price when predictions close.`)) return;
     intent = 'save';
-  } else if (intent === 'publish' && !confirm(`Publish this market? Users will be able to predict straight away.\n\nPredictions close: ${fmtDate(body.closeAt)} (in ${fmtDur(body.closeAt - now())})\nResult: ${fmtDate(body.resultAt)}`)) return;
+  } else if (intent === 'publish' && !confirm(`Publish this market? Users will be able to predict straight away.\n\nPredictions close: ${fmtDate(body.closeAt)} (in ${fmtDur(body.closeAt - now())})\nStart price: ${body.startAtClose ? 'the price at that moment' : body.basePrice == null ? 'the opening price' : fmtPrice(body.basePrice)}\nResult: ${fmtDate(body.resultAt)}`)) return;
   const buttons = form.querySelectorAll('button');
   buttons.forEach((b) => (b.disabled = true));
   try {
@@ -19486,9 +19574,24 @@ document.addEventListener(
   true,
 );
 
+/** The start price field follows its choice: typed in for a fixed price, empty when it comes later. */
+function syncStartPrice(form) {
+  if (!form) return;
+  const upcoming = Boolean(form.querySelector('[data-upcoming]')?.checked);
+  const close = form.querySelector('[data-start-close]');
+  form.querySelectorAll('.start-close-check, .start-close-how').forEach((x) => (x.hidden = upcoming));
+  const atClose = !upcoming && Boolean(close?.checked);
+  const price = form.querySelector('[name=basePrice]');
+  if (!price || (close?.disabled && price.disabled)) return;
+  price.disabled = upcoming || atClose;
+  price.required = !price.disabled;
+  price.placeholder = upcoming ? 'Set when trading opens' : atClose ? 'Taken at the close' : '0.25';
+  if (price.disabled) price.value = '';
+}
+
 /**
  * "Open by itself when trading starts": shows the trading start time, keeps predictions open at
- * least a day after it, and names the main button for what it will do.
+ * least two days after it, and names the main button for what it will do.
  */
 function syncAutoOpen(form, timeChanged = false) {
   if (!form) return;
@@ -19500,8 +19603,8 @@ function syncAutoOpen(form, timeChanged = false) {
     const close = form.querySelector('[name=closeAt]');
     const result = form.querySelector('[name=resultAt]');
     if (Number.isFinite(open) && (timeChanged || !(inputMs(close.value) >= open + 30 * 60_000))) {
-      close.value = toLocalInput(open + 24 * 3_600_000);
-      if (!(inputMs(result.value) > open + 24 * 3_600_000)) result.value = toLocalInput(open + 72 * 3_600_000);
+      close.value = toLocalInput(open + OPEN_HOURS_DEFAULT * 3_600_000);
+      if (!(inputMs(result.value) > open + OPEN_HOURS_DEFAULT * 3_600_000)) result.value = toLocalInput(open + OPEN_HOURS_DEFAULT * 3_600_000 + RESULT_DAYS_DEFAULT * 86_400_000);
     }
   }
   const main = form.querySelector('button[name=intent][value=publish]');
@@ -19608,13 +19711,9 @@ document.addEventListener(
 addEventListener('scroll', () => document.querySelectorAll('details.row-menu[open]').forEach((d) => (d.open = false)), { passive: true, capture: true });
 
 document.addEventListener('change', (e) => {
+  if (e.target.matches?.('[data-start-close]') || e.target.matches?.('[data-upcoming]')) syncStartPrice(e.target.closest('form'));
   if (e.target.matches?.('[data-upcoming]')) {
     const form = e.target.closest('form');
-    const price = form.querySelector('[name=basePrice]');
-    price.disabled = e.target.checked;
-    price.required = !e.target.checked;
-    price.placeholder = e.target.checked ? 'Set when trading opens' : '0.25';
-    if (e.target.checked) price.value = '';
     const auto = form.querySelector('.auto-open');
     if (auto && !(form.dataset.id && form.dataset.published === '1')) auto.hidden = !e.target.checked;
     if (!e.target.checked && form.querySelector('[data-auto-open]')) {

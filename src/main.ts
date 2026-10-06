@@ -147,17 +147,9 @@ const scheduler = new Scheduler(
   },
 );
 
-// Admin-run markets whose predictions just closed need a result (and maybe an opening price).
-// Predictions closed: the admin is asked for the result. An upcoming token has no start price yet;
-// its opening price is read from the exchange (AutoOpener), and the result is asked for when due.
-service.onClosed = (ids) => {
-  for (const id of ids) {
-    const m = service.getMarket(id);
-    if (m.mode !== 'manual' || m.basePrice === null) continue;
-    alert(resultDueText(m, adminUrl));
-    service.markResultAlerted(id);
-  }
-};
+// Admin-run markets are asked for their result when it is due, not when predictions close (with a
+// 15 to 30 day wait between the two): AutoOpener's resultAlertsDue sends that alert. A market priced
+// at the close, or an upcoming token, first gets its start price read from its sources there too.
 
 const server = createApiServer({
   service,

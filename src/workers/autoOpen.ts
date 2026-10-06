@@ -13,6 +13,9 @@ const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
   return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
 };
+/** How long after predictions close to keep trying to read the price at the close before asking the admin. */
+const CLOSE_WAIT_MS = 2 * 60 * MINUTE;
+
 const fmt = (n: number) => `$${n >= 1 ? n.toLocaleString('en-US', { maximumFractionDigits: 4 }) : Number(n.toPrecision(4))}`;
 
 /**
@@ -88,8 +91,13 @@ export class AutoOpener {
     if (found.length) {
       const start = median(found.map((f) => f.price));
       const from = found.map((f) => f.name).join(', ');
-      this.service.autoOpen(m.id, start, `Opened by itself at ${fmt(start)} (live price on ${from}).`);
-      this.alert(`✅ <b>${m.symbol} is open</b>\nTrading started, so predictions opened by themselves. Start price ${fmt(start)} (live on ${from}).`);
+      if (m.start_at_close === 1) {
+        this.service.autoOpen(m.id, start, `Opened by itself (trading at ${fmt(start)} on ${from}). The start price is taken when predictions close.`);
+        this.alert(`✅ <b>${m.symbol} is open</b>\nTrading started (${fmt(start)} on ${from}), so predictions opened by themselves. The start price is the price when predictions close.`);
+      } else {
+        this.service.autoOpen(m.id, start, `Opened by itself at ${fmt(start)} (live price on ${from}).`);
+        this.alert(`✅ <b>${m.symbol} is open</b>\nTrading started, so predictions opened by themselves. Start price ${fmt(start)} (live on ${from}).`);
+      }
       return;
     }
     if (now - (m.auto_open_at ?? now) > MAX_WAIT_MS) return giveUp(`trading hadn’t started 3 hours after the set time (${waiting.join('; ') || 'no exchange answered'}).`);
@@ -102,6 +110,7 @@ export class AutoOpener {
    * usually a spike). Nothing for the admin to do; if no trades appear within a day, they are told.
    */
   private async fillOpeningPrice(m: MarketRow) {
+    if (m.start_at_close === 1) return this.fillClosePrice(m);
     const now = this.service.clock.now();
     const found: { name: string; price: number }[] = [];
     const waiting: string[] = [];
@@ -127,6 +136,54 @@ export class AutoOpener {
       return;
     }
     this.service.noteAutoOpen(m.id, `Waiting for trading to start to set the opening price. ${waiting.join('; ')}`);
+  }
+
+  /**
+   * A market priced at the close: its start price is the price in the last minutes before predictions
+   * closed (the median of the market's sources), so nobody gains from watching the chart while
+   * predictions are open. If no source answers within two hours, the admin is asked to add it.
+   */
+  private async fillClosePrice(m: MarketRow) {
+    const now = this.service.clock.now();
+    // Let the last minute before the close finish on the exchanges first.
+    if (now < m.listing_at + 2 * MINUTE) return;
+    const found: { name: string; price: number }[] = [];
+    const waiting: string[] = [];
+    for (const ref of JSON.parse(m.venues) as VenueRef[]) {
+      const venue = this.venues.get(ref.venue);
+      if (!venue) continue;
+      const r = await this.closeOn(venue, ref.symbol, m.listing_at);
+      if (typeof r === 'number') found.push({ name: venue.name, price: r });
+      else waiting.push(`${venue.name}: ${r}`);
+    }
+    if (found.length) {
+      const price = median(found.map((f) => f.price));
+      const from = found.map((f) => f.name).join(', ');
+      this.service.setStartPrice(m.id, price);
+      this.service.noteAutoOpen(m.id, `Start price ${fmt(price)} set by itself: the price when predictions closed, on ${from}.`);
+      return;
+    }
+    if (now - m.listing_at > CLOSE_WAIT_MS) {
+      const why = `no price for the close (${waiting.join('; ') || 'no source answered'}).`;
+      this.service.openingPriceFailed(m.id, `Start price not found: ${why}`);
+      this.service.markResultAlerted(m.id);
+      this.alert(`⚠️ <b>${m.symbol}: add its start price</b>\nThe price when predictions closed couldn’t be read: ${why}\nAdd it in Admin → Markets → Awaiting result, with the result.`);
+      return;
+    }
+    this.service.noteAutoOpen(m.id, `Reading the price at the close. ${waiting.join('; ')}`);
+  }
+
+  /** The price on one source in the last minutes before closeAt: the median of up to three readings. */
+  private async closeOn(venue: Venue, pair: string, closeAt: number): Promise<number | string> {
+    try {
+      // CoinGecko has a point about every 5 minutes and no volume; exchanges have 1-minute candles.
+      const from = closeAt - (venue.priceOnly ? 60 : 10) * MINUTE;
+      const candles = (await venue.fetchCandles(pair, from, closeAt)).filter((c) => c.ts < closeAt && c.close > 0 && (venue.priceOnly || (c.volume > 0 && (c.trades ?? 1) > 0)));
+      if (!candles.length) return venue.priceOnly ? 'no price in the hour before the close' : 'no trades in the 10 minutes before the close';
+      return median(candles.slice(-3).map((c) => c.close));
+    } catch (err) {
+      return `couldn’t read prices (${(err as Error).message.slice(0, 80)})`;
+    }
   }
 
   /** The opening price on one exchange: the middle of its 2nd to 4th minutes of trading. */

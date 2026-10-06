@@ -89,14 +89,15 @@
         <ol>
           <li><b>Draft and review.</b> A detected listing becomes a draft. An operator checks the token, logo, exchanges and times, then publishes it.</li>
           <li><b>Upcoming.</b> A market can open before the token trades. Its start price is unknown until trading begins.</li>
-          <li><b>Open.</b> Players predict until predictions close.</li>
-          <li><b>Awaiting result.</b> Predictions are closed; the market waits for its result time.</li>
+          <li><b>Open.</b> Players predict until predictions close, usually a day or two.</li>
+          <li><b>Countdown.</b> Predictions are closed and the start price is locked; the market counts down to its result time, usually 15 or 30 days later.</li>
           <li><b>Settled or cancelled.</b> The result is posted and the pool is paid out, or the market is cancelled and every stake is refunded.</li>
         </ol>
 
         <h2 id="prices"><span class="n">3</span>Start and result prices</h2>
         <p>A listing’s first minutes are the noisiest. Firstprint never uses a single trade as a reference.</p>
         <ul>
+          <li><b>Start price at the close.</b> For a token that is already trading, the start price is its price when predictions close: the median of the last three one-minute closes before the close on each source (or the last three price points on CoinGecko), across the market’s sources. A token that climbs while predictions are open gives nobody an edge, because the move is measured from the close.</li>
           <li><b>Opening price for upcoming markets.</b> When a token starts trading, the start price is the median of the closes of its 2nd to 4th one-minute candles, skipping the chaotic first minute. A market only opens once trades have been flowing for a few minutes and the live price is within 10% of that reference.</li>
           <li><b>Averaged windows.</b> In automatic mode the start and result prices are one-hour averages of one-minute candles, combined across exchanges as a volume-weighted median, so a wick on one venue can’t decide a market.</li>
           <li><b>Coverage checks.</b> A window must have real candles in at least half of its minutes and a minimum number of trades, or the market is cancelled rather than settled on bad data.</li>
@@ -122,6 +123,7 @@
         <p>New listings are easy to push around. The rules are written so that the cheapest manipulation doesn’t pay.</p>
         <ul>
           <li><b>Predictions close before the result window.</b> Nobody can predict once the answer is forming.</li>
+          <li><b>The move counts from the close.</b> The start price is taken when predictions close, so following a trend while they are open earns nothing.</li>
           <li><b>Averages and medians, not last trades.</b> Moving a one-hour, multi-exchange median costs far more than a market could pay.</li>
           <li><b>Cancellation rules.</b> An automatic market is cancelled and refunded if the listing is delayed by more than a day, trading halts for more than six hours in total, or price data is too thin. Admin-run markets are cancelled and refunded by the operator.</li>
           <li><b>One account, one player.</b> Sign-in is verified (Google, email code or a signed wallet message); tasks are honour-based, with one X username per account and each task paying once; referral rewards need the friend to make a real prediction.</li>

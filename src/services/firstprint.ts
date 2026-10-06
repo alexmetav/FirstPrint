@@ -107,6 +107,8 @@ export interface MarketRow {
   result_alerted_at?: number | null;
   /** 1 when the opening price couldn't be read from the exchange and the admin was told to add it. */
   opening_price_failed?: number;
+  /** 1 when the start price is the price at the moment predictions close (read by the server then). */
+  start_at_close?: number;
   announced_listing_at: number;
   listing_at: number;
   opened_at: number;
@@ -177,6 +179,12 @@ export interface ManualMarketInput {
    * the admin enters its opening price once trading starts (before or with the result).
    */
   basePrice: number | null;
+  /**
+   * The start price is the live price when predictions close, read by the server at that moment
+   * (basePrice is then left empty). Watching the chart while predictions are open gives no edge,
+   * because the move is measured from the close.
+   */
+  startAtClose?: boolean;
   /** When predictions stop (ms). */
   closeAt: number;
   /** When the admin expects to share the result (ms). Informational. */
@@ -845,7 +853,9 @@ export class FirstprintService {
         const median = sorted.length ? sorted[Math.floor((sorted.length - 1) / 2)] : null;
         const where = live.map((p) => p.name).join(', ');
         const warnings: { level: 'high' | 'medium'; text: string }[] = [];
-        if (median !== null && m.base_price === null) {
+        const atClose = m.start_at_close === 1;
+        // A market priced at the close is meant to be trading while predictions are open.
+        if (median !== null && m.base_price === null && !atClose) {
           warnings.push({ level: 'high', text: `${m.symbol} is already trading on ${where} at about ${fmt(median)}, but predictions are still open. Players can see the price before they pick. Close predictions now, or give the market a start price.` });
         }
         if (median !== null && m.base_price !== null) {
@@ -855,13 +865,17 @@ export class FirstprintService {
             warnings.push({ level: Math.abs(diff) > 0.5 ? 'high' : 'medium', text: `Start price ${fmt(m.base_price)} is ${pct}% ${diff > 0 ? 'below' : 'above'} the live price ${fmt(median)} on ${where}. Players can already see which outcome is winning.` });
           }
         }
+        if (median === null && atClose && m.listing_at - now < 6 * 3_600_000) {
+          const names = prices.map((p) => p.name).join(', ');
+          warnings.push({ level: 'medium', text: `Couldn't get a live price for ${m.symbol} from ${names || 'its sources'}. Its start price is read from them when predictions close; if they don't answer then, you'll be asked for it.` });
+        }
         if (median === null && m.base_price !== null) {
           const names = prices.map((p) => p.name).join(', ');
           warnings.push({ level: 'medium', text: `Couldn't get a live price for ${m.symbol} from ${names || 'its exchanges'}. If it already trades, check the start price yourself.` });
         }
         const left = m.listing_at - now;
-        if (median !== null && left > 48 * 3_600_000) {
-          warnings.push({ level: 'medium', text: `Predictions stay open ${Math.round(left / 86_400_000)} more days while ${m.symbol} is trading, so late players can see how the price moved. 1–2 days is fairer.` });
+        if (median !== null && !atClose && left > 48 * 3_600_000) {
+          warnings.push({ level: 'medium', text: `Predictions stay open ${Math.round(left / 86_400_000)} more days against a fixed start price while ${m.symbol} is trading, so late players can follow the trend. Take the start price at the close instead.` });
         }
         return { id: m.id, symbol: m.symbol, published: m.published === 1, startPrice: m.base_price, livePrice: median, prices, warnings };
       }),
@@ -979,7 +993,8 @@ export class FirstprintService {
       if (!this.venues.has(id)) throw new AppError(400, 'unknown_venue', `Unknown exchange "${id}".`);
       if (off.has(id)) throw new AppError(400, 'exchange_off', `${this.venues.get(id)!.name} is switched off in Admin → Exchanges.`);
     }
-    const noPrice = input.basePrice === undefined || input.basePrice === null || (input.basePrice as unknown) === '';
+    const startAtClose = Boolean(input.startAtClose);
+    const noPrice = startAtClose || input.basePrice === undefined || input.basePrice === null || (input.basePrice as unknown) === '';
     const basePrice = noPrice ? null : Number(input.basePrice);
     if (basePrice !== null && (!(basePrice > 0) || !Number.isFinite(basePrice))) throw new AppError(400, 'bad_price', 'Start price must be a number above 0.');
     const closeAt = Number(input.closeAt);
@@ -1005,7 +1020,7 @@ export class FirstprintService {
     if (sourceUrl && !/^https:\/\/\S+$/i.test(sourceUrl)) throw new AppError(400, 'bad_source_url', 'The source link must start with https://');
     const logoUrl = cleanLogo(input.logoUrl);
     void now;
-    return { symbol, name, venues, exchangeLabel, basePrice, closeAt, cfg, note, sourceUrl, logoUrl };
+    return { symbol, name, venues, exchangeLabel, basePrice, startAtClose, closeAt, cfg, note, sourceUrl, logoUrl };
   }
 
   /** Creates a draft (hidden from users) or, with publish: true, an open market. */
@@ -1015,17 +1030,19 @@ export class FirstprintService {
     if (f.closeAt <= now) throw new AppError(400, 'bad_close_time', 'Prediction close time must be in the future.');
     const autoOpenAt = this.checkAutoOpen(input.autoOpenAt, f, now);
     if (autoOpenAt !== null) {
+      // Opens once trading has started, so its start price is taken at the close like any other.
       input = { ...input, publish: false };
       f.basePrice = null;
+      f.startAtClose = true;
     }
     const id = `${idSlug(f.symbol)}-m-${randomUUID().slice(0, 6)}`;
     this.db
       .prepare(
         `INSERT INTO markets (id, symbol, name, exchange, venues, source_url, announced_listing_at, listing_at,
-          opened_at, config, scorecard, status, kind, created_at, mode, published, base_price, note, logo_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', 'listing', ?, 'manual', ?, ?, ?, ?)`,
+          opened_at, config, scorecard, status, kind, created_at, mode, published, base_price, note, logo_url, start_at_close)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'open', 'listing', ?, 'manual', ?, ?, ?, ?, ?)`,
       )
-      .run(id, f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, now, JSON.stringify(f.cfg), now, input.publish ? 1 : 0, f.basePrice, f.note, f.logoUrl);
+      .run(id, f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, now, JSON.stringify(f.cfg), now, input.publish ? 1 : 0, f.basePrice, f.note, f.logoUrl, f.startAtClose ? 1 : 0);
     if (autoOpenAt !== null) this.db.prepare('UPDATE markets SET auto_open_at = ?, auto_open_note = NULL WHERE id = ?').run(autoOpenAt, id);
     this.log(`manual market ${input.publish ? 'published' : autoOpenAt !== null ? 'scheduled to open by itself' : 'drafted'} ${id}`);
     if (input.publish) {
@@ -1052,6 +1069,7 @@ export class FirstprintService {
       exchanges: (JSON.parse(m.venues) as VenueRef[]).map((v) => v.venue),
       pairs: Object.fromEntries((JSON.parse(m.venues) as VenueRef[]).map((v) => [v.venue, v.symbol])),
       basePrice: m.base_price,
+      startAtClose: m.start_at_close === 1,
       closeAt: m.listing_at,
       resultAt: m.listing_at + cfg.durationMs,
       config: cfg,
@@ -1060,7 +1078,7 @@ export class FirstprintService {
       logoUrl: m.logo_url ?? undefined,
     };
     if (m.published === 1 && hasPredictions) {
-      const locked = ['symbol', 'basePrice', 'config'] as const;
+      const locked = ['symbol', 'basePrice', 'startAtClose', 'config'] as const;
       for (const k of locked) {
         if (patch[k] !== undefined) throw new AppError(409, 'locked_field', `"${k}" can't change after users have predicted. Cancel and refund the market instead.`);
       }
@@ -1074,15 +1092,18 @@ export class FirstprintService {
     const f = this.manualFields(merged, now);
     if (f.closeAt <= now) throw new AppError(400, 'bad_close_time', 'Prediction close time must be in the future.');
     const autoOpenAt = this.checkAutoOpen(patch.autoOpenAt === undefined ? (m.published === 1 ? null : (m.auto_open_at ?? null)) : patch.autoOpenAt, f, now, m.published === 1);
-    if (autoOpenAt !== null) f.basePrice = null;
+    if (autoOpenAt !== null) {
+      f.basePrice = null;
+      f.startAtClose = true;
+    }
     this.db.prepare('UPDATE markets SET auto_open_at = ?, auto_open_note = CASE WHEN ? IS NULL THEN NULL ELSE auto_open_note END WHERE id = ?').run(autoOpenAt, autoOpenAt, marketId);
     this.db
       .prepare(
         `UPDATE markets SET symbol = ?, name = ?, exchange = ?, venues = ?, source_url = ?, announced_listing_at = ?,
-          listing_at = ?, config = ?, base_price = ?, note = ?,
+          listing_at = ?, config = ?, base_price = ?, start_at_close = ?, note = ?,
           logo_png = CASE WHEN COALESCE(logo_url, '') = COALESCE(?, '') THEN logo_png ELSE NULL END, logo_url = ? WHERE id = ?`,
       )
-      .run(f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, JSON.stringify(f.cfg), f.basePrice, f.note, f.logoUrl, f.logoUrl, marketId);
+      .run(f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, JSON.stringify(f.cfg), f.basePrice, f.startAtClose ? 1 : 0, f.note, f.logoUrl, f.logoUrl, marketId);
     if (m.published === 1) this.onEvent('market', { marketId }); // drafts stay private
     return marketId;
   }
@@ -1148,7 +1169,10 @@ export class FirstprintService {
     this.db.prepare(`UPDATE markets SET auto_open_note = ?${giveUp ? ', auto_open_at = NULL' : ''} WHERE id = ?`).run(note.slice(0, 300), marketId);
   }
 
-  /** Opens a scheduled market with the start price read from the exchange at that moment. */
+  /**
+   * Opens a scheduled market once its token is trading (startPrice is the live price that showed it).
+   * A market priced at the close keeps no start price yet: it is read when predictions close.
+   */
   autoOpen(marketId: string, startPrice: number, note: string) {
     const m = this.manualRow(marketId);
     const now = this.clock.now();
@@ -1157,7 +1181,7 @@ export class FirstprintService {
     if (m.listing_at < now + 15 * MINUTE) throw new AppError(409, 'too_late', 'Predictions would close in under 15 minutes.');
     this.db
       .prepare('UPDATE markets SET base_price = ?, published = 1, opened_at = ?, auto_open_at = NULL, auto_open_note = ? WHERE id = ?')
-      .run(startPrice, now, note.slice(0, 300), marketId);
+      .run(m.start_at_close === 1 ? null : startPrice, now, note.slice(0, 300), marketId);
     this.onEvent('market', { marketId });
     this.announce('live', marketId);
     this.log(`market opened by itself ${marketId} at ${startPrice}`);
@@ -1171,6 +1195,7 @@ export class FirstprintService {
     const m = this.manualRow(marketId);
     if (m.status !== 'open' && m.status !== 'locked') throw new AppError(409, 'not_editable', 'This market has already been settled.');
     if (m.base_price !== null) throw new AppError(409, 'price_set', 'This market already has a start price.');
+    if (m.start_at_close === 1 && m.status === 'open') throw new AppError(409, 'start_at_close', 'This market’s start price is the price when predictions close. It is set then.');
     const p = Number(price);
     if (!(p > 0) || !Number.isFinite(p)) throw new AppError(400, 'bad_price', 'Opening price must be a number above 0.');
     this.db.prepare('UPDATE markets SET base_price = ? WHERE id = ?').run(p, marketId);
@@ -2360,6 +2385,7 @@ export class FirstprintService {
       mode: m.mode ?? 'auto',
       published: m.published !== 0,
       basePrice: m.base_price,
+      startAtClose: m.start_at_close === 1,
       note: m.note,
       kind: m.kind ?? 'listing',
       symbol: m.symbol,
