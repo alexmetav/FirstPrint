@@ -8,10 +8,11 @@ import type { DB } from './db.ts';
  * Render's free plan) by copying it to a private Supabase Storage bucket and
  * restoring it at start-up. Works with any project on Supabase's free plan.
  *
- * Copies are gzip-compressed (a SQLite file shrinks about 5×) and taken every minute when
- * something changed, plus one on shutdown. A deploy starts the new server from the latest copy
- * before the old one stops, so the gap between copies is what a deploy can lose: a minute keeps
- * it small while staying inside a free host's monthly bandwidth.
+ * Copies are gzip-compressed (a SQLite file shrinks about 5×) and taken when something changed:
+ * every minute while the database is small, less often as it grows (see minGap), plus one on
+ * shutdown and one when maintenance mode is turned on. A deploy starts the new server from the
+ * latest copy before the old one stops, so the gap between copies is what a deploy can lose;
+ * maintenance mode closes that gap.
  * One dated copy is kept per day for the last 30 days.
  */
 export interface BackupConfig {
@@ -127,6 +128,8 @@ export class DbBackup {
   private inFlight: Promise<boolean> | null = null;
   lastOkAt: number | null = null;
   lastError: string | null = null;
+  /** Size of the last compressed copy, which sets how often regular copies are taken (see minGap). */
+  lastBytes = 0;
 
   constructor(db: DB, path: string, cfg: BackupConfig, log: (msg: string) => void, fetchFn: Fetch = fetch) {
     this.db = db;
@@ -142,7 +145,7 @@ export class DbBackup {
   }
 
   status() {
-    return { enabled: true, lastOkAt: this.lastOkAt, lastError: this.lastError };
+    return { enabled: true, lastOkAt: this.lastOkAt, lastError: this.lastError, sizeBytes: this.lastBytes || null };
   }
 
   /** Uploads a consistent snapshot if anything changed since the last one (or always with force). */
@@ -154,15 +157,27 @@ export class DbBackup {
     return this.inFlight;
   }
 
+  /**
+   * The shortest gap between regular copies. A small database is copied every minute; a bigger one
+   * less often, so the uploads stay well inside a free host's monthly bandwidth (about 100 GB on
+   * Render): up to 1 MB compressed every minute (~43 GB a month at most), up to 5 MB every 5 minutes,
+   * bigger every 15. Maintenance mode and shutdown always take a copy straight away.
+   */
+  static minGap(bytes: number) {
+    return bytes <= 1_000_000 ? 0 : bytes <= 5_000_000 ? 5 * 60_000 : 15 * 60_000;
+  }
+
   private async snapshot(force: boolean): Promise<boolean> {
     const tmp = `${this.path}.snapshot`;
     try {
       const changes = (this.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n;
       if (!force && changes === this.lastChanges) return false;
+      if (!force && this.lastOkAt !== null && Date.now() - this.lastOkAt < DbBackup.minGap(this.lastBytes)) return false;
       rmSync(tmp, { force: true });
       this.db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
       const bytes = gzipSync(readFileSync(tmp), { level: 6 });
       await this.upload(this.cfg.object, bytes);
+      this.lastBytes = bytes.length;
       const day = new Date().toISOString().slice(0, 10);
       if (day !== this.lastDaily) {
         // One dated copy per day, in case of a bad write. Never overwritten: after a restart the
@@ -189,7 +204,8 @@ export class DbBackup {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     if (this.inFlight) await this.inFlight;
-    await this.runOnce();
+    // Always copied (even within the gap between regular copies): this server is about to stop.
+    await this.runOnce(true);
   }
 
   private dailyName(day: string) {

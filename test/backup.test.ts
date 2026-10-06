@@ -212,3 +212,9 @@ test('restore: a missing backup in a bucket that has other copies refuses to sta
     String(input).includes('/object/list/') ? new Response('boom', { status: 503 }) : unreachable.fetchFn(input, init)) as typeof fetch;
   await assert.rejects(restoreIfMissing(join(dir(), 'c.db'), cfg, quiet, listDown), /couldn't check the bucket/);
 });
+
+test('backup: copies less often as the database grows, to stay inside the host’s bandwidth', () => {
+  assert.equal(DbBackup.minGap(200_000), 0, 'small: every minute');
+  assert.equal(DbBackup.minGap(3_000_000), 5 * 60_000);
+  assert.equal(DbBackup.minGap(20_000_000), 15 * 60_000);
+});

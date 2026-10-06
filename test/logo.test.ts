@@ -30,7 +30,7 @@ test('a market keeps an https logo link or an uploaded image, and shows it', () 
   assert.equal(service.getMarket(linked).logoUrl, 'https://assets.coingecko.com/coins/images/1/large/xdp.png');
   const uploaded = create(PNG);
   // Players get a cacheable link to the image; the admin (and banners) get the stored copy.
-  assert.match(service.getMarket(uploaded).logoUrl!, new RegExp(`^/api/logo/${uploaded}\\?v=\\w+$`));
+  assert.match(service.getMarket(uploaded).logoUrl!, new RegExp(`^/api/logo/${uploaded}\\?v=[\\w-]+$`));
   assert.equal(service.getMarket(uploaded, undefined, true).logoUrl, PNG);
   assert.deepEqual(service.logoImage(uploaded)?.bytes, Buffer.from(PNG.split(',')[1], 'base64'));
   assert.equal(service.logoImage(uploaded)?.type, 'image/png');
@@ -104,4 +104,20 @@ test('HTTP: lists link to the logo, unchanged lists answer 304, big answers are 
   } finally {
     server.close();
   }
+});
+
+test('market lists read the logo without loading the image: same link as the market page, new version when it changes', () => {
+  const { service, create } = setup();
+  const id = create(PNG);
+  const listed = () => service.listMarketsPage('open', undefined, 12).markets.find((m) => m.id === id)!;
+  assert.equal(listed().logoUrl, service.getMarket(id).logoUrl, 'the list and the market page link the same image');
+  assert.match(listed().logoUrl!, new RegExp(`^/api/logo/${id}\\?v=`));
+  assert.equal(listed().hasLogoPng, false);
+  const before = listed().logoUrl;
+  service.updateManualMarket(id, { logoUrl: PNG.replace('ggg', 'ggA') });
+  assert.notEqual(listed().logoUrl, before, 'a new image gets a new link, so browsers fetch it');
+  service.setLogoPng(id, PNG);
+  assert.equal(listed().hasLogoPng, true);
+  const linked = create('https://assets.coingecko.com/coins/images/1/large/xdp.png');
+  assert.equal(service.listMarketsPage('open', undefined, 12).markets.find((m) => m.id === linked)!.logoUrl, 'https://assets.coingecko.com/coins/images/1/large/xdp.png');
 });
