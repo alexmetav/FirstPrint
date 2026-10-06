@@ -2644,6 +2644,7 @@ const HISTORY_LABELS = {
   referral: () => 'Friend joined with your link',
   claim: () => 'TestFPT claimed to your wallet',
   daily: () => 'Daily claim',
+  admin_topup: () => 'Admin test points',
   stake: (e) => `Prediction${e.symbol ? ` on ${e.symbol}` : ''}`,
   refund: (e) => `Refund${e.symbol ? ` from ${e.symbol}` : ''}`,
   payout: (e) => `Won${e.symbol ? ` on ${e.symbol}` : ''}`,
@@ -4037,7 +4038,39 @@ function adminOverview({ markets, waiting, drafts, token, tasks, log, pending, t
     </div>
     <div id="admin-checks"></div>
     ${adminInbox(panes)}
+    ${canAdmin('admin') ? topUpPanel() : ''}
     ${adminLogView(log.slice(0, 5), true)}`;
+}
+
+/** Extra points for the admin's own account while testing tasks and markets. Only admins see it. */
+function topUpPanel() {
+  const me = S.me;
+  const chips = [100, 500, 1000, 5000].map((n) => `<button class="btn btn-sm" type="button" data-action="admin-top-up" data-amount="${n}">+${fmtNum(n)}</button>`).join('');
+  return `<section class="panel adm-topup">
+    <div class="section-head"><span class="section-ico">${ico('coins')}</span><div><h2>Test points</h2><p class="muted">${
+      me ? `For testing tasks and markets on your own account, <b>${esc(me.username)}</b>: ${fmtPts(me.points)} now. Only admins can do this.` : 'Sign in to the app on this browser first: the points go to that account.'
+    }</p></div></div>
+    ${
+      me
+        ? `<div class="topup-row">${chips}<form class="topup-custom"><input name="amount" type="number" inputmode="numeric" min="1" max="10000" step="1" placeholder="Amount" aria-label="Points to add" /><button class="btn btn-sm" type="submit">Add</button></form></div>
+           <p class="fine">Up to 10,000 at a time and 50,000 a day. ${S.cfg?.rewards?.onChain ? 'They arrive as TestFPT, like a task reward, so on-chain predictions still work.' : 'They go straight to your balance.'} They show as “Admin test points” in your history.</p>`
+        : `<a class="btn btn-sm" href="#/">${ico('user')}Sign in</a>`
+    }
+  </section>`;
+}
+
+/** Adds test points to the admin's own account, then refreshes the balance everywhere. */
+async function adminTopUp(amount) {
+  const n = Math.floor(Number(amount));
+  if (!(n >= 1 && n <= 10_000)) return toast('Choose between 1 and 10,000 points.', true);
+  try {
+    const out = await A.api.topUp(n);
+    await refreshMe();
+    rewardToast({ amount: out.points, sub: out.onChain ? 'Test points, as TestFPT' : 'Test points added' });
+  } catch (err) {
+    return toast(err.message, true);
+  }
+  return renderAdmin();
 }
 
 /** One panel with tabs, so lists that are often empty don’t each take a whole frame. */
@@ -5122,6 +5155,8 @@ async function onAdminAction(action, el) {
       await renderAdmin();
       window.scrollTo({ top: 0 });
       return findLogo($('#admin-market'));
+    case 'admin-top-up':
+      return adminTopUp(el.dataset.amount);
     case 'admin-review-ignore':
       if (!confirm('Skip this listing? It leaves the list and no market is made.')) return;
       try {
@@ -5331,6 +5366,7 @@ async function onAdminAction(action, el) {
 }
 
 async function onAdminSubmit(form, submitter) {
+  if (form.matches('.topup-custom')) return adminTopUp(new FormData(form).get('amount'));
   if (form.id === 'admin-login') {
     const key = String(new FormData(form).get('key') || '');
     A.api = createAdminApi(key);

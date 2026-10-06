@@ -371,3 +371,28 @@ test('predictions on chain: stakes move TestFPT from Firstprint wallets to the e
   assert.equal(await tokenBalance(svm, ben.addr, mint), BigInt(service.getUser(ben.id).points), 'refund back in the wallet');
   assert.ok(rewards.chainActivity(ben.id).activity.some((a) => a.kind === 'refund' && a.status === 'confirmed'));
 });
+
+test('admin test points: straight to the balance without TestFPT, a claimable reward with it, capped per top-up and per day', async () => {
+  const off = await setup(false);
+  const { user } = await player(off.service, 'admin-off@example.com');
+  const before = off.service.getUser(user.id).points;
+  assert.deepEqual(off.rewards.adminTopUp(user.id, 500), { points: 500, onChain: false, addedToday: 500 });
+  assert.equal(off.service.getUser(user.id).points, before + 500);
+  assert.throws(() => off.rewards.adminTopUp(user.id, 0), (e: unknown) => e instanceof AppError && e.code === 'bad_amount');
+  assert.throws(() => off.rewards.adminTopUp(user.id, 10_001), (e: unknown) => e instanceof AppError && e.code === 'bad_amount');
+  for (let i = 0; i < 4; i++) off.rewards.adminTopUp(user.id, 10_000);
+  assert.throws(() => off.rewards.adminTopUp(user.id, 9_600), (e: unknown) => e instanceof AppError && e.code === 'topup_limit');
+  off.clock.advance(24 * 3_600_000 + 1);
+  off.rewards.adminTopUp(user.id, 10_000);
+
+  const on = await setup(true);
+  await on.rewards.setupAuthority();
+  await on.rewards.airdropAuthority();
+  await on.rewards.createMint();
+  assert.equal(on.rewards.ready(), true);
+  const { user: u2 } = await player(on.service, 'admin-on@example.com');
+  const pts = on.service.getUser(u2.id).points;
+  assert.equal(on.rewards.adminTopUp(u2.id, 1000).onChain, true);
+  assert.equal(on.service.getUser(u2.id).points, pts, 'waits as a reward to claim, like a task');
+  assert.ok(on.rewards.summary(u2.id).rewards.some((r) => r.kind === 'admin_topup' && r.amount === 1000));
+});

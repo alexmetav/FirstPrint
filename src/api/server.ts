@@ -912,6 +912,16 @@ export function createApiServer(opts: ServerOptions): Server {
     }
   };
 
+  // Extra test points for the admin's own signed-in account (testing tasks and markets).
+  route('POST', '/api/admin/top-up', async ({ req, body, requireAdmin, optionalUser }) => {
+    requireAdmin();
+    const me = optionalUser();
+    if (!me) throw new AppError(409, 'sign_in_first', 'Sign in to the app on this browser first, so we know which account gets the points.');
+    const out = rewardsOn().adminTopUp(me.id, Number((await body()).amount));
+    audit(req, 'admin_topup', me.id, `${out.points} pts`);
+    return out;
+  });
+
   route('POST', '/api/admin/tasks', async ({ req, body, requireAdmin }) => {
     const level = requireAdmin('tasks');
     const b = await body();

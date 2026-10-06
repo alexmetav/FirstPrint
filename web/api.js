@@ -157,6 +157,7 @@ export function createAdminApi(key, baseUrl = '') {
     exchanges: () => request('/api/admin/exchanges'),
     telegramConnect: (code) => post('/api/admin/telegram/connect', { code }),
     telegramTest: () => post('/api/admin/telegram/test'),
+    topUp: (amount) => post('/api/admin/top-up', { amount }),
     telegramChannel: (channel) => post('/api/admin/telegram/channel', { channel }),
     bannerPreview: (body) => post('/api/admin/banner-preview', body),
     setTokenBanners: (enabled) => post('/api/admin/telegram/token-banners', { enabled }),

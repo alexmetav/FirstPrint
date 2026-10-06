@@ -35,6 +35,9 @@ export const X_CONNECT_POINTS = 100;
 export const REFERRAL_POINTS = 200;
 /** Most referral rewards one player can earn. */
 export const REFERRAL_LIMIT = 25;
+/** Test points an admin can add to their own account: per top-up, and per day. */
+export const ADMIN_TOPUP_MAX = 10_000;
+const ADMIN_TOPUP_DAY = 50_000;
 /** How long a task must have been open before it can be confirmed. */
 export const TASK_MIN_WAIT_MS = 8_000;
 /** How long a prepared claim waits for the wallet before it lapses (a blockhash lives about a minute). */
@@ -562,6 +565,25 @@ export class RewardsService {
     if (res.changes !== 1) return false;
     if (direct) this.service.addPoints(userId, amount, kind, ref);
     return true;
+  }
+
+  /**
+   * Extra points for the admin's own account while testing (tasks, predictions, payouts). They go
+   * through the same path as a task reward, so with TestFPT on they arrive as TestFPT too and the
+   * on-chain stakes still have tokens behind them. At most 10,000 a time and 50,000 a day.
+   */
+  adminTopUp(userId: string, amount: number) {
+    const pts = Math.floor(Number(amount));
+    if (!(pts >= 1 && pts <= ADMIN_TOPUP_MAX)) throw new AppError(400, 'bad_amount', `Choose between 1 and ${ADMIN_TOPUP_MAX.toLocaleString('en-US')} points.`);
+    return tx(this.db, () => {
+      const today = as<{ pts: number | null }>(
+        this.db.prepare("SELECT SUM(amount) AS pts FROM rewards WHERE user_id = ? AND kind = 'admin_topup' AND created_at > ?").get(userId, this.now() - 86_400_000),
+      ).pts ?? 0;
+      if (today + pts > ADMIN_TOPUP_DAY) throw new AppError(429, 'topup_limit', `That passes the ${ADMIN_TOPUP_DAY.toLocaleString('en-US')} points a day test limit (${today.toLocaleString('en-US')} added today).`);
+      this.award(userId, 'admin_topup', `${this.now()}-${randomInt(1e9)}`, pts);
+      this.service.log(`admin top-up: ${pts} points to ${userId}`);
+      return { points: pts, onChain: this.ready(), addedToday: today + pts };
+    });
   }
 
   private referralCode(userId: string): string {
