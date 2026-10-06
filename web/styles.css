@@ -2436,6 +2436,25 @@ code {
 .task-body small {
   color: var(--muted);
 }
+.task-body .task-hint {
+  margin-top: 4px;
+  color: var(--text-2, var(--muted));
+}
+.row-edit td {
+  background: var(--surface-2, transparent);
+}
+.row-edit .task-form {
+  margin: 4px 0;
+}
+.row-edit .span-all {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+td .row-actions {
+  justify-content: flex-end;
+  margin-top: 0;
+  flex-wrap: nowrap;
+}
 .task-actions {
   display: flex;
   gap: 6px;

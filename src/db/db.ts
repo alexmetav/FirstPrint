@@ -11,7 +11,31 @@ export function openDb(path: string): DB {
   if (path !== ':memory:') db.exec('PRAGMA journal_mode = WAL;');
   db.exec(schema);
   migrate(db);
+  widenTaskKinds(db);
   return db;
+}
+
+/**
+ * Databases made before the Telegram task allow only the older task kinds (a CHECK rule, which
+ * SQLite can't change in place): the table is rebuilt with the same rows. Task completions point to
+ * tasks by id, so foreign keys are paused while the old table is swapped out.
+ */
+function widenTaskKinds(db: DB) {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get() as { sql: string } | undefined;
+  if (!row || row.sql.includes("'telegram'")) return;
+  const create = (schema.match(/CREATE TABLE IF NOT EXISTS tasks \([\s\S]*?\n\);/) ?? [])[0];
+  if (!create) throw new Error('tasks table missing from schema.sql');
+  db.exec('PRAGMA foreign_keys = OFF;');
+  try {
+    tx(db, () => {
+      db.exec(create.replace('CREATE TABLE IF NOT EXISTS tasks (', 'CREATE TABLE tasks_new ('));
+      db.exec('INSERT INTO tasks_new (id, kind, title, target, points, max_completions, active, created_at) SELECT id, kind, title, target, points, max_completions, active, created_at FROM tasks');
+      db.exec('DROP TABLE tasks');
+      db.exec('ALTER TABLE tasks_new RENAME TO tasks');
+    });
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON;');
+  }
 }
 
 /** Adds columns introduced after a database was first created. */
@@ -90,6 +114,11 @@ function migrate(db: DB) {
   ensure('users', 'x_verified', 'x_verified INTEGER NOT NULL DEFAULT 0');
   ensure('users', 'x_pending', 'x_pending TEXT');
   ensure('users', 'x_code', 'x_code TEXT');
+  // Telegram account (for the "join the channel" task): the player's Telegram user ID, found when
+  // they press Start in our bot with their code, and that code while it waits.
+  ensure('users', 'tg_id', 'tg_id TEXT');
+  ensure('users', 'tg_code', 'tg_code TEXT');
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_tg ON users(tg_id) WHERE tg_id IS NOT NULL');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_x ON users(x_username COLLATE NOCASE) WHERE x_username IS NOT NULL');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_ref ON users(referral_code) WHERE referral_code IS NOT NULL');
   // Analytics groups predictions and daily claims by time.
