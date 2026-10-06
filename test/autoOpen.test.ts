@@ -264,3 +264,33 @@ test('priced at the close: a price-only source (CoinGecko) works, and with no pr
   ex.service.setStartPrice(gone, 2);
   assert.equal(ex.service.getMarket(gone).basePrice, 2, 'the admin can add it once predictions are closed');
 });
+
+test('three-day limit for new markets, and older long markets close now or in a few hours with their result date kept', async () => {
+  const { clock, service } = closeSetup();
+  const base = { symbol: 'OLDT', exchanges: ['mexc'], basePrice: 0.5, publish: true } as const;
+  assert.throws(() => service.createManualMarket({ ...base, closeAt: clock.now() + 4 * 24 * HOUR, resultAt: clock.now() + 20 * 24 * HOUR } as never), /at most 3 days/);
+  assert.throws(() => service.createManualMarket({ ...base, startAtClose: true, closeAt: clock.now() + 73 * HOUR, resultAt: clock.now() + 20 * 24 * HOUR } as never), /at most 3 days/);
+  const upcoming = service.createManualMarket({ ...base, symbol: 'LATER', basePrice: null, closeAt: clock.now() + 10 * 24 * HOUR, resultAt: clock.now() + 25 * 24 * HOUR } as never);
+  assert.equal(service.getMarket(upcoming).basePrice, null, 'an upcoming token closes at its listing, however far away');
+
+  // A market made before the limit: open 15 days, result the day after.
+  const id = service.createManualMarket({ ...base, closeAt: clock.now() + 72 * HOUR, resultAt: clock.now() + 16 * 24 * HOUR } as never);
+  service.db.prepare('UPDATE markets SET listing_at = ?, announced_listing_at = ?, config = json_set(config, \'$.durationMs\', ?) WHERE id = ?').run(clock.now() + 15 * 24 * HOUR, clock.now() + 15 * 24 * HOUR, 24 * HOUR, id);
+  const settleAt = service.getMarket(id).settleAt;
+  assert.equal(settleAt, clock.now() + 16 * 24 * HOUR);
+  service.updateManualMarket(id, { note: 'still editable' });
+
+  service.closePredictions(id, 24 * HOUR);
+  let m = service.getMarket(id);
+  assert.equal(m.closeAt, clock.now() + 24 * HOUR);
+  assert.equal(m.settleAt, settleAt, 'the result date players saw stays');
+  assert.equal(m.status, 'open');
+
+  service.closePredictions(id);
+  m = service.getMarket(id);
+  assert.equal(m.status, 'locked');
+  assert.equal(m.phase, 'awaiting_result');
+  assert.equal(m.settleAt, settleAt);
+  assert.equal(m.basePrice, 0.5, 'its fixed start price stays');
+  assert.throws(() => service.closePredictions(id), /Only published markets/);
+});

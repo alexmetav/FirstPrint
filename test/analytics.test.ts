@@ -34,7 +34,7 @@ test('analytics: real players only, activity, sign-in split, top markets, streak
   const c = await service.createUser({ username: 'carol', email: 'c@example.com' });
   wallet(c.id, 'WalletCarol111111111111111111111111111111111');
 
-  const id = service.createManualMarket({ symbol: 'AGENCY', exchanges: ['mexc'], basePrice: 1, closeAt: T0 + 5 * DAY, resultAt: T0 + 8 * DAY, publish: true });
+  const id = service.createManualMarket({ symbol: 'AGENCY', exchanges: ['mexc'], basePrice: 1, closeAt: T0 + 3 * DAY, resultAt: T0 + 18 * DAY, publish: true });
   service.placePrediction(id, a.id, 'up', 100);
   service.placePrediction(id, seeded.id, 'down', 500);
   clock.advance(DAY);

@@ -391,7 +391,7 @@ test('admin market checks: already trading, start price off, long windows', asyn
   const fold = service.createManualMarket(draft({ symbol: 'FOLD', basePrice: 0.66, publish: true }));
   const fine = service.createManualMarket(draft({ symbol: 'OK', basePrice: 0.071, publish: true }));
   const upcoming = service.createManualMarket(draft({ symbol: 'PNT', basePrice: null, publish: true }));
-  const long = service.createManualMarket(draft({ symbol: 'LONG', basePrice: 0.07, closeAt: T0 + 5 * 24 * HOUR, resultAt: T0 + 6 * 24 * HOUR, publish: true }));
+  const long = service.createManualMarket(draft({ symbol: 'LONG', basePrice: 0.07, closeAt: T0 + 72 * HOUR, resultAt: T0 + 6 * 24 * HOUR, publish: true }));
 
   const checks = Object.fromEntries((await service.marketChecks()).map((c) => [c.id, c]));
   assert.equal(checks[fold].livePrice, 0.07);
@@ -399,7 +399,7 @@ test('admin market checks: already trading, start price off, long windows', asyn
   assert.equal(checks[fold].warnings[0].level, 'high');
   assert.deepEqual(checks[fine].warnings, []);
   assert.match(checks[upcoming].warnings[0].text, /already trading on EXA/);
-  assert.match(checks[long].warnings[0].text, /stay open 5 more days/);
+  assert.match(checks[long].warnings[0].text, /stay open 3 more days against a fixed start price/);
 
   const prices = await service.exchangePrices('fold', ['exa', 'exb', 'nope']);
   assert.deepEqual(prices.map((p) => [p.id, p.price]), [['exa', 0.07], ['exb', null]]);

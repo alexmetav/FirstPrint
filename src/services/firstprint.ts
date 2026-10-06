@@ -167,6 +167,9 @@ export interface CreateMarketInput {
   allowStarted?: boolean;
 }
 
+/** Predictions on a token that is already trading stay open at most three days. */
+export const MAX_OPEN_MS = 72 * 60 * 60_000;
+
 export interface ManualMarketInput {
   symbol: string;
   name?: string;
@@ -1035,6 +1038,7 @@ export class FirstprintService {
       f.basePrice = null;
       f.startAtClose = true;
     }
+    this.checkOpenWindow(f, autoOpenAt ?? now, autoOpenAt !== null);
     const id = `${idSlug(f.symbol)}-m-${randomUUID().slice(0, 6)}`;
     this.db
       .prepare(
@@ -1096,6 +1100,8 @@ export class FirstprintService {
       f.basePrice = null;
       f.startAtClose = true;
     }
+    // Older markets with long windows can still be edited; a new close time must fit the limit.
+    if (f.closeAt !== m.listing_at || autoOpenAt !== (m.auto_open_at ?? null)) this.checkOpenWindow(f, autoOpenAt ?? now, autoOpenAt !== null);
     this.db.prepare('UPDATE markets SET auto_open_at = ?, auto_open_note = CASE WHEN ? IS NULL THEN NULL ELSE auto_open_note END WHERE id = ?').run(autoOpenAt, autoOpenAt, marketId);
     this.db
       .prepare(
@@ -1121,6 +1127,40 @@ export class FirstprintService {
     if (!f.logoUrl) throw new AppError(400, 'logo_required', 'Add the token’s logo first: markets that open by themselves need one.');
     if (f.closeAt < t + 30 * MINUTE) throw new AppError(400, 'bad_close_time', 'Predictions must stay open at least 30 minutes after trading starts.');
     return t;
+  }
+
+  /**
+   * Predictions stay open at most three days (from now, or from the trading start of a market that
+   * opens by itself). An upcoming token that isn't trading yet is exempt: it closes when it lists.
+   */
+  private checkOpenWindow(f: { basePrice: number | null; startAtClose: boolean; closeAt: number }, from: number, scheduled: boolean) {
+    const upcoming = f.basePrice === null && !f.startAtClose && !scheduled;
+    if (upcoming) return;
+    if (f.closeAt - from > MAX_OPEN_MS + 5 * MINUTE) {
+      throw new AppError(400, 'open_too_long', 'Predictions can stay open at most 3 days. Choose 24, 48 or 72 hours.');
+    }
+  }
+
+  /**
+   * Closes predictions on a published market now (or in a few hours), keeping its result date. For
+   * markets made before the three-day limit that would otherwise stay open for days.
+   */
+  closePredictions(marketId: string, inMs = 0) {
+    const m = this.manualRow(marketId);
+    const now = this.clock.now();
+    if (m.status !== 'open' || m.published !== 1) throw new AppError(409, 'not_open', 'Only published markets that are taking predictions can be closed.');
+    const ms = Math.max(0, Math.min(Number(inMs) || 0, MAX_OPEN_MS));
+    const closeAt = now + ms;
+    if (closeAt >= m.listing_at) throw new AppError(409, 'closes_sooner', 'Predictions already close by then.');
+    const cfg = parseConfig(m);
+    const settleAt = m.listing_at + cfg.durationMs;
+    // The result date stays where the players saw it; only the close moves earlier.
+    const next = { ...cfg, durationMs: settleAt - closeAt };
+    this.db.prepare('UPDATE markets SET listing_at = ?, announced_listing_at = ?, config = ?, reminded_at = NULL WHERE id = ?').run(closeAt, closeAt, JSON.stringify(next), marketId);
+    this.log(`predictions ${ms ? `set to close in ${Math.round(ms / 60_000)} min` : 'closed now'} ${marketId}`);
+    if (ms === 0) this.closeDueMarkets();
+    else this.onEvent('market', { marketId });
+    return marketId;
   }
 
   /** Drafts scheduled to open by themselves whose trading start has come. */
@@ -1210,6 +1250,7 @@ export class FirstprintService {
     if (m.status !== 'open') throw new AppError(409, 'not_editable', 'This market is no longer open.');
     if (m.published === 1) return;
     if (m.listing_at <= now) throw new AppError(409, 'bad_close_time', 'The prediction close time has passed. Edit it before publishing.');
+    this.checkOpenWindow({ basePrice: m.base_price, startAtClose: m.start_at_close === 1, closeAt: m.listing_at }, now, false);
     this.db.prepare('UPDATE markets SET published = 1, opened_at = ?, auto_open_at = NULL WHERE id = ?').run(now, marketId);
     this.onEvent('market', { marketId });
     // Unpublished and published again: it was already posted to the channel.
