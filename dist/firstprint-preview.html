@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Firstprint: predict new exchange listings</title>
-    <meta name="description" content="Free prediction markets on newly listed crypto tokens. Pick Crash, Down, Flat, Up or Moon with free points and track your win rate." />
+    <title>Firstprint: predict crypto prices</title>
+    <meta name="description" content="Free prediction markets on crypto tokens. Pick Crash, Down, Flat, Up or Moon with free points and track your win rate." />
     <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
     <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -15698,7 +15698,7 @@ function titleFor() {
   if (S.route.name === 'portfolio') return 'Your dashboard: Firstprint';
   if (S.route.name === 'earn') return 'Earn points: Firstprint';
   if (S.route.name === 'stats') return 'Live stats: Firstprint';
-  return 'Firstprint: predict new exchange listings';
+  return 'Firstprint: predict crypto prices';
 }
 
 /** A market's token logo, falling back to the letter circle. Takes a market, or a row with symbol + marketId. */
@@ -16029,7 +16029,7 @@ function analyticsView(d, { shared = false } = {}) {
     <div class="viz-page${shared ? ' shared' : ''}">
       ${
         shared
-          ? `<header class="viz-head"><div><span class="eyebrow">Firstprint · live stats</span><h1 class="page-title">How Firstprint is growing</h1><p class="page-lede">A free prediction game on new crypto exchange listings, on Solana testnet. Updated ${fmtAgo(d.generatedAt)}.</p></div></header>`
+          ? `<header class="viz-head"><div><span class="eyebrow">Firstprint · live stats</span><h1 class="page-title">How Firstprint is growing</h1><p class="page-lede">A free prediction game on crypto tokens, on Solana testnet. Updated ${fmtAgo(d.generatedAt)}.</p></div></header>`
           : ''
       }
       <div class="viz-filters">${seg(shared ? 'viz-days' : 'admin-viz-days')}<span class="muted">${range}</span></div>
@@ -16355,9 +16355,9 @@ function homeHero(showLive = true) {
         ${
           showLive && testnetLive()
             ? `<a class="hero-badge hero-badge-live" href="#/earn"><span class="dot-live" aria-hidden="true"></span>Testnet live<span class="hero-badge-more"> · Claim 1,000 TestFPT</span> ${ico('arrowRight')}</a>`
-            : `<p class="hero-badge">${ico('sparkles')}Listing prediction markets<span class="hero-badge-more"> · Free to play</span></p>`
+            : `<p class="hero-badge">${ico('sparkles')}Crypto prediction markets<span class="hero-badge-more"> · Free to play</span></p>`
         }
-        <h1 id="hero-title">Predict where new listings land<span class="soft"> before the price settles</span></h1>
+        <h1 id="hero-title">Predict where crypto prices land<span class="soft"> and win the pool</span></h1>
         <p class="hero-sub">Pick one of five outcomes (${LADDER.map(word).join(', ')}) on new and trending tokens. Points only, no real money.</p>
         ${stats.length ? `<dl class="hero-stats">${stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
       </div>
@@ -16689,7 +16689,7 @@ function howItWorks() {
     return `
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
-        <li>Firstprint opens markets on newly listed tokens on major exchanges, including new listings it spots automatically on MEXC, OKX, Gate, Bitget and KuCoin. Log in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
+        <li>Firstprint opens markets on crypto tokens: new exchange listings, trending tokens and well-known ones. Log in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
         <li>Pick one of five outcomes for where the price ends up compared with the start price, from Crash to Moon. Predictions stay open up to three days, and earlier predictions earn a bigger share.</li>
         <li>The start price is locked when predictions close, so a move while they are open doesn’t count. The market then counts down to its result, usually 7 to 30 days later.</li>
         <li>When the result is due, the final price and the winners appear on the market page.</li>
@@ -16700,7 +16700,7 @@ function howItWorks() {
   return `
     <section class="section" id="how" style="margin-top:36px">${steps}
       <ol class="rules">
-        <li>Firstprint watches seven exchanges for new listings and opens a market when one is confirmed. Sign in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
+        <li>Firstprint opens markets on crypto tokens, including new listings it spots on seven exchanges. Sign in with Google, email, or a Solana wallet to get ${startPoints()}.</li>
         <li>Pick one of five outcomes for where the price lands at the result time shown on the market, from Crash to Moon. Predictions stay open until the time shown, and earlier predictions earn a bigger share.</li>
         <li>The starting price is the average over the first hour of trading. The final price is the average over the last hour, so a single spike can’t decide a market.</li>
         <li>Everyone who picked the winning outcome splits the pool, minus the fee shown on the market (usually 4%). Everyone gets their points back if nobody picked the winner, everyone picked the same outcome, or the market is cancelled.</li>
@@ -18093,7 +18093,7 @@ function claimCard(r) {
 
 function referralCard(r) {
   const f = r.referral;
-  const shareText = encodeURIComponent('I’m calling new crypto listings on Firstprint. Join me and get free points:');
+  const shareText = encodeURIComponent('I’m calling crypto prices on Firstprint. Join me and get free points:');
   return `
     <section class="earn-card">
       <div class="card-head"><span class="card-ico">${ico('userPlus')}</span><h2>Invite friends</h2><span class="pill pill-pts">+${f.perReferral} each</span></div>
@@ -18103,6 +18103,9 @@ function referralCard(r) {
       <div class="ref-stats"><span><b>${fmtNum(f.invited)}</b> signed up</span><span><b>${fmtNum(f.rewarded)}</b> rewarded</span><span><b class="profit-pos">${signed(f.points)}</b> points</span></div>
     </section>`;
 }
+
+/** While the player waits after too many checks on X: a disabled button counting down to the next try. */
+const xWait = (r) => (r.xCooldownUntil && r.xCooldownUntil > now() ? `<button class="btn" disabled>${ico('clock')}Try again in ${until(r.xCooldownUntil)}</button>` : '');
 
 /** True once the player's X account counts for tasks (proven with a code when X checks are on). */
 const xConnected = (r) => Boolean(r.xUsername && (!r.xChecks || r.xVerified));
@@ -18121,7 +18124,7 @@ function xConnectPanel(r) {
     return `<div class="x-connect">
       <p class="muted">Add this code to your X bio (or post it), then press Verify. You can remove it after.</p>
       <div class="x-code"><code>${esc(p.code)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(p.code)}">${ico('copy')}Copy</button><a class="btn btn-sm" href="https://x.com/intent/tweet?text=${postText}" target="_blank" rel="noopener noreferrer">${ico('x')}Post it</a></div>
-      <div class="x-connect-row"><button class="btn btn-solid" data-action="x-verify"${S.xBusy ? ' disabled' : ''}>${S.xBusy ? '<span class="spin" aria-hidden="true"></span>Checking…' : `${ico('check')}Verify @${esc(p.username)}`}</button><button class="link-btn" data-action="x-restart">Different account</button></div>
+      <div class="x-connect-row">${xWait(r) || `<button class="btn btn-solid" data-action="x-verify"${S.xBusy ? ' disabled' : ''}>${S.xBusy ? '<span class="spin" aria-hidden="true"></span>Checking…' : `${ico('check')}Verify @${esc(p.username)}`}</button>`}<button class="link-btn" data-action="x-restart">Different account</button></div>
       <p class="form-error" id="x-verify-error" role="alert"></p>
     </div>`;
   }
@@ -18151,7 +18154,11 @@ function tasksCard(r) {
                 if (t.done) action = `<span class="task-done">${ico('checkCircle')}Done</span>`;
                 else if (full) action = '<span class="muted">Full</span>';
                 else if (needsX) action = expanded ? '' : `<button class="btn btn-solid" data-action="task-connect" data-task="${esc(t.id)}">${ico('x')}Connect X</button>`;
-                else if (t.startedAt) action = `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}Open</a><button class="btn btn-solid" data-action="task-verify" data-task="${esc(t.id)}">${ico('check')}Verify</button>`;
+                else if (t.startedAt) {
+                  // Follow, repost and post tasks are checked on X: after too many misses the player waits.
+                  const wait = r.xChecks && X_CHECKED.has(t.kind) ? xWait(r) : '';
+                  action = `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}Open</a>${wait || `<button class="btn btn-solid" data-action="task-verify" data-task="${esc(t.id)}">${ico('check')}Verify</button>`}`;
+                }
                 else action = `<a class="btn btn-solid" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer" data-action="task-go" data-task="${esc(t.id)}">${TASK_GO[t.kind] ?? 'Start'} ${ico('chevronRight')}</a>`;
                 return `<li class="task${t.done ? ' is-done' : ''}${full ? ' is-full' : ''}${expanded ? ' is-open' : ''}">
                   <span class="task-ico">${ico(TASK_ICONS[t.kind] ?? 'star')}</span>
@@ -18170,6 +18177,9 @@ function tasksCard(r) {
       }
     </section>`;
 }
+
+/** Tasks whose Verify asks X (likes and links can't be checked there). */
+const X_CHECKED = new Set(['follow', 'repost', 'share']);
 
 /** What the button says before a task is opened. */
 const TASK_GO = { follow: 'Follow', repost: 'Repost', like: 'Like', share: 'Post', link: 'Open' };
@@ -18293,6 +18303,7 @@ async function onXVerify() {
     else toast(`Verified @${out.xUsername}`);
   } catch (err) {
     S.xBusy = false;
+    await refreshRewards(); // a miss can start the wait before the next check
     if (S.route.name === 'earn') $('#view').innerHTML = earnView();
     const box = $('#x-verify-error');
     if (box) box.textContent = err.message;

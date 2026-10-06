@@ -520,3 +520,31 @@ test('X checks (GetXAPI): prove the username with a code, then follow, repost an
   await assert.rejects(rewards.verifyTask(c.id, follow), failsWith('x_unverified'));
   assert.equal(await rewards.xCredit(), 0.14);
 });
+
+test('X checks: three checks in a row that find nothing mean a five-minute wait (each check is a paid call)', async () => {
+  const { X_TRIES, X_COOLDOWN_MS } = await import('../src/services/rewards.ts');
+  const { clock, service, rewards } = await setup(false);
+  let calls = 0;
+  const following = new Set<string>();
+  rewards.xcheck = {
+    profile: async (u) => (calls++, { userName: u, description: '' }),
+    follows: async (s) => (calls++, following.has(s)),
+    reposted: async () => (calls++, false),
+    recentPosts: async () => (calls++, []),
+    credit: async () => null,
+  };
+  const { user } = await player(service, 'd@example.com');
+  service.db.prepare("UPDATE users SET x_username = 'dee', x_verified = 1 WHERE id = ?").run(user.id);
+  const follow = rewards.createTask({ kind: 'follow', target: '@firstprint', points: 50 });
+  rewards.startTask(user.id, follow);
+  clock.advance(TASK_MIN_WAIT_MS);
+  for (let i = 0; i < X_TRIES; i++) await assert.rejects(rewards.verifyTask(user.id, follow), failsWith('task_not_done'));
+  const before = calls;
+  await assert.rejects(rewards.verifyTask(user.id, follow), failsWith('x_cooldown'));
+  assert.equal(calls, before, 'no call on X while waiting');
+  assert.equal(rewards.summary(user.id).xCooldownUntil, clock.now() + X_COOLDOWN_MS);
+  following.add('dee');
+  clock.advance(X_COOLDOWN_MS);
+  assert.equal(rewards.summary(user.id).xCooldownUntil, null);
+  assert.equal((await rewards.verifyTask(user.id, follow)).points, 50, 'after the wait it checks again');
+});

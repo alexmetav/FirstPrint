@@ -2,7 +2,7 @@
   "name": "firstprint",
   "version": "0.1.0",
   "private": true,
-  "description": "Firstprint: predict how new exchange listings trade in their first 72 hours. Solana wallet sign-in, live exchange data, on-chain pools.",
+  "description": "Firstprint: free prediction markets on crypto tokens (new listings, trending and well-known tokens). Points, TestFPT on Solana testnet, live exchange data.",
   "type": "module",
   "engines": {
     "node": ">=22.18"

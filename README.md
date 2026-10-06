@@ -1,8 +1,8 @@
 # Firstprint
 
-Predict where newly listed crypto tokens trade after they list.
+Predict where crypto prices land.
 
-In trading, the *first print* is a token's very first trade. Firstprint runs prediction markets on newly listed tokens. Admins open the markets (new listings on MEXC, OKX, Gate, Bitget and KuCoin are detected automatically and queued for review) and post the result. Players sign in with Google, an email code or a Solana wallet and stake free points on a five-outcome ladder (Crash, Down, Flat, Up, Moon) or a Yes/No question. Points have no cash value; the 1,000 starting points and Earn rewards can be claimed as TestFPT on Solana's test network.
+Firstprint runs free prediction markets on crypto tokens: new exchange listings, trending tokens and well-known ones. (In trading, the *first print* is a token's very first trade, where it started.) Admins open the markets (new listings on MEXC, OKX, Gate, Bitget and KuCoin are detected automatically and queued for review, and trending tokens come from Admin → Find tokens) and post the result. Players sign in with Google, an email code or a Solana wallet and stake free points on a five-outcome ladder (Crash, Down, Flat, Up, Moon) or a Yes/No question. Points have no cash value; the 1,000 starting points and Earn rewards can be claimed as TestFPT on Solana's test network.
 
 The full seven-exchange scanner with self-settling markets also exists (`MANUAL_ONLY=0`), but production runs admin-run markets (`MANUAL_ONLY=1`).
 

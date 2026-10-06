@@ -41,6 +41,10 @@ export const REFERRAL_MARKETS = 3;
 /** Test points an admin can add to their own account: per top-up, and per day. */
 export const ADMIN_TOPUP_MAX = 10_000;
 const ADMIN_TOPUP_DAY = 50_000;
+/** Checks on X a player may come back from empty-handed in a row before a wait (each one is a paid call). */
+export const X_TRIES = 3;
+/** The wait after X_TRIES checks that found nothing. */
+export const X_COOLDOWN_MS = 5 * 60_000;
 /** How long a task must have been open before it can be confirmed. */
 export const TASK_MIN_WAIT_MS = 8_000;
 /** How long a prepared claim waits for the wallet before it lapses (a blockhash lives about a minute). */
@@ -139,6 +143,8 @@ export class RewardsService {
    * follow, repost and post tasks are checked before they pay. Without it both stay honour-based.
    */
   xcheck: XChecker | null = null;
+  /** Per player: checks on X in a row that found nothing, and the end of the wait once there were too many. */
+  private xFails = new Map<string, { n: number; until: number }>();
 
   constructor(service: FirstprintService, token: TokenOptions | null, siteUrl = 'https://www.firstprint.fun') {
     this.service = service;
@@ -722,6 +728,8 @@ export class RewardsService {
       // With X checks on: whether the linked username is proven, and the code waiting to be found.
       xChecks: Boolean(this.xcheck),
       xVerified: user.x_verified === 1,
+      // After too many checks on X that found nothing: when the player may check again.
+      xCooldownUntil: this.xCooldownUntil(userId),
       xPending: this.xcheck && user.x_pending && user.x_code ? { username: user.x_pending, code: user.x_code } : null,
       referral: { code, link, invited, rewarded: referrals.n, points: referrals.pts ?? 0, limit: REFERRAL_LIMIT, perReferral: REFERRAL_POINTS, markets: REFERRAL_MARKETS },
       rewards: rewards.map((r) => ({ kind: r.kind, ref: r.ref, amount: r.amount, at: r.created_at, claimed: r.claim_id !== null && this.isClaimed(r.claim_id) })),
@@ -800,15 +808,21 @@ export class RewardsService {
     if (!cur.x_pending || !cur.x_code) throw new AppError(409, 'x_not_started', 'Enter your X username first to get your code.');
     const name = cur.x_pending;
     const code = cur.x_code.toLowerCase();
+    this.xGate(userId);
     let canonical = name;
     const found = await this.xCall(async () => {
       const profile = await x.profile(name);
-      if (!profile) throw new AppError(404, 'x_not_found', `There’s no X account @${name}. Check the spelling.`);
+      if (!profile) {
+        this.xMissed(userId);
+        throw new AppError(404, 'x_not_found', `There’s no X account @${name}. Check the spelling.`);
+      }
       // Stored as X writes it (capitals and all), whatever the player typed.
       if (profile.userName.toLowerCase() === name.toLowerCase()) canonical = profile.userName;
       if (profile.description.toLowerCase().includes(code)) return true;
       return (await x.recentPosts(name)).some((p) => p.text.toLowerCase().includes(code));
     });
+    if (!found) this.xMissed(userId);
+    else this.xFails.delete(userId);
     if (!found) throw new AppError(409, 'x_code_missing', `We couldn’t find ${cur.x_code} on @${name} yet. Add it to your X bio (or post it), wait a few seconds, then press Verify.`);
     return tx(this.db, () => {
       const taken = as<{ id: string } | undefined>(this.db.prepare('SELECT id FROM users WHERE x_username = ? COLLATE NOCASE AND x_verified = 1 AND id != ?').get(name, userId));
@@ -819,6 +833,33 @@ export class RewardsService {
       const rewarded = this.award(userId, 'x_connect', 'x', X_CONNECT_POINTS);
       return { xUsername: canonical, verified: true, rewarded: rewarded ? X_CONNECT_POINTS : 0 };
     });
+  }
+
+  /** Throws while the player has to wait after too many checks that found nothing. */
+  private xGate(userId: string) {
+    const until = this.xCooldownUntil(userId);
+    if (until) {
+      const mins = Math.max(1, Math.ceil((until - this.now()) / 60_000));
+      throw new AppError(429, 'x_cooldown', `Too many checks in a row. Finish it on X, then try again in ${mins} minute${mins === 1 ? '' : 's'}.`);
+    }
+  }
+
+  /** A check found nothing: after X_TRIES in a row the player waits X_COOLDOWN_MS. */
+  private xMissed(userId: string) {
+    const f = this.xFails.get(userId) ?? { n: 0, until: 0 };
+    f.n += 1;
+    if (f.n >= X_TRIES) {
+      f.n = 0;
+      f.until = this.now() + X_COOLDOWN_MS;
+    }
+    if (this.xFails.size > 10_000) this.xFails.clear();
+    this.xFails.set(userId, f);
+  }
+
+  /** When the player's wait ends, or null when they may check now. */
+  xCooldownUntil(userId: string): number | null {
+    const f = this.xFails.get(userId);
+    return f && f.until > this.now() ? f.until : null;
   }
 
   private requireX(): XChecker {
@@ -911,6 +952,7 @@ export class RewardsService {
       const x = this.xcheck;
       const verified = as<{ x_verified: number }>(this.db.prepare('SELECT x_verified FROM users WHERE id = ?').get(userId)).x_verified === 1;
       if (!verified) throw new AppError(409, 'x_unverified', 'Verify your X account first (Earn → Your X account), so we can check the task.');
+      this.xGate(userId);
       const name = xUsername!;
       const code = this.referralCode(userId).toLowerCase();
       const done = await this.xCall(async () =>
@@ -920,7 +962,9 @@ export class RewardsService {
             ? x.reposted(name, t.target)
             : (await x.recentPosts(name)).some((p) => p.text.toLowerCase().includes(`ref=${code}`)),
       );
+      if (done) this.xFails.delete(userId);
       if (!done) {
+        this.xMissed(userId);
         const what = t.kind === 'follow' ? `following @${t.target}` : t.kind === 'repost' ? 'your repost' : 'your post with your invite link';
         throw new AppError(409, 'task_not_done', `We can’t see ${what} on @${name} yet. Finish it on X, wait a few seconds, then confirm again.`);
       }
