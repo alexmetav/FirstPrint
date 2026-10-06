@@ -5158,7 +5158,8 @@ function reviewPrefill(d) {
 function listingsList(pending) {
   const now = Date.now();
   const when = (d) => (!d.listingAt ? 'Start time not published' : d.listingAt > now ? `Trading starts ${fmtDate(d.listingAt)} · in ${until(d.listingAt)}` : `Trading started ${fmtDate(d.listingAt)}`);
-  return `<ul class="todo">${pending
+  const skipAll = pending.length > 1 ? `<div class="todo-bar"><span class="muted">${fmtNum(pending.length)} waiting</span><button class="btn btn-sm" data-action="admin-review-ignore-all">${ico('forward')}Skip all</button></div>` : '';
+  return `${skipAll}<ul class="todo">${pending
     .map(
       (d) => `<li style="--c:var(--${d.listingAt && d.listingAt > now ? 'up' : 'warn'})"><span class="todo-ico">${ico('coins')}</span><div><b>${esc(d.symbol || '?')}${d.name ? ` <span class="muted">${esc(d.name)}</span>` : ''}</b><span class="muted">${esc(d.exchangeName)} · ${when(d)}</span></div>
         <span class="todo-actions"><button class="btn btn-sm btn-solid" data-action="admin-review" data-id="${d.id}">Review</button><button class="btn btn-sm" data-action="admin-review-ignore" data-id="${d.id}">Skip</button></span></li>`,
@@ -5525,6 +5526,18 @@ async function onAdminAction(action, el) {
       return adminMaintenance(el.dataset.on === '1');
     case 'admin-top-up':
       return adminTopUp(el.dataset.amount);
+    case 'admin-review-ignore-all': {
+      const n = A.detected?.length ?? 0;
+      if (!confirm(`Skip all ${n} listings? They leave the list and no markets are made.`)) return;
+      try {
+        const out = await A.api.ignoreAll();
+        toast(`Skipped ${out.skipped} listing${out.skipped === 1 ? '' : 's'}`);
+      } catch (err) {
+        toast(err.message, true);
+      }
+      A.review = null;
+      return renderAdmin();
+    }
     case 'admin-review-ignore':
       if (!confirm('Skip this listing? It leaves the list and no market is made.')) return;
       try {

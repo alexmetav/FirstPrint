@@ -2436,6 +2436,13 @@ code {
 .task-body small {
   color: var(--muted);
 }
+.todo-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+}
 .task-body .task-hint {
   margin-top: 4px;
   color: var(--text-2, var(--muted));

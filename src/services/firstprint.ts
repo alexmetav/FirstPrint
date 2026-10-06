@@ -2116,6 +2116,11 @@ export class FirstprintService {
     else this.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
   }
 
+  /** Skips every listing still waiting for review. Returns how many were skipped. */
+  ignoreAllDetections() {
+    return Number(this.db.prepare("UPDATE detected_listings SET status = 'ignored' WHERE status = 'pending'").run().changes);
+  }
+
   ignoreDetection(id: number) {
     this.db.prepare("UPDATE detected_listings SET status = 'ignored' WHERE id = ? AND status = 'pending'").run(id);
   }

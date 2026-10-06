@@ -169,6 +169,7 @@ export function createAdminApi(key, baseUrl = '') {
     detected: () => request('/api/admin/detected?status=pending'),
     approve: (id, body) => post(`/api/admin/detected/${id}/approve`, body),
     ignore: (id) => post(`/api/admin/detected/${id}/ignore`),
+    ignoreAll: () => post('/api/admin/detected/ignore-all'),
     track: () => post('/api/admin/track'),
     log: () => request('/api/admin/log'),
     exchanges: () => request('/api/admin/exchanges'),

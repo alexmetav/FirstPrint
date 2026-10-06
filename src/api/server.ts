@@ -1013,6 +1013,11 @@ export function createApiServer(opts: ServerOptions): Server {
     return service.getMarket(marketId);
   });
 
+  route('POST', '/api/admin/detected/ignore-all', ({ requireAdmin }) => {
+    requireAdmin('listings');
+    return { skipped: service.ignoreAllDetections() };
+  });
+
   route('POST', '/api/admin/detected/:id/ignore', ({ params, requireAdmin }) => {
     requireAdmin('listings');
     service.ignoreDetection(Number(params.id));
