@@ -199,6 +199,10 @@ test('admin by account: an ADMIN_EMAILS email signed in by code or Google, or a 
     const walletSession = service.createSession(other.id, 'wallet').token;
     assert.equal(await as(walletSession), 200, 'linked admin wallet');
     assert.equal((await me(walletSession)).isAdmin, true);
+
+    // Guessing: after 20 wrong keys every key is refused for a while, even the right one.
+    for (let i = 0; i < 20; i++) await as(null, `guess-${i}`);
+    assert.equal(await as(null, 'k'.repeat(32)), 429, 'no answer while guessing is blocked');
   } finally {
     server.close();
   }
@@ -396,4 +400,20 @@ test('a broken market is skipped (and reported) instead of stopping the others f
   assert.ok(logs.some((l) => l.includes(broken) && l.includes("couldn't close")));
   service.closeDueMarkets();
   assert.equal(logs.filter((l) => l.includes("couldn't close")).length, 1, 'reported once, not every tick');
+});
+
+test('daily clean-up: notifications older than 90 days and admin log entries older than a year go; recent ones stay', () => {
+  const { clock, service } = setup();
+  const day = 24 * 60 * MIN;
+  const u = service.db.prepare("INSERT INTO users (id, username, points, created_at) VALUES ('u1', 'u1', 0, 0)");
+  u.run();
+  const note = service.db.prepare("INSERT INTO notifications (user_id, market_id, symbol, status, staked, payout, refund, created_at) VALUES ('u1', 'm', 'X', 'resolved', 10, 0, 0, ?)");
+  note.run(clock.now() - 100 * day);
+  note.run(clock.now() - 10 * day);
+  service.logAdmin('old', null, null, null);
+  service.db.prepare('UPDATE admin_log SET at = ?').run(clock.now() - 400 * day);
+  service.logAdmin('new', null, null, null);
+  assert.equal(service.pruneOld(), 2);
+  assert.equal((service.db.prepare('SELECT COUNT(*) AS n FROM notifications').get() as { n: number }).n, 1);
+  assert.deepEqual((service.db.prepare('SELECT action FROM admin_log').all() as { action: string }[]).map((r) => r.action), ['new']);
 });

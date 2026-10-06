@@ -164,6 +164,16 @@ const discover = new Discover(service, { apiKey: process.env.COINGECKO_API_KEY?.
 const fillExchangeLogos = () => void discover.fillExchangeLogos().then((ids) => ids.length && log(`exchange logos saved: ${ids.join(', ')}`), () => {});
 setTimeout(fillExchangeLogos, 60_000).unref();
 setInterval(fillExchangeLogos, 24 * 3_600_000).unref();
+// Old notifications and logs are cleared once a day, so the database and its backups stay small.
+const pruneOld = () => {
+  try {
+    service.pruneOld();
+  } catch (err) {
+    log(`clean-up failed: ${(err as Error).message}`);
+  }
+};
+setTimeout(pruneOld, 5 * 60_000).unref();
+setInterval(pruneOld, 24 * 3_600_000).unref();
 
 const server = createApiServer({
   service,

@@ -99,6 +99,9 @@ export interface MarketRow {
   logo_url?: string | null;
   /** A PNG copy of the logo for Telegram banners (the image library can't read WebP). */
   logo_png?: string | null;
+  /** In light reads (lightCols): when the uploaded logo changed, and whether the PNG copy exists. */
+  logo_ver?: string | null;
+  has_logo_png?: number;
   /** Upcoming token scheduled to open by itself: when trading is due to start (ms). */
   auto_open_at?: number | null;
   /** The last thing the auto-open or opening-price check found (shown to the admin). */
@@ -270,10 +273,14 @@ const as = <T>(v: unknown) => v as T;
 // ---------------------------------------------------------------------------
 
 /** A short fingerprint of a logo, so its URL changes when the logo does. */
+/**
+ * Changes when an uploaded logo changes (for its /api/logo link, so browsers fetch the new one): the
+ * length plus samples from the middle and the end. Kept in step with logo_ver in lightCols, which
+ * works it out in SQL so lists never load the image.
+ */
 function logoVersion(s: string) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i += 7) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  return ((h >>> 0).toString(36) + s.length.toString(36)).slice(0, 12);
+  const mid = s.slice(Math.floor(s.length / 2) - 1, Math.floor(s.length / 2) + 11);
+  return `${s.length}-${Buffer.from(mid + s.slice(-12)).toString('hex').toUpperCase()}`;
 }
 
 export class FirstprintService {
@@ -880,7 +887,7 @@ export class FirstprintService {
    */
   async marketChecks() {
     const now = this.clock.now();
-    const rows = as<MarketRow[]>(this.db.prepare("SELECT * FROM markets WHERE mode = 'manual' AND status = 'open'").all());
+    const rows = as<MarketRow[]>(this.db.prepare(`SELECT ${this.lightCols} FROM markets WHERE mode = 'manual' AND status = 'open'`).all());
     const fmt = (n: number) => `$${Number(n.toPrecision(4))}`;
     // A market priced at the close needs no live price until its close is near.
     const needsPrice = (m: MarketRow) => m.start_at_close !== 1 || m.listing_at - now < 6 * 3_600_000;
@@ -973,6 +980,41 @@ export class FirstprintService {
         return { id: venue.id, name: venue.name, verdict, ...cells };
       }),
     );
+  }
+
+  /**
+   * Clears out old rows nobody needs any more, so the database (and every backup copy of it) stops
+   * growing with them: result notifications after 90 days and the admin log after a year. Run once a day. Returns how many rows went.
+   */
+  pruneOld() {
+    const now = this.clock.now();
+    const day = 24 * 60 * MINUTE;
+    let n = 0;
+    n += Number(this.db.prepare('DELETE FROM notifications WHERE created_at < ?').run(now - 90 * day).changes);
+    n += Number(this.db.prepare('DELETE FROM admin_log WHERE at < ?').run(now - 365 * day).changes);
+    if (n) this.log(`cleaned up ${n} old row${n === 1 ? '' : 's'}`);
+    return n;
+  }
+
+  /**
+   * Every market column, but without the uploaded logo images (up to a few hundred KB each), for the
+   * lists and background checks that read many markets at once and never need the image itself:
+   * logo_url keeps only its start (enough to tell an uploaded image from a link), logo_ver tells when
+   * it changed (for the /api/logo link), and has_logo_png whether the banner copy exists.
+   */
+  private lightColsSql: string | null = null;
+  private get lightCols() {
+    if (this.lightColsSql) return this.lightColsSql;
+    const cols = as<{ name: string }[]>(this.db.prepare('PRAGMA table_info(markets)').all())
+      .map((c) => c.name)
+      .filter((n) => n !== 'logo_url' && n !== 'logo_png');
+    this.lightColsSql = [
+      ...cols.map((c) => `"${c}"`),
+      "CASE WHEN logo_url LIKE 'data:%' THEN substr(logo_url, 1, 40) ELSE logo_url END AS logo_url",
+      "CASE WHEN logo_url LIKE 'data:%' THEN length(logo_url) || '-' || hex(substr(logo_url, length(logo_url) / 2, 12) || substr(logo_url, -12)) END AS logo_ver",
+      '(logo_png IS NOT NULL) AS has_logo_png',
+    ].join(', ');
+    return this.lightColsSql;
   }
 
   adminMarkets() {
@@ -1605,7 +1647,7 @@ export class FirstprintService {
     const now = this.clock.now();
     const nowFloor = Math.floor(now / MINUTE) * MINUTE;
     const markets = as<MarketRow[]>(
-      this.db.prepare("SELECT * FROM markets WHERE mode = 'auto' AND status IN ('open', 'locked') AND listing_at <= ?").all(now),
+      this.db.prepare(`SELECT ${this.lightCols} FROM markets WHERE mode = 'auto' AND status IN ('open', 'locked') AND listing_at <= ?`).all(now),
     );
     for (const m of markets) {
       const cfg = parseConfig(m);
@@ -1638,7 +1680,7 @@ export class FirstprintService {
   closeDueMarkets(): string[] {
     const now = this.clock.now();
     const closed: string[] = [];
-    const markets = as<MarketRow[]>(this.db.prepare("SELECT * FROM markets WHERE status = 'open' AND published = 1").all());
+    const markets = as<MarketRow[]>(this.db.prepare(`SELECT ${this.lightCols} FROM markets WHERE status = 'open' AND published = 1`).all());
     for (const m of markets) {
       // One broken market must never hold up the others: it is skipped (and reported) each time.
       try {
@@ -1684,7 +1726,7 @@ export class FirstprintService {
   settleDueMarkets(): Notification[] {
     const now = this.clock.now();
     const notes: Notification[] = [];
-    const markets = as<MarketRow[]>(this.db.prepare("SELECT * FROM markets WHERE mode = 'auto' AND status = 'locked'").all());
+    const markets = as<MarketRow[]>(this.db.prepare(`SELECT ${this.lightCols} FROM markets WHERE mode = 'auto' AND status = 'locked'`).all());
 
     for (const m of markets) {
       try {
@@ -1992,7 +2034,7 @@ export class FirstprintService {
    */
   marketsClosingSoon(withinMs = 60 * MINUTE): string[] {
     const now = this.clock.now();
-    const rows = as<MarketRow[]>(this.db.prepare("SELECT * FROM markets WHERE status = 'open' AND published = 1 AND reminded_at IS NULL AND kind = 'listing'").all());
+    const rows = as<MarketRow[]>(this.db.prepare(`SELECT ${this.lightCols} FROM markets WHERE status = 'open' AND published = 1 AND reminded_at IS NULL AND kind = 'listing'`).all());
     return rows
       .filter((m) => {
         const { closeAt } = windows(parseConfig(m), m.listing_at);
@@ -2091,7 +2133,7 @@ export class FirstprintService {
       const where = this.listWhere(filter);
       // listing_at is when predictions close (manual markets) or trading starts (listings).
       const order = filter === 'settled' ? 'listing_at DESC' : 'listing_at ASC';
-      const rows = as<MarketRow[]>(this.db.prepare(`SELECT * FROM markets WHERE published = 1 AND ${where} ORDER BY ${order} LIMIT ?`).all(n));
+      const rows = as<MarketRow[]>(this.db.prepare(`SELECT ${this.lightCols} FROM markets WHERE published = 1 AND ${where} ORDER BY ${order} LIMIT ?`).all(n));
       const total = as<{ n: number }>(this.db.prepare(`SELECT COUNT(*) AS n FROM markets WHERE published = 1 AND ${where}`).get()).n;
       hit = { at, markets: rows.map((r) => this.view(r)), total };
       if (this.listCacheMs > 0) this.listCache.set(key, hit);
@@ -2123,7 +2165,7 @@ export class FirstprintService {
             ? "status IN ('resolved', 'void')"
             : '1 = 1';
     const order = filter === 'settled' ? 'listing_at DESC' : 'listing_at ASC';
-    const rows = as<MarketRow[]>(this.db.prepare(`SELECT * FROM markets WHERE published = 1 AND ${where} ORDER BY ${order} LIMIT 50`).all());
+    const rows = as<MarketRow[]>(this.db.prepare(`SELECT ${this.lightCols} FROM markets WHERE published = 1 AND ${where} ORDER BY ${order} LIMIT 50`).all());
     return rows.map((r) => this.view(r, userId));
   }
 
@@ -2595,8 +2637,8 @@ export class FirstprintService {
       venues: (JSON.parse(m.venues) as VenueRef[]).map((v) => ({ id: v.venue, name: this.venues.get(v.venue)?.name ?? v.venue, pair: v.symbol })),
       sourceUrl: m.source_url,
       // Uploaded logos are served from /api/logo/:id (versioned, cached) instead of inline in every list.
-      logoUrl: m.logo_url && !rawLogo && /^data:image\/(png|jpeg|webp|gif);/.test(m.logo_url) ? `/api/logo/${encodeURIComponent(m.id)}?v=${logoVersion(m.logo_url)}` : (m.logo_url ?? null),
-      hasLogoPng: Boolean(m.logo_png),
+      logoUrl: m.logo_url && !rawLogo && /^data:image\/(png|jpeg|webp|gif);/.test(m.logo_url) ? `/api/logo/${encodeURIComponent(m.id)}?v=${m.logo_ver ?? logoVersion(m.logo_url)}` : (m.logo_url ?? null),
+      hasLogoPng: Boolean(m.logo_png ?? m.has_logo_png),
       autoOpenAt: m.auto_open_at ?? null,
       autoOpenNote: m.auto_open_note ?? null,
       status: m.status,

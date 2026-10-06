@@ -51,7 +51,7 @@ export interface ServerOptions {
   /** Return the code in the API response (development only, when no real mailer is configured). */
   devEmailCodes?: boolean;
   /** Database backup health, shown in the admin panel. */
-  backupStatus?: () => { enabled: boolean; lastOkAt: number | null; lastError: string | null };
+  backupStatus?: () => { enabled: boolean; lastOkAt: number | null; lastError: string | null; sizeBytes?: number | null };
   /** Takes a database copy now (maintenance mode turns on just before a deploy). */
   backupNow?: () => Promise<boolean>;
   /** New accounts allowed per network (IP) per day (NEW_ACCOUNTS_PER_DAY, default 10). Raise it for an event on shared Wi-Fi. */
@@ -1418,6 +1418,10 @@ export function createApiServer(opts: ServerOptions): Server {
       requireAdmin: (min: AdminLevel = 'admin') => {
         // Wrong keys are limited tightly (guessing); the right key gets room for the panel's own traffic.
         const given = String(req.headers['x-admin-key'] ?? '');
+        // After too many wrong keys, every key from that visitor is refused for a while (the right one
+        // too), so guessing gets no answer at all.
+        const bad = given ? hits.get(`admin-bad:${visitor(req)}`) : undefined;
+        if (bad && bad.reset >= Date.now() && bad.count >= 20) throw new AppError(429, 'rate_limited', 'Too many wrong admin keys. Try again in a minute.');
         const keyOk =
           Boolean(given) &&
           opts.adminKey &&
