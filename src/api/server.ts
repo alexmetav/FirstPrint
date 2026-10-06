@@ -230,18 +230,18 @@ export function createApiServer(opts: ServerOptions): Server {
   }
 
   // New accounts per network per day. Each one starts with points (and TestFPT, paid by the server),
-  // so a script making endless accounts could farm them; real players are never near this. Counted in
-  // memory (a restart clears it); checked before signing in and counted only when an account is made.
+  // so a script making endless accounts could farm them; real players are never near this. Kept in
+  // the database (a restart or deploy doesn't reset it); checked before signing in and counted only
+  // when an account is made.
   const NEW_ACCOUNTS_PER_DAY = opts.newAccountsPerDay ?? 10;
   function checkNewAccount(req: IncomingMessage, isNew: boolean) {
     if (!isNew) return;
-    const h = hits.get(`signup:${visitor(req)}`);
-    if (h && h.reset >= Date.now() && h.count >= NEW_ACCOUNTS_PER_DAY) {
+    if (service.newAccountsFrom(visitor(req)) >= NEW_ACCOUNTS_PER_DAY) {
       throw new AppError(429, 'too_many_accounts', 'Too many new accounts from this network today. Sign in to an existing account, or try again tomorrow.');
     }
   }
   function countNewAccount(req: IncomingMessage, created: boolean) {
-    if (created) rateLimit(`signup:${visitor(req)}`, Number.MAX_SAFE_INTEGER, 24 * 60 * 60_000);
+    if (created) service.noteNewAccount(visitor(req));
   }
   const emailIsNew = (email: string) => !service.db.prepare('SELECT 1 FROM users WHERE email = ?').get(email.trim().toLowerCase());
 

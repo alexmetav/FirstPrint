@@ -214,6 +214,7 @@ See `solana/README.md` for build, test, deploy, and oracle instructions.
 
 - [ ] Test every exchange adapter against the live APIs on staging.
 - [ ] Set `NODE_ENV=production`, `PUBLIC_URL`, and a long `ADMIN_KEY`, and serve over HTTPS.
+- [ ] New accounts are limited to 10 per network (IP) a day, counted in the database. For an event on shared Wi-Fi, raise it with `NEW_ACCOUNTS_PER_DAY`.
 - [ ] Behind Cloudflare, set `BEHIND_CLOUDFLARE=1` so rate limits count each visitor (from `CF-Connecting-IP`) rather than each Cloudflare server. Otherwise set `TRUST_PROXY_HOPS` to the number of proxies in front of the server.
 - [ ] Tasks-only team members can add tasks worth up to 500 points; the TestFPT setup and its key are for the owner only.
 - [ ] Move to PostgreSQL once traffic grows (`schema.sql` maps directly). Backups already go to Supabase Storage.

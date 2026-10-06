@@ -983,8 +983,33 @@ export class FirstprintService {
   }
 
   /**
+   * New accounts made from one network (the visitor's IP, or its /64 for IPv6) in the last day, for
+   * the sign-up limit. Networks are stored only as a salted hash, never the address itself, and the
+   * rows are cleared after two days.
+   */
+  newAccountsFrom(network: string): number {
+    return as<{ n: number }>(
+      this.db.prepare('SELECT COUNT(*) AS n FROM signups WHERE network = ? AND at > ?').get(this.networkKey(network), this.clock.now() - 24 * 60 * MINUTE),
+    ).n;
+  }
+
+  noteNewAccount(network: string) {
+    this.db.prepare('INSERT INTO signups (network, at) VALUES (?, ?)').run(this.networkKey(network), this.clock.now());
+  }
+
+  private networkKey(network: string) {
+    let salt = this.getSetting('signup_salt');
+    if (!salt) {
+      salt = randomBytes(16).toString('hex');
+      this.setSetting('signup_salt', salt);
+    }
+    return sha256(`${salt}:${network}`).slice(0, 32);
+  }
+
+  /**
    * Clears out old rows nobody needs any more, so the database (and every backup copy of it) stops
-   * growing with them: result notifications after 90 days and the admin log after a year. Run once a day. Returns how many rows went.
+   * growing with them: result notifications after 90 days, the admin log after a year, and sign-up
+   * counts after two days. Run once a day. Returns how many rows went.
    */
   pruneOld() {
     const now = this.clock.now();
@@ -992,6 +1017,7 @@ export class FirstprintService {
     let n = 0;
     n += Number(this.db.prepare('DELETE FROM notifications WHERE created_at < ?').run(now - 90 * day).changes);
     n += Number(this.db.prepare('DELETE FROM admin_log WHERE at < ?').run(now - 365 * day).changes);
+    n += Number(this.db.prepare('DELETE FROM signups WHERE at < ?').run(now - 2 * day).changes);
     if (n) this.log(`cleaned up ${n} old row${n === 1 ? '' : 's'}`);
     return n;
   }
