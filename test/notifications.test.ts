@@ -80,6 +80,12 @@ test('result emails: a win, a loss on a Yes/No market and a refund', () => {
   assert.equal(loss.subject, 'SOL settled as No');
   const refund = resultEmail({ ...base, status: 'void', voidReason: 'retracted', winningBucket: null, payout: 0, refund: 100 }, 'https://x.test/app/');
   assert.match(refund.subject, /cancelled: 100 points refunded/);
+
+  // The styled version: logo from the site, the result button, and names escaped.
+  assert.match(win.html, /<img src="https:\/\/x\.test\/icon-192\.png"/);
+  assert.match(win.html, /href="https:\/\/x\.test\/app\/#\/market\/m-1"[^>]*>See the result</);
+  const odd = resultEmail({ ...base, symbol: '<b>X&Y</b>', status: 'resolved', winningBucket: 'up', payout: 10 }, 'https://x.test/app/');
+  assert.ok(odd.html.includes('&lt;b&gt;X&amp;Y&lt;/b&gt;') && !odd.html.includes('<b>X'), 'token names are escaped');
 });
 
 test('API: unread count on /api/me, list, mark read; signed-in only', async () => {
