@@ -51,6 +51,8 @@ const mailer: Mailer | null =
 const devEmailCodes = !production && !(cfg.resendApiKey && cfg.mailFrom);
 
 const service = new FirstprintService(db, systemClock, venues, log);
+// Market lists are built once every few seconds for everyone (each player's own picks are added fresh).
+service.listCacheMs = 3_000;
 // Tasks, referrals and TestFPT claims. TestFPT lives on a Solana test network (testnet unless
 // TOKEN_CLUSTER=devnet); an admin creates it from the admin panel, or sets TESTFPT_MINT and
 // TESTFPT_AUTHORITY_KEY. Until then rewards go straight to players' balances.

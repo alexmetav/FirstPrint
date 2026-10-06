@@ -812,7 +812,7 @@ export class FirstprintService {
       }
       this.storeNotifications([...perUser.values()], parseConfig(m).outcomes ?? 'ladder', now);
       this.livePrices.delete(marketId);
-      queueMicrotask(() => this.onEvent('market', { marketId }));
+      queueMicrotask(() => this.marketChanged(marketId));
       this.log(`market cancelled ${marketId}`);
       return { ok: true, refunded: rows.length };
     });
@@ -1095,7 +1095,7 @@ export class FirstprintService {
     if (autoOpenAt !== null) this.db.prepare('UPDATE markets SET auto_open_at = ?, auto_open_note = NULL WHERE id = ?').run(autoOpenAt, id);
     this.log(`manual market ${input.publish ? 'published' : autoOpenAt !== null ? 'scheduled to open by itself' : 'drafted'} ${id}`);
     if (input.publish) {
-      this.onEvent('market', { marketId: id });
+      this.marketChanged(id);
       this.announce('live', id);
     }
     return id;
@@ -1155,7 +1155,7 @@ export class FirstprintService {
           logo_png = CASE WHEN COALESCE(logo_url, '') = COALESCE(?, '') THEN logo_png ELSE NULL END, logo_url = ? WHERE id = ?`,
       )
       .run(f.symbol, f.name, f.exchangeLabel, JSON.stringify(f.venues), f.sourceUrl, f.closeAt, f.closeAt, JSON.stringify(f.cfg), f.basePrice, f.startAtClose ? 1 : 0, f.note, f.logoUrl, f.logoUrl, marketId);
-    if (m.published === 1) this.onEvent('market', { marketId }); // drafts stay private
+    if (m.published === 1) this.marketChanged(marketId); // drafts stay private
     return marketId;
   }
 
@@ -1204,7 +1204,7 @@ export class FirstprintService {
     this.db.prepare('UPDATE markets SET listing_at = ?, announced_listing_at = ?, config = ?, reminded_at = NULL WHERE id = ?').run(closeAt, closeAt, JSON.stringify(next), marketId);
     this.log(`predictions ${ms ? `set to close in ${Math.round(ms / 60_000)} min` : 'closed now'} ${marketId}`);
     if (ms === 0) this.closeDueMarkets();
-    else this.onEvent('market', { marketId });
+    else this.marketChanged(marketId);
     return marketId;
   }
 
@@ -1220,7 +1220,7 @@ export class FirstprintService {
       throw new AppError(409, 'has_predictions', 'Players have already predicted against the fixed start price, so it stays. Close the market early instead.');
     }
     this.db.prepare('UPDATE markets SET base_price = NULL, start_at_close = 1 WHERE id = ?').run(marketId);
-    if (m.published === 1) this.onEvent('market', { marketId });
+    if (m.published === 1) this.marketChanged(marketId);
     this.log(`start price set to the close ${marketId}`);
     return marketId;
   }
@@ -1284,7 +1284,7 @@ export class FirstprintService {
     this.db
       .prepare('UPDATE markets SET base_price = ?, published = 1, opened_at = ?, auto_open_at = NULL, auto_open_note = ? WHERE id = ?')
       .run(m.start_at_close === 1 ? null : startPrice, now, note.slice(0, 300), marketId);
-    this.onEvent('market', { marketId });
+    this.marketChanged(marketId);
     this.announce('live', marketId);
     this.log(`market opened by itself ${marketId} at ${startPrice}`);
   }
@@ -1301,7 +1301,7 @@ export class FirstprintService {
     const p = Number(price);
     if (!(p > 0) || !Number.isFinite(p)) throw new AppError(400, 'bad_price', 'Opening price must be a number above 0.');
     this.db.prepare('UPDATE markets SET base_price = ? WHERE id = ?').run(p, marketId);
-    if (m.published === 1) this.onEvent('market', { marketId });
+    if (m.published === 1) this.marketChanged(marketId);
     this.log(`opening price set ${marketId} ${p}`);
     return marketId;
   }
@@ -1314,7 +1314,7 @@ export class FirstprintService {
     if (m.listing_at <= now) throw new AppError(409, 'bad_close_time', 'The prediction close time has passed. Edit it before publishing.');
     this.checkOpenWindow({ basePrice: m.base_price, startAtClose: m.start_at_close === 1, closeAt: m.listing_at }, now, false);
     this.db.prepare('UPDATE markets SET published = 1, opened_at = ?, auto_open_at = NULL WHERE id = ?').run(now, marketId);
-    this.onEvent('market', { marketId });
+    this.marketChanged(marketId);
     // Unpublished and published again: it was already posted to the channel.
     if (!(m as MarketRow & { announced_at?: number | null }).announced_at) this.announce('live', marketId);
     this.log(`manual market published ${marketId}`);
@@ -1328,7 +1328,7 @@ export class FirstprintService {
       throw new AppError(409, 'has_predictions', 'Users have already predicted. Cancel and refund the market instead.');
     }
     this.db.prepare('UPDATE markets SET published = 0 WHERE id = ?').run(marketId);
-    this.onEvent('market', { marketId });
+    this.marketChanged(marketId);
   }
 
   deleteDraft(marketId: string) {
@@ -1581,7 +1581,7 @@ export class FirstprintService {
         .prepare('INSERT INTO predictions (id, market_id, user_id, bucket, stake, placed_at) VALUES (?, ?, ?, ?, ?, ?)')
         .run(id, marketId, userId, bucket, stake, now);
       this.onPredicted(userId);
-      queueMicrotask(() => this.onEvent('market', { marketId }));
+      queueMicrotask(() => this.marketChanged(marketId));
       return { id, balance: this.getUser(userId).points };
     });
   }
@@ -1658,7 +1658,7 @@ export class FirstprintService {
         this.db.prepare("UPDATE markets SET status = 'locked', hard_cap = ? WHERE id = ?").run(hardCap, m.id);
       });
       closed.push(m.id);
-      this.onEvent('market', { marketId: m.id });
+      this.marketChanged(m.id);
       this.log(`market closed ${m.id}`);
     }
     if (closed.length) {
@@ -1750,7 +1750,7 @@ export class FirstprintService {
       this.storeNotifications(notes, outcomes, now);
     });
     this.livePrices.delete(m.id);
-    this.onEvent('market', { marketId: m.id });
+    this.marketChanged(m.id);
     if (status === 'resolved' && m.published === 1) this.announce('result', m.id);
     this.log(`market ${status} ${m.id}${result.voidReason ? ` (${result.voidReason})` : ` → ${result.winningBucket}`}`);
     return notes;
@@ -2044,14 +2044,45 @@ export class FirstprintService {
    * list; players a larger one), and `total` says how many there are, so the page can offer more.
    * Open markets that close soonest come first, so a short list shows the most urgent ones.
    */
+  /**
+   * How long (ms) a public market list is reused before it's built again. Every open page asks for
+   * the lists, and building one reads every prediction of every market in it, so the server builds
+   * each list once for everyone and only adds each player's own picks. 0 (tests) builds it every time.
+   */
+  listCacheMs = 0;
+
+  /** A market changed: rebuild the lists on the next request, and tell open pages (live updates). */
+  private marketChanged(marketId: string) {
+    this.listCache.clear();
+    this.onEvent('market', { marketId });
+  }
+  private listCache = new Map<string, { at: number; markets: ReturnType<FirstprintService['view']>[]; total: number }>();
+
   listMarketsPage(filter: 'open' | 'live' | 'settled' | 'all', userId: string | undefined, limit: number) {
-    const where = this.listWhere(filter);
-    // listing_at is when predictions close (manual markets) or trading starts (listings).
-    const order = filter === 'settled' ? 'listing_at DESC' : 'listing_at ASC';
     const n = Math.max(1, Math.min(200, Math.floor(limit)));
-    const rows = as<MarketRow[]>(this.db.prepare(`SELECT * FROM markets WHERE published = 1 AND ${where} ORDER BY ${order} LIMIT ?`).all(n));
-    const total = as<{ n: number }>(this.db.prepare(`SELECT COUNT(*) AS n FROM markets WHERE published = 1 AND ${where}`).get()).n;
-    return { markets: rows.map((r) => this.view(r, userId)), total };
+    const key = `${filter}:${n}`;
+    const at = Date.now();
+    let hit = this.listCache.get(key);
+    if (!hit || at - hit.at >= this.listCacheMs) {
+      const where = this.listWhere(filter);
+      // listing_at is when predictions close (manual markets) or trading starts (listings).
+      const order = filter === 'settled' ? 'listing_at DESC' : 'listing_at ASC';
+      const rows = as<MarketRow[]>(this.db.prepare(`SELECT * FROM markets WHERE published = 1 AND ${where} ORDER BY ${order} LIMIT ?`).all(n));
+      const total = as<{ n: number }>(this.db.prepare(`SELECT COUNT(*) AS n FROM markets WHERE published = 1 AND ${where}`).get()).n;
+      hit = { at, markets: rows.map((r) => this.view(r)), total };
+      if (this.listCacheMs > 0) this.listCache.set(key, hit);
+    }
+    if (!userId || !hit.markets.length) return { markets: hit.markets, total: hit.total };
+    // The player's own picks are always fresh: one query for the whole list.
+    const ids = hit.markets.map((m) => m.id);
+    const own = as<PredictionRow[]>(
+      this.db
+        .prepare(`SELECT * FROM predictions WHERE user_id = ? AND market_id IN (${ids.map(() => '?').join(', ')}) ORDER BY placed_at, id`)
+        .all(userId, ...ids),
+    );
+    const byMarket = new Map<string, PredictionRow[]>();
+    for (const p of own) byMarket.set(p.market_id, [...(byMarket.get(p.market_id) ?? []), p]);
+    return { markets: hit.markets.map((m) => (byMarket.has(m.id) ? { ...m, mine: byMarket.get(m.id)!.map(minePick) } : m)), total: hit.total };
   }
 
   private listWhere(filter: 'open' | 'live' | 'settled' | 'all') {
@@ -2509,20 +2540,7 @@ export class FirstprintService {
       };
     }
 
-    const mine = userId
-      ? preds
-          .filter((p) => p.user_id === userId)
-          .map((p) => ({
-            id: p.id,
-            bucket: p.bucket,
-            stake: p.stake,
-            accepted: p.accepted,
-            refund: p.refund,
-            payout: p.payout,
-            weight: p.weight,
-            placedAt: p.placed_at,
-          }))
-      : [];
+    const mine = userId ? preds.filter((p) => p.user_id === userId).map(minePick) : [];
 
     return {
       id: m.id,
@@ -2575,6 +2593,11 @@ export class FirstprintService {
 
 function sha256(s: string): string {
   return createHash('sha256').update(s).digest('hex');
+}
+
+/** One of the player's own predictions, as shown with a market. */
+function minePick(p: PredictionRow) {
+  return { id: p.id, bucket: p.bucket, stake: p.stake, accepted: p.accepted, refund: p.refund, payout: p.payout, weight: p.weight, placedAt: p.placed_at };
 }
 
 function toEnginePrediction(r: PredictionRow): Prediction {

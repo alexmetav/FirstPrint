@@ -15140,6 +15140,7 @@ async function refresh() {
   // Admin and the partner stats page load their own data; redrawing them would close open tables and tooltips.
   if (S.refreshing || S.modal || S.route.name === 'admin' || S.route.name === 'stats') return;
   S.refreshing = true;
+  S.refreshedAt = Date.now();
   try {
     if (S.me) await refreshMe();
     await loadRoute(false);
@@ -21168,9 +21169,19 @@ setInterval(() => {
   if (expired) setTimeout(refresh, 1200);
 }, 1000);
 
+// Background refresh. While the live stream is connected it already brings every market change
+// (new predictions, closes, results) and prices, so the full reload only catches the rest (balance,
+// leaderboard) every 45 seconds; without the stream, every 8 seconds as before.
+const REFRESH_LIVE_MS = 45_000;
+const REFRESH_OFFLINE_MS = 8_000;
 setInterval(() => {
-  if (!document.hidden) refresh();
-}, 8000);
+  if (document.hidden) return;
+  if (Date.now() - (S.refreshedAt ?? 0) >= (S.live ? REFRESH_LIVE_MS : REFRESH_OFFLINE_MS) - 500) refresh();
+}, 4_000);
+// Back on the tab after a while: catch up straight away.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && Date.now() - (S.refreshedAt ?? 0) > REFRESH_OFFLINE_MS) refresh();
+});
 
 // The trending stack steps every six seconds (each step is a full 3D move, so not more often) unless
 // the visitor is pointing at it (with reduced motion the CSS swaps the 3D drop for a gentle fade).
@@ -21215,6 +21226,7 @@ setInterval(() => {
   }
   window.addEventListener('hashchange', onRoute);
   await onRoute();
+  S.refreshedAt = Date.now(); // the page was just loaded: no background refresh straight away
   applyMaintenance(S.cfg.maintenance);
   watchMaintenance();
   maybeTourVisitor();
