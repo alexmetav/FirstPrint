@@ -1036,7 +1036,12 @@ function exBadge(m) {
   if (!on.length) return '';
   const [v] = on;
   const [bg, fg] = EX_MARK[v.id] ?? ['var(--surface-2)', 'var(--text)'];
-  return `<span class="ex-badge" title="Listed on ${esc(on.map((x) => x.name).join(', '))}"><i style="background:${bg};color:${fg}" aria-hidden="true">${esc(v.name.slice(0, 1))}</i>${esc(v.name)}${on.length > 1 ? `<small>+${on.length - 1}</small>` : ''}</span>`;
+  // The exchange's own logo once the server has saved it; its first letter in its colour until then.
+  const logo = S.cfg?.exchangeLogos?.[v.id];
+  const mark = logo
+    ? `<i class="ex-logo" aria-hidden="true"><img src="${esc(logo)}" alt="" decoding="async" /></i>`
+    : `<i style="background:${bg};color:${fg}" aria-hidden="true">${esc(v.name.slice(0, 1))}</i>`;
+  return `<span class="ex-badge" title="Listed on ${esc(on.map((x) => x.name).join(', '))}">${mark}${esc(v.name)}${on.length > 1 ? `<small>+${on.length - 1}</small>` : ''}</span>`;
 }
 
 function tabList(tab) {

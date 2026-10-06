@@ -154,10 +154,16 @@ const scheduler = new Scheduler(
 // 15 to 30 day wait between the two): AutoOpener's resultAlertsDue sends that alert. A market priced
 // at the close, or an upcoming token, first gets its start price read from its sources there too.
 
+// CoinGecko's trending list for Admin → Find tokens; a free demo key (optional) raises its rate limit.
+const discover = new Discover(service, { apiKey: process.env.COINGECKO_API_KEY?.trim() || null });
+// Exchange logos for the "listed on" badges: saved once, a minute after start, and retried daily if any failed.
+const fillExchangeLogos = () => void discover.fillExchangeLogos().then((ids) => ids.length && log(`exchange logos saved: ${ids.join(', ')}`), () => {});
+setTimeout(fillExchangeLogos, 60_000).unref();
+setInterval(fillExchangeLogos, 24 * 3_600_000).unref();
+
 const server = createApiServer({
   service,
-  // CoinGecko's trending list for Admin → Find tokens; a free demo key (optional) raises its rate limit.
-  discover: new Discover(service, { apiKey: process.env.COINGECKO_API_KEY?.trim() || null }),
+  discover,
   scheduler,
   live,
   rewards,

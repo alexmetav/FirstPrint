@@ -12862,3 +12862,13 @@ html.in-maint body {
   width: 18px;
   height: 18px;
 }
+.ex-badge .ex-logo {
+  overflow: hidden;
+  background: #fff;
+}
+.ex-badge .ex-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
