@@ -2605,7 +2605,7 @@ function portfolioView(preds, history = { entries: [] }, stats = null, chain = n
           <div role="tabpanel" id="dp-past" aria-labelledby="dt-past"${tab === 'past' ? '' : ' hidden'}>${pastTable(stats)}</div>
         </section>
         <aside class="dash-side">
-          ${stats ? outcomeRecord(stats.byOutcome) : ''}
+          ${stats ? outcomeRecord(stats.byOutcome, 'Your picks by outcome', true) : ''}
           ${telegramCard()}
           ${walletsCard(chain)}
           ${chainCard(chain)}
@@ -2731,13 +2731,14 @@ function activeTable(active) {
   if (!active.length) return dashEmpty('target', 'No open positions. Pick an outcome on any open market to start your record.', `<a class="btn btn-sm" href="#/">${ico('grid')}Explore markets</a>`);
   const markets = new Map([...S.lists.open, ...S.lists.live].map((m) => [m.id, m]));
   const pg = pageOf('positions', positions(active));
-  return `<table class="table dash-table pos-table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right hide-sm">Crowd</th><th class="right">If it wins</th><th class="right hide-sm">Status</th></tr></thead><tbody>${pg.rows
+  return `<table class="table dash-table pos-table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right hide-sm">Crowd</th><th class="right">If it<span class="hide-sm"> </span><br class="show-sm" />wins</th><th class="right hide-sm">Status</th></tr></thead><tbody>${pg.rows
     .map((p) => {
       const m = markets.get(p.marketId);
       const yn = p.outcomes === 'binary';
       const mult = m ? poolMultiple(m, p.bucket) : null;
       const crowd = m?.pool ? `${Math.round(share(m, p.bucket) * 100)}%` : '–';
-      const when = m ? (p.marketStatus === 'open' ? `Closes in ${until(m.closeAt)}` : `Result ${fmtDate(m.settleAt)}`) : '';
+      // On a phone the column is narrow: just the time left ("23h 55m"), not "Closes in 23h 55m".
+      const when = m ? (p.marketStatus === 'open' ? `<span class="hide-sm">Closes in </span>${until(m.closeAt)}` : `Result ${fmtDate(m.settleAt)}`) : '';
       const status = p.marketStatus === 'open' ? '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>' : `<span class="pill pill-wait">${p.mode === 'manual' ? 'Awaiting result' : 'In play'}</span>`;
       return `<tr>
         <td><a class="mkt-cell" href="#/market/${encodeURIComponent(p.marketId)}">${m ? tokenAvatar(m, 'avatar-sm') : tokenAvatar(p, 'avatar-sm')}<span>${esc(p.symbol)}${when ? `<small class="muted">${when}</small>` : ''}</span></a></td>
@@ -2922,12 +2923,15 @@ function profitChart(history) {
 }
 
 /** How each outcome has done when you picked it. */
-function outcomeRecord(byOutcome, title = 'Your picks by outcome') {
+function outcomeRecord(byOutcome, title = 'Your picks by outcome', card = false) {
   const rows = LADDER.filter((b) => byOutcome[b].picks);
   if (!rows.length) return '';
+  // In the dashboard's side column it's a card like its neighbours; on profiles a full panel.
+  const head = card
+    ? `<section class="dash-card"><div class="dash-card-head"><h2>${ico('target')}${title}</h2></div>`
+    : `<section class="section panel"><div class="section-head"><span class="section-ico">${ico('target')}</span><h2>${title}</h2></div>`;
   return `
-    <section class="section panel">
-      <div class="section-head"><span class="section-ico">${ico('target')}</span><h2>${title}</h2></div>
+    ${head}
       <ul class="orec">${rows
         .map((b) => {
           const { picks, wins } = byOutcome[b];

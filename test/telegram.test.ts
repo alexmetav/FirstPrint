@@ -58,8 +58,8 @@ test('telegram: channel names and channel posts', async () => {
   const live = marketLiveText(base);
   assert.equal(
     live,
-    '<b>$AGENCY</b> · Agency\n🟢 <b>New market listed</b>\n\n💲 Start price: $0.0421\n⏰ Predictions close: 5 Oct, 12:00 UTC\n🏁 Result: 8 Oct, 12:00 UTC',
-    'the ticker, then only the facts: no question, no slogan, no link (the button is underneath)',
+    '<b>Agency $AGENCY</b>\n\n💲 Start price: $0.0421\n⏰ Predictions close: 5 Oct, 12:00 UTC\n🏁 Result: 8 Oct, 12:00 UTC',
+    'the name and ticker, then only the facts: no headline (the banner says it), question, slogan or link (the button is underneath)',
   );
   assert.match(marketLiveText({ ...base, basePrice: null, startAtClose: true }), /Start price: price when predictions close/);
   assert.match(marketLiveText({ ...base, basePrice: null }), /Start price: opening price/);
@@ -70,7 +70,8 @@ test('telegram: channel names and channel posts', async () => {
   assert.match(closingSoonText({ ...base, pool: 900, predictors: 3 }), /3 participants · 900 pts in the pool$/);
 
   const res = marketResultText({ ...base, predictors: 23, result: { winningBucket: 'up', returnPct: 0.234, basePrice: 0.0421, finalPrice: 0.052, pool: 1500 } });
-  assert.match(res!, /^<b>\$AGENCY<\/b> · Agency\n🏁 <b>Result: Up wins · \+23\.4%<\/b>/);
+  assert.match(res!, /^<b>Agency \$AGENCY<\/b>\n🏁 <b>Result: Up wins · \+23\.4%<\/b>/);
+  assert.match(marketLiveText({ ...base, name: null }), /^<b>\$AGENCY<\/b>\n\n/, 'no name: the ticker alone');
   assert.match(res!, /\$0\.0421 → \$0\.052/);
   assert.match(res!, /23 participants · 1,500 pts paid to the winners/);
   assert.doesNotMatch(res!, /href/);
@@ -106,7 +107,7 @@ test('channel: posts open markets not posted yet, then a single last-hour remind
   service.setSetting('telegram_channel', 'firstprintfun');
   assert.equal(channel.postAllOpen(), 2);
   await channel.later(async () => {});
-  assert.deepEqual(posts, ['@firstprintfun [banner ok] <b>$SHORT</b> | 🟢 <b>New market listed</b>', '@firstprintfun [banner ok] <b>$LONG</b> | 🟢 <b>New market listed</b>'], 'soonest to close first, with the banner');
+  assert.deepEqual(posts, ['@firstprintfun [banner ok] <b>$SHORT</b> | ', '@firstprintfun [banner ok] <b>$LONG</b> | '], 'soonest to close first, with the banner');
   assert.equal(channel.postAllOpen(), 0, 'already posted');
   assert.equal(channel.postAllOpen(true), 2, 'posting again includes posted ones');
   await channel.later(async () => {});

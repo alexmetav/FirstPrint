@@ -3708,8 +3708,9 @@ main .input-wrap input:not([type='checkbox']) {
   stroke-width: 2.5;
 }
 .orec li {
-  grid-template-columns: 100px 1fr auto;
-  padding: 6px 0;
+  grid-template-columns: minmax(64px, max-content) minmax(40px, 1fr) auto;
+  gap: 10px;
+  padding: 4px 0;
 }
 .orec-name .oc {
   display: inline-flex;
@@ -10117,8 +10118,9 @@ a.wallet-option {
   width: 22px;
   height: 22px;
 }
+/* The button sits under the text it belongs to, not under the logo. */
 .tg-card .tg-join {
-  grid-column: 1 / -1;
+  grid-column: 2;
   justify-self: start;
 }
 .tg-channel-form {
@@ -13548,4 +13550,42 @@ html.in-maint body {
   opacity: 0.6;
   pointer-events: none;
   transition: opacity 0.15s;
+}
+
+/* Dashboard side column: the cards are spaced by the column's gap only (no panel margins). */
+.dash-side > * {
+  margin: 0;
+}
+.dash-side .tg-card {
+  padding: 16px;
+}
+.show-sm {
+  display: none;
+}
+@media (max-width: 640px) {
+  .show-sm {
+    display: inline;
+  }
+  /* Positions on a phone: tighter cells so market, pick, stake and payout fit without clipping. */
+  .pos-table th,
+  .pos-table td {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .pos-table th:first-child,
+  .pos-table td:first-child {
+    padding-left: 14px;
+  }
+  .pos-table th:last-child,
+  .pos-table td:last-child {
+    padding-right: 14px;
+  }
+  .pos-table th {
+    white-space: nowrap;
+  }
+}
+/* "Closes in" stays small text; only the time after it is set bold. */
+.pos-table .mkt-cell small .hide-sm {
+  font: inherit;
+  letter-spacing: inherit;
 }

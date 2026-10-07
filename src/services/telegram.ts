@@ -163,9 +163,10 @@ type ChannelMarket = {
   settleAt: number;
 };
 
-/** The opening line of every channel post: the $TICKER first, like an exchange listing notice. */
-function head(m: ChannelMarket, tag: string) {
-  return `<b>$${esc(m.symbol)}</b>${m.name ? ` · ${esc(m.name)}` : ''}\n${tag}`;
+/** The opening line of every channel post: the token's name, then its $TICKER ("Agency $AGENCY"). */
+function head(m: ChannelMarket, tag?: string) {
+  const title = `<b>${m.name ? `${esc(m.name)} ` : ''}$${esc(m.symbol)}</b>`;
+  return tag ? `${title}\n${tag}` : title;
 }
 
 /** What the market measures from: the price, or how it will be set. */
@@ -176,9 +177,9 @@ function startPrice(m: ChannelMarket) {
 
 // Every post carries a "Predict now" / "See the result" button, so the text has no link of its own.
 
-/** "New market live" post for the public channel: the ticker, then only the facts. */
+/** "New market live" post for the public channel: the token, then only the facts (the banner already says it's new). */
 export function marketLiveText(m: ChannelMarket) {
-  return `${head(m, '🟢 <b>New market listed</b>')}
+  return `${head(m)}
 
 💲 Start price: ${startPrice(m)}
 ⏰ Predictions close: ${utc(m.closeAt)}
