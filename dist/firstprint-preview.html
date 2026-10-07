@@ -14312,6 +14312,13 @@ html.in-maint body {
   color: var(--muted);
   font-size: 13px;
 }
+.m-rules .m-rules-more {
+  margin-top: -4px;
+  font-size: 14px;
+}
+.m-rules .m-rules-more a {
+  color: var(--brand);
+}
 
 </style>
   </head>
@@ -18112,22 +18119,18 @@ function earlyRules(m) {
   if (!r && !k) return '';
   const mins = (ms) => `${Math.round(ms / 60_000)} minute${Math.round(ms / 60_000) === 1 ? '' : 's'}`;
   const half = m.openedAt + (m.closeAt - m.openedAt) / 2;
-  const burned = !r ? '' : r.burnBps >= 10_000 ? 'The whole fee is burned: those points are gone for good.' : r.burnBps <= 0 ? 'The whole fee is shared at the result among predictions placed in the early window that stayed in, by stake, whether they win or lose.' : `${pctText(r.burnBps)} of the fee is burned: those points are gone for good. The rest is shared at the result among predictions placed in the early window that stayed in, by stake, whether they win or lose.`;
+  const split = !r ? '' : r.burnBps >= 10_000 ? 'The fee is burned: those points are gone for good.' : r.burnBps <= 0 ? 'The fee goes to early predictions that stay in, by stake, win or lose. This is separate from the pool.' : `${r.burnBps === 5_000 ? 'Half' : pctText(r.burnBps)} of the fee is burned. The rest goes to early predictions that stay in, by stake, win or lose. This is separate from the pool.`;
   const items = [
-    k ? `Early bonus: a prediction placed when the market opens counts ${+(1 + k).toFixed(1)}× when the winners split the pool, and one placed at the close counts 1×. In between it falls steadily, minute by minute. The bonus only changes how the winners share the pool; it never adds points.` : '',
-    `Early window: the first half of the time between the market opening and predictions closing. For this market it runs until ${fmtDate(half)}.`,
-    r ? `Taking a prediction back: you can do it until ${mins(r.lockMs)} before predictions close${m.status === 'open' ? ` (${fmtDate(m.closeAt - r.lockMs)})` : ''}. Your stake comes back minus a fee, and the prediction leaves the pool.` : '',
-    r ? `The fee is ${pctText(r.baseBps)} in the early window. After that it rises, slowly at first and steeply near the close, up to ${pctText(r.maxBps)}.${r.undoMs ? ` Taking a prediction back within ${mins(r.undoMs)} of placing it, in the early window, is free.` : ''} The exact fee is shown before you confirm.` : '',
-    burned,
-    r && r.burnBps < 10_000 ? 'Early rewards are separate from the pool. The pool is only the stakes still in at the close, and the winners split it as usual. Early rewards come only from take-back fees and are paid at the result, next to any winnings. An early prediction that loses still gets its early reward; one that is taken back gets none.' : '',
-    r ? 'Taking a prediction back also gives up its early bonus. A new prediction gets the bonus for the moment it is placed, and counts as early only if it is placed in the early window.' : '',
-    r ? 'Fees are not returned, even if the market is cancelled later. If it is, the part meant for early players is burned too.' : '',
-    r ? 'Firstprint may change these numbers. A change applies only to predictions taken back after it.' : '',
-    'Points, burned points and early rewards have no cash value.',
+    k ? `Early bonus: a prediction placed at the open counts ${+(1 + k).toFixed(1)}× when the winners split the pool, falling to 1× at the close.` : '',
+    r ? `You can take a prediction back until ${mins(r.lockMs)} before predictions close. The fee is ${pctText(r.baseBps)} until ${fmtDate(half)}, then rises to ${pctText(r.maxBps)} near the close.${r.undoMs ? ` Within ${mins(r.undoMs)} of placing it early, it is free.` : ''}` : '',
+    split,
+    r ? 'Taking a prediction back gives up its early bonus, and fees are not returned.' : '',
+    'Points have no cash value.',
   ].filter(Boolean);
   return `<details class="m-rules">
       <summary>${ico('zap')}Early bonus, taking a pick back and fees${ico('chevronRight')}</summary>
       <ol class="rules">${items.map((t) => `<li>${t}</li>`).join('')}</ol>
+      <p class="m-rules-more"><a href="/whitepaper.html#take-back" target="_blank" rel="noopener">Read the full rules</a></p>
     </details>`;
 }
 

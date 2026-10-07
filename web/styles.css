@@ -14282,3 +14282,10 @@ html.in-maint body {
   color: var(--muted);
   font-size: 13px;
 }
+.m-rules .m-rules-more {
+  margin-top: -4px;
+  font-size: 14px;
+}
+.m-rules .m-rules-more a {
+  color: var(--brand);
+}
