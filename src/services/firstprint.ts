@@ -287,6 +287,8 @@ function logoVersion(s: string) {
 
 /** Open pages hear about new predictions on a market at most this often. */
 const MARKET_EVENT_GAP_MS = 5_000;
+/** Days after its result before a market shows in Admin → Markets → Old results, ready to clear out. */
+const OLD_RESULT_DAYS = 3;
 
 export class FirstprintService {
   db: DB;
@@ -1057,8 +1059,167 @@ export class FirstprintService {
   }
 
   adminMarkets() {
-    const rows = as<MarketRow[]>(this.db.prepare('SELECT * FROM markets ORDER BY created_at DESC LIMIT 200').all());
+    const rows = as<MarketRow[]>(this.db.prepare('SELECT * FROM markets WHERE archived_at IS NULL ORDER BY created_at DESC LIMIT 1000').all());
     return rows.map((r) => this.view(r, undefined, true));
+  }
+
+  private statsCache: { at: number; value: { totalMarkets: number; topPayout: number | null } } | null = null;
+
+  /**
+   * Numbers for the home banner: every market ever published (cleared-out ones included) and the
+   * best payout a player has actually received, as a multiple of what they staked.
+   */
+  marketStats() {
+    const at = Date.now();
+    if (this.statsCache && at - this.statsCache.at < 30_000) return this.statsCache.value;
+    const total = as<{ n: number }>(this.db.prepare('SELECT COUNT(*) AS n FROM markets WHERE published = 1').get()).n;
+    const best = as<{ x: number | null }>(
+      this.db
+        .prepare(
+          `SELECT MAX(CAST(p.payout AS REAL) / p.accepted) AS x FROM predictions p JOIN markets m ON m.id = p.market_id
+           WHERE m.status = 'resolved' AND m.published = 1 AND p.payout > 0 AND p.accepted > 0`,
+        )
+        .get(),
+    ).x;
+    const value = { totalMarkets: total, topPayout: best && best > 0 ? Math.round(best * 10) / 10 : null };
+    this.statsCache = { at, value };
+    return value;
+  }
+
+  /** Settled or cancelled markets whose result is older than OLD_RESULT_DAYS: ready to clear out. */
+  oldResults() {
+    const cutoff = this.clock.now() - OLD_RESULT_DAYS * 86_400_000;
+    const rows = as<(MarketRow & { settled_at: number | null; result: string | null; players: number; preds: number; paid: number | null })[]>(
+      this.db
+        .prepare(
+          `SELECT m.*, s.settled_at, s.result,
+             (SELECT COUNT(DISTINCT user_id) FROM predictions WHERE market_id = m.id) AS players,
+             (SELECT COUNT(*) FROM predictions WHERE market_id = m.id) AS preds,
+             (SELECT SUM(payout) FROM predictions WHERE market_id = m.id) AS paid
+           FROM markets m LEFT JOIN settlements s ON s.market_id = m.id
+           WHERE m.status IN ('resolved', 'void') AND m.archived_at IS NULL AND COALESCE(s.settled_at, m.listing_at) < ?
+           ORDER BY COALESCE(s.settled_at, m.listing_at)`,
+        )
+        .all(cutoff),
+    );
+    return rows.map((r) => {
+      let result: { winningBucket?: string; basePrice?: number; finalPrice?: number; pool?: number; voidReason?: string; manual?: { basePrice?: number; finalPrice?: number } } = {};
+      try {
+        result = r.result ? JSON.parse(r.result) : {};
+      } catch {
+        /* an unreadable record still lists, without its numbers */
+      }
+      const pool = as<{ s: number }>(this.db.prepare('SELECT COALESCE(SUM(stake), 0) AS s FROM predictions WHERE market_id = ?').get(r.id)).s;
+      return {
+        id: r.id,
+        symbol: r.symbol,
+        name: r.name,
+        status: r.status,
+        published: r.published === 1,
+        settledAt: r.settled_at ?? r.listing_at,
+        createdAt: r.created_at,
+        winningBucket: result.winningBucket ?? null,
+        voidReason: result.voidReason ?? null,
+        basePrice: result.manual?.basePrice ?? result.basePrice ?? r.base_price ?? null,
+        finalPrice: result.manual?.finalPrice ?? result.finalPrice ?? null,
+        pool,
+        players: r.players,
+        predictions: r.preds,
+        paid: r.paid ?? 0,
+      };
+    });
+  }
+
+  /** The old results as a spreadsheet (CSV), to keep before clearing them out. */
+  oldResultsCsv() {
+    const head = ['market_id', 'symbol', 'name', 'status', 'winning_outcome', 'void_reason', 'start_price', 'final_price', 'created', 'settled', 'pool_pts', 'players', 'predictions', 'paid_out_pts'];
+    const cell = (v: unknown) => {
+      const t = v === null || v === undefined ? '' : String(v);
+      // Quote everything that needs it, and stop a spreadsheet reading a cell as a formula.
+      const safe = /^[=+\-@]/.test(t) ? `'${t}` : t;
+      return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+    };
+    const iso = (ms: number | null) => (ms ? new Date(ms).toISOString() : '');
+    const lines = this.oldResults().map((r) =>
+      [r.id, r.symbol, r.name, r.status, r.winningBucket, r.voidReason, r.basePrice, r.finalPrice, iso(r.createdAt), iso(r.settledAt), r.pool, r.players, r.predictions, r.paid].map(cell).join(','),
+    );
+    return [head.join(','), ...lines].join('\n');
+  }
+
+  /**
+   * Clears out old results. A market nobody played, or one that was cancelled and refunded, is
+   * deleted outright. A settled market with players keeps its row and predictions (their wins,
+   * win rate and leaderboard depend on them) but drops its price data and logo image, the bulk
+   * of what it stores, and leaves every list.
+   */
+  archiveOldResults(ids?: string[]) {
+    const old = this.oldResults();
+    const pick = ids?.length ? old.filter((r) => ids.includes(r.id)) : old;
+    let deleted = 0;
+    let archived = 0;
+    const now = this.clock.now();
+    for (const r of pick) {
+      if (r.predictions === 0 || r.status === 'void') {
+        this.deleteMarket(r.id);
+        deleted++;
+        continue;
+      }
+      tx(this.db, () => {
+        this.db.prepare('DELETE FROM candles WHERE market_id = ?').run(r.id);
+        this.db.prepare('UPDATE markets SET archived_at = ?, logo_png = NULL WHERE id = ?').run(now, r.id);
+      });
+      archived++;
+    }
+    if (deleted || archived) {
+      this.statsCache = null;
+      this.listCache.clear();
+      this.boardCache.clear();
+    }
+    return { deleted, archived };
+  }
+
+  /**
+   * Every player's points movements, newest first, with the market, the pick, the stake and what
+   * it paid: Admin → User activity. `q` narrows it to players whose name or id matches.
+   */
+  userActivity(page = 1, perPage = 10, q = '') {
+    const per = Math.min(100, Math.max(1, Math.floor(perPage) || 10));
+    const needle = q.trim().slice(0, 64);
+    const where = needle ? "WHERE (u.username LIKE ? ESCAPE '\\' OR u.id = ?)" : '';
+    const args = needle ? [`%${needle.replace(/[%_\\]/g, (c) => `\\${c}`)}%`, needle] : [];
+    const total = as<{ n: number }>(this.db.prepare(`SELECT COUNT(*) AS n FROM ledger l JOIN users u ON u.id = l.user_id ${where}`).get(...args)).n;
+    const pages = Math.max(1, Math.ceil(total / per));
+    const pg = Math.min(pages, Math.max(1, Math.floor(page) || 1));
+    const rows = as<
+      { id: number; delta: number; reason: string; ref: string | null; created_at: number; user_id: string; username: string; balance: number; symbol: string | null; market_id: string | null; bucket: string | null; stake: number | null; accepted: number | null; payout: number | null; status: string | null }[]
+    >(
+      this.db
+        .prepare(
+          `SELECT l.id, l.delta, l.reason, l.ref, l.created_at, u.id AS user_id, u.username, u.points AS balance,
+             m.symbol, m.id AS market_id, p.bucket, p.stake, p.accepted, p.payout, m.status
+           FROM ledger l JOIN users u ON u.id = l.user_id
+           LEFT JOIN predictions p ON p.id = l.ref
+           LEFT JOIN markets m ON m.id = p.market_id
+           ${where}
+           ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?`,
+        )
+        .all(...args, per, (pg - 1) * per),
+    );
+    return {
+      page: pg,
+      pages,
+      total,
+      entries: rows.map((r) => ({
+        id: r.id,
+        at: r.created_at,
+        user: { id: r.user_id, username: r.username, balance: r.balance },
+        reason: r.reason,
+        delta: r.delta,
+        ref: r.market_id ? null : r.ref,
+        market: r.market_id ? { id: r.market_id, symbol: r.symbol, status: r.status } : null,
+        pick: r.bucket ? { bucket: r.bucket, stake: r.stake, accepted: r.accepted, payout: r.payout } : null,
+      })),
+    };
   }
 
   venueList() {
@@ -2186,6 +2347,7 @@ export class FirstprintService {
     if (!light) {
       this.listCache.clear();
       this.boardCache.clear();
+      this.statsCache = null;
       this.eventAt.delete(marketId);
       this.onEvent('market', { marketId });
       return;
@@ -2238,7 +2400,8 @@ export class FirstprintService {
   }
 
   private listWhere(filter: 'open' | 'live' | 'settled' | 'all') {
-    return filter === 'open' ? "status = 'open'" : filter === 'live' ? "status = 'locked'" : filter === 'settled' ? "status IN ('resolved', 'void')" : '1 = 1';
+    const f = filter === 'open' ? "status = 'open'" : filter === 'live' ? "status = 'locked'" : filter === 'settled' ? "status IN ('resolved', 'void')" : '1 = 1';
+    return `${f} AND archived_at IS NULL`;
   }
 
   listMarkets(filter: 'open' | 'live' | 'settled' | 'all', userId?: string) {
@@ -2251,7 +2414,7 @@ export class FirstprintService {
             ? "status IN ('resolved', 'void')"
             : '1 = 1';
     const order = filter === 'settled' ? 'listing_at DESC' : 'listing_at ASC';
-    const rows = as<MarketRow[]>(this.db.prepare(`SELECT ${this.lightCols} FROM markets WHERE published = 1 AND ${where} ORDER BY ${order} LIMIT 50`).all());
+    const rows = as<MarketRow[]>(this.db.prepare(`SELECT ${this.lightCols} FROM markets WHERE published = 1 AND archived_at IS NULL AND ${where} ORDER BY ${order} LIMIT 50`).all());
     return rows.map((r) => this.view(r, userId));
   }
 

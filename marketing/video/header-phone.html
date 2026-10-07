@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="./stage.css" />
+<style>
+  html, body { width: 1500px; height: 500px; }
+  #h { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(80% 140% at 62% 40%, #13131a 0%, #09090b 70%); perspective: 2200px; }
+  .glow { position: absolute; border-radius: 50%; pointer-events: none; }
+  .vig { position: absolute; inset: 0; background: radial-gradient(110% 160% at 60% 45%, transparent 45%, rgba(0,0,0,0.75) 100%); pointer-events: none; z-index: 20; }
+  .tok { position: absolute; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 2px rgba(255,255,255,0.12), 0 18px 40px -16px rgba(0,0,0,0.9); }
+  .tok svg { display: block; width: 100%; height: 100%; }
+
+  /* Phone */
+  .rig { position: absolute; left: 0; top: 0; transform-style: preserve-3d; }
+  .phone { position: relative; width: 420px; height: 874px; border-radius: 66px; padding: 15px;
+    background: linear-gradient(150deg, #5b6f99 0%, #26324a 18%, #121722 45%, #1a2233 75%, #6a7fae 100%);
+    box-shadow: 0 0 0 1.5px rgba(160,190,255,0.35), 0 0 60px -10px rgba(90,130,255,0.35), 0 80px 140px -40px rgba(0,0,0,0.95); }
+  .phone::before { content: ''; position: absolute; inset: 4px; border-radius: 62px; background: #050506; }
+  .screen { position: relative; width: 390px; height: 844px; border-radius: 52px; overflow: hidden; background: #09090b; }
+  .island { position: absolute; left: 50%; top: 12px; width: 120px; height: 34px; margin-left: -60px; border-radius: 20px; background: #000; z-index: 5; }
+  .sb { display: flex; justify-content: space-between; align-items: center; height: 54px; padding: 6px 30px 0 34px; font-size: 16px; font-weight: 600; }
+  .sb .r { display: flex; gap: 6px; align-items: center; }
+  .sb .r i { display: block; background: #f5f5f7; border-radius: 2px; }
+  .top { display: flex; align-items: center; gap: 10px; padding: 8px 18px 12px; border-bottom: 1px solid #1d1d22; }
+  .chip2 { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #35353e; font-family: var(--mono); font-size: 14px; background: #111114; }
+  .chip2 .i { width: 15px; height: 15px; color: var(--gold); }
+  .nav { position: absolute; left: 0; right: 0; bottom: 0; height: 82px; display: flex; justify-content: space-around; align-items: flex-start; padding-top: 16px; border-top: 1px solid #1d1d22; background: rgba(9,9,11,0.92); color: #71717a; font-size: 24px; }
+  .nav .on { color: var(--text); }
+  .reflect { position: absolute; inset: 0; border-radius: 52px; background: linear-gradient(115deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 28%, transparent 40%); pointer-events: none; z-index: 6; }
+</style>
+</head>
+<body>
+<div id="h"></div>
+<script type="module">
+  import { el, logo, ico, marketCard } from './lib.js';
+  import { TOKENS } from './tokens.js';
+  await document.fonts.load('600 76px Geist');
+  await document.fonts.load('400 40px Geist');
+  await document.fonts.load('500 36px "Geist Mono"');
+  await document.fonts.ready;
+  const variant = new URLSearchParams(location.search).get('v') || 'clean';
+  const root = document.querySelector('#h');
+  root.append(
+    el('<div class="glow" style="left:620px;top:-260px;width:900px;height:900px;background:radial-gradient(50% 50% at 50% 50%, rgba(90,130,255,0.16), transparent 70%)"></div>'),
+    el('<div class="glow" style="left:900px;top:120px;width:800px;height:700px;background:radial-gradient(50% 50% at 50% 50%, rgba(48,209,88,0.12), transparent 70%)"></div>'),
+  );
+
+  // Background tokens, out of focus.
+  for (const [k, x, y, s, b, br] of [['btc', 470, 330, 70, 6, 0.45], ['eth', 1390, 30, 90, 6, 0.55], ['doge', 1300, 400, 54, 4, 0.6], ['bnb', 560, 40, 46, 7, 0.45]]) {
+    root.append(el(`<div class="tok" style="left:${x}px;top:${y}px;width:${s}px;height:${s}px;filter:blur(${b}px) brightness(${br});z-index:1">${TOKENS[k]}</div>`));
+  }
+
+  // The app on screen: the SOL market, Up picked.
+  const pcts = [13, 47, 24, 10, 6];
+  const { node: card, rows } = marketCard({ sym: 'SOL', name: 'Solana', letter: '', pcts });
+  const av = card.querySelector('.avatar');
+  av.style.background = 'none';
+  av.style.overflow = 'hidden';
+  av.style.boxShadow = '0 0 0 2px rgba(255,255,255,0.14)';
+  av.innerHTML = TOKENS.sol.replace('<svg', '<svg width="116" height="116" style="display:block"');
+  rows.forEach((r, i) => (r.querySelector('.bar').style.width = `${pcts[i]}%`));
+  rows[1].classList.add('sel');
+  rows[1].querySelector('.you').innerHTML = '<span class="tag-you">You 100</span>';
+  card.style.cssText += ';position:relative;left:0;top:0;transform-origin:0 0;transform:scale(0.385)';
+
+  const phone = el(`<div class="phone"><div class="screen">
+      <div class="island"></div>
+      <div class="sb"><span>9:41</span><span class="r"><i style="width:3px;height:6px"></i><i style="width:3px;height:9px"></i><i style="width:3px;height:12px"></i><i style="width:24px;height:11px;border-radius:3px;margin-left:6px"></i></span></div>
+      <div class="top"><span class="wordmark" style="font-size:19px;gap:9px">${logo(26)}<span>Firstprint</span></span><span class="chip2">${ico('coins')}1,250</span></div>
+      <div class="body" style="padding:14px 15px 0"></div>
+      <div style="padding:0 15px"><div class="btn btn-white" style="width:100%;height:52px;font-size:17px;border-radius:999px">Predict Up for 100 pts</div></div>
+      <div class="nav"><span class="on">${ico('home')}</span><span>${ico('grid')}</span><span>${ico('trophy')}</span><span>${ico('user')}</span></div>
+      <div class="reflect"></div>
+    </div></div>`);
+  const holder = phone.querySelector('.body');
+  holder.append(card);
+  const rig = el('<div class="rig" style="z-index:5"></div>');
+  rig.append(phone);
+  rig.style.transform = 'translate(860px,-70px) rotateZ(-27deg) rotateX(22deg) rotateY(-14deg) scale(0.98)';
+  root.append(rig);
+  // The card is scaled down inside the screen, so give its holder the scaled height.
+  holder.style.height = `${card.scrollHeight * 0.385 + 22}px`;
+  holder.style.overflow = 'visible';
+
+  if (variant === 'min') {
+    root.append(el(`<div class="abs" style="left:250px;top:150px;z-index:21">
+      <div class="wordmark" style="font-size:40px;gap:16px">${logo(46)}<span>Firstprint</span></div>
+      <div style="margin-top:16px;font-size:24px;color:var(--muted);letter-spacing:-0.01em">Call where crypto lands.</div>
+      <div class="mono" style="margin-top:22px;font-size:18px;color:#8ef0a8;display:inline-flex;align-items:center;gap:10px"><i style="width:8px;height:8px;border-radius:50%;background:var(--up);box-shadow:0 0 0 4px rgba(48,209,88,0.2)"></i>firstprint.fun</div>
+    </div>`));
+  }
+  root.append(el('<div class="vig"></div>'));
+  window.READY = true;
+</script>
+</body>
+</html>

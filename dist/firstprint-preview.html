@@ -8721,6 +8721,18 @@ p,
   letter-spacing: -0.02em;
   color: var(--text);
 }
+.hero-top {
+  display: inline-block;
+  color: var(--up);
+  animation: hero-top-glow 2.6s ease-in-out infinite;
+}
+@keyframes hero-top-glow {
+  0%, 100% { text-shadow: 0 0 0 transparent; }
+  50% { text-shadow: 0 0 14px color-mix(in srgb, var(--up) 55%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-top { animation: none; }
+}
 .hero-next {
   display: flex;
   flex-direction: column;
@@ -8993,7 +9005,7 @@ p,
   }
   .hero-stats {
     display: grid;
-    grid-template-columns: repeat(3, auto);
+    grid-template-columns: repeat(2, auto);
     justify-content: space-between;
     gap: 12px;
     margin-top: 22px;
@@ -14144,6 +14156,18 @@ html.in-maint body {
   color: var(--muted);
 }
 
+/* Admin → User activity */
+.act-search { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.act-search input { flex: 1; min-width: 180px; max-width: 320px; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-strong, var(--line)); background: var(--surface-2, var(--surface)); color: var(--text); font: inherit; }
+.act-table td { vertical-align: top; }
+.act-table .link-btn { background: none; border: 0; padding: 0; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+.act-table .link-btn:hover { text-decoration: underline; }
+.act-bal { display: block; font-size: 11px; }
+.act-table tr.act-win td { background: color-mix(in srgb, var(--up) 6%, transparent); }
+.act-foot:empty { display: none; }
+.nowrap { white-space: nowrap; }
+.adm-old-actions { margin: 4px 0 12px; }
+
 </style>
   </head>
   <body>
@@ -14839,6 +14863,10 @@ function createAdminApi(key, baseUrl = '') {
     tokenStep: (step) => post(`/api/admin/token/${encodeURIComponent(step)}`),
     tasks: () => request('/api/admin/tasks'),
     errors: (view = 'open') => request(`/api/admin/errors?view=${view}`),
+    oldResults: () => request('/api/admin/old-results'),
+    oldResultsCsv: () => request('/api/admin/old-results/csv'),
+    clearOldResults: (ids) => post('/api/admin/old-results/clear', ids ? { ids } : {}),
+    userActivity: (page = 1, per = 10, q = '') => request(`/api/admin/user-activity?page=${page}&per=${per}&q=${encodeURIComponent(q)}`),
     resolveError: (id) => post(`/api/admin/errors/${encodeURIComponent(id)}/resolve`),
     resolveAllErrors: () => post('/api/admin/errors/resolve-all'),
     clearFixedErrors: () => post('/api/admin/errors/clear-fixed'),
@@ -16247,6 +16275,7 @@ async function loadHome() {
   S.lists = { open: open.markets, live: live.markets, settled: settled.markets };
   // Guests get a short list from the server; the totals say how many there really are.
   S.totals = { open: open.total ?? open.markets.length, live: live.total ?? live.markets.length, settled: settled.total ?? settled.markets.length };
+  S.stats = open.stats ?? null;
   S.limited = Boolean(open.limited || live.limited || settled.limited);
   const featured = featuredMarket();
   const [odds, leaders] = await Promise.all([
@@ -16454,6 +16483,7 @@ async function loadRoute() {
       await heroFlipDone();
       if (stale()) return;
       setHtml(view, homeView());
+      animateCounts();
     } else if (S.route.name === 'market') {
       await loadMarket(S.route.id);
       const pending = S.pendingPick;
@@ -17347,11 +17377,21 @@ function homeHero(showLive = true) {
   const inPlay = [...open, ...S.lists.live].reduce((sum, m) => sum + (m.pool || 0), 0);
   const best = Math.max(0, ...open.flatMap((m) => bucketsOf(m).map((b) => poolMultiple(m, b) ?? 0)));
   const word = (b) => `<b style="color:${oVar(b, false)}">${oName(b, false)}</b>`;
+  // Every market so far (waiting for a result and settled ones too), from the server when it says.
+  const total = S.stats?.totalMarkets ?? (S.totals ? S.totals.open + S.totals.live + S.totals.settled : 0);
+  // The best payout a player has actually received; before any result, the best one on offer now.
+  const top = S.stats?.topPayout ?? null;
+  const topStat = top
+    ? ['Top payout', `<span class="hero-top" data-count="${top}" data-count-key="top">${top.toFixed(1)}×</span>`]
+    : best >= 1
+      ? ['Payout up to', `${best.toFixed(1)}×`]
+      : null;
   const stats = [
+    total ? ['Total markets', fmtNum(total)] : null,
     open.length ? ['Open markets', fmtNum(S.totals?.open ?? open.length)] : null,
     // A guest's short list would undercount the points in play, so it's left out for them.
     inPlay && !S.limited ? ['In play', `${fmtNum(inPlay)} pts`] : null,
-    best >= 1 ? ['Top payout now', `${best.toFixed(1)}×`] : null,
+    topStat,
   ].filter(Boolean);
   const next = [...open].filter((m) => m.phase !== 'awaiting_result').sort((a, b) => a.closeAt - b.closeAt)[0];
   return `
@@ -17756,7 +17796,30 @@ function bigCountdown(m) {
 }
 
 /** Fills in every big countdown on the page; called each second and right after a redraw. */
+/** Numbers that count up once when they first appear (the home banner's top payout). */
+const counted = new Set();
+function animateCounts() {
+  document.querySelectorAll('[data-count]').forEach((el) => {
+    const to = Number(el.dataset.count);
+    const key = `${el.dataset.countKey}:${to}`;
+    if (!Number.isFinite(to) || counted.has(key)) return;
+    counted.add(key);
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const t0 = performance.now();
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / 1400);
+      const v = to * (1 - Math.pow(1 - k, 4));
+      // The element can be replaced by a re-render; then the new one already shows the final value.
+      if (!el.isConnected) return;
+      el.textContent = `${v.toFixed(1)}×`;
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
 function tickCountdowns() {
+  animateCounts();
   document.querySelectorAll('[data-cd]').forEach((el) => {
     const s = Math.max(0, Math.floor((Number(el.dataset.cd) - now()) / 1000));
     const parts = { d: Math.floor(s / 86400), h: Math.floor((s % 86400) / 3600), m: Math.floor((s % 3600) / 60), s: s % 60 };
@@ -18591,6 +18654,14 @@ async function goPage(list, page, btn) {
       card?.replaceWith(htmlNode(claimsList(S.rewards)));
       document.querySelector('[data-list-card="claims"]')?.scrollIntoView({ block: 'nearest' });
       return;
+    }
+    if (list === 'adm-act') {
+      A.act = { ...(A.act ?? {}), page, all: true };
+      return renderAdmin();
+    }
+    if (list.startsWith('adm-')) {
+      S.pg[list] = page;
+      return renderAdmin();
     }
     if (list.startsWith('profile-')) {
       S.pg[list] = page;
@@ -20109,13 +20180,14 @@ const ADMIN_TABS = [
   ['overview', 'grid', 'Overview', 'Today at a glance.'],
   ['markets', 'list', 'Markets', 'Post results, publish drafts, edit or cancel markets.'],
   ['analytics', 'chart', 'Analytics', 'Players, activity and markets.'],
+  ['users', 'users', 'User activity', 'Every player’s predictions, wins and points, newest first.'],
   ['discover', 'search', 'Find tokens', 'New listings and trending tokens, ready to become markets.'],
   ['create', 'plusCircle', 'Create market', 'Players only see it once you publish.'],
   ['token', 'token', 'TestFPT token', 'The on-chain token players claim their points as.'],
   ['tasks', 'sparkles', 'Tasks', 'Tasks players complete on X for points.'],
   ['settings', 'sliders', 'Settings', 'Automatic markets, reference exchanges and backups.'],
   ['errors', 'alert', 'Errors', 'Problems on the server and in players’ apps, newest first.'],
-  ['activity', 'history', 'Activity', 'Everything done in this panel, newest first.'],
+  ['activity', 'history', 'Admin log', 'Everything done in this panel, newest first.'],
 ];
 
 /** Team roles, lowest first. A server without roles is treated as the owner's. */
@@ -20224,7 +20296,17 @@ async function renderAdmin() {
   let body;
   if (tab === 'overview') body = adminOverview({ markets, waiting, drafts, token, tasks, log, pending, tooLong });
   if (tab === 'overview') setTimeout(loadTopUp, 0);
-  else if (tab === 'markets') body = adminMarketsTab(markets, waiting, pending, counting, tooLong);
+  else if (tab === 'markets') {
+    const old = canAdmin('admin') ? await A.api.oldResults().catch(() => null) : null;
+    body = adminMarketsTab(markets, waiting, pending, counting, tooLong, old?.results ?? []);
+  } else if (tab === 'users') {
+    A.act ??= { page: 1, all: false, q: '' };
+    try {
+      body = userActivityView(await A.api.userActivity(A.act.page, A.act.all ? 50 : 10, A.act.q));
+    } catch (err) {
+      body = `<div class="empty"><p>${esc(err.message)}</p></div>`;
+    }
+  }
   else if (tab === 'analytics') {
     try {
       const data = await A.api.analytics(S.vizDays ?? 30);
@@ -20707,7 +20789,24 @@ function adminInbox(panes) {
   </section>`;
 }
 
-function adminMarketsTab(markets, waiting, pending, counting = [], tooLong = []) {
+// Old results stay open across re-renders once the admin opens them.
+document.addEventListener('toggle', (e) => e.target.matches?.('.adm-old') && (A.oldOpen = e.target.open), true);
+
+/** Settled more than three days ago: keep a copy as a spreadsheet, then clear them out. */
+function oldResultsPanel(old) {
+  if (!old.length) return '';
+  const { rows, nav } = pageOf('adm-old', old);
+  return `<details class="adm-collapse adm-old"${A.oldOpen ? ' open' : ''}><summary>${ico('database')}<b>Old results</b><span class="count-badge">${old.length}</span><span class="muted">result 3+ days ago, ready to clear</span></summary>
+    <p class="muted adm-fix-note">Download the sheet to keep a copy, then clear them. Clearing removes each market from every list and drops its price data and logo image, which is most of what it stores. Players keep their wins, win rate and leaderboard place. Markets nobody played, and cancelled ones, are deleted completely.</p>
+    <div class="row-actions adm-old-actions"><button class="btn btn-sm" data-action="admin-old-csv">${ico('download')}Download sheet</button><button class="btn btn-sm btn-danger" data-action="admin-old-clear-all">${ico('trash')}Clear all ${old.length}</button></div>
+    <ul class="todo">${rows
+      .map((m) => `<li style="--c:${m.status === 'void' ? 'var(--flat)' : m.winningBucket ? oVar(m.winningBucket, false) : 'var(--flat)'}"><span class="todo-ico">${ico(m.status === 'void' ? 'cross' : 'checkCircle')}</span><div><b>${esc(m.symbol)}</b><span class="muted">${m.status === 'void' ? 'Cancelled' : m.winningBucket ? `${esc(oName(m.winningBucket, false))} won` : 'Settled'} · ${fmtDate(m.settledAt)} · ${fmtNum(m.players)} player${m.players === 1 ? '' : 's'} · ${fmtPts(m.pool)} pool${m.paid ? ` · ${fmtPts(m.paid)} paid` : ''}</span></div>
+        <span class="todo-actions"><button class="btn btn-sm" type="button" data-action="admin-old-clear" data-id="${esc(m.id)}">${ico('trash')}Clear</button></span></li>`)
+      .join('')}</ul>${nav}</details>`;
+}
+
+function adminMarketsTab(markets, waiting, pending, counting = [], tooLong = [], old = []) {
+  const allPage = pageOf('adm-markets', markets);
   // Made before the three-day limit: still open for days against a fixed start price. One click closes each.
   const fix = tooLong.length
     ? `<section class="panel adm-results adm-toolong"><div class="section-head"><span class="section-ico">${ico('alert')}</span><h2>Open longer than 3 days <span class="count-badge">${tooLong.length}</span></h2>${tooLong.length > 1 ? `<span class="adm-fix-all"><button class="btn btn-sm btn-close-now" type="button" data-action="admin-close-all">${ico('lock')}Close all now</button><button class="btn btn-sm" type="button" data-action="admin-close-all" data-hours="24">${ico('clock')}Close all in 24h</button></span>` : ''}</div>
@@ -20749,11 +20848,12 @@ function adminMarketsTab(markets, waiting, pending, counting = [], tooLong = [])
     ${countdown}
     <div id="admin-checks"></div>
     ${listings}
+    ${oldResultsPanel(old)}
     <section class="panel panel-flush">
       <div class="section-head"><h2>All markets <span class="count-badge">${markets.length}</span></h2><span class="head-action row-gap">${A.info.telegram?.channel ? `<button class="btn btn-sm" data-action="admin-tg-summary" title="One Telegram post with every open market">${ico('telegram')}Post live markets</button>` : ''}<button class="btn btn-solid btn-sm" data-action="admin-tab" data-tab="create">${ico('plus')}New market</button></span></div>
       ${
         markets.length
-          ? `<div class="table-scroll"><table class="table"><thead><tr><th>Market</th><th class="hide-sm">Type</th><th>Status</th><th class="right">Pool</th><th class="right"></th></tr></thead><tbody>${markets
+          ? `<div class="table-scroll"><table class="table"><thead><tr><th>Market</th><th class="hide-sm">Type</th><th>Status</th><th class="right">Pool</th><th class="right"></th></tr></thead><tbody>${allPage.rows
               .map(
                 (m) => `<tr>
                   <td><span class="mkt-cell">${tokenAvatar(m, 'avatar-sm')}<span>${m.published ? `<a href="#/market/${encodeURIComponent(m.id)}">${esc(m.symbol)}</a>` : `<b>${esc(m.symbol)}</b>`}<small class="muted hide-sm">${esc(venueNames(m))}</small></span></span></td>
@@ -20763,7 +20863,7 @@ function adminMarketsTab(markets, waiting, pending, counting = [], tooLong = [])
                   <td class="right"><div class="admin-row-actions">${marketActions(m)}</div></td>
                 </tr>`,
               )
-              .join('')}</tbody></table></div>`
+              .join('')}</tbody></table></div>${allPage.nav ? `<div class="pad">${allPage.nav}</div>` : ''}`
           : '<p class="muted pad">No markets yet.</p>'
       }
     </section>`;
@@ -20779,7 +20879,9 @@ function tokenAdminSection(t) {
       <p class="muted">Players claim points as TestFPT on Solana ${net}.</p></div></div>
       ${t.lowFunds ? `<p class="form-error">The mint authority is almost out of test SOL (${t.authoritySol} SOL), so on-chain mints are paused. Send it test SOL: <code>${esc(t.authority)}</code> <a href="https://faucet.solana.com" target="_blank" rel="noopener noreferrer">faucet ${ico('external')}</a></p>` : ''}
       ${t.chain ? `<dl class="kpis-mini"><div><dt>Firstprint wallets</dt><dd>${fmtNum(t.chain.wallets)}</dd></div><div><dt>On-chain transactions</dt><dd>${fmtNum(t.chain.mintsConfirmed)}</dd></div><div><dt>Claims on chain</dt><dd>${fmtNum(t.chain.claimsConfirmed)}</dd></div><div><dt>Waiting</dt><dd>${fmtNum(t.chain.mintsWaiting)}</dd></div>${t.chain.mintsFailed ? `<div><dt>Failed</dt><dd>${fmtNum(t.chain.mintsFailed)}</dd></div>` : ''}<div><dt>Authority SOL</dt><dd>${t.authoritySol ?? '–'}</dd></div></dl>` : ''}
-      <div class="kv"><span class="muted">Mint address</span><span class="copy-row"><code>${esc(t.mint)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(t.mint)}">${ico('copy')}Copy</button><a class="btn btn-sm" href="${esc(t.mintUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a></span></div>
+      <div class="kv"><span class="muted">Fee wallet: send test SOL here</span><span class="copy-row"><code>${esc(t.authority)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(t.authority)}">${ico('copy')}Copy</button>${t.authorityUrl ? `<a class="btn btn-sm" href="${esc(t.authorityUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a>` : ''}<button class="btn btn-sm" data-action="admin-token-refresh">${ico('refresh')}Refresh</button></span></div>
+      <p class="muted">This wallet pays every player’s network fee. Top it up on Solana ${net} from the <a href="https://faucet.solana.com" target="_blank" rel="noopener noreferrer">faucet</a> or your own wallet set to ${net}.</p>
+      <div class="kv"><span class="muted">Token mint: never send SOL here</span><span class="copy-row"><code>${esc(t.mint)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(t.mint)}">${ico('copy')}Copy</button><a class="btn btn-sm" href="${esc(t.mintUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a></span></div>
       ${saveKeysNote(t)}
       ${how(t.walletsOn ? 'Email and Google players get a Firstprint wallet; their rewards and every player’s daily streak are minted to their wallets by this server, which pays the fees. Players with their own wallet claim with one click and the server pays that fee too (they only sign if the server runs out of test SOL).' : 'Players pay the network fee in test SOL. Set WALLET_ENCRYPTION_KEY on the server to give email and Google players a Firstprint wallet.')}</section>`;
   }
@@ -21048,6 +21150,38 @@ function autoListingsPanel(a) {
 }
 
 /** The last things done in this panel, so a payout or cancellation can always be traced. */
+/** Admin → User activity: every points movement, with the market, the pick, the stake and the win. */
+function userActivityView(d) {
+  const rows = d.entries ?? [];
+  const what = (e) => {
+    if (e.pick && e.market) {
+      const pick = `<b style="color:${oVar(e.pick.bucket, false)}">${esc(oName(e.pick.bucket, false))}</b>`;
+      const mk = `<a href="#/market/${encodeURIComponent(e.market.id)}">${esc(e.market.symbol)}</a>`;
+      if (e.reason === 'stake') return `Predicted ${pick} on ${mk} <span class="muted">· ${fmtPts(e.pick.stake)} staked</span>`;
+      if (e.reason === 'payout') return `Won on ${mk} with ${pick} <span class="muted">· ${fmtPts(e.pick.accepted ?? e.pick.stake)} in, ${fmtPts(e.delta)} out${(e.pick.accepted ?? 0) > 0 ? ` (${(e.delta / e.pick.accepted).toFixed(1)}×)` : ''}</span>`;
+      if (e.reason === 'refund') return `Refund on ${mk} <span class="muted">· ${pick}</span>`;
+    }
+    return esc((HISTORY_LABELS[e.reason] ?? (() => e.reason))({ symbol: e.market?.symbol }));
+  };
+  return `<section class="panel panel-flush">
+    <div class="section-head"><span class="section-ico">${ico('users')}</span><div><h2>User activity <span class="count-badge">${fmtNum(d.total ?? 0)}</span></h2><p class="muted">Predictions, wins, refunds, rewards and claims by every player, newest first.</p></div></div>
+    <form class="act-search pad" data-form="admin-act-search"><input name="q" type="search" placeholder="Filter by player name" value="${esc(A.act?.q ?? '')}" autocomplete="off" /><button class="btn btn-sm" type="submit">${ico('search')}Filter</button>${A.act?.q ? '<button class="btn btn-sm" type="button" data-action="admin-act-clear">Clear</button>' : ''}</form>
+    ${
+      rows.length
+        ? `<div class="table-scroll"><table class="table act-table"><thead><tr><th>When</th><th>Player</th><th>What</th><th class="right">Points</th></tr></thead><tbody>${rows
+            .map(
+              (e) => `<tr class="${e.reason === 'payout' ? 'act-win' : ''}"><td class="muted nowrap">${fmtAgo(e.at)}</td>
+                <td><button class="link-btn" type="button" data-action="admin-act-user" data-name="${esc(e.user.username)}">${esc(e.user.username)}</button><small class="muted act-bal">${fmtNum(e.user.balance)} pts now</small></td>
+                <td>${what(e)}</td>
+                <td class="right num-cell ${e.delta >= 0 ? 'profit-pos' : 'dl-neg'}">${e.delta >= 0 ? '+' : '−'}${fmtNum(Math.abs(e.delta))}</td></tr>`,
+            )
+            .join('')}</tbody></table></div>
+          <div class="pad act-foot">${A.act?.all ? pager('adm-act', d.page, d.pages) : d.total > rows.length ? `<button class="btn" data-action="admin-act-all">See all ${fmtNum(d.total)}</button>` : ''}</div>`
+        : `<p class="muted pad">${A.act?.q ? 'No activity for that player.' : 'No player activity yet.'}</p>`
+    }
+  </section>`;
+}
+
 function adminLogView(log, compact = false) {
   return `
     <section class="panel">
@@ -21735,6 +21869,43 @@ async function onAdminAction(action, el) {
       } catch (err) {
         toast(err.message, true);
       }
+      return renderAdmin();
+    case 'admin-old-csv':
+      try {
+        const { csv } = await A.api.oldResultsCsv();
+        const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `firstprint-old-results-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.append(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return;
+    case 'admin-old-clear':
+    case 'admin-old-clear-all': {
+      const all = el.dataset.action === 'admin-old-clear-all';
+      if (!confirm(all ? 'Clear every old result? Download the sheet first if you want a copy. Players keep their wins and stats.' : 'Clear this market? Players keep their wins and stats.')) return;
+      el.disabled = true;
+      try {
+        const out = await A.api.clearOldResults(all ? undefined : [el.dataset.id]);
+        toast(`Cleared ${out.archived + out.deleted} market${out.archived + out.deleted === 1 ? '' : 's'}`);
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
+    }
+    case 'admin-act-all':
+      A.act = { ...(A.act ?? {}), all: true, page: 1 };
+      return renderAdmin();
+    case 'admin-act-user':
+      A.act = { page: 1, all: true, q: el.dataset.name };
+      return renderAdmin();
+    case 'admin-act-clear':
+      A.act = { page: 1, all: false, q: '' };
       return renderAdmin();
     case 'admin-err-resolve-all':
       if (!confirm('Mark every open problem as fixed? New ones still show up.')) return;
@@ -22860,7 +23031,11 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('submit', (e) => {
-  if (e.target.id === 'auth-email-form') {
+  if (e.target.dataset?.form === 'admin-act-search') {
+    e.preventDefault();
+    A.act = { page: 1, all: true, q: new FormData(e.target).get('q')?.toString().trim() ?? '' };
+    renderAdmin();
+  } else if (e.target.id === 'auth-email-form') {
     e.preventDefault();
     submitEmail(e.target);
   } else if (e.target.id === 'auth-code-form') {

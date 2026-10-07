@@ -487,7 +487,7 @@ export function createApiServer(opts: ServerOptions): Server {
     const me = optionalUser();
     const limit = me ? 200 : filter === 'settled' ? 6 : GUEST_MARKETS;
     const page = service.listMarketsPage(filter, me?.id, limit);
-    return { markets: page.markets, total: page.total, limited: !me && page.total > page.markets.length, serverTime: service.clock.now() };
+    return { markets: page.markets, total: page.total, limited: !me && page.total > page.markets.length, stats: service.marketStats(), serverTime: service.clock.now() };
   });
 
   route('GET', '/api/markets/:id', ({ params, optionalUser }) => service.getMarket(params.id, optionalUser()?.id));
@@ -1122,6 +1122,32 @@ export function createApiServer(opts: ServerOptions): Server {
       detail: text(b.detail, 3000),
     });
     return { ok: true };
+  });
+
+  // Old results: settled more than three days ago. Download them, then clear them out.
+  route('GET', '/api/admin/old-results', ({ requireAdmin }) => {
+    requireAdmin();
+    return { results: service.oldResults() };
+  });
+
+  route('GET', '/api/admin/old-results/csv', ({ requireAdmin }) => {
+    requireAdmin();
+    return { csv: service.oldResultsCsv() };
+  });
+
+  route('POST', '/api/admin/old-results/clear', async ({ req, body, requireAdmin }) => {
+    requireAdmin();
+    const b = await body();
+    const ids = Array.isArray(b.ids) ? b.ids.filter((x: unknown): x is string => typeof x === 'string').slice(0, 1000) : undefined;
+    const out = service.archiveOldResults(ids);
+    audit(req, 'old_results_cleared', ids?.length === 1 ? ids[0] : null, `${out.archived} archived, ${out.deleted} deleted`);
+    return out;
+  });
+
+  // Every player's points movements: stakes with their pick, payouts, refunds, rewards.
+  route('GET', '/api/admin/user-activity', ({ requireAdmin, url }) => {
+    requireAdmin();
+    return service.userActivity(Number(url.searchParams.get('page') ?? 1), Number(url.searchParams.get('per') ?? 10), url.searchParams.get('q') ?? '');
   });
 
   route('GET', '/api/admin/errors', ({ requireAdmin, url }) => {

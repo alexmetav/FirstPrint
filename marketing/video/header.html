@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="./stage.css" />
+<style>
+  html, body { width: 1500px; height: 500px; }
+  #h { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(70% 120% at 72% 50%, #15151a 0%, #09090b 70%); }
+  .glow { position: absolute; left: 700px; top: 120px; width: 900px; height: 700px; background: radial-gradient(50% 50% at 50% 50%, rgba(48,209,88,0.13), transparent 70%); }
+  .glow2 { position: absolute; left: -200px; top: 300px; width: 900px; height: 500px; background: radial-gradient(50% 50% at 50% 50%, rgba(48,209,88,0.06), transparent 70%); }
+  .vig { position: absolute; inset: 0; background: radial-gradient(120% 140% at 50% 50%, transparent 60%, rgba(0,0,0,0.6) 100%); pointer-events: none; }
+  .tok { position: absolute; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 2px rgba(255,255,255,0.12), 0 18px 40px -16px rgba(0,0,0,0.9); }
+  .tok svg { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+<div id="h"></div>
+<script type="module">
+  import { el, logo, marketCard } from './lib.js';
+  import { TOKENS } from './tokens.js';
+  await document.fonts.load('600 76px Geist');
+  await document.fonts.load('400 40px Geist');
+  await document.fonts.load('500 36px "Geist Mono"');
+  await document.fonts.ready;
+  const root = document.querySelector('#h');
+  root.append(el('<div class="glow"></div>'), el('<div class="glow2"></div>'));
+
+  // Tokens floating around the card, with depth: [key, x, y, size, blur, brightness]
+  const toks = [
+    ['btc', 905, 70, 74, 0, 1], ['eth', 1395, 300, 82, 0, 1], ['doge', 1330, 40, 48, 2.5, 0.7],
+    ['bnb', 870, 360, 52, 2.5, 0.7], ['xrp', 1440, 120, 40, 4, 0.55], ['link', 1210, 420, 44, 3.5, 0.6], ['ada', 820, 210, 36, 4.5, 0.5],
+  ];
+  for (const [k, x, y, s, b, br] of toks) {
+    const n = el(`<div class="tok" style="left:${x}px;top:${y}px;width:${s}px;height:${s}px;filter:blur(${b}px) brightness(${br});z-index:${b ? 1 : 3}">${TOKENS[k]}</div>`);
+    root.append(n);
+  }
+
+  // The SOL market card, Up picked.
+  const pcts = [13, 47, 24, 10, 6];
+  const { node: card, rows } = marketCard({ sym: 'SOL', name: 'Solana', letter: '', pcts });
+  const av = card.querySelector('.avatar');
+  av.style.background = 'none';
+  av.style.overflow = 'hidden';
+  av.style.boxShadow = '0 0 0 2px rgba(255,255,255,0.14)';
+  av.innerHTML = TOKENS.sol.replace('<svg', '<svg width="116" height="116" style="display:block"');
+  rows.forEach((r, i) => (r.querySelector('.bar').style.width = `${pcts[i]}%`));
+  rows[1].classList.add('sel');
+  rows[1].querySelector('.you').innerHTML = '<span class="tag-you">You 100</span>';
+  card.querySelector('p').remove();
+  card.style.cssText += ';left:0;top:0;transform-origin:0 0;transform:translate(985px,52px) rotate(-3deg) scale(0.39);z-index:2';
+  root.append(card);
+
+  // Message, left. Kept above the profile photo, which covers the bottom-left corner.
+  root.append(el(`<div class="abs" style="left:250px;top:72px;width:660px">
+    <div style="display:inline-flex;align-items:center;gap:12px;height:40px;padding:0 18px 0 15px;border-radius:999px;background:rgba(48,209,88,0.1);box-shadow:inset 0 0 0 1.5px rgba(48,209,88,0.38);font-size:18px;font-weight:500;color:#8ef0a8"><i style="width:10px;height:10px;border-radius:50%;background:var(--up);box-shadow:0 0 0 4px rgba(48,209,88,0.2)"></i>Testnet live on Solana</div>
+    <div style="margin-top:24px;font-size:74px;font-weight:600;letter-spacing:-0.045em;line-height:1">Call where<br />crypto lands.</div>
+    <div style="margin-top:22px;font-size:23px;line-height:1.4;color:var(--muted);letter-spacing:-0.01em;max-width:600px">Free prediction markets on any token. Pick where the price lands, from Moon to Crash, and share the pool when you're right.</div>
+    <div style="display:flex;align-items:center;gap:18px;margin-top:26px">
+      <span class="wordmark" style="font-size:26px;gap:12px">${logo(30)}<span>Firstprint</span></span>
+      <span style="width:1.5px;height:22px;background:#35353e"></span>
+      <span class="mono" style="font-size:21px;color:var(--text)">firstprint.fun</span>
+    </div>
+  </div>`));
+  root.append(el('<div class="vig"></div>'));
+  window.READY = true;
+</script>
+</body>
+</html>
