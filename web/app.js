@@ -1375,16 +1375,8 @@ function homeHero(showLive = true) {
   const total = S.stats?.totalMarkets ?? (S.totals ? S.totals.open + S.totals.live + S.totals.settled : 0);
   // The best payout a player has actually received; before any result, the best one on offer now.
   const top = S.stats?.topPayout ?? null;
-  const win = S.stats?.topWin ?? null;
-  // The top payout gets its own glowing tile so it is the first number people notice.
   const topStat = top
-    ? [
-        `${ico('rocket')}Top payout`,
-        `<span class="hero-top" data-count="${top}" data-count-key="top">${top.toFixed(1)}×</span>${
-          win ? `<small class="hero-top-by">${fmtNum(win.staked)} → ${fmtNum(win.payout)} pts · @${esc(win.username)} on ${esc(win.symbol)}</small>` : ''
-        }`,
-        'hero-stat-top',
-      ]
+    ? ['Top payout', `<span class="hero-top" data-count="${top}" data-count-key="top">${top.toFixed(1)}×</span>`]
     : best >= 1
       ? ['Payout up to', `${best.toFixed(1)}×`]
       : null;
@@ -1411,7 +1403,7 @@ function homeHero(showLive = true) {
         }
         <h1 id="hero-title">Predict where crypto prices land<span class="soft"> and win the pool</span></h1>
         <p class="hero-sub">Pick one of five outcomes (${LADDER.map(word).join(', ')}) on new and trending tokens. Points only, no real money.</p>
-        ${stats.length ? `<dl class="hero-stats">${stats.map(([k, v, cls]) => `<div${cls ? ` class="${cls}"` : ''}><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
+        ${stats.length ? `<dl class="hero-stats">${stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` : ''}
       </div>
       ${
         next

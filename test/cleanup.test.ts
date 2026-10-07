@@ -54,10 +54,6 @@ test('home stats: every market counts, top payout is the best multiple actually 
     service.resolveManualMarket(id, { finalPrice: 2.5 }); // +25%: Up wins the whole pool
     const best = service.marketStats();
     assert.ok(best.topPayout && best.topPayout > 4.5 && best.topPayout <= 5, `top payout ${best.topPayout}`);
-    assert.equal(best.topWin?.username, 'alice');
-    assert.equal(best.topWin?.symbol, 'XYZ');
-    assert.equal(best.topWin?.staked, 100);
-    assert.equal(best.topWin?.multiple, best.topPayout);
   } finally {
     close();
   }
