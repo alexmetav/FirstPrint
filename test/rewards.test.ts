@@ -213,9 +213,11 @@ test('tasks: link X, open the task, wait, confirm once; limits; rewards wait for
   await assert.rejects(rewards.verifyTask(b.id, follow), failsWith('task_full'), 'limit of 1 reached');
   assert.equal(rewards.summary(b.id).tasks.find((t) => t.id === follow)?.remaining, 0);
 
-  // TestFPT is on: task points wait to be claimed rather than landing in the balance.
-  assert.equal(service.getUser(a.id).points, 0);
-  assert.equal(rewards.summary(a.id).claimable, START_POINTS + X_CONNECT_POINTS + 50);
+  // TestFPT is on and the player has a wallet: the task sends everything owed straight to it
+  // (signed and paid by the server), so it lands in the balance with nothing left to claim.
+  assert.equal(service.getUser(a.id).points, START_POINTS + X_CONNECT_POINTS + 50);
+  assert.equal(rewards.summary(a.id).claimable, 0);
+  assert.equal(rewards.summary(a.id).autoSend, true);
 
   rewards.updateTask(repost, { active: false });
   assert.equal(rewards.summary(a.id).tasks.some((t) => t.id === repost), false);
@@ -360,7 +362,8 @@ test('Firstprint wallets: email players get a wallet, their rewards and daily st
   service.claimDaily(p2.id);
   await rewards.runChain();
   assert.ok((await tokenBalance(svm, wallet.address, mint)) > 0n);
-  assert.equal(rewards.summary(p2.id).claimable, START_POINTS, 'their welcome bonus still waits for them to claim (they pay that fee)');
+  assert.equal(rewards.summary(p2.id).claimable, 0, 'their welcome bonus is sent to their own wallet too, paid by the server');
+  assert.equal(await tokenBalance(svm, wallet.address, mint), BigInt(service.getUser(p2.id).points));
 
   // Out of test SOL: nothing is sent; it goes out once the authority is topped up.
   const realBalance = chain.balance;
