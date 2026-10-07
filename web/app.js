@@ -1875,6 +1875,7 @@ function earlyRules(m) {
     r ? `Taking a prediction back: you can do it until ${mins(r.lockMs)} before predictions close${m.status === 'open' ? ` (${fmtDate(m.closeAt - r.lockMs)})` : ''}. Your stake comes back minus a fee, and the prediction leaves the pool.` : '',
     r ? `The fee is ${pctText(r.baseBps)} in the early window. After that it rises, slowly at first and steeply near the close, up to ${pctText(r.maxBps)}.${r.undoMs ? ` Taking a prediction back within ${mins(r.undoMs)} of placing it, in the early window, is free.` : ''} The exact fee is shown before you confirm.` : '',
     burned,
+    r && r.burnBps < 10_000 ? 'Early rewards are separate from the pool. The pool is only the stakes still in at the close, and the winners split it as usual. Early rewards come only from take-back fees and are paid at the result, next to any winnings. An early prediction that loses still gets its early reward; one that is taken back gets none.' : '',
     r ? 'Taking a prediction back also gives up its early bonus. A new prediction gets the bonus for the moment it is placed, and counts as early only if it is placed in the early window.' : '',
     r ? 'Fees are not returned, even if the market is cancelled later. If it is, the part meant for early players is burned too.' : '',
     r ? 'Firstprint may change these numbers. A change applies only to predictions taken back after it.' : '',
