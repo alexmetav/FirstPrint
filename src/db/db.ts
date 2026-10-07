@@ -62,6 +62,8 @@ function migrate(db: DB) {
   // Upcoming tokens the admin scheduled to open by themselves when trading starts.
   ensure('markets', 'auto_open_at', 'auto_open_at INTEGER');
   ensure('markets', 'auto_open_note', 'auto_open_note TEXT');
+  // Settled markets the admin cleared out: hidden from lists, price data dropped, players' records kept.
+  ensure('markets', 'archived_at', 'archived_at INTEGER');
   // Upcoming markets get their opening price from the exchange; the admin is asked for the result
   // only when it is due. Markets already past their close were alerted then, so they count as done.
   if (!cols('markets').includes('result_alerted_at')) {
