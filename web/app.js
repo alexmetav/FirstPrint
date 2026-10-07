@@ -4805,7 +4805,7 @@ function tasksAdminSection(tasks) {
                 <td><span class="mkt-cell"><span class="task-ico task-ico-sm">${ico(TASK_ICONS[t.kind] ?? 'star')}</span><span><a href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${esc(t.title)}</a>${t.active ? '' : ' <span class="pill pill-off">Off</span>'}</span></span></td>
                 <td class="right num-cell">+${fmtNum(t.points)}</td>
                 <td><span class="progress-cell">${fmtNum(t.completions)}${t.maxCompletions ? ` / ${fmtNum(t.maxCompletions)}` : ''}${pct === null ? '' : `<span class="meter"><i style="width:${pct}%"></i></span>`}</span></td>
-                <td class="right"><span class="row-actions"><button class="btn btn-sm" data-action="admin-task-edit" data-id="${esc(t.id)}">${ico('edit')}Edit</button><button class="btn btn-sm" data-action="admin-task-toggle" data-id="${esc(t.id)}" data-active="${t.active ? '1' : '0'}">${ico('power')}${t.active ? 'Switch off' : 'Switch on'}</button></span></td>
+                <td class="right"><span class="row-actions"><button class="btn btn-sm" data-action="admin-task-edit" data-id="${esc(t.id)}">${ico('edit')}Edit</button><button class="btn btn-sm" data-action="admin-task-toggle" data-id="${esc(t.id)}" data-active="${t.active ? '1' : '0'}">${ico('power')}${t.active ? 'Switch off' : 'Switch on'}</button>${t.active ? `<button class="btn btn-sm" data-action="admin-task-reset" data-id="${esc(t.id)}" data-title="${esc(t.title)}" data-points="${t.points}">${ico('refresh')}Reset</button>` : ''}</span></td>
               </tr>${
                 A.editTask === t.id
                   ? `<tr class="row-edit"><td colspan="4"><form class="admin-form task-form" data-task-edit="${esc(t.id)}" novalidate>
@@ -5603,6 +5603,15 @@ async function onAdminAction(action, el) {
       return renderAdmin();
     case 'admin-task-edit':
       A.editTask = el.dataset.id || null;
+      return renderAdmin();
+    case 'admin-task-reset':
+      if (!confirm(`Reset "${el.dataset.title}" for everyone? Every player can do it again and earn ${fmtNum(Number(el.dataset.points))} points, with no player limit. Points already given are kept.`)) return;
+      try {
+        await A.api.resetTask(el.dataset.id);
+        toast('Task reset: open to everyone again');
+      } catch (err) {
+        toast(err.message, true);
+      }
       return renderAdmin();
     case 'admin-task-toggle':
       try {

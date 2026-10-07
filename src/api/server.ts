@@ -1112,6 +1112,15 @@ export function createApiServer(opts: ServerOptions): Server {
     return { tasks: r.listTasksAdmin(), xChecks: Boolean(r.xcheck), xCredit: await r.xCredit(), xConnect: r.xConnectAdmin() };
   });
 
+  // A task opened to everyone again (a fresh copy, no limit; the old one is switched off).
+  route('POST', '/api/admin/tasks/:id/reset', async ({ req, params, body, requireAdmin }) => {
+    requireAdmin();
+    const b = await body();
+    const out = rewardsOn().resetTask(params.id, b.points === undefined ? undefined : Number(b.points));
+    audit(req, 'task_reset', params.id, `-> ${out.id}, ${out.points} pts`);
+    return out;
+  });
+
   // Connect X: a new round for everyone (all X links cleared, the reward can be earned again).
   route('POST', '/api/admin/x-connect/reset', async ({ req, body, requireAdmin }) => {
     requireAdmin();
