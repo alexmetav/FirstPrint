@@ -10925,11 +10925,11 @@ svg.viz.viz-narrow {
   flex: 0 1 auto;
 }
 
-/* Featured facts: two tidy columns, dates kept on one line with the countdown underneath. */
+/* Featured facts: side by side, each only as wide as it needs; they wrap on narrow screens. */
 .feat-facts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, max-content));
-  gap: 14px 40px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 28px;
 }
 .feat-facts dd {
   white-space: nowrap;
@@ -10938,9 +10938,9 @@ svg.viz.viz-narrow {
   display: block;
   margin: 2px 0 0;
 }
-@media (max-width: 380px) {
+@media (max-width: 640px) {
   .feat-facts {
-    grid-template-columns: minmax(0, 1fr);
+    gap: 12px 22px;
   }
 }
 

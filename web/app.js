@@ -122,6 +122,8 @@ function fmtDate(ts) {
 const until = (ts) => `<span data-until="${ts}">${fmtDur(ts - now())}</span>`;
 /** "Oct 10, 6:00 PM" with the countdown beside it, so the exact time the admin set is always shown. */
 const atAndIn = (ts) => `${fmtDate(ts)} <span class="feat-sub">in ${until(ts)}</span>`;
+/** "Oct 10" with the countdown under it: the short form for cards (the market page has the exact time). */
+const dayAndIn = (ts) => `<span title="${esc(fmtDate(ts))}">${DAY_FMT.format(ts)}</span> <span class="feat-sub">in ${until(ts)}</span>`;
 const outcome = (b, yn = false) => `<b class="oc" style="--c:${oVar(b, yn)}">${icon(b, yn)}${oName(b, yn)}</b>`;
 const rangeLabel = (b, t) => bucketRangeLabel(b, t).replace(/-/g, '−');
 /** The price range an outcome covers, for either kind of market. */
@@ -1349,7 +1351,7 @@ function homeHero(showLive = true) {
           ? `<a class="hero-next" href="#/market/${encodeURIComponent(next.id)}">
         <span class="hero-next-head"><span>Closing next</span><span class="st st-live"><i aria-hidden="true"></i>Open</span></span>
         <span class="hero-next-id">${tokenAvatar(next, 'avatar-md')}<span><b>${esc(next.symbol)}</b>${next.name ? `<small>${esc(next.name)}</small>` : ''}</span></span>
-        <span class="hero-next-facts"><span><small>Predictions close</small><b>${fmtDate(next.closeAt)}</b><small>in ${until(next.closeAt)}</small></span><span><small>Pool</small><b>${fmtNum(next.pool || 0)} pts</b></span></span>
+        <span class="hero-next-facts"><span><small>Closes</small><b title="${esc(fmtDate(next.closeAt))}">${DAY_FMT.format(next.closeAt)}</b><small>in ${until(next.closeAt)}</small></span><span><small>Pool</small><b>${fmtNum(next.pool || 0)} pts</b></span></span>
         <span class="btn btn-gold btn-sm">Predict ${ico('arrowRight')}</span>
       </a>`
           : ''
@@ -1505,8 +1507,8 @@ function featuredView(m, rank = null) {
   const fact = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
   const facts = [
     manual ? fact(yn ? 'Target price' : 'Start price', hasStart(m) ? fmtPrice(m.basePrice) : m.startAtClose ? 'At the close' : 'At listing <span class="feat-sub">opening price</span>') : '',
-    pre ? fact(m.kind === 'live_test' ? 'Starts' : 'Lists', atAndIn(isUpcoming(m) ? m.closeAt : m.listingAt)) : fact('Predictions close', atAndIn(m.closeAt)),
-    manual && !pre ? fact('Result', fmtDate(m.settleAt)) : '',
+    pre ? fact(m.kind === 'live_test' ? 'Starts' : 'Lists', dayAndIn(isUpcoming(m) ? m.closeAt : m.listingAt)) : fact('Closes', dayAndIn(m.closeAt)),
+    manual && !pre ? fact('Result', `<span title="${esc(fmtDate(m.settleAt))}">${DAY_FMT.format(m.settleAt)}</span>`) : '',
     m.pool ? fact('Pool', `${tick(`pool:hero:${m.id}`, m.pool)} pts <span class="feat-sub">${fmtNum(m.predictors)} player${m.predictors === 1 ? '' : 's'}</span>`) : '',
   ].join('');
 
