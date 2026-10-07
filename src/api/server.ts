@@ -1315,6 +1315,10 @@ export function createApiServer(opts: ServerOptions): Server {
         // Pages, scripts and styles are checked on every load (a cheap 304 when unchanged), so after a
         // deploy no browser or CDN mixes a new script with an old stylesheet. Images may wait 5 minutes.
         'cache-control': ['.html', '.js', '.css'].includes(extname(file)) ? 'no-cache' : 'public, max-age=300',
+        // Cloudflare (in front of the site) must never keep its own copy of pages, scripts or styles:
+        // it once kept serving the old app after a deploy until its cache was purged by hand.
+        // Browsers still revalidate them with the ETag, so this costs nothing.
+        ...(['.html', '.js', '.css'].includes(extname(file)) ? { 'cloudflare-cdn-cache-control': 'no-store' } : {}),
         etag: hit.etag,
         vary: 'accept-encoding',
       };

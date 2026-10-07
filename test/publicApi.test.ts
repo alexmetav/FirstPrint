@@ -35,6 +35,12 @@ test('public API (read-only): markets, upcoming tokens and the leaderboard, with
     const u = await service.createUser({ email: 'secret@example.com', username: 'alice' });
     service.placePrediction(priced, u.id, 'up', 100);
 
+    // The app's scripts are never kept by Cloudflare (a deploy must show at once); images may be.
+    const script = await fetch(`${base}/app.js`);
+    assert.equal(script.headers.get('cloudflare-cdn-cache-control'), 'no-store');
+    assert.equal(script.headers.get('cache-control'), 'no-cache');
+    await script.arrayBuffer();
+
     const index = await get('/api/v1');
     assert.equal(index.status, 200);
     assert.equal(index.cors, '*', 'any site may call it');
