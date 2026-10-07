@@ -8691,17 +8691,41 @@ p,
   letter-spacing: -0.02em;
   color: var(--text);
 }
-.hero-top {
+/* Top payout: only the number moves. It burns: a fiery orange number with a flickering flame glow. */
+.hero-stats dd .hero-top {
   display: inline-block;
-  color: var(--up);
-  animation: hero-top-glow 2.6s ease-in-out infinite;
+  font-size: 1.35em;
+  font-weight: 700;
+  line-height: 1;
+  color: #ff6a00;
+  transform-origin: left bottom;
+  animation: hero-top-fire 1.4s ease-in-out infinite alternate;
 }
-@keyframes hero-top-glow {
-  0%, 100% { text-shadow: 0 0 0 transparent; }
-  50% { text-shadow: 0 0 14px color-mix(in srgb, var(--up) 55%, transparent); }
+@keyframes hero-top-fire {
+  0% {
+    color: #ff6a00;
+    transform: scale(1);
+    text-shadow: 0 0 4px #ffd60a, 0 -2px 8px #ff9f0a, 0 -5px 14px #ff4500, 0 -9px 22px rgba(255, 40, 0, 0.55);
+  }
+  35% {
+    color: #ff8a00;
+    text-shadow: 0 0 5px #ffe066, -1px -4px 10px #ffb000, 1px -8px 18px #ff5a00, 0 -13px 28px rgba(255, 40, 0, 0.6);
+  }
+  70% {
+    color: #ff5a00;
+    text-shadow: 0 0 3px #ffd60a, 1px -3px 9px #ff9f0a, -1px -6px 15px #ff4500, 0 -10px 24px rgba(255, 30, 0, 0.5);
+  }
+  100% {
+    color: #ff7a00;
+    transform: scale(1.07);
+    text-shadow: 0 0 6px #fff1a8, 0 -5px 12px #ffc300, 0 -10px 20px #ff5a00, 0 -16px 32px rgba(255, 40, 0, 0.65);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .hero-top { animation: none; }
+  .hero-stats dd .hero-top {
+    animation: none;
+    text-shadow: 0 0 4px #ffd60a, 0 -3px 10px #ff9f0a, 0 -6px 16px rgba(255, 69, 0, 0.6);
+  }
 }
 .hero-next {
   display: flex;

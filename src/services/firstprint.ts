@@ -1067,7 +1067,8 @@ export class FirstprintService {
 
   /**
    * Numbers for the home banner: every market ever published (cleared-out ones included) and the
-   * best payout a player has actually received, as a multiple of what they staked.
+   * best payout a player has actually received, as a multiple of what they staked (10 in, 90 out
+   * is 9x). Older predictions have no `accepted` amount; their stake counts.
    */
   marketStats() {
     const at = Date.now();
@@ -1076,8 +1077,8 @@ export class FirstprintService {
     const best = as<{ x: number | null }>(
       this.db
         .prepare(
-          `SELECT MAX(CAST(p.payout AS REAL) / p.accepted) AS x FROM predictions p JOIN markets m ON m.id = p.market_id
-           WHERE m.status = 'resolved' AND m.published = 1 AND p.payout > 0 AND p.accepted > 0`,
+          `SELECT MAX(CAST(p.payout AS REAL) / COALESCE(p.accepted, p.stake)) AS x FROM predictions p JOIN markets m ON m.id = p.market_id
+           WHERE m.status = 'resolved' AND m.published = 1 AND p.payout > 0 AND COALESCE(p.accepted, p.stake) > 0`,
         )
         .get(),
     ).x;
