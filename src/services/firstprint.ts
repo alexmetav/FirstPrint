@@ -3057,7 +3057,7 @@ export class FirstprintService {
       mine,
       // Revert fees waiting for this market's early players, and the rules for taking a pick back.
       earlyPot: m.status === 'open' || m.status === 'locked' ? this.earlyPot(m.id) : 0,
-      revert: m.status === 'open' ? this.revertRules() : null,
+      revert: this.revertRules(),
       serverTime: now,
     };
   }

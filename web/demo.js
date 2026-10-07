@@ -335,7 +335,7 @@ export class DemoBackend {
       scorecard: m.scorecard,
       mine,
       earlyPot: m.status === 'open' || m.status === 'locked' ? (m.earlyPot ?? 0) : 0,
-      revert: m.status === 'open' ? DEFAULT_REVERT_RULES : null,
+      revert: DEFAULT_REVERT_RULES,
       serverTime: now,
     };
   }

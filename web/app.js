@@ -1861,11 +1861,29 @@ function statusLine(m) {
   return '';
 }
 
-/** One line of the rules: taking a prediction back, and what it costs. */
-function revertRule(m) {
+/** The rules for the early bonus and for taking a prediction back, in one place players can read. */
+function earlyRules(m) {
   const r = m.revert;
-  if (!r) return '';
-  return `<li>You can take a prediction back until ${Math.round(r.lockMs / 60_000)} minutes before the close. The fee is ${pctText(r.baseBps)} in the first half of the prediction window, then rises to ${pctText(r.maxBps)} at the close${r.undoMs ? ` (free within ${Math.round(r.undoMs / 60_000)} minutes of placing it, in the first half)` : ''}. ${r.burnBps >= 10_000 ? 'The fee is burned.' : r.burnBps <= 0 ? 'The fee goes to players who predicted in the first half and stayed in.' : `${pctText(r.burnBps)} of the fee is burned and the rest goes to players who predicted in the first half and stayed in, win or lose.`}</li>`;
+  const k = m.earlyBirdK ?? 0;
+  if (!r && !k) return '';
+  const mins = (ms) => `${Math.round(ms / 60_000)} minute${Math.round(ms / 60_000) === 1 ? '' : 's'}`;
+  const half = m.openedAt + (m.closeAt - m.openedAt) / 2;
+  const burned = !r ? '' : r.burnBps >= 10_000 ? 'The whole fee is burned: those points are gone for good.' : r.burnBps <= 0 ? 'The whole fee is shared at the result among predictions placed in the early window that stayed in, by stake, whether they win or lose.' : `${pctText(r.burnBps)} of the fee is burned: those points are gone for good. The rest is shared at the result among predictions placed in the early window that stayed in, by stake, whether they win or lose.`;
+  const items = [
+    k ? `Early bonus: a prediction placed when the market opens counts ${+(1 + k).toFixed(1)}× when the winners split the pool, and one placed at the close counts 1×. In between it falls steadily, minute by minute. The bonus only changes how the winners share the pool; it never adds points.` : '',
+    `Early window: the first half of the time between the market opening and predictions closing. For this market it runs until ${fmtDate(half)}.`,
+    r ? `Taking a prediction back: you can do it until ${mins(r.lockMs)} before predictions close${m.status === 'open' ? ` (${fmtDate(m.closeAt - r.lockMs)})` : ''}. Your stake comes back minus a fee, and the prediction leaves the pool.` : '',
+    r ? `The fee is ${pctText(r.baseBps)} in the early window. After that it rises, slowly at first and steeply near the close, up to ${pctText(r.maxBps)}.${r.undoMs ? ` Taking a prediction back within ${mins(r.undoMs)} of placing it, in the early window, is free.` : ''} The exact fee is shown before you confirm.` : '',
+    burned,
+    r ? 'Taking a prediction back also gives up its early bonus. A new prediction gets the bonus for the moment it is placed, and counts as early only if it is placed in the early window.' : '',
+    r ? 'Fees are not returned, even if the market is cancelled later. If it is, the part meant for early players is burned too.' : '',
+    r ? 'Firstprint may change these numbers. A change applies only to predictions taken back after it.' : '',
+    'Points, burned points and early rewards have no cash value.',
+  ].filter(Boolean);
+  return `<details class="m-rules">
+      <summary>${ico('zap')}Early bonus, taking a pick back and fees${ico('chevronRight')}</summary>
+      <ol class="rules">${items.map((t) => `<li>${t}</li>`).join('')}</ol>
+    </details>`;
 }
 
 /** The player's picks on an open market, each with a button to take it back. */
@@ -1995,11 +2013,11 @@ function marketMain(m) {
         <li>Starting price: the average price over the first ${fmtSpan(m.closeAt - m.listingAt)} ${m.kind === 'live_test' ? 'after the market starts' : 'of trading'}, from ${esc(venueNames(m))}.</li>
         <li>Final price: the average over the last ${fmtSpan(m.closeAt - m.listingAt)} before ${fmtDate(m.settleAt)}. If the token trades on several exchanges, the volume-weighted median is used.</li>
         <li>Predictions close ${fmtSpan(m.closeAt - m.listingAt)} after trading starts. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
-        ${revertRule(m)}
         <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
         <li>The market is cancelled and refunded if the listing is delayed more than 24 hours, trading halts for too long, there isn’t enough trading data, nobody picks the winning outcome, or everyone picks the same outcome.</li>
       </ol>
     </details>
+    ${earlyRules(m)}
 
     ${
       m.scorecard
@@ -2107,7 +2125,6 @@ function manualRules(m) {
     <ol class="rules">
       <li>Yes wins if the final price is at or above ${hasStart(m) ? fmtPrice(m.basePrice) : m.startAtClose ? `${esc(m.symbol)}’s price when predictions close (posted here then)` : `the opening price when ${esc(m.symbol)} starts trading (posted here once known)`}. No wins if it is below.</li>
       <li>Predictions close ${fmtDate(m.closeAt)}. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
-      ${revertRule(m)}
       <li>After that the market counts down to its result on ${fmtDate(m.settleAt)}, when Firstprint posts the final price. The result and winners appear on this page.</li>
       <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
       <li>The market is cancelled and refunded if nobody picks the winning answer, everyone picks the same answer, or Firstprint cancels it.</li>
@@ -2118,7 +2135,6 @@ function manualRules(m) {
     <ol class="rules">
       <li>${hasStart(m) ? `Start price: ${fmtPrice(m.basePrice)}${m.startAtClose ? ', the price when predictions closed' : ''}.` : m.startAtClose ? `Start price: ${esc(m.symbol)}’s price on ${esc(venueNames(m))} when predictions close. It is read automatically and posted here then, so a move while predictions are open doesn’t count.` : `Start price: the opening price when ${esc(m.symbol)} starts trading on ${esc(venueNames(m))}. Firstprint posts it here once trading opens.`} The result is the final price compared with it, using the ranges shown above.</li>
       <li>Predictions close ${fmtDate(m.closeAt)}. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
-      ${revertRule(m)}
       <li>After that the market counts down to its result on ${fmtDate(m.settleAt)}, when Firstprint posts the final price. The result and winners appear on this page.</li>
       <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
       <li>The market is cancelled and refunded if nobody picks the winning outcome, everyone picks the same outcome, or Firstprint cancels it.</li>
