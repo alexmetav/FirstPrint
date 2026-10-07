@@ -87,6 +87,8 @@ export interface UserRow {
   x_username?: string | null;
   referral_code?: string | null;
   referred_by?: string | null;
+  /** Two-letter country seen at sign-in (CF-IPCountry), for analytics. */
+  country?: string | null;
 }
 
 export interface MarketRow {
@@ -613,6 +615,12 @@ export class FirstprintService {
   }
 
   /** `via` is how the user proved who they are; an email only counts for admin access after an email code or Google. */
+  /** Records the player's country (two letters) the first time it's known; later sign-ins don't change it. */
+  noteCountry(userId: string, country: string | null) {
+    if (!country) return;
+    this.db.prepare('UPDATE users SET country = ? WHERE id = ? AND country IS NULL').run(country, userId);
+  }
+
   createSession(userId: string, via: 'email' | 'google' | 'wallet' | 'password' | null = null): { token: string; expiresAt: number } {
     const token = randomBytes(32).toString('base64url');
     const now = this.clock.now();

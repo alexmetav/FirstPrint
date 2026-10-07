@@ -856,7 +856,86 @@ function hbars(rows, unit = '') {
     .join('')}</div>`;
 }
 
+/** Country name and flag from a two-letter code (no code: "Unknown"). */
+const REGION_NAMES = (() => {
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region' });
+  } catch {
+    return null;
+  }
+})();
+const countryName = (code) => (code ? (REGION_NAMES?.of(code) ?? code) : 'Unknown');
+const countryFlag = (code) => (code ? String.fromCodePoint(...[...code].map((c) => 0x1f1a5 + c.charCodeAt(0))) : '🌐');
+
+/** Everything on the analytics page as one sheet (CSV, opens in Excel or Google Sheets): one block per section. */
+function analyticsCsv(d) {
+  const cell = (v) => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const rows = [];
+  const block = (title, head, body) => {
+    if (rows.length) rows.push([]);
+    rows.push([title]);
+    rows.push(head);
+    for (const r of body) rows.push(r);
+  };
+  const P = d.period;
+  const T = d.totals;
+  const C = d.onChain;
+  block('Firstprint analytics', ['Item', 'Value'], [
+    ['Period (UTC)', `${d.from} to ${d.to}`],
+    ['Generated', new Date(d.generatedAt).toISOString()],
+    ['Players (all time)', T.players],
+    [`New players (${d.days} days)`, P.newPlayers],
+    [`Active players (${d.days} days)`, P.active],
+    ['Returning players', P.returning],
+    [`Predictions (${d.days} days)`, P.predictions],
+    [`Points staked (${d.days} days)`, P.staked],
+    ['Predictions (all time)', T.predictions],
+    ['Points staked (all time)', T.staked],
+    ['Wallets linked', T.walletsLinked],
+    ['Markets (open / settled / total)', `${T.marketsOpen} / ${T.marketsSettled} / ${T.marketsTotal}`],
+    ['Players invited by friends', T.referred],
+    ['Tasks completed', T.tasksDone],
+  ]);
+  block('Daily (UTC)', ['Day', 'Active', 'New players', 'Predictions', 'Points staked', 'On-chain transfers'], d.series.map((x) => [x.day, x.active, x.newPlayers, x.predictions, x.staked, x.onChain ?? 0]));
+  block('Countries', ['Country', 'Code', 'Players', `New in ${d.days} days`], (d.countries ?? []).map((c) => [countryName(c.country), c.country ?? '', c.players, c.newPlayers]));
+  block('Sign-in', ['Method', 'Players'], [['Google or email', d.signIn.emailOnly], ['Wallet', d.signIn.walletOnly], ['Both', d.signIn.both]]);
+  block(`Most played markets (${d.days} days)`, ['Token', 'Name', 'Exchange', 'Status', 'Predictions', 'Participants', 'Points staked'], d.topMarkets.map((m) => [m.symbol, m.name ?? '', m.exchange, m.status, m.predictions, m.predictors, m.staked]));
+  if (C)
+    block('On chain (TestFPT, Solana ' + (d.chain?.cluster ?? 'testnet') + ')', ['Item', 'Transfers', 'TestFPT'], [
+      ['All transfers', C.transfers, ''],
+      [`Transfers in ${d.days} days`, C.transfersInPeriod, ''],
+      ['Rewards sent', C.rewards.transfers, C.rewards.amount],
+      ['Stakes', C.stakes.transfers, C.stakes.amount],
+      ['Payouts', C.payouts.transfers, C.payouts.amount],
+      ['Refunds', C.refunds.transfers, C.refunds.amount],
+      ['Claims signed by players', C.claims.transfers, C.claims.amount],
+      ['Wallets that received TestFPT', C.holders, ''],
+      ['Firstprint wallets', C.firstprintWallets, ''],
+      ['Waiting to send', C.waiting, ''],
+      ['Failed', C.failed, ''],
+      ['Mint', d.chain?.mint ?? '', ''],
+    ]);
+  return '\ufeff' + rows.map((r) => r.map(cell).join(',')).join('\r\n');
+}
+
+function downloadAnalytics() {
+  const d = S.vizData;
+  if (!d) return;
+  const blob = new Blob([analyticsCsv(d)], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `firstprint-analytics-${d.to}-${d.days}d.csv`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 function analyticsView(d, { shared = false } = {}) {
+  S.vizData = d;
   const P = d.period;
   const T = d.totals;
   const days = d.series.map((x) => x.day);
@@ -878,7 +957,7 @@ function analyticsView(d, { shared = false } = {}) {
           ? `<header class="viz-head"><div><span class="eyebrow">Firstprint · live stats</span><h1 class="page-title">How Firstprint is growing</h1><p class="page-lede">A free prediction game on crypto tokens, on Solana testnet. Updated ${fmtAgo(d.generatedAt)}.</p></div></header>`
           : ''
       }
-      <div class="viz-filters">${seg(shared ? 'viz-days' : 'admin-viz-days')}<span class="muted">${range}</span></div>
+      <div class="viz-filters">${seg(shared ? 'viz-days' : 'admin-viz-days')}<span class="muted">${range}</span><button class="btn btn-sm viz-export" data-action="viz-export">${ico('download')}Download sheet</button></div>
       <div class="viz-tiles">
         ${tile('Players', fmtNum(T.players), `+${fmtNum(P.newPlayers)} in ${d.days} days`, vizDelta(P.newPlayers, P.newPlayersPrev))}
         ${tile('Active players', fmtNum(P.active), `${pct(P.returning, P.active)} came back`, vizDelta(P.active, P.activePrev))}
@@ -916,12 +995,14 @@ function analyticsView(d, { shared = false } = {}) {
             : '<p class="muted">No predictions in this period yet.</p>',
           true,
         )}
+        ${countriesCard(d, card)}
       </div>
+      ${onChainSection(d, card, tile, days)}
       <div class="viz-extra">
         <div><b>${fmtNum(T.predictions)}</b><span>predictions all time</span></div>
         <div><b>${fmtCompact(T.staked)}</b><span>points staked all time</span></div>
         <div><b>${fmtNum(T.referred)}</b><span>players invited by friends</span></div>
-        <div><b>${fmtNum(T.tasksDone)}</b><span>tasks completed on X</span></div>
+        <div><b>${fmtNum(T.tasksDone)}</b><span>tasks completed</span></div>
         <div><b>${fmtNum(T.testfptClaimers)}</b><span>players claimed TestFPT (${fmtCompact(T.testfptClaimed)} total)</span></div>
       </div>
       <details class="viz-table"><summary>Daily numbers as a table</summary>
@@ -929,6 +1010,58 @@ function analyticsView(d, { shared = false } = {}) {
         <tbody>${[...d.series].reverse().map((x) => `<tr><td>${fmtShortDay(x.day)}</td><td class="right">${fmtNum(x.active)}</td><td class="right">${fmtNum(x.newPlayers)}</td><td class="right">${fmtNum(x.predictions)}</td><td class="right">${fmtNum(x.staked)}</td></tr>`).join('')}</tbody></table></div>
       </details>
       <p class="fine">Totals only: no names, emails or wallets are shown. Test accounts are left out. Points have no cash value.</p>
+    </div>`;
+}
+
+/** Where players come from, by the country they first signed in from. */
+function countriesCard(d, card) {
+  const list = d.countries ?? [];
+  const known = list.filter((c) => c.country);
+  const shown = list.slice(0, 12);
+  const rest = list.slice(12).reduce((n, c) => n + c.players, 0);
+  return card(
+    'Where players come from',
+    known.length ? `${fmtNum(known.length)} countr${known.length === 1 ? 'y' : 'ies'} · by where they first signed in` : 'By where they first signed in',
+    shown.length
+      ? hbars(
+          [
+            ...shown.map((c) => ({
+              label: countryName(c.country),
+              html: `<span class="flag" aria-hidden="true">${countryFlag(c.country)}</span> ${esc(countryName(c.country))}${c.newPlayers ? ` <span class="muted">+${fmtNum(c.newPlayers)} new</span>` : ''}`,
+              value: c.players,
+            })),
+            ...(rest ? [{ label: 'Other countries', value: rest }] : []),
+          ],
+          'players',
+        )
+      : '<p class="muted">No players yet.</p>',
+    true,
+  );
+}
+
+/** TestFPT on Solana: what the server sent and players claimed, all on the public chain. */
+function onChainSection(d, card, tile, days) {
+  const C = d.onChain;
+  // Nothing to show on a server without TestFPT that never sent any.
+  if (!C || (!d.chain && !C.transfers)) return '';
+  const groups = [
+    ['Rewards sent', C.rewards],
+    ['Stakes', C.stakes],
+    ['Payouts', C.payouts],
+    ['Refunds', C.refunds],
+    ['Claimed by players', C.claims],
+  ];
+  const mint = d.chain?.mintUrl ? `<a href="${esc(d.chain.mintUrl)}" target="_blank" rel="noopener noreferrer">${ico('external')}See the token on the explorer</a>` : '';
+  return `
+    <div class="viz-section-head"><h2>${ico('link')} On chain</h2><p class="muted">TestFPT on Solana ${esc(d.chain?.cluster ?? 'testnet')}: every reward, stake, payout and claim is a public transaction. ${mint}</p></div>
+    <div class="viz-tiles">
+      ${tile('Transfers', fmtNum(C.transfers), `${fmtNum(C.transfersInPeriod)} in ${d.days} days${C.waiting ? ` · ${fmtNum(C.waiting)} waiting` : ''}${C.failed ? ` · ${fmtNum(C.failed)} failed` : ''}`)}
+      ${tile('Wallets holding TestFPT', fmtNum(C.holders), 'received at least one transfer')}
+      ${tile('Firstprint wallets', fmtNum(C.firstprintWallets), 'made for email and Google players')}
+    </div>
+    <div class="viz-grid">
+      ${card('On-chain transfers', 'Confirmed per day, sent and claimed', columnChart(days, d.series.map((x) => x.onChain ?? 0), 'transfers'))}
+      ${card('By type', 'All time, TestFPT moved', hbars(groups.map(([label, g]) => ({ label, html: `${esc(label)} <span class="muted">${fmtNum(g.transfers)} tx</span>`, value: g.amount })), 'TestFPT'))}
     </div>`;
 }
 
@@ -6046,6 +6179,8 @@ document.addEventListener('click', async (e) => {
       return loadRoute();
     case 'viz-retry':
       return loadRoute();
+    case 'viz-export':
+      return downloadAnalytics();
     case 'viz-days':
       S.vizDays = Number(t.closest('[data-action]').dataset.days);
       return loadRoute();

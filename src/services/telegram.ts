@@ -157,6 +157,8 @@ type ChannelMarket = {
   exchange: string;
   outcomes: string;
   basePrice: number | null;
+  /** With no start price yet: true when it will be the price as predictions close (else the opening price). */
+  startAtClose?: boolean;
   closeAt: number;
   settleAt: number;
 };
@@ -166,35 +168,26 @@ function head(m: ChannelMarket, tag: string) {
   return `<b>$${esc(m.symbol)}</b>${m.name ? ` · ${esc(m.name)}` : ''}\n${tag}`;
 }
 
-/** The last line: the market link, so a tap from Telegram goes straight to predicting. */
-function cta(label: string, link?: string) {
-  // A link tag, so the whole address (with its #/market/… part) is always the tap target.
-  return link ? `\n\n👉 <b>${label}:</b> <a href="${esc(link).replace(/"/g, '&quot;')}">${esc(link)}</a>` : '';
+/** What the market measures from: the price, or how it will be set. */
+function startPrice(m: ChannelMarket) {
+  if (m.basePrice !== null) return price(m.basePrice);
+  return m.startAtClose ? 'price when predictions close' : 'opening price';
 }
 
-/** "New market live" post for the public channel. */
-export function marketLiveText(m: ChannelMarket, link?: string) {
-  // Exchanges are named on the market page only, not in posts.
-  const question =
-    m.outcomes === 'binary' && m.basePrice !== null
-      ? `Will $${esc(m.symbol)} be at or above ${price(m.basePrice)}?\nYes · No`
-      : `Where will $${esc(m.symbol)} go from here?\nCrash · Down · Flat · Up · Moon`;
-  const start = m.basePrice === null ? 'Start price: the opening price at listing' : `Start price: ${price(m.basePrice)}`;
-  return `${head(m, `🟢 <b>New market listed</b>${m.basePrice === null ? ' · Upcoming' : ''}`)}
+// Every post carries a "Predict now" / "See the result" button, so the text has no link of its own.
 
-${question}
+/** "New market live" post for the public channel: the ticker, then only the facts. */
+export function marketLiveText(m: ChannelMarket) {
+  return `${head(m, '🟢 <b>New market listed</b>')}
 
-💲 ${start}
+💲 Start price: ${startPrice(m)}
 ⏰ Predictions close: ${utc(m.closeAt)}
-🏁 Result: ${utc(m.settleAt)}
-
-Free to play with points. Early picks earn more.${cta('Predict now', link)}`;
+🏁 Result: ${utc(m.settleAt)}`;
 }
 
-/** "Result is in" post for the public channel: the move and the players first. */
+/** "Result is in" post for the public channel: the move and the players. */
 export function marketResultText(
   m: ChannelMarket & { predictors?: number; result: { winningBucket: string | null; returnPct: number | null; basePrice: number | null; finalPrice: number | null; pool: number } | null },
-  link?: string,
 ) {
   const r = m.result;
   if (!r || !r.winningBucket) return null;
@@ -204,18 +197,15 @@ export function marketResultText(
   const players = m.predictors ? `👥 ${m.predictors.toLocaleString('en-US')} participant${m.predictors === 1 ? '' : 's'} · ` : '👥 ';
   return `${head(m, `🏁 <b>Result: ${won} wins${pct}</b>`)}
 ${move}
-${players}${r.pool.toLocaleString('en-US')} pts paid to the winners${cta('See the result', link)}`;
+${players}${r.pool.toLocaleString('en-US')} pts paid to the winners`;
 }
 
 /** "Closing in an hour" reminder for the public channel. */
-export function closingSoonText(m: ChannelMarket & { pool: number; predictors: number }, link?: string) {
-  const what = m.basePrice === null ? 'Starts trading in about an hour; predictions close when it does.' : 'Predictions close in about an hour.';
-  const crowd = m.predictors ? `👥 ${m.predictors} participant${m.predictors === 1 ? '' : 's'} · ${m.pool.toLocaleString('en-US')} pts in the pool` : '👥 No picks yet. Early picks earn more.';
+export function closingSoonText(m: ChannelMarket & { pool: number; predictors: number }) {
+  const crowd = m.predictors ? `\n👥 ${m.predictors} participant${m.predictors === 1 ? '' : 's'} · ${m.pool.toLocaleString('en-US')} pts in the pool` : '';
   return `${head(m, '⏳ <b>Last hour to predict</b>')}
 
-${what}
-⏰ Closes: ${utc(m.closeAt)}
-${crowd}${cta('Predict now', link)}`;
+⏰ Predictions close: ${utc(m.closeAt)}${crowd}`;
 }
 
 /** "in 3h 20m" or "in 2d 4h": how long until a market closes, for the summary post. */
@@ -230,9 +220,9 @@ function closesIn(ms: number) {
 
 /**
  * "12 markets live" post for the public channel: how many are open, the ones closing soonest
- * with the time left, and the link. Real numbers only, straight from the open markets.
+ * with the time left (the link is the button underneath). Real numbers only, straight from the open markets.
  */
-export function liveSummaryText(markets: { symbol: string; closeAt: number; participants: number }[], link: string, now = Date.now()) {
+export function liveSummaryText(markets: { symbol: string; closeAt: number; participants: number }[], now = Date.now()) {
   const n = markets.length;
   if (!n) return null;
   const soonest = [...markets].sort((a, b) => a.closeAt - b.closeAt);
@@ -240,12 +230,8 @@ export function liveSummaryText(markets: { symbol: string; closeAt: number; part
   const people = markets.reduce((s, m) => s + m.participants, 0);
   const lines = shown.map((m) => `• <b>$${esc(m.symbol)}</b> · closes in ${closesIn(m.closeAt - now)}`).join('\n');
   const more = n > shown.length ? `\n…and ${n - shown.length} more` : '';
-  const crowd = people ? `👥 ${people.toLocaleString('en-US')} participant${people === 1 ? '' : 's'} so far. ` : '';
+  const crowd = people ? `\n\n👥 ${people.toLocaleString('en-US')} participant${people === 1 ? '' : 's'} so far` : '';
   return `🟢 <b>${n} market${n === 1 ? '' : 's'} live on Firstprint</b>
 
-Pick where each token goes: Crash, Down, Flat, Up or Moon. Free to play with points.
-
-${lines}${more}
-
-${crowd}Early picks earn more.${cta('Predict now', link)}`;
+${lines}${more}${crowd}`;
 }

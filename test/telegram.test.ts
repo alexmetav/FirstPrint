@@ -55,24 +55,25 @@ test('telegram: channel names and channel posts', async () => {
   assert.equal(channelName('@bad name'), null);
 
   const base = { symbol: 'AGENCY', name: 'Agency', exchange: 'MEXC', outcomes: 'ladder', basePrice: 0.0421, closeAt: Date.UTC(2026, 9, 5, 12), settleAt: Date.UTC(2026, 9, 8, 12) };
-  const link = 'https://firstprint.fun/app/#/market/agency-m-abc123';
-  const live = marketLiveText(base, link);
-  assert.ok(live.startsWith('<b>$AGENCY</b> · Agency\n🟢 <b>New market listed</b>'), 'the ticker comes first');
-  assert.match(live, /Start price: \$0\.0421/);
-  assert.match(live, /Predictions close: 5 Oct, 12:00 UTC/);
-  assert.ok(live.endsWith(`👉 <b>Predict now:</b> <a href="${link}">${link}</a>`), 'ends with the link to the market');
-  assert.match(marketLiveText({ ...base, basePrice: null }), /Upcoming[\s\S]*Start price: the opening price at listing/);
-  assert.match(marketLiveText({ ...base, outcomes: 'binary' }), /Will \$AGENCY be at or above \$0\.0421\?/);
+  const live = marketLiveText(base);
+  assert.equal(
+    live,
+    '<b>$AGENCY</b> · Agency\n🟢 <b>New market listed</b>\n\n💲 Start price: $0.0421\n⏰ Predictions close: 5 Oct, 12:00 UTC\n🏁 Result: 8 Oct, 12:00 UTC',
+    'the ticker, then only the facts: no question, no slogan, no link (the button is underneath)',
+  );
+  assert.match(marketLiveText({ ...base, basePrice: null, startAtClose: true }), /Start price: price when predictions close/);
+  assert.match(marketLiveText({ ...base, basePrice: null }), /Start price: opening price/);
   // Exchanges are named on the market page only, never in channel posts.
   assert.doesNotMatch(marketLiveText({ ...base, exchange: 'Binance, MEXC' }), /MEXC|Binance/);
-  assert.doesNotMatch(closingSoonText({ ...base, basePrice: null, pool: 0, predictors: 0 }), /MEXC/);
-  assert.doesNotMatch(marketLiveText(base), /href/, 'no link given: no link line');
+  const closing = closingSoonText({ ...base, basePrice: null, pool: 0, predictors: 0 });
+  assert.doesNotMatch(closing, /MEXC|href|Early picks/);
+  assert.match(closingSoonText({ ...base, pool: 900, predictors: 3 }), /3 participants · 900 pts in the pool$/);
 
-  const res = marketResultText({ ...base, predictors: 23, result: { winningBucket: 'up', returnPct: 0.234, basePrice: 0.0421, finalPrice: 0.052, pool: 1500 } }, link);
+  const res = marketResultText({ ...base, predictors: 23, result: { winningBucket: 'up', returnPct: 0.234, basePrice: 0.0421, finalPrice: 0.052, pool: 1500 } });
   assert.match(res!, /^<b>\$AGENCY<\/b> · Agency\n🏁 <b>Result: Up wins · \+23\.4%<\/b>/);
   assert.match(res!, /\$0\.0421 → \$0\.052/);
   assert.match(res!, /23 participants · 1,500 pts paid to the winners/);
-  assert.match(res!, /See the result:/);
+  assert.doesNotMatch(res!, /href/);
   assert.equal(marketResultText({ ...base, result: null }), null);
 });
 
@@ -323,12 +324,13 @@ test('summary post: the count, soonest to close first, real numbers only', async
   const now = Date.UTC(2026, 9, 5, 12);
   const H = 3_600_000;
   const ms = Array.from({ length: 12 }, (_, i) => ({ symbol: `T${i}`, closeAt: now + (12 - i) * H, participants: i }));
-  const text = liveSummaryText(ms, 'https://x/app/#/', now)!;
+  const text = liveSummaryText(ms, now)!;
   assert.match(text, /^🟢 <b>12 markets live on Firstprint<\/b>/);
   assert.match(text, /• <b>\$T11<\/b> · closes in 1h\n• <b>\$T10<\/b> · closes in 2h/, 'soonest first');
   assert.match(text, /…and 2 more/);
   assert.match(text, /66 participants so far/);
-  assert.equal(liveSummaryText([], 'u', now), null);
+  assert.doesNotMatch(text, /Free to play|Early picks|href/);
+  assert.equal(liveSummaryText([], now), null);
   const svg = summaryBannerSvg(ms.map((m) => ({ symbol: m.symbol, logoPng: null })), { count: 12, next: ms[11], pool: 5000, participants: 66 }, now);
   assert.match(svg, />12</);
   assert.match(svg, /\+6</, 'six logos, then +6');

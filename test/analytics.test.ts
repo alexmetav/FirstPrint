@@ -91,3 +91,69 @@ test('analytics share link: off by default, works with the key, old key stops af
     server.close();
   }
 });
+
+test('analytics: countries from Cloudflare at sign-in, and TestFPT on chain', async () => {
+  const { clock, service } = setup();
+  const sent: string[] = [];
+  const server = createApiServer({
+    service,
+    adminKey: null,
+    secureCookies: false,
+    webDir: new URL('../web', import.meta.url).pathname,
+    behindCloudflare: true,
+    mailer: { send: async (_to, _s, text) => void sent.push(text) },
+  });
+  await new Promise<void>((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const signIn = async (email: string, country?: string) => {
+    const headers = { 'content-type': 'application/json', ...(country ? { 'cf-ipcountry': country } : {}) };
+    await fetch(`${base}/api/auth/email/start`, { method: 'POST', headers, body: JSON.stringify({ email }) });
+    const code = /code is (\d{6})/.exec(sent.at(-1)!)![1];
+    const r = await fetch(`${base}/api/auth/email/verify`, { method: 'POST', headers, body: JSON.stringify({ email, code }) });
+    return ((await r.json()) as { user: { id: string } }).user.id;
+  };
+  try {
+    const a = await signIn('a@example.com', 'IN');
+    await signIn('b@example.com', 'in');
+    await signIn('c@example.com', 'US');
+    await signIn('d@example.com', 'XX'); // unknown to Cloudflare
+    await signIn('a@example.com', 'DE'); // a later sign-in elsewhere keeps the first country
+    assert.equal(service.getUser(a).country, 'IN');
+    const d = analytics(service.db, clock.now(), 7);
+    assert.deepEqual(d.countries, [
+      { country: 'IN', players: 2, newPlayers: 2 },
+      { country: null, players: 1, newPlayers: 1 },
+      { country: 'US', players: 1, newPlayers: 1 },
+    ]);
+  } finally {
+    server.close();
+  }
+
+  // On chain: confirmed transfers by type, claims, holders; waiting and failed ones counted apart.
+  const users = (service.db.prepare('SELECT id FROM users ORDER BY created_at').all() as { id: string }[]).map((u) => u.id);
+  const mint = service.db.prepare(
+    "INSERT INTO chain_mints (id, user_id, wallet, kind, ref, amount, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  mint.run('m1', users[0], 'W1', 'welcome', 'w', 1000, 'confirmed', clock.now(), clock.now());
+  mint.run('m2', users[0], 'W1', 'stake', 's1', 100, 'confirmed', clock.now(), clock.now());
+  mint.run('m3', users[1], 'W2', 'payout', 'p1', 250, 'confirmed', clock.now(), clock.now());
+  mint.run('m4', users[1], 'W2', 'daily', 'd1', 20, 'queued', clock.now(), clock.now());
+  mint.run('m5', users[2], 'W3', 'task', 't1', 50, 'failed', clock.now(), clock.now());
+  service.db
+    .prepare("INSERT INTO claims (id, user_id, wallet, amount, status, message, last_valid_height, created_at, updated_at) VALUES ('c1', ?, 'W3', 500, 'confirmed', 'm', 1, ?, ?)")
+    .run(users[2], clock.now(), clock.now());
+  const c = analytics(service.db, clock.now(), 7).onChain;
+  assert.deepEqual(
+    [c.transfers, c.transfersInPeriod, c.waiting, c.failed, c.holders],
+    [4, 4, 1, 1, 3],
+    '3 confirmed sends + 1 claim; wallets W1, W2, W3',
+  );
+  assert.deepEqual([c.rewards, c.stakes, c.payouts, c.refunds, c.claims], [
+    { transfers: 1, amount: 1000 },
+    { transfers: 1, amount: 100 },
+    { transfers: 1, amount: 250 },
+    { transfers: 0, amount: 0 },
+    { transfers: 1, amount: 500 },
+  ]);
+  assert.equal(analytics(service.db, clock.now(), 7).series.at(-1)!.onChain, 4);
+});

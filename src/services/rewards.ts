@@ -195,6 +195,12 @@ export class RewardsService {
   }
 
   /** True when claims mint TestFPT. */
+  /** The token's public details for the analytics page: network and mint (no keys). */
+  chainInfo() {
+    if (!this.token) return null;
+    return { cluster: this.token.cluster, mint: this.mint, mintUrl: this.mint ? explorerAddress(this.mint, this.token.cluster) : null };
+  }
+
   ready() {
     return Boolean(this.token && this.authority && this.mint);
   }

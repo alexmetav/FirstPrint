@@ -10371,6 +10371,35 @@ a.wallet-option {
 .viz-filters .tabs {
   margin: 0;
 }
+.viz-filters .viz-export {
+  margin-left: auto;
+}
+.viz-section-head {
+  margin: 8px 0 -2px;
+}
+.viz-section-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+.viz-section-head h2 svg {
+  width: 18px;
+  height: 18px;
+}
+.viz-section-head p {
+  margin: 0;
+  font-size: 13px;
+}
+.viz-section-head a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.hbar .flag {
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
+}
 .viz-tiles {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
