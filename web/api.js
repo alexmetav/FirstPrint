@@ -215,6 +215,7 @@ export function createAdminApi(key, baseUrl = '') {
     teamRemove: (id) => post(`/api/admin/team/${encodeURIComponent(id)}/remove`),
     createTask: (body) => post('/api/admin/tasks', body),
     updateTask: (id, body) => post(`/api/admin/tasks/${encodeURIComponent(id)}`, body),
+    resetXConnect: (points) => post('/api/admin/x-connect/reset', { points }),
   };
 }
 

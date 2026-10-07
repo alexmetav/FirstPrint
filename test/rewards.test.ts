@@ -221,6 +221,27 @@ test('tasks: link X, open the task, wait, confirm once; limits; rewards wait for
   assert.equal(rewards.summary(a.id).tasks.some((t) => t.id === repost), false);
 });
 
+test('an admin reset of Connect X lets everyone link X and earn it again, at the new points', async () => {
+  const { service, rewards } = await setup();
+  const { user: a } = await player(service, 'a@example.com');
+  const { user: b } = await player(service, 'b@example.com');
+  assert.equal(rewards.connectX(a.id, 'ana').rewarded, X_CONNECT_POINTS);
+  assert.equal(rewards.xConnectAdmin().players, 1);
+  assert.throws(() => rewards.resetXConnect(0), failsWith('bad_points'));
+
+  const out = rewards.resetXConnect(500);
+  assert.deepEqual([out.round, out.points, out.cleared, out.players], [1, 500, 1, 0]);
+  const s = rewards.summary(a.id);
+  assert.deepEqual([s.xUsername, s.xVerified, s.xConnectPoints], [null, false, 500]);
+
+  assert.equal(rewards.connectX(a.id, 'ana').rewarded, 500, 'paid again after the reset');
+  assert.equal(rewards.connectX(a.id, 'ana').rewarded, 0, 'still once per round');
+  assert.equal(rewards.connectX(b.id, 'bea').rewarded, 500);
+  const given = service.db.prepare("SELECT amount FROM rewards WHERE user_id = ? AND kind = 'x_connect' ORDER BY id").all(a.id) as { amount: number }[];
+  assert.deepEqual(given.map((r) => r.amount), [X_CONNECT_POINTS, 500], 'earlier points are kept');
+  assert.equal(rewards.xConnectAdmin().players, 2);
+});
+
 test('without TestFPT: rewards go straight to the balance; referrals pay when the friend first predicts', async () => {
   const { clock, service, rewards } = await setup(false);
   const { user: host } = await player(service, 'host@example.com');
