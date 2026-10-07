@@ -131,6 +131,16 @@ export interface MarketRow {
   note: string | null;
 }
 
+/** The biggest win so far, shown in the home banner's Top payout. */
+export interface TopWin {
+  multiple: number;
+  staked: number;
+  payout: number;
+  username: string;
+  symbol: string;
+  marketId: string;
+}
+
 interface PredictionRow {
   id: string;
   market_id: string;
@@ -1063,25 +1073,32 @@ export class FirstprintService {
     return rows.map((r) => this.view(r, undefined, true));
   }
 
-  private statsCache: { at: number; value: { totalMarkets: number; topPayout: number | null } } | null = null;
+  private statsCache: { at: number; value: { totalMarkets: number; topPayout: number | null; topWin: TopWin | null } } | null = null;
 
   /**
    * Numbers for the home banner: every market ever published (cleared-out ones included) and the
-   * best payout a player has actually received, as a multiple of what they staked.
+   * best payout a player has actually received, as a multiple of what they staked (10 in, 90 out
+   * is 9x), with who won it and where. Older predictions have no `accepted` amount; their stake counts.
    */
   marketStats() {
     const at = Date.now();
     if (this.statsCache && at - this.statsCache.at < 30_000) return this.statsCache.value;
     const total = as<{ n: number }>(this.db.prepare('SELECT COUNT(*) AS n FROM markets WHERE published = 1').get()).n;
-    const best = as<{ x: number | null }>(
+    const best = as<{ x: number; payout: number; staked: number; username: string | null; symbol: string; market_id: string } | undefined>(
       this.db
         .prepare(
-          `SELECT MAX(CAST(p.payout AS REAL) / p.accepted) AS x FROM predictions p JOIN markets m ON m.id = p.market_id
-           WHERE m.status = 'resolved' AND m.published = 1 AND p.payout > 0 AND p.accepted > 0`,
+          `SELECT CAST(p.payout AS REAL) / COALESCE(p.accepted, p.stake) AS x, p.payout, COALESCE(p.accepted, p.stake) AS staked,
+                  u.username, m.symbol, m.id AS market_id
+           FROM predictions p JOIN markets m ON m.id = p.market_id LEFT JOIN users u ON u.id = p.user_id
+           WHERE m.status = 'resolved' AND m.published = 1 AND p.payout > 0 AND COALESCE(p.accepted, p.stake) > 0
+           ORDER BY x DESC, p.payout DESC LIMIT 1`,
         )
         .get(),
-    ).x;
-    const value = { totalMarkets: total, topPayout: best && best > 0 ? Math.round(best * 10) / 10 : null };
+    );
+    const x = best && best.x > 0 ? Math.round(best.x * 10) / 10 : null;
+    const topWin: TopWin | null =
+      best && x ? { multiple: x, staked: best.staked, payout: best.payout, username: best.username ?? 'player', symbol: best.symbol, marketId: best.market_id } : null;
+    const value = { totalMarkets: total, topPayout: x, topWin };
     this.statsCache = { at, value };
     return value;
   }
