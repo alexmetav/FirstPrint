@@ -1,3 +1,4 @@
+import { ErrorLog, classifyLogLine } from './services/errorLog.ts';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +25,13 @@ import { Telegram, newListingText, resultDueText } from './services/telegram.ts'
 import { ChannelPoster } from './services/channel.ts';
 import { rpcChain, rpcUrlFor, type Cluster } from './solana/testfpt.ts';
 
-const log = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
+// Every log line goes to the console; failures in background work also go to Admin → Errors.
+let errorSink: ErrorLog | null = null;
+const log = (msg: string) => {
+  console.log(`${new Date().toISOString()} ${msg}`);
+  const code = errorSink ? classifyLogLine(msg) : null;
+  if (code) errorSink!.record({ source: 'background', code, message: msg.split('\n')[0], detail: msg.includes('\n') ? msg : null });
+};
 
 const cfg = loadConfig();
 if (cfg.dbPath !== ':memory:') mkdirSync(dirname(cfg.dbPath), { recursive: true });
@@ -57,6 +64,10 @@ const mailer: Mailer | null =
 const devEmailCodes = !production && !(cfg.resendApiKey && cfg.mailFrom);
 
 const service = new FirstprintService(db, systemClock, venues, log);
+errorSink = new ErrorLog(db);
+service.errors = errorSink;
+// Anything that would otherwise crash or vanish silently is kept for the admin too.
+process.on('unhandledRejection', (err) => log(`unhandled error: ${(err as Error)?.stack ?? err}`));
 // Market lists are built once every few seconds for everyone (each player's own picks are added fresh).
 service.listCacheMs = 3_000;
 // The leaderboard changes only when a market settles (which rebuilds it at once); otherwise once a minute.
@@ -156,6 +167,28 @@ const tracker = !tracked.length
         })
       : new ListingTracker(service, tracked, { autoCreate: cfg.autoCreateMarkets });
 
+// Result emails go out one at a time (Resend allows about 2 a second), not all at once when a big
+// market settles; sign-in codes are sent directly and never wait behind them.
+const emailQueue: (() => Promise<void>)[] = [];
+let emailQueueRunning = false;
+const EMAIL_QUEUE_MAX = Number(process.env.RESULT_EMAIL_QUEUE_MAX) > 0 ? Number(process.env.RESULT_EMAIL_QUEUE_MAX) : 5_000;
+function queueResultEmail(email: string, n: Parameters<typeof resultEmail>[0]) {
+  if (emailQueue.length >= EMAIL_QUEUE_MAX) return;
+  emailQueue.push(async () => {
+    const mail = resultEmail(n, appUrl);
+    await mailer!.send(email, mail.subject, mail.text, mail.html).catch((err: Error) => log(`result email failed for ${n.userId}: ${err.message}`));
+  });
+  if (emailQueueRunning) return;
+  emailQueueRunning = true;
+  void (async () => {
+    while (emailQueue.length) {
+      await emailQueue.shift()!();
+      await new Promise((r) => setTimeout(r, 600));
+    }
+    emailQueueRunning = false;
+  })();
+}
+
 const scheduler = new Scheduler(
   service,
   async (notes) => {
@@ -163,8 +196,7 @@ const scheduler = new Scheduler(
       log(`notify ${n.userId}: ${n.symbol} ${n.status} payout=${n.payout} refund=${n.refund}`);
       const email = mailer instanceof ResendMailer ? service.getUser(n.userId).email : null;
       if (!email) continue;
-      const mail = resultEmail(n, appUrl);
-      mailer!.send(email, mail.subject, mail.text, mail.html).catch((err: Error) => log(`result email failed for ${n.userId}: ${err.message}`));
+      queueResultEmail(email, n);
     }
   },
   { tickMs: cfg.tickMs, liveMs: cfg.liveMs, trackEveryMs: cfg.trackEveryMs, tracker,

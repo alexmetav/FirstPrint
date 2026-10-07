@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="./stage.css" />
+<style>
+  html, body { width: 1600px; height: 900px; }
+  #b { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(120% 90% at 50% 55%, #141418 0%, #09090b 65%); }
+  .grain { position: absolute; inset: -50%; opacity: 0.22; mix-blend-mode: overlay; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .vig { position: absolute; inset: 0; background: radial-gradient(90% 80% at 50% 50%, transparent 40%, rgba(0,0,0,0.75) 100%); pointer-events: none; }
+  .scan { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0 1px, transparent 1px 4px); pointer-events: none; }
+  .corner { position: absolute; left: 64px; top: 56px; display: flex; align-items: center; gap: 18px; }
+  .corner .eyebrow { font-size: 22px; letter-spacing: 0.2em; }
+  .foot { position: absolute; right: 64px; bottom: 52px; font-family: var(--mono); font-size: 20px; letter-spacing: 0.18em; color: #71717a; text-transform: uppercase; }
+  .headline { position: absolute; left: 0; right: 0; text-align: center; font-size: 104px; font-weight: 600; letter-spacing: -0.045em; line-height: 1.02; }
+  .sub { position: absolute; left: 0; right: 0; text-align: center; font-size: 30px; color: #a1a1aa; letter-spacing: -0.01em; }
+  .blur { filter: blur(14px) saturate(1.2); opacity: 0.75; }
+  .redact { display: inline-block; background: #f5f5f7; height: 0.78em; vertical-align: -0.06em; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="b"></div>
+<script type="module">
+  import { ico } from './icons.js';
+  const n = new URLSearchParams(location.search).get('b') || '1';
+  const root = document.querySelector('#b');
+  const mark = (s = 44) => `<span class="mark" style="transform:scale(${s / 32});transform-origin:0 0;margin-right:${s - 32}px;margin-bottom:${s - 32}px"><i></i><i></i><i></i><i></i><i></i></span>`;
+  const rows = [['Moon', 'var(--moon)', 'rocket', 13], ['Up', 'var(--up)', 'trendUp', 46], ['Flat', 'var(--flat)', 'arrowRight', 24], ['Down', 'var(--down)', 'trendDown', 11], ['Crash', 'var(--crash)', 'zap', 6]];
+  const card = (x, y, rot, scale) => `<div class="card blur" style="left:${x}px;top:${y}px;width:620px;transform:rotate(${rot}deg) scale(${scale});overflow:hidden">
+      <div style="padding:30px 32px 20px;display:flex;align-items:center;gap:18px"><div class="avatar" style="width:70px;height:70px;font-size:32px">?</div><div style="font-size:44px;font-weight:600">████</div><span class="pill pill-open" style="margin-left:auto"><i class="dot"></i>Open</span></div>
+      ${rows.map(([nm, c, ic, p]) => `<div class="row" style="--c:${c};height:76px"><i class="bar" style="width:${p}%"></i><span class="nm" style="font-size:30px">${ico(ic)}${nm}</span><span class="rg"></span><span class="pc" style="font-size:28px">${p}%</span></div>`).join('')}
+    </div>`;
+  let html = '';
+  if (n === '1') {
+    html = `${card(-60, 120, -8, 1)}${card(1040, 420, 7, 1.05)}${card(520, 560, -3, 0.9)}
+      <div style="position:absolute;left:740px;top:170px;width:120px;height:120px;border-radius:32px;display:grid;place-items:center;background:rgba(17,17,20,0.8);box-shadow:inset 0 0 0 2px #35353e;color:#ffd60a;font-size:64px">${ico('lock')}</div>
+      <div class="headline" style="top:350px">Not everyone<br />gets a seat.</div>
+      <div class="sub" style="top:600px">Something is being built on Firstprint.</div>`;
+  } else if (n === '2') {
+    const lb = ['satoshi_fan', 'moonwalker', 'you', 'chartgazer', 'early_bird'];
+    html = `<div class="card" style="left:900px;top:150px;width:600px;overflow:hidden">
+        <div class="blur" style="padding:26px 30px;font-size:36px;font-weight:600">Leaderboard</div>
+        ${lb.map((nm, i) => `<div style="display:flex;align-items:center;gap:20px;height:96px;padding:0 30px;border-top:1.5px solid #25252b;${nm === 'you' ? 'background:color-mix(in srgb,#30d158 12%,#111114);box-shadow:inset 0 0 0 3px var(--up)' : ''}">
+          <span class="mono" style="width:56px;font-size:28px;color:${nm === 'you' ? 'var(--up)' : '#71717a'}">#${i + 1}</span>
+          <span class="avatar ${nm === 'you' ? '' : 'blur'}" style="width:56px;height:56px;font-size:26px;${nm === 'you' ? 'background:linear-gradient(140deg,#30d158,#7dff3a);color:#09090b' : 'background:#2b2b33'}">${nm === 'you' ? '?' : nm[0].toUpperCase()}</span>
+          <span class="${nm === 'you' ? '' : 'blur'}" style="font-size:32px;font-weight:${nm === 'you' ? 700 : 500}">${nm === 'you' ? '<span class="redact" style="width:150px"></span>' : nm}</span>
+          <span class="mono ${nm === 'you' ? '' : 'blur'}" style="margin-left:auto;font-size:30px">${['8,420', '7,915', '7,620', '7,300', '6,880'][i]}</span></div>`).join('')}
+      </div>
+      <div style="position:absolute;left:96px;top:250px;width:720px">
+        <div class="eyebrow" style="font-size:24px;letter-spacing:0.2em;color:var(--up)">● Leaderboard · noted</div>
+        <div style="font-size:100px;font-weight:600;letter-spacing:-0.045em;line-height:1.02;margin-top:26px">Your calls<br />were noticed.</div>
+        <div style="font-size:30px;color:#a1a1aa;margin-top:30px">Some of you have been here since day one.</div>
+      </div>`;
+  } else {
+    html = `<div class="card" style="left:300px;top:140px;width:1000px;padding:56px 64px;transform:rotate(-1.5deg)">
+        <div style="display:flex;align-items:center;gap:20px">${mark(56)}<span class="eyebrow" style="font-size:22px;letter-spacing:0.22em">Firstprint · internal</span><span class="mono" style="margin-left:auto;font-size:22px;color:#ffd60a;letter-spacing:0.14em">CLASSIFIED</span></div>
+        <div style="font-size:92px;font-weight:600;letter-spacing:-0.045em;line-height:1.05;margin-top:40px"><span class="redact" style="width:400px"></span> Program</div>
+        <div style="display:grid;grid-template-columns:220px 1fr;row-gap:22px;margin-top:44px;font-size:32px">
+          <span class="eyebrow" style="font-size:22px">Status</span><span style="color:var(--up)">Opens soon</span>
+          <span class="eyebrow" style="font-size:22px">Seats</span><span>Limited</span>
+          <span class="eyebrow" style="font-size:22px">For</span><span><span class="redact" style="width:380px"></span></span>
+          <span class="eyebrow" style="font-size:22px">Perks</span><span><span class="redact" style="width:260px"></span>&nbsp;&nbsp;<span class="redact" style="width:200px"></span></span>
+        </div>
+      </div>`;
+  }
+  root.innerHTML = `${html}
+    <div class="corner">${mark(44)}<span class="eyebrow">Firstprint</span></div>
+    <div class="foot">firstprint.fun · soon</div>
+    <div class="scan"></div><div class="grain"></div><div class="vig"></div>`;
+  await document.fonts.ready;
+  window.READY = true;
+</script>
+</body>
+</html>

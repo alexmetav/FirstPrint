@@ -58,6 +58,32 @@ const S = {
   claimBusy: false,
 };
 
+// Errors players hit (crashes in the page, failures nothing else caught) go to Admin → Errors.
+// The same error is sent once per page load, and at most 15 a load, so a loop can't flood it.
+const reportedErrors = new Set();
+function reportClientError(code, message, detail = null) {
+  if (S.api?.demo || reportedErrors.size >= 15) return;
+  const key = `${code}|${message}`;
+  if (reportedErrors.has(key)) return;
+  reportedErrors.add(key);
+  fetch('/api/client-error', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code, message: String(message ?? '').slice(0, 400), where: `${location.pathname}${location.hash}`.slice(0, 200), detail: detail ? String(detail).slice(0, 3000) : null }),
+  }).catch(() => {});
+}
+window.addEventListener('error', (e) => {
+  if (!e.message) return; // a broken image or script tag, not a crash
+  reportClientError('app_crash', e.message, `${e.filename ?? ''}:${e.lineno ?? ''}:${e.colno ?? ''}\n${e.error?.stack ?? ''}`);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  // Answers from our server are recorded there already (5xx) or are the player's own mistakes (4xx).
+  if (r && typeof r.status === 'number') return;
+  reportClientError('app_crash', r?.message ?? String(r), r?.stack ?? null);
+});
+
 // ------------------------------------------------------------------ Utilities
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -4033,6 +4059,7 @@ async function submitUsername(form) {
 let marketRenderTimer = null;
 let homeRenderTimer = null;
 let refreshTimer = null;
+let refreshAt = 0;
 
 function onLive(type, data) {
   if (type === 'price') {
@@ -4063,8 +4090,18 @@ function onLive(type, data) {
       }
     }
   } else if (type === 'market' || (type === 'listing' && S.route.name === 'radar')) {
+    // The market being looked at refreshes within a couple of seconds; anything else waits a while,
+    // with a random spread, so a busy market doesn't make every open page reload at the same moment.
+    const here = S.route.name === 'market' && data?.marketId === S.route.id;
+    const delay = here ? 600 + Math.random() * 1500 : 8_000 + Math.random() * 12_000;
+    const at = Date.now() + delay;
+    if (refreshTimer && refreshAt <= at) return; // one is already coming sooner
     clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(refresh, 700);
+    refreshAt = at;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      refresh();
+    }, delay);
   }
 }
 
@@ -4099,6 +4136,7 @@ const ADMIN_TABS = [
   ['token', 'token', 'TestFPT token', 'The on-chain token players claim their points as.'],
   ['tasks', 'sparkles', 'Tasks', 'Tasks players complete on X for points.'],
   ['settings', 'sliders', 'Settings', 'Automatic markets, reference exchanges and backups.'],
+  ['errors', 'alert', 'Errors', 'Problems on the server and in players’ apps, newest first.'],
   ['activity', 'history', 'Activity', 'Everything done in this panel, newest first.'],
 ];
 
@@ -4162,13 +4200,14 @@ async function renderAdmin() {
       A.api.token().catch(() => ({ enabled: false })),
       A.api.tasks().catch(() => ({ tasks: [] })),
       A.info.level === 'owner' ? A.api.team().catch(() => null) : Promise.resolve(null),
+      canAdmin('admin') ? A.api.errors(A.errView ?? 'open').catch(() => null) : Promise.resolve(null),
     ]);
   } catch (err) {
     // The server may be waking up or busy: say so instead of leaving the old tab on screen.
     view.innerHTML = `<div class="empty"><div class="empty-art">${ico('alert')}</div><p><strong>Couldn’t load the admin panel.</strong><br />${esc(err.message)}</p><button class="btn btn-solid" data-action="admin-token-refresh">${ico('refresh')}Try again</button></div>`;
     return;
   }
-  const [{ markets }, detected, { log }, token, tasksData, teamData] = loaded;
+  const [{ markets }, detected, { log }, token, tasksData, teamData, errorsData] = loaded;
   const { tasks } = tasksData;
   A.xCheck = { on: Boolean(tasksData.xChecks), credit: tasksData.xCredit ?? null };
   A.xConnect = tasksData.xConnect ?? null;
@@ -4201,7 +4240,7 @@ async function renderAdmin() {
   if (A.review && !pending.some((d) => d.id === A.review.id)) A.review = null;
   const review = !editing && A.review ? A.review : null;
   const tooLong = markets.filter(openTooLong).sort((a, b) => b.closeAt - a.closeAt);
-  const badges = { markets: waiting.length + pending.length + tooLong.length, token: token?.enabled && !token.ready ? '!' : 0 };
+  const badges = { markets: waiting.length + pending.length + tooLong.length, token: token?.enabled && !token.ready ? '!' : 0, errors: errorsData?.counts?.open ?? 0 };
   const [, , title, lede] = ADMIN_TABS.find(([id]) => id === tab);
 
   let body;
@@ -4241,6 +4280,7 @@ async function renderAdmin() {
         ${backupLine(A.info.backup) || '<p class="muted">Backups are off. Set SUPABASE_URL and SUPABASE_SERVICE_KEY on the server to turn them on.</p>'}
       </section>
       ${manualOnly ? '' : legacyAdminSections(venues, detected)}`;
+  else if (tab === 'errors') body = errorsView(errorsData);
   else body = adminLogView(log);
 
   view.innerHTML = `
@@ -4805,6 +4845,55 @@ function saveKeysNote(t) {
     <span class="muted">Render → firstprint-app → Environment → Add environment variable, one for each, then Save. Keep the key private: it can mint TestFPT.</span>
     ${rows.map(([k, v]) => `<span class="copy-row"><code>${k}</code><code class="secret">${esc(v)}</code><button class="btn btn-sm" data-action="copy-text" data-text="${esc(v)}">${ico('copy')}Copy</button></span>`).join('')}
   </div>`;
+}
+
+/** What each kind of problem is, in plain words, and the one-click fix where there is one. */
+const ERROR_KINDS = {
+  server_error: { label: 'Server error', help: 'A request crashed on the server. Send me the message and where it happened.' },
+  email_failed: { label: 'Email', help: 'A sign-in email didn’t send. Check RESEND_API_KEY and your Resend plan’s daily limit.' },
+  chain_unavailable: { label: 'Solana', help: 'The Solana testnet didn’t answer. Usually passes by itself.', fix: 'chain' },
+  chain: { label: 'TestFPT sends', help: 'A TestFPT send or claim failed. Retry; if it keeps failing, check the token’s test SOL balance.', fix: 'chain' },
+  backup: { label: 'Backup', help: 'A database copy to Supabase failed. Take one now; if it fails, check the Supabase keys in Render.', fix: 'backup' },
+  telegram: { label: 'Telegram', help: 'A Telegram post or check failed. Check the bot token and that the bot is admin in the channel.' },
+  email: { label: 'Email', help: 'An email didn’t send. Check RESEND_API_KEY and the Resend plan limits.' },
+  x: { label: 'X checks', help: 'A check on X failed. Check the GetXAPI key and its credit.' },
+  price: { label: 'Prices', help: 'A price lookup failed. Usually passes by itself; check the exchange or CoinGecko key if it repeats.' },
+  app_crash: { label: 'App crash', help: 'Something broke in a player’s browser. Send me the message and page.' },
+};
+const SOURCE_LABEL = { server: 'Server', background: 'Background', app: 'Player’s app' };
+
+function errorsView(data) {
+  if (!data) return '<div class="empty"><p>Errors aren’t available on this server.</p></div>';
+  const view = A.errView ?? 'open';
+  const rows = data.errors;
+  const tabs = `<div class="seg err-seg" role="tablist">${[['open', `Open${data.counts.open ? ` (${fmtNum(data.counts.open)})` : ''}`], ['fixed', 'Fixed']]
+    .map(([id, label]) => `<button type="button" role="tab" data-action="admin-err-view" data-view="${id}" aria-selected="${view === id}">${label}</button>`)
+    .join('')}</div>`;
+  const head = `<section class="panel err-head">
+      <div class="err-stats"><div><b class="mono">${fmtNum(data.counts.open)}</b><span class="muted">open problems</span></div><div><b class="mono">${fmtNum(data.counts.today)}</b><span class="muted">errors in the last 24 h</span></div></div>
+      <div class="row-actions">${tabs}${view === 'open' && rows.length ? `<button class="btn btn-sm" data-action="admin-err-resolve-all">${ico('check')}Mark all fixed</button>` : ''}${view === 'fixed' && rows.length ? `<button class="btn btn-sm btn-danger" data-action="admin-err-clear">${ico('trash')}Clear fixed</button>` : ''}</div>
+    </section>`;
+  if (!rows.length) {
+    return `${head}<div class="empty"><div class="empty-art">${ico(view === 'open' ? 'checkCircle' : 'history')}</div><p><strong>${view === 'open' ? 'No open problems.' : 'Nothing fixed yet.'}</strong><br />${view === 'open' ? 'Failed requests, failed background work and crashes in players’ apps show up here.' : ''}</p></div>`;
+  }
+  return `${head}<section class="panel panel-flush"><ul class="err-list">${rows
+    .map((e) => {
+      const kind = ERROR_KINDS[e.code] ?? { label: e.code.replace(/_/g, ' '), help: '' };
+      const copy = `${kind.label} (${e.code}) · ${e.where ?? ''}\n${e.message}\nSeen ${e.count}×, last ${new Date(e.lastAt).toISOString()}${e.userId ? `\nPlayer ${e.userId}` : ''}${e.detail ? `\n\n${e.detail}` : ''}`;
+      return `<li class="err-item">
+        <div class="err-top"><span class="pill err-kind">${esc(kind.label)}</span><span class="muted err-src">${SOURCE_LABEL[e.source] ?? e.source}</span>${e.count > 1 ? `<span class="pill err-count mono">${fmtNum(e.count)}×</span>` : ''}<span class="muted err-when">${fmtAgo(e.lastAt)}</span></div>
+        <p class="err-msg">${esc(e.message)}</p>
+        ${e.where ? `<p class="fine err-where mono">${esc(e.where)}</p>` : ''}
+        ${kind.help ? `<p class="fine err-help">${ico('info')}${esc(kind.help)}</p>` : ''}
+        ${e.detail ? `<details class="err-detail"><summary>Details</summary><pre>${esc(e.detail)}</pre></details>` : ''}
+        <div class="row-actions">
+          ${kind.fix && view === 'open' ? `<button class="btn btn-sm btn-solid" data-action="admin-err-fix" data-kind="${kind.fix}" data-id="${e.id}">${ico('refresh')}${kind.fix === 'backup' ? 'Back up now' : 'Retry sends'}</button>` : ''}
+          <button class="btn btn-sm" data-action="copy-text" data-text="${esc(copy)}">${ico('copy')}Copy for support</button>
+          ${view === 'open' ? `<button class="btn btn-sm" data-action="admin-err-resolve" data-id="${e.id}">${ico('check')}Mark fixed</button>` : ''}
+        </div>
+      </li>`;
+    })
+    .join('')}</ul></section>`;
 }
 
 const TASK_TARGET_HINT = { follow: 'X handle, e.g. @firstprint', repost: 'Link to the post on X', like: 'Link to the post on X', share: 'Text of the post (the player’s invite link is added)', link: 'https:// link', telegram: 'Public channel, e.g. @firstprint' };
@@ -5659,6 +5748,43 @@ async function onAdminAction(action, el) {
     case 'admin-task-edit':
       A.editTask = el.dataset.id || null;
       return renderAdmin();
+    case 'admin-err-view':
+      A.errView = el.dataset.view;
+      return renderAdmin();
+    case 'admin-err-resolve':
+      try {
+        await A.api.resolveError(el.dataset.id);
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
+    case 'admin-err-resolve-all':
+      if (!confirm('Mark every open problem as fixed? New ones still show up.')) return;
+      try {
+        await A.api.resolveAllErrors();
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
+    case 'admin-err-clear':
+      try {
+        await A.api.clearFixedErrors();
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
+    case 'admin-err-fix': {
+      el.disabled = true;
+      el.textContent = 'Working…';
+      try {
+        const out = await A.api.fixError(el.dataset.kind);
+        await A.api.resolveError(el.dataset.id);
+        toast(out.message ?? 'Done');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
+    }
     case 'admin-task-delete':
       if (!confirm(`Delete "${el.dataset.title}"? It disappears from the list. Points it already paid stay with the players.`)) return;
       try {
@@ -6790,14 +6916,15 @@ setInterval(() => {
     if (left <= 0 && left > -1500) expired = true;
   });
   tickCountdowns();
-  if (expired) setTimeout(refresh, 1200);
+  // Everyone's countdown ends together: spread the refreshes over a few seconds.
+  if (expired) setTimeout(refresh, 1200 + Math.random() * 6000);
 }, 1000);
 
 // Background refresh. While the live stream is connected it already brings every market change
 // (new predictions, closes, results) and prices, so the full reload only catches the rest (balance,
 // leaderboard) every 45 seconds; without the stream, every 8 seconds as before.
 const REFRESH_LIVE_MS = 45_000;
-const REFRESH_OFFLINE_MS = 8_000;
+const REFRESH_OFFLINE_MS = 20_000;
 setInterval(() => {
   if (document.hidden) return;
   if (Date.now() - (S.refreshedAt ?? 0) >= (S.live ? REFRESH_LIVE_MS : REFRESH_OFFLINE_MS) - 500) refresh();

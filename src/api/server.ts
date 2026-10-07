@@ -249,7 +249,8 @@ export function createApiServer(opts: ServerOptions): Server {
   // so a script making endless accounts could farm them; real players are never near this. Kept in
   // the database (a restart or deploy doesn't reset it); checked before signing in and counted only
   // when an account is made.
-  const NEW_ACCOUNTS_PER_DAY = opts.newAccountsPerDay ?? 10;
+  // Per network (mobile carriers put many real people behind one address): set NEW_ACCOUNTS_PER_DAY to change it.
+  const NEW_ACCOUNTS_PER_DAY = opts.newAccountsPerDay ?? 60;
   function checkNewAccount(req: IncomingMessage, isNew: boolean) {
     if (!isNew) return;
     if (service.newAccountsFrom(visitor(req)) >= NEW_ACCOUNTS_PER_DAY) {
@@ -388,7 +389,7 @@ export function createApiServer(opts: ServerOptions): Server {
   route('POST', '/api/auth/email/start', async ({ req, body }) => {
     if (!opts.mailer) throw new AppError(503, 'email_off', 'Email sign-in isn’t set up yet. Use Google or a wallet.');
     const b = await body();
-    rateLimit(`emailcode:${visitor(req)}`, 10, 10 * 60_000);
+    rateLimit(`emailcode:${visitor(req)}`, 40, 10 * 60_000);
     const email = String(b.email ?? '').trim().toLowerCase();
     rateLimit(`emailcode:${email}`, 5, 60 * 60_000);
     const { code, expiresAt } = service.startEmailLogin(email);
@@ -1107,6 +1108,66 @@ export function createApiServer(opts: ServerOptions): Server {
     throw new AppError(404, 'not_found', 'Unknown step.');
   });
 
+  // Errors players hit in the app (failed requests, crashes in the page), reported by the app itself.
+  route('POST', '/api/client-error', async ({ req, body, optionalUser }) => {
+    rateLimit(`client-error:${visitor(req)}`, 20, 60_000);
+    const b = await body();
+    const text = (v: unknown, n: number) => (typeof v === 'string' ? v.slice(0, n) : null);
+    service.errors?.record({
+      source: 'app',
+      code: text(b.code, 40) || 'client_error',
+      message: text(b.message, 400) || 'Unknown error in the app',
+      where: text(b.where, 200),
+      userId: optionalUser()?.id ?? null,
+      detail: text(b.detail, 3000),
+    });
+    return { ok: true };
+  });
+
+  route('GET', '/api/admin/errors', ({ requireAdmin, url }) => {
+    requireAdmin();
+    const errors = service.errors;
+    if (!errors) return { errors: [], counts: { open: 0, today: 0 } };
+    return { errors: errors.list(url.searchParams.get('view') !== 'fixed'), counts: errors.counts() };
+  });
+
+  route('POST', '/api/admin/errors/:id/resolve', ({ req, params, requireAdmin }) => {
+    requireAdmin();
+    service.errors?.resolve(Number(params.id));
+    audit(req, 'error_resolved', params.id, '');
+    return { ok: true };
+  });
+
+  route('POST', '/api/admin/errors/resolve-all', ({ req, requireAdmin }) => {
+    requireAdmin();
+    const n = service.errors?.resolveAll() ?? 0;
+    audit(req, 'errors_resolved', String(n), '');
+    return { ok: true, resolved: n };
+  });
+
+  route('POST', '/api/admin/errors/clear-fixed', ({ requireAdmin }) => {
+    requireAdmin();
+    return { ok: true, cleared: service.errors?.clearResolved() ?? 0 };
+  });
+
+  // One-click fixes offered next to some errors: retry the chain sends, take a backup now.
+  route('POST', '/api/admin/errors/fix/:kind', async ({ req, params, requireAdmin }) => {
+    requireAdmin();
+    if (params.kind === 'chain') {
+      const r = rewardsOn();
+      await Promise.race([r.runChain(), new Promise((ok) => setTimeout(ok, 25_000))]);
+      audit(req, 'fix_chain', '', '');
+      return { ok: true, message: 'Chain sends retried.' };
+    }
+    if (params.kind === 'backup') {
+      const ok = opts.backupNow ? await opts.backupNow().catch(() => false) : false;
+      audit(req, 'fix_backup', '', String(ok));
+      if (!ok) throw new AppError(502, 'backup_failed', 'The backup didn’t go through. Check SUPABASE_URL and SUPABASE_SERVICE_KEY in Render.');
+      return { ok: true, message: 'Backup taken.' };
+    }
+    throw new AppError(404, 'not_found', 'Nothing to fix for this kind.');
+  });
+
   route('GET', '/api/admin/tasks', async ({ requireAdmin }) => {
     requireAdmin('tasks');
     const r = rewardsOn();
@@ -1403,11 +1464,21 @@ export function createApiServer(opts: ServerOptions): Server {
 
   /** Open live-update streams per visitor, so one client can't use up every connection. */
   const streamsByVisitor = new Map<string, number>();
-  const MAX_STREAMS_PER_VISITOR = 8;
+  // Many players can share one address (mobile carriers, offices), so this is generous.
+  const MAX_STREAMS_PER_VISITOR = 100;
+  // All live connections together (each holds a little memory); MAX_STREAMS raises it on a bigger server.
+  const MAX_STREAMS = Number(process.env.MAX_STREAMS) > 0 ? Number(process.env.MAX_STREAMS) : 5_000;
+
+  let lastEvent: { event: string; data: unknown; text: string } | null = null;
+  const encodeEvent = (event: string, data: unknown) => {
+    if (lastEvent && lastEvent.event === event && lastEvent.data === data) return lastEvent.text;
+    lastEvent = { event, data, text: `event: ${event}\ndata: ${JSON.stringify(data)}\n\n` };
+    return lastEvent.text;
+  };
 
   function openStream(req: IncomingMessage, res: ServerResponse) {
     if (!opts.live) return send(res, 404, { error: 'not_found', message: 'Live updates are not enabled.' });
-    if (opts.live.connections >= 5_000) return send(res, 503, { error: 'busy', message: 'Too many live connections. Try again soon.' });
+    if (opts.live.connections >= MAX_STREAMS) return send(res, 503, { error: 'busy', message: 'Too many live connections. Try again soon.' });
     const who = visitor(req);
     const open = streamsByVisitor.get(who) ?? 0;
     if (open >= MAX_STREAMS_PER_VISITOR) return send(res, 429, { error: 'rate_limited', message: 'Too many live connections from your network. Close some tabs and try again.' });
@@ -1420,7 +1491,10 @@ export function createApiServer(opts: ServerOptions): Server {
     });
     res.write(`retry: 5000\nevent: hello\ndata: ${JSON.stringify({ serverTime: service.clock.now() })}\n\n`);
     const unsubscribe = opts.live.subscribe((event, data) => {
-      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      // Encoded once per event for all listeners. A listener that can't keep up skips events
+      // (the page refreshes on its own) instead of piling them up in memory.
+      if (res.writableLength > 256 * 1024) return;
+      res.write(encodeEvent(event, data));
     });
     const heartbeat = setInterval(() => res.write(': ping\n\n'), 25_000);
     req.on('close', () => {
@@ -1629,8 +1703,14 @@ export function createApiServer(opts: ServerOptions): Server {
       const out = await (url.pathname.startsWith('/api/admin/') ? asAdmin(() => match.r.handler(ctx)) : match.r.handler(ctx));
       send(res, 200, out);
     } catch (err) {
-      if (err instanceof AppError) return send(res, err.status, { error: err.code, message: err.message });
-      service.log(`500 ${req.method} ${url.pathname}: ${(err as Error).stack ?? err}`);
+      const where = `${req.method} ${url.pathname}`;
+      if (err instanceof AppError) {
+        // Our own 5xx answers (network down, chain unavailable…) are problems too; maintenance isn't.
+        if (err.status >= 500 && err.code !== 'maintenance') service.errors?.record({ source: 'server', code: err.code, message: err.message, where, userId: userMemo?.id ?? null });
+        return send(res, err.status, { error: err.code, message: err.message });
+      }
+      service.log(`500 ${where}: ${(err as Error).stack ?? err}`);
+      service.errors?.record({ source: 'server', code: 'server_error', message: (err as Error)?.message ?? String(err), where, userId: userMemo?.id ?? null, detail: (err as Error)?.stack ?? null });
       send(res, 500, { error: 'server_error', message: 'Something went wrong on our side. Try again.' });
     }
   });

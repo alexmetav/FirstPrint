@@ -285,6 +285,9 @@ function logoVersion(s: string) {
   return `${s.length}-${Buffer.from(mid + s.slice(-12)).toString('hex').toUpperCase()}`;
 }
 
+/** Open pages hear about new predictions on a market at most this often. */
+const MARKET_EVENT_GAP_MS = 5_000;
+
 export class FirstprintService {
   db: DB;
   clock: Clock;
@@ -319,6 +322,8 @@ export class FirstprintService {
    * points as a reward to claim instead of straight into their balance.
    */
   rewardsOnChain: () => boolean = () => false;
+  /** Problems for Admin → Errors (set by main; tests may leave it unset). */
+  errors: import('./errorLog.ts').ErrorLog | null = null;
   /** Called inside the transaction after a prediction is placed (referral rewards hook in here). */
   onPredicted: (userId: string) => void = () => {};
 
@@ -1668,7 +1673,7 @@ export class FirstprintService {
         .prepare('INSERT INTO predictions (id, market_id, user_id, bucket, stake, placed_at) VALUES (?, ?, ?, ?, ?, ?)')
         .run(id, marketId, userId, bucket, stake, now);
       this.onPredicted(userId);
-      queueMicrotask(() => this.marketChanged(marketId));
+      queueMicrotask(() => this.marketChanged(marketId, true));
       return { id, balance: this.getUser(userId).points };
     });
   }
@@ -2171,12 +2176,38 @@ export class FirstprintService {
    */
   listCacheMs = 0;
 
-  /** A market changed: rebuild the lists on the next request, and tell open pages (live updates). */
-  private marketChanged(marketId: string) {
-    this.listCache.clear();
-    this.boardCache.clear();
-    this.onEvent('market', { marketId });
+  /**
+   * A market changed: rebuild the lists on the next request, and tell open pages (live updates).
+   * A new prediction is `light`: the cached lists simply expire after a few seconds (listCacheMs)
+   * instead of being thrown away on every pick, and open pages hear about it at most once every
+   * few seconds per market, so a busy market can't make every open page reload all the time.
+   */
+  private marketChanged(marketId: string, light = false) {
+    if (!light) {
+      this.listCache.clear();
+      this.boardCache.clear();
+      this.eventAt.delete(marketId);
+      this.onEvent('market', { marketId });
+      return;
+    }
+    if (!this.listCacheMs) this.listCache.clear();
+    const last = this.eventAt.get(marketId) ?? 0;
+    const wait = MARKET_EVENT_GAP_MS - (Date.now() - last);
+    if (wait <= 0) {
+      this.eventAt.set(marketId, Date.now());
+      this.onEvent('market', { marketId });
+    } else if (!this.eventTimers.has(marketId)) {
+      const timer = setTimeout(() => {
+        this.eventTimers.delete(marketId);
+        this.eventAt.set(marketId, Date.now());
+        this.onEvent('market', { marketId });
+      }, wait);
+      timer.unref?.();
+      this.eventTimers.set(marketId, timer);
+    }
   }
+  private eventAt = new Map<string, number>();
+  private eventTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private listCache = new Map<string, { at: number; markets: ReturnType<FirstprintService['view']>[]; total: number }>();
 
   listMarketsPage(filter: 'open' | 'live' | 'settled' | 'all', userId: string | undefined, limit: number) {
