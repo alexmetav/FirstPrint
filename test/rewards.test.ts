@@ -698,3 +698,18 @@ test('on-chain activity comes a page at a time: sends and claims together, newes
   assert.equal(p2.activity.at(-1)!.at, Math.min(...[...p1.activity, ...p2.activity].map((a) => a.at)));
   assert.equal(rewards.chainActivity(user.id, 50).page, 2);
 });
+
+test('rewards: paid GetXAPI calls are counted in total and per UTC day; the credit check is free', async () => {
+  const { GetXApi } = await import('../src/services/xcheck.ts');
+  const { clock, rewards } = await setup(false);
+  const x = new GetXApi('key', (async () => new Response(JSON.stringify({ data: { sourceFollowsTarget: true }, balance_total: 1.5 }))) as typeof fetch);
+  x.onCall = () => rewards.countXCall();
+  await x.follows('a', 'b');
+  await x.follows('a', 'c');
+  assert.equal(await x.credit(), 1.5);
+  assert.deepEqual(rewards.xUsage(), { total: 2, today: 2 });
+  clock.advance(24 * 3_600_000);
+  assert.deepEqual(rewards.xUsage(), { total: 2, today: 0 }, 'a new day starts from zero');
+  await x.follows('a', 'd');
+  assert.deepEqual(rewards.xUsage(), { total: 3, today: 1 });
+});

@@ -1197,7 +1197,7 @@ export function createApiServer(opts: ServerOptions): Server {
   route('GET', '/api/admin/tasks', async ({ requireAdmin }) => {
     requireAdmin('tasks');
     const r = rewardsOn();
-    return { tasks: r.listTasksAdmin(), xChecks: Boolean(r.xcheck), xCredit: await r.xCredit(), xConnect: r.xConnectAdmin() };
+    return { tasks: r.listTasksAdmin(), xChecks: Boolean(r.xcheck), xCredit: await r.xCredit(), xUsage: r.xUsage(), xConnect: r.xConnectAdmin() };
   });
 
   route('POST', '/api/admin/tasks/:id/delete', ({ req, params, requireAdmin }) => {

@@ -13152,6 +13152,16 @@ html.in-maint body {
 .x-check-note:not(.form-error) > svg {
   color: var(--up);
 }
+.x-usage h2 .pill {
+  margin-left: 8px;
+  vertical-align: 3px;
+}
+.x-usage .stat-tiles {
+  margin: 4px 0 0;
+}
+.x-usage .section-head .muted {
+  margin: 2px 0 0;
+}
 
 /* The Earn link's colour: gold on dark, a deeper amber on light so it stays readable. */
 :root {
