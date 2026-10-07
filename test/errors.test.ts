@@ -36,6 +36,7 @@ test('error log: background log lines are sorted into kinds; ordinary lines are 
   assert.equal(classifyLogLine('auto-claim for u1 failed: blockhash not found'), 'chain');
   assert.equal(classifyLogLine('backup: upload failed: HTTP 500'), 'backup');
   assert.equal(classifyLogLine('telegram: send failed (403)'), 'telegram');
+  assert.equal(classifyLogLine('banner post failed, sending text only: fetch failed'), 'telegram');
   assert.equal(classifyLogLine('manual market published peak-m-1'), null);
   assert.equal(classifyLogLine('500 GET /api/markets: Error: x'), null, 'request errors are recorded with the request');
 });

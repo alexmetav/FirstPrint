@@ -115,7 +115,7 @@ export class ErrorLog {
 export function classifyLogLine(msg: string): string | null {
   if (!/\b(fail(ed|s|ure)?|error|could ?n[o’']t|unable|rejected|timed out|timeout)\b/i.test(msg)) return null;
   if (/^500 /.test(msg)) return null; // recorded with the request instead
-  if (/telegram|bot\b/i.test(msg)) return 'telegram';
+  if (/telegram|bot\b|banner|channel post/i.test(msg)) return 'telegram';
   if (/backup|restore|lease|hand-?over|supabase/i.test(msg)) return 'backup';
   if (/mail|resend/i.test(msg)) return 'email';
   if (/getxapi|\bx check|\bon x\b|twitter/i.test(msg)) return 'x';

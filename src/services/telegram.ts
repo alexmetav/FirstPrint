@@ -22,14 +22,35 @@ export class Telegram {
     return Boolean(this.getChat());
   }
 
+  /** Waits before each new try when the connection to Telegram drops (swappable in tests). */
+  retryDelaysMs = [2_000, 5_000];
+
   private async call(method: string, body: Record<string, unknown> | FormData) {
     const form = body instanceof FormData;
-    const res = await this.fetchImpl(`https://api.telegram.org/bot${this.token}/${method}`, {
-      method: 'POST',
-      ...(form ? {} : { headers: { 'content-type': 'application/json' } }),
-      body: form ? body : JSON.stringify(body),
-      signal: AbortSignal.timeout(form ? 30_000 : 10_000),
-    });
+    let res: Response;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        res = await this.fetchImpl(`https://api.telegram.org/bot${this.token}/${method}`, {
+          method: 'POST',
+          ...(form ? {} : { headers: { 'content-type': 'application/json' } }),
+          body: form ? body : JSON.stringify(body),
+          signal: AbortSignal.timeout(form ? 30_000 : 10_000),
+        });
+        break;
+      } catch (err) {
+        // "fetch failed" means the connection dropped before Telegram answered (a network blip, often
+        // during a deploy): try again a moment later. A timeout is not retried, as the post may have gone.
+        const dropped = err instanceof TypeError;
+        if (dropped && attempt < this.retryDelaysMs.length) {
+          await new Promise((r) => setTimeout(r, this.retryDelaysMs[attempt]));
+          continue;
+        }
+        // Say why the connection dropped (e.g. ECONNRESET); never the URL, which contains the bot token.
+        const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+        const why = cause?.code ?? cause?.message?.replaceAll(this.token, '…');
+        throw new Error(`Telegram ${method}: ${(err as Error).message}${why ? ` (${why})` : ''}${dropped ? ` after ${attempt + 1} tries` : ''}`);
+      }
+    }
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; result?: unknown; description?: string };
     // Never echo the URL: it contains the bot token.
     if (!data.ok) throw new Error(data.description ? `Telegram: ${data.description}` : `Telegram answered ${res.status}`);

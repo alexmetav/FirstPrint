@@ -337,3 +337,24 @@ test('summary post: the count, soonest to close first, real numbers only', async
   assert.match(svg, /\+6</, 'six logos, then +6');
   assert.match(svg, /T11 · in 1h 00m/);
 });
+
+test('telegram: a dropped connection is tried again, and the error says why when it keeps failing', async () => {
+  const dropped = () => Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } });
+  let tries = 0;
+  const flaky = new Telegram('SECRET-TOKEN', { get: () => '1', set: () => {} }, async () => {
+    if (++tries < 3) throw dropped();
+    return new Response(JSON.stringify({ ok: true, result: {} }));
+  });
+  flaky.retryDelaysMs = [1, 1];
+  await flaky.sendPhotoTo('@fp', new Uint8Array([1, 2, 3]), 'hi');
+  assert.equal(tries, 3, 'the banner went on the third try');
+
+  tries = 0;
+  const down = new Telegram('SECRET-TOKEN', { get: () => '1', set: () => {} }, async () => {
+    tries++;
+    throw dropped();
+  });
+  down.retryDelaysMs = [1, 1];
+  await assert.rejects(down.sendTo('@fp', 'hi'), (err: Error) => err.message === 'Telegram sendMessage: fetch failed (ECONNRESET) after 3 tries' && !err.message.includes('SECRET'));
+  assert.equal(tries, 3);
+});
