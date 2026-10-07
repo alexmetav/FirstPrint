@@ -82,6 +82,9 @@ export function analytics(db: DatabaseSync, now: number, days = 30) {
   const referred = n(one(`SELECT COUNT(*) c FROM users WHERE referred_by IS NOT NULL AND id IN (${REAL})`).c);
   const tasks = n(one(`SELECT COUNT(*) c FROM task_completions WHERE completed_at IS NOT NULL AND user_id IN (${REAL})`).c);
   const claimed = one(`SELECT COUNT(DISTINCT user_id) u, COALESCE(SUM(amount), 0) a FROM claims WHERE status = 'confirmed' AND user_id IN (${REAL})`);
+  // Revert fees: the half burned at once, plus early-player shares nobody could take.
+  const burnedReverts = one('SELECT COALESCE(SUM(burned), 0) b, COUNT(*) c FROM prediction_reverts');
+  const pots = one('SELECT COALESCE(SUM(burned), 0) b, COALESCE(SUM(paid), 0) p FROM early_pots');
 
   // Where players come from: the country Cloudflare saw when they first signed in.
   const countries = all(
@@ -157,6 +160,9 @@ export function analytics(db: DatabaseSync, now: number, days = 30) {
       tasksDone: tasks,
       testfptClaimers: n(claimed.u),
       testfptClaimed: n(claimed.a),
+      burned: n(burnedReverts.b) + n(pots.b),
+      reverts: n(burnedReverts.c),
+      earlyRewardsPaid: n(pots.p),
     },
     signIn: { emailOnly: n(methods.emailOnly), walletOnly: n(methods.walletOnly), both: n(methods.both) },
     series,

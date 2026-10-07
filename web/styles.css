@@ -14150,3 +14150,135 @@ html.in-maint body {
 .act-foot:empty { display: none; }
 .nowrap { white-space: nowrap; }
 .adm-old-actions { margin: 4px 0 12px; }
+
+/* ===== Taking a prediction back ===== */
+.rung-faded {
+  opacity: 0.5;
+  transition: opacity 150ms ease;
+}
+.rung-faded:hover,
+.rung-faded:focus-visible {
+  opacity: 1;
+}
+.rung-mine {
+  border-color: var(--c);
+  box-shadow: inset 3px 0 0 var(--c);
+}
+.my-picks {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.my-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--c) 45%, var(--line));
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--c) 8%, var(--surface));
+  font-size: 14px;
+}
+.my-pick-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.my-pick-name b {
+  color: var(--c);
+  font-family: var(--display);
+}
+.my-pick-note {
+  margin-left: auto;
+  font-size: 13px;
+  text-align: right;
+}
+.revert-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  vertical-align: middle;
+}
+.position .revert-btn {
+  width: 28px;
+  height: 28px;
+  margin-left: 8px;
+}
+.revert-btn:hover {
+  border-color: var(--c, var(--text));
+  color: var(--c, var(--text));
+}
+.revert-btn .i {
+  width: 16px;
+  height: 16px;
+}
+.card-bonus {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--up) 14%, transparent);
+  color: var(--up);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.card-bonus .i {
+  width: 12px;
+  height: 12px;
+}
+.revert-sum {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.revert-sum > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+.revert-sum dt {
+  color: var(--muted);
+}
+.revert-sum dd {
+  margin: 0;
+  text-align: right;
+  font-weight: 600;
+}
+.revert-sum .big dd {
+  font-family: var(--display);
+  font-size: 20px;
+}
+.revert-notes {
+  margin: 12px 0 16px;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  display: grid;
+  gap: 4px;
+}
+.cta-danger {
+  --c: var(--crash);
+}
+.input-unit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.input-unit span {
+  color: var(--muted);
+  font-size: 13px;
+}

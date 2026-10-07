@@ -8,6 +8,10 @@ import type { Venue } from '../exchanges/types.ts';
 import {
   BUCKETS,
   DEFAULT_CONFIG,
+  DEFAULT_REVERT_RULES,
+  isEarly,
+  revertQuote,
+  splitEarlyPot,
   allowedBuckets,
   applyCaps,
   bucketFor,
@@ -26,6 +30,7 @@ import {
   type Candle,
   type MarketConfig,
   type Prediction,
+  type RevertRules,
   type SettlementResult,
 } from '../engine/engine.ts';
 
@@ -823,6 +828,7 @@ export class FirstprintService {
         winningBucket: null,
       };
       const now = this.clock.now();
+      this.settleEarlyPot(m, rows, () => 0, false, now);
       this.db
         .prepare('INSERT INTO settlements (market_id, result, data_hash, settled_at) VALUES (?, ?, ?, ?)')
         .run(marketId, JSON.stringify(result), createHash('sha256').update(`cancelled:${marketId}:${now}`).digest('hex'), now);
@@ -1196,10 +1202,11 @@ export class FirstprintService {
       this.db
         .prepare(
           `SELECT l.id, l.delta, l.reason, l.ref, l.created_at, u.id AS user_id, u.username, u.points AS balance,
-             m.symbol, m.id AS market_id, p.bucket, p.stake, p.accepted, p.payout, m.status
+             m.symbol, m.id AS market_id, COALESCE(p.bucket, r.bucket) AS bucket, COALESCE(p.stake, r.stake) AS stake, p.accepted, p.payout, m.status
            FROM ledger l JOIN users u ON u.id = l.user_id
            LEFT JOIN predictions p ON p.id = l.ref
-           LEFT JOIN markets m ON m.id = p.market_id
+           LEFT JOIN prediction_reverts r ON r.id = l.ref
+           LEFT JOIN markets m ON m.id = COALESCE(p.market_id, r.market_id)
            ${where}
            ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?`,
         )
@@ -1767,7 +1774,8 @@ export class FirstprintService {
           `SELECT l.id, l.delta, l.reason, l.created_at, m.symbol, m.id AS market_id
            FROM ledger l
            LEFT JOIN predictions p ON p.id = l.ref
-           LEFT JOIN markets m ON m.id = p.market_id
+           LEFT JOIN prediction_reverts r ON r.id = l.ref
+           LEFT JOIN markets m ON m.id = COALESCE(p.market_id, r.market_id)
            WHERE l.user_id = ? ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?`,
         )
         .all(userId, Math.min(200, Math.max(1, Math.floor(limit))), Math.max(0, Math.floor(offset))),
@@ -1847,6 +1855,138 @@ export class FirstprintService {
     const { closeAt } = windows(cfg, m.listing_at);
     const preds = this.predictions(marketId).map(toEnginePrediction);
     return engineQuote(preds, bucket, Math.max(0, Math.floor(stake) || 0), this.clock.now(), cfg, m.opened_at, closeAt);
+  }
+
+  // --- Reverting a prediction ------------------------------------------------------
+
+  /** The revert fee rules (admin settings over the defaults). */
+  revertRules(): RevertRules {
+    if (this.rulesCache) return { ...this.rulesCache };
+    let saved: Partial<RevertRules> | null = null;
+    try {
+      saved = JSON.parse(this.getSetting('revert.rules') ?? 'null') as Partial<RevertRules> | null;
+    } catch {
+      /* a broken value means the defaults */
+    }
+    this.rulesCache = { ...DEFAULT_REVERT_RULES, ...(saved ?? {}) };
+    return { ...this.rulesCache };
+  }
+  private rulesCache: RevertRules | null = null;
+
+  setRevertRules(patch: Partial<RevertRules>): RevertRules {
+    const next = { ...this.revertRules() };
+    const bps = (v: unknown, label: string) => {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0 || n > 10_000) throw new AppError(400, 'bad_rules', `${label} must be between 0% and 100%.`);
+      return Math.round(n);
+    };
+    const ms = (v: unknown, label: string) => {
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0 || n > DAY) throw new AppError(400, 'bad_rules', `${label} must be between 0 and 24 hours.`);
+      return Math.round(n);
+    };
+    if (patch.baseBps !== undefined) next.baseBps = bps(patch.baseBps, 'The starting fee');
+    if (patch.maxBps !== undefined) next.maxBps = bps(patch.maxBps, 'The fee at the close');
+    if (patch.burnBps !== undefined) next.burnBps = bps(patch.burnBps, 'The burned share');
+    if (patch.undoMs !== undefined) next.undoMs = ms(patch.undoMs, 'The free undo time');
+    if (patch.lockMs !== undefined) next.lockMs = ms(patch.lockMs, 'The lock before the close');
+    if (next.maxBps < next.baseBps) throw new AppError(400, 'bad_rules', 'The fee at the close can’t be lower than the starting fee.');
+    if (next.maxBps > 9_000) throw new AppError(400, 'bad_rules', 'The fee at the close can be at most 90%.');
+    this.setSetting('revert.rules', JSON.stringify(next));
+    this.rulesCache = next;
+    this.listCache.clear();
+    this.log(`revert rules ${JSON.stringify(next)}`);
+    return next;
+  }
+
+  private revertTarget(predictionId: string, userId: string) {
+    const p = as<PredictionRow | undefined>(this.db.prepare('SELECT * FROM predictions WHERE id = ?').get(predictionId));
+    if (!p || p.user_id !== userId) throw new AppError(404, 'prediction_not_found', 'Prediction not found.');
+    const m = this.row(p.market_id);
+    const { closeAt } = windows(parseConfig(m), m.listing_at);
+    const now = this.clock.now();
+    if (m.status !== 'open' || m.published !== 1 || now >= closeAt) {
+      throw new AppError(409, 'market_closed', 'Predictions for this market are closed, so it can’t be taken back.');
+    }
+    const rules = this.revertRules();
+    const q = revertQuote(p.stake, p.placed_at, now, m.opened_at, closeAt, rules);
+    return { p, m, q, now, closeAt, rules };
+  }
+
+  /** What taking a prediction back would cost right now. */
+  revertQuote(predictionId: string, userId: string) {
+    const { p, q, closeAt, rules } = this.revertTarget(predictionId, userId);
+    return { predictionId: p.id, stake: p.stake, ...q, lockAt: closeAt - rules.lockMs };
+  }
+
+  /**
+   * Takes a prediction back: the stake minus the fee returns to the player, the prediction leaves
+   * the pool, and the fee is split between burning and the market's early players.
+   */
+  revertPrediction(predictionId: string, userId: string) {
+    return tx(this.db, () => {
+      const { p, m, q, now } = this.revertTarget(predictionId, userId);
+      if (!q.allowed) {
+        throw new AppError(409, 'revert_locked', `Predictions can’t be taken back in the last ${Math.round(this.revertRules().lockMs / MINUTE)} minutes before the close.`);
+      }
+      this.db.prepare('DELETE FROM predictions WHERE id = ?').run(p.id);
+      this.db
+        .prepare(
+          `INSERT INTO prediction_reverts (id, market_id, user_id, bucket, stake, placed_at, reverted_at, fee, burned, to_early)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(p.id, m.id, userId, p.bucket, p.stake, p.placed_at, now, q.fee, q.burn, q.toEarly);
+      if (q.back > 0) this.credit(userId, q.back, 'revert', p.id);
+      queueMicrotask(() => this.marketChanged(m.id, true));
+      this.log(`prediction reverted ${p.id} on ${m.id}: ${q.back} back, ${q.burn} burned, ${q.toEarly} to early players`);
+      return { id: p.id, back: q.back, fee: q.fee, burned: q.burn, toEarly: q.toEarly, free: q.free, balance: this.getUser(userId).points };
+    });
+  }
+
+  /** Points from revert fees waiting for a market's early players. */
+  earlyPot(marketId: string): number {
+    return as<{ s: number }>(this.db.prepare('SELECT COALESCE(SUM(to_early), 0) AS s FROM prediction_reverts WHERE market_id = ?').get(marketId)).s;
+  }
+
+  /**
+   * At settlement (inside its transaction): pays the early players' share of revert fees to the
+   * predictions placed in the first half of the window and still in, by accepted stake, win or lose.
+   * A cancelled market, or one with no early players, burns it all.
+   */
+  private settleEarlyPot(m: MarketRow, rows: readonly PredictionRow[], accepted: (id: string) => number, paid: boolean, now: number): Map<string, number> {
+    const pot = this.earlyPot(m.id);
+    if (pot <= 0 || this.db.prepare('SELECT 1 FROM early_pots WHERE market_id = ?').get(m.id)) return new Map();
+    const { closeAt } = windows(parseConfig(m), m.listing_at);
+    const early = paid
+      ? rows.filter((r) => isEarly(r.placed_at, m.opened_at, closeAt)).map((r) => ({ id: r.id, userId: r.user_id, accepted: accepted(r.id) })).filter((r) => r.accepted > 0)
+      : [];
+    const { shares, burned } = splitEarlyPot(pot, early);
+    let total = 0;
+    for (const r of early) {
+      const n = shares.get(r.id) ?? 0;
+      if (n > 0) {
+        this.credit(r.userId, n, 'early_reward', r.id);
+        total += n;
+      }
+    }
+    this.db.prepare('INSERT INTO early_pots (market_id, pot, paid, burned, settled_at) VALUES (?, ?, ?, ?, ?)').run(m.id, pot, total, burned, now);
+    return shares;
+  }
+
+  /** Points burned by reverts in all, and on top what early pots burned. */
+  burnTotals() {
+    const r = as<{ fees: number; burned: number; reverts: number }>(
+      this.db.prepare('SELECT COALESCE(SUM(fee), 0) AS fees, COALESCE(SUM(burned), 0) AS burned, COUNT(*) AS reverts FROM prediction_reverts').get(),
+    );
+    const pots = as<{ paid: number; burned: number }>(this.db.prepare('SELECT COALESCE(SUM(paid), 0) AS paid, COALESCE(SUM(burned), 0) AS burned FROM early_pots').get());
+    return { burned: r.burned + pots.burned, earlyPaid: pots.paid, fees: r.fees, reverts: r.reverts };
+  }
+
+  /** A player's burn record: points their reverts burned, and early rewards they earned. */
+  burnStats(userId: string) {
+    const burned = as<{ s: number }>(this.db.prepare('SELECT COALESCE(SUM(burned), 0) AS s FROM prediction_reverts WHERE user_id = ?').get(userId)).s;
+    const earned = as<{ s: number }>(this.db.prepare("SELECT COALESCE(SUM(delta), 0) AS s FROM ledger WHERE user_id = ? AND reason = 'early_reward'").get(userId)).s;
+    return { burned, earlyRewards: earned };
   }
 
   // --- Lifecycle ---------------------------------------------------------------
@@ -2015,6 +2155,8 @@ export class FirstprintService {
         n.refund += p.refund;
         perUser.set(p.userId, n);
       }
+      const acceptedOf = new Map(result.payouts.map((p) => [p.predictionId, p.accepted]));
+      this.settleEarlyPot(m, rows, (id) => acceptedOf.get(id) ?? 0, status === 'resolved', now);
       this.db
         .prepare('INSERT INTO settlements (market_id, result, data_hash, settled_at) VALUES (?, ?, ?, ?)')
         .run(m.id, JSON.stringify(result), dataHash, now);
@@ -2564,6 +2706,7 @@ export class FirstprintService {
       history: record.history.slice(0, 100),
       rank: mine ? 1 + profits.filter((p) => p.profit > mine.profit).length : null,
       players: profits.length,
+      ...this.burnStats(userId),
     };
   }
 
@@ -2912,6 +3055,9 @@ export class FirstprintService {
       result,
       scorecard: m.scorecard ? (JSON.parse(m.scorecard) as Scorecard) : null,
       mine,
+      // Revert fees waiting for this market's early players, and the rules for taking a pick back.
+      earlyPot: m.status === 'open' || m.status === 'locked' ? this.earlyPot(m.id) : 0,
+      revert: m.status === 'open' ? this.revertRules() : null,
       serverTime: now,
     };
   }

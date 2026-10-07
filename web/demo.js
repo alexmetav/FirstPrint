@@ -4,11 +4,13 @@
 import {
   BUCKETS,
   DEFAULT_CONFIG,
+  DEFAULT_REVERT_RULES,
   applyCaps,
   bucketForReturn,
   emptyTotals,
   quote,
   returnPct,
+  revertQuote,
   settleMarket,
   summarizeRecord,
   twap,
@@ -332,6 +334,8 @@ export class DemoBackend {
       result,
       scorecard: m.scorecard,
       mine,
+      earlyPot: m.status === 'open' || m.status === 'locked' ? (m.earlyPot ?? 0) : 0,
+      revert: m.status === 'open' ? DEFAULT_REVERT_RULES : null,
       serverTime: now,
     };
   }
@@ -540,6 +544,35 @@ export class DemoBackend {
       if (mine + stake > userCap) throw new ApiError(409, 'user_cap', `You can stake up to ${userCap} points per market. You have ${userCap - mine} left.`);
       const p = this.addPrediction(m, u.id, bucket, stake, this.now());
       return { id: p.id, balance: u.points };
+    });
+  }
+
+  /** Finds one of the player's predictions on an open market, with what taking it back costs now. */
+  revertTarget(pid) {
+    const u = this.me_();
+    const m = this.marketList.find((x) => x.predictions.some((p) => p.id === pid));
+    const p = m?.predictions.find((x) => x.id === pid);
+    if (!p || p.userId !== u.id) throw new ApiError(404, 'prediction_not_found', 'Prediction not found.');
+    const { closeAt } = windows(m.cfg, m.listingAt);
+    if (m.status !== 'open' || this.now() >= closeAt) throw new ApiError(409, 'market_closed', 'Predictions for this market are closed.');
+    return { u, m, p, closeAt, q: revertQuote(p.stake, p.placedAt, this.now(), m.openedAt, closeAt, DEFAULT_REVERT_RULES) };
+  }
+
+  revertQuote(pid) {
+    return this.run(() => {
+      const { p, q, closeAt } = this.revertTarget(pid);
+      return { predictionId: p.id, stake: p.stake, ...q, lockAt: closeAt - DEFAULT_REVERT_RULES.lockMs };
+    });
+  }
+
+  revert(pid) {
+    return this.run(() => {
+      const { u, m, p, q } = this.revertTarget(pid);
+      if (!q.allowed) throw new ApiError(409, 'revert_locked', 'Predictions can’t be taken back this close to the close.');
+      m.predictions = m.predictions.filter((x) => x.id !== p.id);
+      m.earlyPot = (m.earlyPot ?? 0) + q.toEarly;
+      u.points += q.back;
+      return { id: p.id, back: q.back, fee: q.fee, burned: q.burn, toEarly: q.toEarly, free: q.free, balance: u.points };
     });
   }
 

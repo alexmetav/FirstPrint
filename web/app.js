@@ -1,6 +1,6 @@
 // Firstprint website. Vanilla ES modules, no build step.
 
-import { bucketRangeLabel } from './engine.js';
+import { bucketRangeLabel, revertQuote, weightFor } from './engine.js';
 import { ApiError, backendAvailable, captureReferral, createAdminApi, createApi, serverClock, wake } from './api.js';
 import { DemoBackend } from './demo.js';
 import { OUTCOME_ICONS, ico } from './icons.js';
@@ -101,6 +101,11 @@ const DATE_FMT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeri
 const DAY_FMT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
 const fmtNum = (n) => NUM_FMT.format(Math.round(n ?? 0));
 const fmtPts = (n) => `${fmtNum(n)} pts`;
+/** The early bonus a prediction placed right now would get. */
+const bonusNow = (m) => weightFor(now(), m.openedAt, m.closeAt, m.earlyBirdK ?? 0);
+/** What taking a prediction back would cost right now (the server has the final word). */
+const revertNow = (m, p) => (m.revert ? revertQuote(p.stake, p.placedAt, now(), m.openedAt, m.closeAt, m.revert) : null);
+const pctText = (bps) => `${Math.round(bps / 10) / 10}%`;
 
 /** A number that counts smoothly to its new value when it changes (see the ticker observer below). */
 const tick = (key, n) => `<span class="tick" data-tick="${esc(key)}" data-val="${Number(n) || 0}">${fmtNum(n)}</span>`;
@@ -1059,6 +1064,8 @@ function analyticsView(d, { shared = false } = {}) {
         <div><b>${fmtNum(T.referred)}</b><span>players invited by friends</span></div>
         <div><b>${fmtNum(T.tasksDone)}</b><span>tasks completed</span></div>
         <div><b>${fmtNum(T.testfptClaimers)}</b><span>players claimed TestFPT (${fmtCompact(T.testfptClaimed)} total)</span></div>
+        <div><b>${fmtCompact(T.burned ?? 0)}</b><span>points burned (${fmtNum(T.reverts ?? 0)} predictions taken back)</span></div>
+        <div><b>${fmtCompact(T.earlyRewardsPaid ?? 0)}</b><span>points paid to early players</span></div>
       </div>
       <details class="viz-table"><summary>Daily numbers as a table</summary>
         <div class="table-wrap"><table class="table"><thead><tr><th>Day (UTC)</th><th class="right">Active</th><th class="right">New</th><th class="right">Predictions</th><th class="right">Points staked</th></tr></thead>
@@ -1696,6 +1703,10 @@ function cardView(m) {
     ? `<span class="card-timer card-timer-result" title="Result ${esc(fmtDate(m.settleAt))}">${ico('clock')}Result in<span data-until="${m.settleAt}">${fmtDur(toResult)}</span></span>`
     : '';
 
+  // The early bonus shrinks as the close nears: show it so early players know it's worth coming now.
+  const bonus = open && left > 0 && m.earlyBirdK > 0 ? bonusNow(m) : 0;
+  const bonusChip = bonus >= 1.05 ? `<span class="card-bonus" title="Early bonus for a prediction placed now. It shrinks until the close.">${ico('zap')}${bonus.toFixed(1)}× bonus</span>` : '';
+
   return `
     <article class="card mcard${soon ? ' soon' : ''}${joined > 0 ? ' has-new' : ''}">
       ${joined > 0 ? `<span class="card-bump" aria-hidden="true">+${joined}</span>` : ''}
@@ -1705,7 +1716,7 @@ function cardView(m) {
         ${g}
       </div>
       ${body}
-      <div class="card-foot"><span class="foot-l">${state}${timer}</span>${result ? `<span class="foot-r">${result}</span>` : ''}</div>
+      <div class="card-foot"><span class="foot-l">${state}${timer}${bonusChip}</span>${result ? `<span class="foot-r">${result}</span>` : ''}</div>
     </article>`;
 }
 
@@ -1850,6 +1861,30 @@ function statusLine(m) {
   return '';
 }
 
+/** One line of the rules: taking a prediction back, and what it costs. */
+function revertRule(m) {
+  const r = m.revert;
+  if (!r) return '';
+  return `<li>You can take a prediction back until ${Math.round(r.lockMs / 60_000)} minutes before the close. The fee is ${pctText(r.baseBps)} in the first half of the prediction window, then rises to ${pctText(r.maxBps)} at the close${r.undoMs ? ` (free within ${Math.round(r.undoMs / 60_000)} minutes of placing it, in the first half)` : ''}. ${r.burnBps >= 10_000 ? 'The fee is burned.' : r.burnBps <= 0 ? 'The fee goes to players who predicted in the first half and stayed in.' : `${pctText(r.burnBps)} of the fee is burned and the rest goes to players who predicted in the first half and stayed in, win or lose.`}</li>`;
+}
+
+/** The player's picks on an open market, each with a button to take it back. */
+function myPicksBar(m) {
+  if (!S.me || !m.mine.length || !m.revert) return '';
+  const yn = isYesNo(m);
+  return `<div class="my-picks" aria-label="Your predictions">${m.mine
+    .map((p) => {
+      const q = revertNow(m, p);
+      const note = !q ? '' : !q.allowed ? 'Locked until the result' : q.free ? 'Free to take back now' : `Take back: ${pctText(q.bps)} fee`;
+      return `<div class="my-pick" style="--c:${oVar(p.bucket, yn)}">
+        <span class="my-pick-name">${icon(p.bucket, yn)}<b>${oName(p.bucket, yn)}</b> ${fmtPts(p.stake)}</span>
+        <span class="my-pick-note muted">${note}</span>
+        ${q?.allowed ? `<button class="icon-btn revert-btn" data-action="revert-open" data-id="${esc(p.id)}" aria-label="Take back your ${oName(p.bucket, yn)} prediction" title="Take back">${ico('undo')}</button>` : ''}
+      </div>`;
+    })
+    .join('')}</div>`;
+}
+
 function marketMain(m) {
   const span = fmtSpan(m.settleAt - m.listingAt);
   const settled = m.status === 'resolved' || m.status === 'void';
@@ -1861,6 +1896,8 @@ function marketMain(m) {
   const yn = isYesNo(m);
   // No predictions yet: hide crowd %, payouts and pool sizes instead of showing rows of zeros.
   const quiet = !m.pool;
+  // Back on a market they predicted on: their pick stands out and the rest step back (still pickable).
+  const fadeOthers = canPick && m.mine.length > 0 && !S.trade.bucket;
 
   const rungs = bucketsOf(m).map((b) => {
     const pct = share(m, b) * 100;
@@ -1871,7 +1908,7 @@ function marketMain(m) {
     else if (won && m.totals[b]) pays = `${(net / m.totals[b]).toFixed(2)}×`;
     else if (!settled && m.totals[b]) pays = `${(m.pool * (1 - m.feeBps / 10_000) / m.totals[b]).toFixed(1)}×`;
     return `
-      <button class="rung${won ? ' won' : ''}${yn ? ' rung-yn' : ''}" style="--c:${oVar(b, yn)};--share:${pct}%" data-bucket="${b}"
+      <button class="rung${won ? ' won' : ''}${yn ? ' rung-yn' : ''}${fadeOthers ? (mineBy[b] ? ' rung-mine' : ' rung-faded') : ''}" style="--c:${oVar(b, yn)};--share:${pct}%" data-bucket="${b}"
         aria-pressed="${S.trade.bucket === b}" ${canPick ? '' : 'disabled'}
         aria-label="${oName(b, yn)}, ${rangeOf(m, b)}${quiet ? '' : `, ${Math.round(pct)}% of pool`}">
         <span class="rung-name">
@@ -1907,6 +1944,8 @@ function marketMain(m) {
       : fact('Result', !settled && m.settleAt > now() ? `${fmtDate(m.settleAt)} <span class="muted">· in ${until(m.settleAt)}</span>` : fmtDate(m.settleAt)),
     settled || m.phase === 'awaiting_result' ? '' : fact('Result expected', fmtDate(m.settleAt)),
     m.pool ? fact('Pool', `${tick(`pool:page:${m.id}`, m.pool)} pts <span class="muted">· ${fmtNum(m.predictors)} participant${m.predictors === 1 ? '' : 's'}</span>`) : '',
+    canPick && m.earlyBirdK > 0 && m.closeAt > now() ? fact('Early bonus now', `${bonusNow(m).toFixed(2)}× <span class="muted">· shrinks to 1× at the close</span>`) : '',
+    m.earlyPot > 0 ? fact('Early rewards', `${fmtPts(m.earlyPot)} <span class="muted">· for early players who stay in</span>`) : '',
   ].join('');
 
   return `
@@ -1939,6 +1978,7 @@ function marketMain(m) {
       <div class="ladder-head"><span>${yn ? 'Your answer' : isManual(m) ? 'Final price vs start' : `Price after ${span}`}</span>${quiet ? '' : '<span>Crowd</span><span>Pays</span><span class="pool-col">Pool</span>'}</div>
       ${rungs}
     </section>
+    ${canPick ? myPicksBar(m) : ''}
     ${
       canPick
         ? `<p class="fine ladder-note">${quiet ? `No predictions yet. Early picks get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.` : 'Pays is the current payout per point before early bonuses. Your estimate in the prediction panel includes your bonus.'}</p>`
@@ -1955,6 +1995,7 @@ function marketMain(m) {
         <li>Starting price: the average price over the first ${fmtSpan(m.closeAt - m.listingAt)} ${m.kind === 'live_test' ? 'after the market starts' : 'of trading'}, from ${esc(venueNames(m))}.</li>
         <li>Final price: the average over the last ${fmtSpan(m.closeAt - m.listingAt)} before ${fmtDate(m.settleAt)}. If the token trades on several exchanges, the volume-weighted median is used.</li>
         <li>Predictions close ${fmtSpan(m.closeAt - m.listingAt)} after trading starts. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
+        ${revertRule(m)}
         <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
         <li>The market is cancelled and refunded if the listing is delayed more than 24 hours, trading halts for too long, there isn’t enough trading data, nobody picks the winning outcome, or everyone picks the same outcome.</li>
       </ol>
@@ -2066,6 +2107,7 @@ function manualRules(m) {
     <ol class="rules">
       <li>Yes wins if the final price is at or above ${hasStart(m) ? fmtPrice(m.basePrice) : m.startAtClose ? `${esc(m.symbol)}’s price when predictions close (posted here then)` : `the opening price when ${esc(m.symbol)} starts trading (posted here once known)`}. No wins if it is below.</li>
       <li>Predictions close ${fmtDate(m.closeAt)}. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
+      ${revertRule(m)}
       <li>After that the market counts down to its result on ${fmtDate(m.settleAt)}, when Firstprint posts the final price. The result and winners appear on this page.</li>
       <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
       <li>The market is cancelled and refunded if nobody picks the winning answer, everyone picks the same answer, or Firstprint cancels it.</li>
@@ -2076,6 +2118,7 @@ function manualRules(m) {
     <ol class="rules">
       <li>${hasStart(m) ? `Start price: ${fmtPrice(m.basePrice)}${m.startAtClose ? ', the price when predictions closed' : ''}.` : m.startAtClose ? `Start price: ${esc(m.symbol)}’s price on ${esc(venueNames(m))} when predictions close. It is read automatically and posted here then, so a move while predictions are open doesn’t count.` : `Start price: the opening price when ${esc(m.symbol)} starts trading on ${esc(venueNames(m))}. Firstprint posts it here once trading opens.`} The result is the final price compared with it, using the ranges shown above.</li>
       <li>Predictions close ${fmtDate(m.closeAt)}. Earlier predictions get up to ${(1 + m.earlyBirdK).toFixed(1)}× weight when the pool is split.</li>
+      ${revertRule(m)}
       <li>After that the market counts down to its result on ${fmtDate(m.settleAt)}, when Firstprint posts the final price. The result and winners appear on this page.</li>
       <li>Winners split the pool minus a ${m.feeBps / 100}% fee. Limit ${fmtPts(m.userCap)} per person.</li>
       <li>The market is cancelled and refunded if nobody picks the winning outcome, everyone picks the same outcome, or Firstprint cancels it.</li>
@@ -2278,7 +2321,9 @@ function positionsView(m, mode) {
       if (m.status === 'locked') state = p.refund ? `${fmtPts(p.refund)} refunded by pool limit` : 'In play';
       if (m.status === 'resolved') state = p.payout > 0 ? `Won ${fmtPts(p.payout)}` : 'Didn’t win';
       if (m.status === 'void') state = `Refunded ${fmtPts(p.refund ?? p.stake)}`;
-      return `<div class="position" style="--c:${oVar(p.bucket, isYesNo(m))}"><span><b>${oName(p.bucket, isYesNo(m))}</b> ${fmtPts(p.stake)}</span><span>${state}</span></div>`;
+      const q = m.status === 'open' ? revertNow(m, p) : null;
+      const back = q?.allowed ? ` <button class="icon-btn revert-btn" data-action="revert-open" data-id="${esc(p.id)}" aria-label="Take back this prediction" title="Take back">${ico('undo')}</button>` : '';
+      return `<div class="position" style="--c:${oVar(p.bucket, isYesNo(m))}"><span><b>${oName(p.bucket, isYesNo(m))}</b> ${fmtPts(p.stake)}</span><span>${state}${back}</span></div>`;
     })
     .join('');
   return `<div style="margin-top:16px"><h3 style="font-size:16px;margin-bottom:4px">Your predictions</h3>${rows}</div>`;
@@ -2984,6 +3029,8 @@ function profileView(p) {
       ${tile('star', 'warn', 'Best win', st.bestWin ? `<span class="profit-pos">${signed(st.bestWin.profit)}</span>` : '–', st.bestWin ? `on <a href="#/market/${encodeURIComponent(st.bestWin.marketId)}">${esc(st.bestWin.symbol)}</a>` : 'No wins yet')}
       ${tile('flame', 'down', 'Streak', `${st.currentStreak}`, `wins in a row · best ${st.bestStreak}`)}
       ${tile('target', 'brand', 'Markets played', fmtNum(st.marketsPlayed), `${fmtNum(st.open.markets)} still open`)}
+      ${tile('flame', 'crash', 'Points burned', fmtNum(st.burned ?? 0), st.burned ? 'gone for good, from taking picks back' : 'Nothing burned yet')}
+      ${tile('gift', 'up', 'Early rewards', `<span class="${st.earlyRewards ? 'profit-pos' : ''}">${st.earlyRewards ? signed(st.earlyRewards) : '0'}</span>`, st.earlyRewards ? 'earned by predicting early and staying in' : 'Predict early and stay in to earn them')}
     </dl>
     ${st.history.length >= 2 ? `<div class="dash-grid">${profitChart(st.history)}${outcomeRecord(st.byOutcome, p.isMe ? undefined : 'Picks by outcome')}</div>` : ''}
     <section class="section panel panel-flush">
@@ -3137,6 +3184,8 @@ const HISTORY_LABELS = {
   stake: (e) => `Prediction${e.symbol ? ` on ${e.symbol}` : ''}`,
   refund: (e) => `Refund${e.symbol ? ` from ${e.symbol}` : ''}`,
   payout: (e) => `Won${e.symbol ? ` on ${e.symbol}` : ''}`,
+  revert: (e) => `Took back a prediction${e.symbol ? ` on ${e.symbol}` : ''}`,
+  early_reward: (e) => `Early player reward${e.symbol ? ` on ${e.symbol}` : ''}`,
 };
 
 /** Every change to the balance, so points never seem to appear or vanish. */
@@ -3564,6 +3613,69 @@ function modalShell(title, lede, body) {
     </div>`;
 }
 
+/** The warning before taking a prediction back: what comes back, the fee, and where it goes. */
+function revertView(r) {
+  const m = S.market;
+  const q = r.quote;
+  const yn = isYesNo(m);
+  const name = `<b style="color:${oVar(r.bucket, yn)}">${oName(r.bucket, yn)}</b>`;
+  const rules = m.revert;
+  const split = rules.burnBps >= 10_000 ? `all ${fmtPts(q.fee)} burned` : rules.burnBps <= 0 ? `all ${fmtPts(q.fee)} to early players` : `${fmtPts(q.burn)} burned, ${fmtPts(q.toEarly)} to early players`;
+  return modalShell(
+    'Take back your prediction?',
+    `Your ${name} prediction of ${fmtPts(q.stake)} leaves the pool.`,
+    `<dl class="revert-sum">
+       <div class="big"><dt>You get back</dt><dd>${fmtPts(q.back)}</dd></div>
+       <div><dt>Fee</dt><dd>${q.free ? 'Free' : `${pctText(q.bps)} · ${fmtPts(q.fee)}`}</dd></div>
+       ${q.fee ? `<div><dt>Where the fee goes</dt><dd>${split}</dd></div>` : ''}
+     </dl>
+     <ul class="revert-notes">
+       ${q.free ? `<li>You placed it less than ${Math.round(rules.undoMs / 60_000)} minutes ago, so taking it back is free.</li>` : `<li>The fee rises as the close gets nearer, up to ${pctText(rules.maxBps)}. Burned points are gone for good.</li>`}
+       <li>Your early bonus goes too. If you predict again, the bonus is the one for that moment.</li>
+       <li>You can take predictions back until ${fmtDate(q.lockAt)}.</li>
+     </ul>
+     <button class="cta cta-danger" data-action="revert-confirm"${S.modalBusy ? ' disabled' : ''}>${S.modalBusy ? 'Taking it back' : `Take back for ${fmtPts(q.back)}`}</button>
+     <button class="btn" style="width:100%;margin-top:10px" data-action="close-modal">Keep my prediction</button>
+     <p class="form-error" id="auth-error" role="alert"></p>`,
+  );
+}
+
+/** Opens the take-back warning with the server's price for it. */
+async function openRevert(id) {
+  const p = S.market?.mine.find((x) => x.id === id);
+  if (!p || !S.api.revertQuote) return;
+  try {
+    const quote = await S.api.revertQuote(id);
+    if (!quote.allowed) return toast('Predictions can’t be taken back this close to the close.', true);
+    S.revert = { id, bucket: p.bucket, quote };
+    S.modal = 'revert';
+    S.modalBusy = false;
+    renderAuth();
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+async function confirmRevert() {
+  if (!S.revert || S.modalBusy) return;
+  S.modalBusy = true;
+  renderAuth();
+  try {
+    const res = await S.api.revert(S.revert.id);
+    closeModal();
+    toast(res.fee ? `${fmtPts(res.back)} back. ${fmtPts(res.burned)} burned${res.toEarly ? `, ${fmtPts(res.toEarly)} to early players` : ''}.` : `${fmtPts(res.back)} back, no fee.`);
+    S.revert = null;
+    await refreshMe();
+    S.tradeKey = '';
+    return loadRoute();
+  } catch (err) {
+    S.modalBusy = false;
+    renderAuth();
+    const box = $('#auth-error');
+    if (box) box.textContent = err.message;
+  }
+}
+
 function walletButtons(purpose) {
   const wallets = listWallets();
   const list = wallets
@@ -3643,6 +3755,8 @@ function renderAuth() {
     html = modalShell('Your results', 'What happened on the markets you predicted.', inboxView());
   } else if (kind === 'win') {
     html = winView(S.win);
+  } else if (kind === 'revert') {
+    html = revertView(S.revert);
   } else if (kind === 'pnl') {
     html = modalShell('Share your result', 'Your PnL card for this market. Post it on X, or save the image.', pnlView(S.pnl));
   } else if (kind === 'tour') {
@@ -4319,6 +4433,7 @@ async function renderAdmin() {
   else if (tab === 'settings')
     body = `
       ${canAdmin('admin') ? maintenancePanel() : ''}
+      ${canAdmin('admin') ? revertRulesPanel(await A.api.revertRules().catch(() => null)) : ''}
       ${autoListingsPanel(A.info.autoListings)}
       ${telegramPanel(A.info.telegram)}
       <section class="panel">
@@ -5138,6 +5253,29 @@ function listNames(names) {
 }
 
 /** Settings: new listings from the watched exchanges (review queue, or automatic markets). */
+/** Admin → Settings: the fee for taking a prediction back, and where it goes. */
+function revertRulesPanel(d) {
+  if (!d) return '';
+  const r = d.rules;
+  const t = d.totals;
+  const pct = (bps) => Math.round(bps) / 100;
+  const field = (name, label, value, step, max, unit) =>
+    `<label><span class="field-label">${label}</span><span class="input-unit"><input name="${name}" type="number" min="0" max="${max}" step="${step}" value="${value}" required /><span>${unit}</span></span></label>`;
+  return `<section class="panel">
+    <div class="section-head"><span class="section-ico">${ico('undo')}</span><div><h2>Taking predictions back</h2>
+      <p class="muted">${fmtNum(t.reverts)} taken back so far · ${fmtPts(t.burned)} burned · ${fmtPts(t.earlyPaid)} paid to early players.</p></div></div>
+    <form class="admin-form admin-grid revert-form" data-revert-form>
+      ${field('baseBps', 'Fee in the first half', pct(r.baseBps), 0.1, 100, '%')}
+      ${field('maxBps', 'Fee at the close', pct(r.maxBps), 0.1, 90, '%')}
+      ${field('burnBps', 'Share of the fee burned', pct(r.burnBps), 1, 100, '%')}
+      ${field('undoMs', 'Free undo after placing', Math.round(r.undoMs / 60_000), 1, 60, 'min')}
+      ${field('lockMs', 'No take-backs in the last', Math.round(r.lockMs / 60_000), 1, 240, 'min')}
+      <button class="btn btn-solid" type="submit">${ico('check')}Save</button>
+    </form>
+    ${how('A player can take a prediction back until the lock before the close. In the first half of the prediction window the fee is the starting fee; in the second half it rises, slowly at first and steeply near the close, up to the fee at the close. The burned share is gone for good. The rest is shared at the result among predictions placed in the first half that stayed in, by stake, win or lose; if the market is cancelled it is burned too. Changes apply to take-backs from now on.')}
+  </section>`;
+}
+
 function autoListingsPanel(a) {
   if (!a) return '';
   const where = !a.exchanges ? 'the watched exchanges' : a.exchanges.length ? listNames(a.exchanges) : 'no exchange (all are switched off under Reference exchanges)';
@@ -5164,6 +5302,8 @@ function userActivityView(d) {
       if (e.reason === 'stake') return `Predicted ${pick} on ${mk} <span class="muted">· ${fmtPts(e.pick.stake)} staked</span>`;
       if (e.reason === 'payout') return `Won on ${mk} with ${pick} <span class="muted">· ${fmtPts(e.pick.accepted ?? e.pick.stake)} in, ${fmtPts(e.delta)} out${(e.pick.accepted ?? 0) > 0 ? ` (${(e.delta / e.pick.accepted).toFixed(1)}×)` : ''}</span>`;
       if (e.reason === 'refund') return `Refund on ${mk} <span class="muted">· ${pick}</span>`;
+      if (e.reason === 'revert') return `Took back ${pick} on ${mk} <span class="muted">· ${fmtPts(e.pick.stake)} staked, ${fmtPts(e.pick.stake - e.delta)} fee</span>`;
+      if (e.reason === 'early_reward') return `Early player reward on ${mk} <span class="muted">· ${pick}</span>`;
     }
     return esc((HISTORY_LABELS[e.reason] ?? (() => e.reason))({ symbol: e.market?.symbol }));
   };
@@ -6339,6 +6479,22 @@ async function onAdminAction(action, el) {
 async function onAdminSubmit(form, submitter) {
   if (form.matches('.topup-custom')) return adminTopUp(new FormData(form).get('amount'));
   if (form.matches('[data-maint-form]')) return adminMaintenance(!S.maint?.on);
+  if (form.matches('[data-revert-form]')) {
+    const d = Object.fromEntries(new FormData(form));
+    try {
+      await A.api.setRevertRules({
+        baseBps: Math.round(Number(d.baseBps) * 100),
+        maxBps: Math.round(Number(d.maxBps) * 100),
+        burnBps: Math.round(Number(d.burnBps) * 100),
+        undoMs: Math.round(Number(d.undoMs) * 60_000),
+        lockMs: Math.round(Number(d.lockMs) * 60_000),
+      });
+      toast('Take-back rules saved');
+    } catch (err) {
+      toast(err.message, true);
+    }
+    return renderAdmin();
+  }
   if (form.id === 'admin-login') {
     const key = String(new FormData(form).get('key') || '');
     A.api = createAdminApi(key);
@@ -6707,6 +6863,10 @@ document.addEventListener('click', async (e) => {
       return finishTour();
     case 'win-close':
       return closeWin();
+    case 'revert-open':
+      return openRevert(t.closest('[data-action]').dataset.id);
+    case 'revert-confirm':
+      return confirmRevert();
     case 'pnl-open': {
       const btn = t.closest('[data-action]');
       S.pnl = { marketId: btn.dataset.id, symbol: btn.dataset.symbol };

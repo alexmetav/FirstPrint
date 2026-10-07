@@ -435,11 +435,14 @@ export class RewardsService {
    * (Players with their own wallet would have to sign each prediction, so theirs stay as points.)
    */
   private onLedger(userId: string, delta: number, reason: string, ref: string | null, ledgerId: number) {
-    if (!['stake', 'payout', 'refund'].includes(reason) || !ref) return;
-    if (reason === 'stake' ? delta >= 0 : delta <= 0) return;
+    // A reverted stake comes back like a refund, and early rewards are paid like winnings: both from
+    // the escrow, where the burned part of the revert fee stays.
+    const kind = reason === 'revert' ? 'refund' : reason === 'early_reward' ? 'payout' : reason;
+    if (!['stake', 'payout', 'refund'].includes(kind) || !ref) return;
+    if (kind === 'stake' ? delta >= 0 : delta <= 0) return;
     const wallet = this.embeddedAddress(userId);
     if (!wallet) return;
-    this.queueMint(userId, reason, `L${ledgerId}`, Math.abs(delta), wallet, ref);
+    this.queueMint(userId, kind, `L${ledgerId}`, Math.abs(delta), wallet, ref);
   }
 
   /**
@@ -524,7 +527,9 @@ export class RewardsService {
   /** The memo on a stake, payout or refund: which market, and for a stake which outcome. */
   private memoFor(m: MintRow) {
     const p = m.subject
-      ? as<{ market_id: string; bucket: string } | undefined>(this.db.prepare('SELECT market_id, bucket FROM predictions WHERE id = ?').get(m.subject))
+      ? as<{ market_id: string; bucket: string } | undefined>(
+          this.db.prepare('SELECT market_id, bucket FROM predictions WHERE id = ? UNION ALL SELECT market_id, bucket FROM prediction_reverts WHERE id = ?').get(m.subject, m.subject),
+        )
       : undefined;
     return m.kind === 'stake' ? `firstprint:stake:${p?.market_id ?? '?'}:${p?.bucket ?? '?'}` : `firstprint:${m.kind}:${p?.market_id ?? '?'}`;
   }
@@ -671,9 +676,12 @@ export class RewardsService {
         )
         .all(userId, userId, per, (p - 1) * per),
     );
-    const market = this.db.prepare('SELECT m.symbol, p.market_id FROM predictions p JOIN markets m ON m.id = p.market_id WHERE p.id = ?');
+    const market = this.db.prepare(
+      `SELECT m.symbol, p.market_id FROM (SELECT market_id FROM predictions WHERE id = ? UNION ALL SELECT market_id FROM prediction_reverts WHERE id = ?) p
+       JOIN markets m ON m.id = p.market_id`,
+    );
     const activity = rows.map((r) => {
-      const m = r.subject ? as<{ symbol: string; market_id: string } | undefined>(market.get(r.subject)) : undefined;
+      const m = r.subject ? as<{ symbol: string; market_id: string } | undefined>(market.get(r.subject, r.subject)) : undefined;
       return {
         kind: r.kind,
         // A stake leaves the wallet; everything else arrives in it.

@@ -653,7 +653,27 @@ export function createApiServer(opts: ServerOptions): Server {
     return service.placePrediction(params.id, u.id, b.bucket as Bucket, Number(b.stake));
   });
 
+  route('GET', '/api/predictions/:id/revert', ({ params, user }) => service.revertQuote(params.id, user().id));
+
+  route('POST', '/api/predictions/:id/revert', ({ params, user }) => {
+    const u = user();
+    rateLimit(`predict:${u.id}`);
+    return service.revertPrediction(params.id, u.id);
+  });
+
   // --- Admin routes -----------------------------------------------------------------
+
+  route('GET', '/api/admin/revert-rules', ({ requireAdmin }) => {
+    requireAdmin();
+    return { rules: service.revertRules(), totals: service.burnTotals() };
+  });
+
+  route('POST', '/api/admin/revert-rules', async ({ req, body, requireAdmin }) => {
+    requireAdmin();
+    const rules = service.setRevertRules((await body()) as never);
+    audit(req, 'revert_rules', null, JSON.stringify(rules));
+    return { rules, totals: service.burnTotals() };
+  });
 
   route('POST', '/api/admin/markets', async ({ body, requireAdmin }) => {
     requireAdmin();

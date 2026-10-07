@@ -30,7 +30,7 @@ const HOUR = 60 * MINUTE;
 
 export const DEFAULT_CONFIG               = {
   thresholds: DEFAULT_THRESHOLDS,
-  earlyBirdK: 0.5,
+  earlyBirdK: 1,
   feeBps: 400,
   softCap: 50_000,
   volumeCapRatio: null,
@@ -178,6 +178,64 @@ export function weightFor(placedAt        , tOpen        , tClose        , k    
   if (tClose <= tOpen) return 1;
   const f = (tClose - placedAt) / (tClose - tOpen);
   return 1 + k * Math.min(1, Math.max(0, f));
+}
+
+// ---------------------------------------------------------------------------
+// Reverting a prediction
+// ---------------------------------------------------------------------------
+
+/**
+ * A player can take a prediction back before predictions close. The fee is small in the first half
+ * of the prediction window and climbs steeply in the second half, so faking a big bet to move the
+ * odds and leaving just before the close costs more than it can win. Half the fee is burned and half
+ * goes to the players who predicted in the first half and stayed in.
+ */
+
+export const DEFAULT_REVERT_RULES              = {
+  baseBps: 200,
+  maxBps: 5_000,
+  undoMs: 2 * MINUTE,
+  lockMs: 10 * MINUTE,
+  burnBps: 5_000,
+};
+
+/** True when a prediction placed at this time counts as early (first half of the window). */
+export function isEarly(placedAt        , tOpen        , tClose        )          {
+  return placedAt < tOpen + (tClose - tOpen) / 2;
+}
+
+/** The fee rate, in basis points, for taking a prediction back at `now`. */
+export function revertBps(now        , tOpen        , tClose        , rules                                         )         {
+  if (tClose <= tOpen) return rules.maxBps;
+  const left = Math.min(1, Math.max(0, (tClose - now) / (tClose - tOpen)));
+  if (left >= 0.5) return rules.baseBps;
+  const x = (0.5 - left) / 0.5;
+  return Math.round(rules.baseBps + (rules.maxBps - rules.baseBps) * x * x * x);
+}
+
+export function revertQuote(stake        , placedAt        , now        , tOpen        , tClose        , rules             )              {
+  const allowed = now < tClose - rules.lockMs;
+  const free = now - placedAt <= rules.undoMs && isEarly(now, tOpen, tClose);
+  const bps = free ? 0 : revertBps(now, tOpen, tClose, rules);
+  const fee = Math.min(stake, Math.ceil((stake * bps) / 10_000));
+  const burn = fee - Math.floor((fee * (10_000 - rules.burnBps)) / 10_000);
+  return { allowed, bps, fee, back: stake - fee, burn, toEarly: fee - burn, free };
+}
+
+/** Splits the early players' share of revert fees by accepted stake. Rounding remainder is burned. */
+export function splitEarlyPot(pot        , early                                             )                                                  {
+  const total = early.reduce((s, p) => s + p.accepted, 0);
+  const shares = new Map                ();
+  if (pot <= 0 || total <= 0) return { shares, burned: Math.max(0, pot) };
+  let paid = 0;
+  for (const p of early) {
+    const n = Math.floor((pot * p.accepted) / total);
+    if (n > 0) {
+      shares.set(p.id, n);
+      paid += n;
+    }
+  }
+  return { shares, burned: pot - paid };
 }
 
 export function hardCapFor(cfg              , baselineVolume        )         {
