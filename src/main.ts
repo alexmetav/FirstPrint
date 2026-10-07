@@ -167,6 +167,28 @@ const tracker = !tracked.length
         })
       : new ListingTracker(service, tracked, { autoCreate: cfg.autoCreateMarkets });
 
+// Result emails go out one at a time (Resend allows about 2 a second), not all at once when a big
+// market settles; sign-in codes are sent directly and never wait behind them.
+const emailQueue: (() => Promise<void>)[] = [];
+let emailQueueRunning = false;
+const EMAIL_QUEUE_MAX = Number(process.env.RESULT_EMAIL_QUEUE_MAX) > 0 ? Number(process.env.RESULT_EMAIL_QUEUE_MAX) : 5_000;
+function queueResultEmail(email: string, n: Parameters<typeof resultEmail>[0]) {
+  if (emailQueue.length >= EMAIL_QUEUE_MAX) return;
+  emailQueue.push(async () => {
+    const mail = resultEmail(n, appUrl);
+    await mailer!.send(email, mail.subject, mail.text, mail.html).catch((err: Error) => log(`result email failed for ${n.userId}: ${err.message}`));
+  });
+  if (emailQueueRunning) return;
+  emailQueueRunning = true;
+  void (async () => {
+    while (emailQueue.length) {
+      await emailQueue.shift()!();
+      await new Promise((r) => setTimeout(r, 600));
+    }
+    emailQueueRunning = false;
+  })();
+}
+
 const scheduler = new Scheduler(
   service,
   async (notes) => {
@@ -174,8 +196,7 @@ const scheduler = new Scheduler(
       log(`notify ${n.userId}: ${n.symbol} ${n.status} payout=${n.payout} refund=${n.refund}`);
       const email = mailer instanceof ResendMailer ? service.getUser(n.userId).email : null;
       if (!email) continue;
-      const mail = resultEmail(n, appUrl);
-      mailer!.send(email, mail.subject, mail.text, mail.html).catch((err: Error) => log(`result email failed for ${n.userId}: ${err.message}`));
+      queueResultEmail(email, n);
     }
   },
   { tickMs: cfg.tickMs, liveMs: cfg.liveMs, trackEveryMs: cfg.trackEveryMs, tracker,

@@ -244,8 +244,8 @@ test('HTTP: Google sign-in creates the account once; email code and Google reach
   }
 });
 
-test('HTTP: at most 10 new accounts per network a day; existing accounts still sign in', async () => {
-  const s = await serve();
+test('HTTP: a per-network cap on new accounts a day (NEW_ACCOUNTS_PER_DAY); existing accounts still sign in', async () => {
+  const s = await serve({ newAccountsPerDay: 10 });
   try {
     const signIn = (email: string) => s.post('/api/auth/email/verify', { email, code: s.service.startEmailLogin(email).code });
     for (let i = 0; i < 10; i++) assert.equal((await signIn(`p${i}@example.com`)).status, 200);

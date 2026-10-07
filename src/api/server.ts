@@ -249,7 +249,8 @@ export function createApiServer(opts: ServerOptions): Server {
   // so a script making endless accounts could farm them; real players are never near this. Kept in
   // the database (a restart or deploy doesn't reset it); checked before signing in and counted only
   // when an account is made.
-  const NEW_ACCOUNTS_PER_DAY = opts.newAccountsPerDay ?? 10;
+  // Per network (mobile carriers put many real people behind one address): set NEW_ACCOUNTS_PER_DAY to change it.
+  const NEW_ACCOUNTS_PER_DAY = opts.newAccountsPerDay ?? 60;
   function checkNewAccount(req: IncomingMessage, isNew: boolean) {
     if (!isNew) return;
     if (service.newAccountsFrom(visitor(req)) >= NEW_ACCOUNTS_PER_DAY) {
@@ -388,7 +389,7 @@ export function createApiServer(opts: ServerOptions): Server {
   route('POST', '/api/auth/email/start', async ({ req, body }) => {
     if (!opts.mailer) throw new AppError(503, 'email_off', 'Email sign-in isn’t set up yet. Use Google or a wallet.');
     const b = await body();
-    rateLimit(`emailcode:${visitor(req)}`, 10, 10 * 60_000);
+    rateLimit(`emailcode:${visitor(req)}`, 40, 10 * 60_000);
     const email = String(b.email ?? '').trim().toLowerCase();
     rateLimit(`emailcode:${email}`, 5, 60 * 60_000);
     const { code, expiresAt } = service.startEmailLogin(email);
@@ -1463,11 +1464,21 @@ export function createApiServer(opts: ServerOptions): Server {
 
   /** Open live-update streams per visitor, so one client can't use up every connection. */
   const streamsByVisitor = new Map<string, number>();
-  const MAX_STREAMS_PER_VISITOR = 8;
+  // Many players can share one address (mobile carriers, offices), so this is generous.
+  const MAX_STREAMS_PER_VISITOR = 100;
+  // All live connections together (each holds a little memory); MAX_STREAMS raises it on a bigger server.
+  const MAX_STREAMS = Number(process.env.MAX_STREAMS) > 0 ? Number(process.env.MAX_STREAMS) : 5_000;
+
+  let lastEvent: { event: string; data: unknown; text: string } | null = null;
+  const encodeEvent = (event: string, data: unknown) => {
+    if (lastEvent && lastEvent.event === event && lastEvent.data === data) return lastEvent.text;
+    lastEvent = { event, data, text: `event: ${event}\ndata: ${JSON.stringify(data)}\n\n` };
+    return lastEvent.text;
+  };
 
   function openStream(req: IncomingMessage, res: ServerResponse) {
     if (!opts.live) return send(res, 404, { error: 'not_found', message: 'Live updates are not enabled.' });
-    if (opts.live.connections >= 5_000) return send(res, 503, { error: 'busy', message: 'Too many live connections. Try again soon.' });
+    if (opts.live.connections >= MAX_STREAMS) return send(res, 503, { error: 'busy', message: 'Too many live connections. Try again soon.' });
     const who = visitor(req);
     const open = streamsByVisitor.get(who) ?? 0;
     if (open >= MAX_STREAMS_PER_VISITOR) return send(res, 429, { error: 'rate_limited', message: 'Too many live connections from your network. Close some tabs and try again.' });
@@ -1480,7 +1491,10 @@ export function createApiServer(opts: ServerOptions): Server {
     });
     res.write(`retry: 5000\nevent: hello\ndata: ${JSON.stringify({ serverTime: service.clock.now() })}\n\n`);
     const unsubscribe = opts.live.subscribe((event, data) => {
-      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      // Encoded once per event for all listeners. A listener that can't keep up skips events
+      // (the page refreshes on its own) instead of piling them up in memory.
+      if (res.writableLength > 256 * 1024) return;
+      res.write(encodeEvent(event, data));
     });
     const heartbeat = setInterval(() => res.write(': ping\n\n'), 25_000);
     req.on('close', () => {

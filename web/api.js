@@ -20,8 +20,9 @@ export const wake = { onWaking: () => {}, onAwake: () => {} };
  * browser cache after a 304), so countdowns match the server. null until the first answer.
  */
 export const serverClock = { skew: null };
-const WAKE_RETRIES = 16;
-const WAKE_WAIT_MS = 4_000;
+const WAKE_RETRIES = 12;
+/** Wait before retry n: grows from 3 s to 20 s, with a random spread so pages don't retry in step. */
+const wakeWait = (n) => Math.min(20_000, 3_000 * 1.5 ** n) * (0.6 + Math.random() * 0.8);
 const GATEWAY = new Set([502, 503, 504, 520, 521, 522, 523, 524]);
 
 /**
@@ -54,7 +55,7 @@ export function createApi(baseUrl = '') {
         if (canRetry && attempt < WAKE_RETRIES) {
           waking = true;
           wake.onWaking();
-          await new Promise((r) => setTimeout(r, WAKE_WAIT_MS));
+          await new Promise((r) => setTimeout(r, wakeWait(attempt)));
           continue;
         }
         if (waking) wake.onAwake();
@@ -63,7 +64,7 @@ export function createApi(baseUrl = '') {
       if (GATEWAY.has(res.status) && canRetry && attempt < WAKE_RETRIES) {
         waking = true;
         wake.onWaking();
-        await new Promise((r) => setTimeout(r, WAKE_WAIT_MS));
+        await new Promise((r) => setTimeout(r, wakeWait(attempt)));
         continue;
       }
       if (waking) wake.onAwake();

@@ -9,6 +9,8 @@ export function openDb(path: string): DB {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA foreign_keys = ON;');
   if (path !== ':memory:') db.exec('PRAGMA journal_mode = WAL;');
+  // With WAL, NORMAL is safe (no corruption) and much faster for many small writes.
+  if (path !== ':memory:') db.exec('PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;');
   db.exec(schema);
   migrate(db);
   widenTaskKinds(db);

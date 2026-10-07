@@ -4059,6 +4059,7 @@ async function submitUsername(form) {
 let marketRenderTimer = null;
 let homeRenderTimer = null;
 let refreshTimer = null;
+let refreshAt = 0;
 
 function onLive(type, data) {
   if (type === 'price') {
@@ -4089,8 +4090,18 @@ function onLive(type, data) {
       }
     }
   } else if (type === 'market' || (type === 'listing' && S.route.name === 'radar')) {
+    // The market being looked at refreshes within a couple of seconds; anything else waits a while,
+    // with a random spread, so a busy market doesn't make every open page reload at the same moment.
+    const here = S.route.name === 'market' && data?.marketId === S.route.id;
+    const delay = here ? 600 + Math.random() * 1500 : 8_000 + Math.random() * 12_000;
+    const at = Date.now() + delay;
+    if (refreshTimer && refreshAt <= at) return; // one is already coming sooner
     clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(refresh, 700);
+    refreshAt = at;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      refresh();
+    }, delay);
   }
 }
 
@@ -6905,14 +6916,15 @@ setInterval(() => {
     if (left <= 0 && left > -1500) expired = true;
   });
   tickCountdowns();
-  if (expired) setTimeout(refresh, 1200);
+  // Everyone's countdown ends together: spread the refreshes over a few seconds.
+  if (expired) setTimeout(refresh, 1200 + Math.random() * 6000);
 }, 1000);
 
 // Background refresh. While the live stream is connected it already brings every market change
 // (new predictions, closes, results) and prices, so the full reload only catches the rest (balance,
 // leaderboard) every 45 seconds; without the stream, every 8 seconds as before.
 const REFRESH_LIVE_MS = 45_000;
-const REFRESH_OFFLINE_MS = 8_000;
+const REFRESH_OFFLINE_MS = 20_000;
 setInterval(() => {
   if (document.hidden) return;
   if (Date.now() - (S.refreshedAt ?? 0) >= (S.live ? REFRESH_LIVE_MS : REFRESH_OFFLINE_MS) - 500) refresh();
