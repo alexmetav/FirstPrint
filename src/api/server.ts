@@ -1107,6 +1107,66 @@ export function createApiServer(opts: ServerOptions): Server {
     throw new AppError(404, 'not_found', 'Unknown step.');
   });
 
+  // Errors players hit in the app (failed requests, crashes in the page), reported by the app itself.
+  route('POST', '/api/client-error', async ({ req, body, optionalUser }) => {
+    rateLimit(`client-error:${visitor(req)}`, 20, 60_000);
+    const b = await body();
+    const text = (v: unknown, n: number) => (typeof v === 'string' ? v.slice(0, n) : null);
+    service.errors?.record({
+      source: 'app',
+      code: text(b.code, 40) || 'client_error',
+      message: text(b.message, 400) || 'Unknown error in the app',
+      where: text(b.where, 200),
+      userId: optionalUser()?.id ?? null,
+      detail: text(b.detail, 3000),
+    });
+    return { ok: true };
+  });
+
+  route('GET', '/api/admin/errors', ({ requireAdmin, url }) => {
+    requireAdmin();
+    const errors = service.errors;
+    if (!errors) return { errors: [], counts: { open: 0, today: 0 } };
+    return { errors: errors.list(url.searchParams.get('view') !== 'fixed'), counts: errors.counts() };
+  });
+
+  route('POST', '/api/admin/errors/:id/resolve', ({ req, params, requireAdmin }) => {
+    requireAdmin();
+    service.errors?.resolve(Number(params.id));
+    audit(req, 'error_resolved', params.id, '');
+    return { ok: true };
+  });
+
+  route('POST', '/api/admin/errors/resolve-all', ({ req, requireAdmin }) => {
+    requireAdmin();
+    const n = service.errors?.resolveAll() ?? 0;
+    audit(req, 'errors_resolved', String(n), '');
+    return { ok: true, resolved: n };
+  });
+
+  route('POST', '/api/admin/errors/clear-fixed', ({ requireAdmin }) => {
+    requireAdmin();
+    return { ok: true, cleared: service.errors?.clearResolved() ?? 0 };
+  });
+
+  // One-click fixes offered next to some errors: retry the chain sends, take a backup now.
+  route('POST', '/api/admin/errors/fix/:kind', async ({ req, params, requireAdmin }) => {
+    requireAdmin();
+    if (params.kind === 'chain') {
+      const r = rewardsOn();
+      await Promise.race([r.runChain(), new Promise((ok) => setTimeout(ok, 25_000))]);
+      audit(req, 'fix_chain', '', '');
+      return { ok: true, message: 'Chain sends retried.' };
+    }
+    if (params.kind === 'backup') {
+      const ok = opts.backupNow ? await opts.backupNow().catch(() => false) : false;
+      audit(req, 'fix_backup', '', String(ok));
+      if (!ok) throw new AppError(502, 'backup_failed', 'The backup didn’t go through. Check SUPABASE_URL and SUPABASE_SERVICE_KEY in Render.');
+      return { ok: true, message: 'Backup taken.' };
+    }
+    throw new AppError(404, 'not_found', 'Nothing to fix for this kind.');
+  });
+
   route('GET', '/api/admin/tasks', async ({ requireAdmin }) => {
     requireAdmin('tasks');
     const r = rewardsOn();
@@ -1629,8 +1689,14 @@ export function createApiServer(opts: ServerOptions): Server {
       const out = await (url.pathname.startsWith('/api/admin/') ? asAdmin(() => match.r.handler(ctx)) : match.r.handler(ctx));
       send(res, 200, out);
     } catch (err) {
-      if (err instanceof AppError) return send(res, err.status, { error: err.code, message: err.message });
-      service.log(`500 ${req.method} ${url.pathname}: ${(err as Error).stack ?? err}`);
+      const where = `${req.method} ${url.pathname}`;
+      if (err instanceof AppError) {
+        // Our own 5xx answers (network down, chain unavailable…) are problems too; maintenance isn't.
+        if (err.status >= 500 && err.code !== 'maintenance') service.errors?.record({ source: 'server', code: err.code, message: err.message, where, userId: userMemo?.id ?? null });
+        return send(res, err.status, { error: err.code, message: err.message });
+      }
+      service.log(`500 ${where}: ${(err as Error).stack ?? err}`);
+      service.errors?.record({ source: 'server', code: 'server_error', message: (err as Error)?.message ?? String(err), where, userId: userMemo?.id ?? null, detail: (err as Error)?.stack ?? null });
       send(res, 500, { error: 'server_error', message: 'Something went wrong on our side. Try again.' });
     }
   });

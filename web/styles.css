@@ -13994,3 +13994,122 @@ html.in-maint body {
     font-size: 26px;
   }
 }
+
+/* Admin → Errors */
+.err-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px 24px;
+}
+.err-stats {
+  display: flex;
+  gap: 32px;
+}
+.err-stats > div {
+  display: grid;
+}
+.err-stats b {
+  font-size: 26px;
+  font-weight: 600;
+}
+.err-stats span {
+  font-size: var(--fs-meta);
+}
+.err-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--raised);
+}
+.err-seg button {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.err-seg button[aria-selected='true'] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.err-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.err-item {
+  display: grid;
+  gap: 8px;
+  padding: 18px 22px;
+  border-top: 1px solid var(--line);
+}
+.err-item:first-child {
+  border-top: 0;
+}
+.err-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.err-kind {
+  color: var(--crash);
+  background: color-mix(in srgb, var(--crash) 12%, transparent);
+}
+.err-count {
+  color: var(--text);
+  background: var(--raised);
+}
+.err-src {
+  font-size: var(--fs-meta);
+}
+.err-when {
+  margin-left: auto;
+  font-size: var(--fs-meta);
+}
+.err-msg {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.err-where,
+.err-help {
+  margin: 0;
+}
+.err-help {
+  display: flex;
+  gap: 6px;
+  color: var(--muted);
+}
+.err-help .i {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+}
+.err-detail pre {
+  max-height: 260px;
+  margin: 8px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: 10px;
+  background: var(--field);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.err-detail summary {
+  cursor: pointer;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}

@@ -319,6 +319,8 @@ export class FirstprintService {
    * points as a reward to claim instead of straight into their balance.
    */
   rewardsOnChain: () => boolean = () => false;
+  /** Problems for Admin → Errors (set by main; tests may leave it unset). */
+  errors: import('./errorLog.ts').ErrorLog | null = null;
   /** Called inside the transaction after a prediction is placed (referral rewards hook in here). */
   onPredicted: (userId: string) => void = () => {};
 

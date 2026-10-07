@@ -1,3 +1,4 @@
+import { ErrorLog, classifyLogLine } from './services/errorLog.ts';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +25,13 @@ import { Telegram, newListingText, resultDueText } from './services/telegram.ts'
 import { ChannelPoster } from './services/channel.ts';
 import { rpcChain, rpcUrlFor, type Cluster } from './solana/testfpt.ts';
 
-const log = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
+// Every log line goes to the console; failures in background work also go to Admin → Errors.
+let errorSink: ErrorLog | null = null;
+const log = (msg: string) => {
+  console.log(`${new Date().toISOString()} ${msg}`);
+  const code = errorSink ? classifyLogLine(msg) : null;
+  if (code) errorSink!.record({ source: 'background', code, message: msg.split('\n')[0], detail: msg.includes('\n') ? msg : null });
+};
 
 const cfg = loadConfig();
 if (cfg.dbPath !== ':memory:') mkdirSync(dirname(cfg.dbPath), { recursive: true });
@@ -57,6 +64,10 @@ const mailer: Mailer | null =
 const devEmailCodes = !production && !(cfg.resendApiKey && cfg.mailFrom);
 
 const service = new FirstprintService(db, systemClock, venues, log);
+errorSink = new ErrorLog(db);
+service.errors = errorSink;
+// Anything that would otherwise crash or vanish silently is kept for the admin too.
+process.on('unhandledRejection', (err) => log(`unhandled error: ${(err as Error)?.stack ?? err}`));
 // Market lists are built once every few seconds for everyone (each player's own picks are added fresh).
 service.listCacheMs = 3_000;
 // The leaderboard changes only when a market settles (which rebuilds it at once); otherwise once a minute.

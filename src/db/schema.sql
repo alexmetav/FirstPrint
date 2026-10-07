@@ -239,3 +239,21 @@ CREATE TABLE IF NOT EXISTS notifications (
   read_at         INTEGER
 );
 CREATE INDEX IF NOT EXISTS notifications_user ON notifications(user_id, created_at);
+
+-- Problems for Admin → Errors: failed requests, failed background work and errors players hit.
+CREATE TABLE IF NOT EXISTS error_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  fingerprint TEXT NOT NULL,
+  source      TEXT NOT NULL,        -- server | background | app
+  code        TEXT NOT NULL,
+  message     TEXT NOT NULL,
+  where_      TEXT,
+  user_id     TEXT,
+  detail      TEXT,
+  count       INTEGER NOT NULL DEFAULT 1,
+  first_at    INTEGER NOT NULL,
+  last_at     INTEGER NOT NULL,
+  resolved_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS error_log_open ON error_log(fingerprint, resolved_at);
+CREATE INDEX IF NOT EXISTS error_log_last ON error_log(resolved_at, last_at);
