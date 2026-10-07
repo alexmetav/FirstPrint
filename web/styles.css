@@ -13643,3 +13643,73 @@ html.in-maint body {
     display: none;
   }
 }
+
+/* TestFPT waiting to be claimed: a small gold chip in the top bar. */
+.chip.claim-chip {
+  gap: 6px;
+  padding: 0 6px 0 10px;
+  border-color: color-mix(in srgb, var(--gold) 45%, var(--line-strong));
+  background: color-mix(in srgb, var(--gold) 12%, var(--surface));
+  color: var(--text);
+}
+.chip.claim-chip.is-new {
+  animation: claim-chip-in 380ms var(--ease-out) both;
+}
+.chip.claim-chip:hover {
+  background: color-mix(in srgb, var(--gold) 20%, var(--surface));
+}
+.chip.claim-chip .i {
+  color: var(--gold);
+}
+.claim-chip .claim-n {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.claim-chip .claim-word {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #14110a;
+  font-size: 12px;
+  font-weight: 650;
+}
+.claim-chip.is-busy {
+  cursor: progress;
+}
+.claim-chip.is-busy .claim-word {
+  background: color-mix(in srgb, var(--gold) 55%, transparent);
+}
+.claim-chip .spin {
+  width: 14px;
+  height: 14px;
+}
+@keyframes claim-chip-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+/* Phones: just the token and the amount; a tap claims. */
+@media (max-width: 640px) {
+  .chip.claim-chip {
+    padding: 0 10px;
+  }
+  .claim-chip .claim-word {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chip.claim-chip.is-new {
+    animation: none;
+  }
+}

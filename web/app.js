@@ -654,6 +654,7 @@ function drawTop() {
           S.me
             ? `<button class="chip bell${S.me.unreadNotifications ? ' has-new' : ''}" data-action="inbox" aria-label="Your results${S.me.unreadNotifications ? `, ${S.me.unreadNotifications} new` : ''}">${ico('bell')}${S.me.unreadNotifications ? `<span class="bell-n">${S.me.unreadNotifications > 9 ? '9+' : S.me.unreadNotifications}</span>` : ''}</button>
                ${streakChip()}
+               ${claimChip()}
                <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${tick('me:points:top', S.me.points)}<span class="unit">pts</span></a>
                <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
             : `<a class="top-link hide-sm" href="#/" data-action="how">${ico('info')}How it works</a><button class="btn btn-gold" data-action="connect">Log in</button>`
@@ -690,6 +691,24 @@ function streakChip() {
   const can = S.me.canClaimDaily;
   const label = `Daily streak: ${d.streak} day${d.streak === 1 ? '' : 's'}${can ? `. Claim +${d.next} today` : ''}`;
   return `<button class="chip streak-chip${d.streak ? ' lit' : ''}${can ? ' can-claim' : ''}" data-action="streak" aria-label="${label}" aria-haspopup="dialog" aria-expanded="${S.streakOpen ? 'true' : 'false'}" aria-controls="streak-pop">${ico('flame')}<span class="streak-n">${d.streak}</span>${can ? '<i class="streak-dot" aria-hidden="true"></i>' : ''}</button>`;
+}
+
+/**
+ * TestFPT waiting to be claimed, as a small chip in the top bar. It shows up when a reward is
+ * earned and goes once it is claimed (the coins fly into the points balance). Players with a
+ * Firstprint wallet never see it: their rewards are sent by themselves.
+ */
+function claimChip() {
+  const r = S.rewards;
+  if (!r?.onChain || r.firstprintWallet || !(r.claimable > 0)) {
+    S.claimChipShown = false;
+    return '';
+  }
+  // It pops in only when it first appears, not on every redraw of the top bar.
+  const fresh = !S.claimChipShown;
+  S.claimChipShown = true;
+  const busy = Boolean(S.claimBusy);
+  return `<button class="chip claim-chip${fresh ? ' is-new' : ''}${busy ? ' is-busy' : ''}" data-action="claim-tokens"${busy ? ' disabled' : ''} title="${busy ? 'Claiming your TestFPT…' : `Claim ${fmtNum(r.claimable)} TestFPT to your wallet`}" aria-label="${busy ? 'Claiming' : `Claim ${fmtNum(r.claimable)} TestFPT`}">${busy ? '<span class="spin" aria-hidden="true"></span>' : ico('token')}<span class="claim-n">${fmtNum(r.claimable)}</span><span class="claim-word">${busy ? 'Claiming' : 'Claim'}</span></button>`;
 }
 
 /** The streak, small: seven days as circles (green once claimed) with their points, and the claim button. */
@@ -3113,7 +3132,6 @@ function earnView() {
       <div class="earn2-grid">
         <div class="earn2-main">
           ${tasksCard(r)}
-          ${r.onChain ? claimCard(r) : ''}
           ${r.onChain ? claimsList(r) : ''}
         </div>
         <aside class="earn2-side">
@@ -3122,32 +3140,6 @@ function earnView() {
         </aside>
       </div>
     </div>`;
-}
-
-function claimCard(r) {
-  const wallets = S.me.wallets;
-  if (r.firstprintWallet) {
-    return `
-    <section class="claim-card${r.claimable ? ' has-claim' : ' is-empty'}">
-      <div class="claim-amount"><span class="claim-ico">${ico('token')}</span><div><b>${r.claimable ? (r.chainPaused ? `<span class="num">${fmtNum(r.claimable)}</span> TestFPT on its way` : `Sending <span class="num">${fmtNum(r.claimable)}</span> TestFPT to your wallet…`) : 'Rewards arrive by themselves'}</b><span class="muted">${r.claimable && r.chainPaused ? 'Sending is paused for a little while on our side. It goes out by itself as soon as it restarts; nothing for you to do.' : `Everything you earn is sent to your Firstprint wallet (${esc(shortAddress(r.firstprintWallet))}) as TestFPT, on chain, with no fee for you.`}</span></div></div>
-      <div class="claim-side"><p class="fine" id="claim-status" role="status">${r.mintUrl ? `<a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a>` : ''}</p></div>
-    </section>`;
-  }
-  return `
-    <section class="claim-card${r.claimable ? ' has-claim' : ' is-empty'}">
-      <div class="claim-amount"><span class="claim-ico">${ico('token')}</span><div><b>${r.claimable ? `<span class="num">${fmtNum(r.claimable)}</span> TestFPT ready to claim` : 'Nothing to claim yet'}</b><span class="muted">${r.claimable ? 'Send it to your wallet whenever you like.' : 'Finish a task or invite a friend, then claim it here as TestFPT.'}</span></div></div>
-      <div class="claim-side">
-        ${
-          !wallets.length
-            ? '<p class="muted" style="margin:0">Link a Solana wallet to claim to it.</p><button class="btn btn-solid" data-action="link-wallet">Link wallet</button>'
-            : !(r.claimable || S.claimBusy)
-            ? ''
-            : `${wallets.length > 1 ? `<label class="select">To <select id="claim-wallet">${wallets.map((w) => `<option value="${esc(w.address)}">${esc(shortAddress(w.address))}${w.walletName ? ` · ${esc(w.walletName)}` : ''}</option>`).join('')}</select></label>` : `<span class="muted">To ${esc(shortAddress(wallets[0].address))}</span>`}
-               <button class="btn btn-gold" data-action="claim-tokens"${S.claimBusy ? ' disabled' : ''}>${S.claimBusy ? 'Claiming…' : `Claim ${fmtNum(r.claimable)} TestFPT`}</button>`
-        }
-        <p class="fine" id="claim-status" role="status">${r.chainPaused ? 'Right now your wallet may ask you to approve the claim and pay a tiny fee in test SOL.' : 'No fee and nothing to approve: Firstprint sends it and pays the network fee.'}${r.mintUrl ? ` · <a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a>` : ''}</p>
-      </div>
-    </section>`;
 }
 
 function referralCard(r) {
@@ -3255,7 +3247,7 @@ function claimsList(r) {
   const label = { pending: 'Waiting for wallet', submitted: 'Confirming', confirmed: 'Claimed', failed: 'Failed', expired: 'Expired' };
   return `
     <section class="section panel">
-      <div class="section-head"><span class="section-ico">${ico('token')}</span><h2>Your claims</h2></div>
+      <div class="section-head"><span class="section-ico">${ico('token')}</span><h2>Your claims</h2>${r.mintUrl ? `<a class="head-action fine" href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Explorer ${ico('external')}</a>` : ''}</div>
       <ul class="activity">${r.claims
         .map(
           (c) => `<li><span>${fmtNum(c.amount)} TestFPT to ${esc(shortAddress(c.wallet))} · <b class="${c.status === 'confirmed' ? 'profit-pos' : c.status === 'failed' || c.status === 'expired' ? 'profit-neg' : ''}">${label[c.status] ?? c.status}</b>${c.error && c.status !== 'confirmed' ? ` <span class="muted">${esc(c.error)}</span>` : ''}</span>
@@ -3265,44 +3257,35 @@ function claimsList(r) {
     </section>`;
 }
 
-function setClaimStatus(text) {
-  const el = $('#claim-status');
-  if (el) el.textContent = text;
-}
-
 /**
  * Claim every reward to the chosen wallet. Normally Firstprint signs, sends and pays for it (no
  * pop-up); only if the server is out of test SOL does it hand back a transaction for the wallet to sign.
  */
 async function claimTokens() {
   if (S.claimBusy) return;
-  const wallet = $('#claim-wallet')?.value || S.me?.wallets?.[0]?.address;
+  const wallet = S.me?.wallets?.[0]?.address;
   if (!wallet) return openAuth('link');
   S.claimBusy = true;
-  const btn = $('[data-action="claim-tokens"]');
-  const from = btn?.getBoundingClientRect();
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Claiming…';
-  }
-  setClaimStatus('Sending your TestFPT on Solana…');
+  renderTop();
   try {
     const c = await S.api.startClaim(wallet);
     let res = c;
     if (!c.serverPaid) {
-      setClaimStatus(`Approve the transaction in your wallet: it mints ${fmtNum(c.amount)} TestFPT to ${shortAddress(wallet)}.`);
+      toast(`Approve the transaction in your wallet: it mints ${fmtNum(c.amount)} TestFPT to ${shortAddress(wallet)}.`);
       const walletName = S.me.wallets.find((w) => w.address === wallet)?.walletName;
       const signedTx = await signTransactionWith(wallet, c.transaction, c.cluster, walletName);
-      setClaimStatus('Sending to Solana…');
       res = await S.api.submitClaim(c.claimId, signedTx);
     }
     for (let i = 0; res.status === 'submitted' && i < 20; i++) {
-      setClaimStatus('Confirming on Solana…');
       await new Promise((r) => setTimeout(r, 3_000));
       res = await S.api.claimStatus(c.claimId);
     }
     if (res.status === 'confirmed') {
-      await collectPoints(from, res.amount);
+      // The chip goes, and its coins fly into the balance, which counts up.
+      const chip = $('.claim-chip');
+      const from = chip?.getBoundingClientRect();
+      chip?.remove();
+      await collectPoints(from, res.amount, '.chip.points', { count: true });
       celebrate('moon');
       rewardToast({ amount: res.amount, unit: 'TestFPT', title: 'Claimed', sub: 'Check your wallet' });
     } else if (res.status === 'submitted') {
@@ -3328,7 +3311,7 @@ async function onTaskVerify(taskId, btn) {
     if (!out.onChain) await collectPoints(from, out.points, '.chip.points', { count: true });
     await refreshMe();
     if (S.route.name === 'earn') $('#view').innerHTML = earnView();
-    if (out.onChain) await collectPoints(from, out.points, '.claim-card .claim-ico');
+    if (out.onChain) await collectPoints(from, out.points, $('.claim-chip') ? '.claim-chip' : '.chip.points');
     rewardToast({ amount: out.points, title: 'Task done', sub: out.onChain ? 'Sent as TestFPT' : '' });
   } catch (err) {
     toast(err.message, true);
