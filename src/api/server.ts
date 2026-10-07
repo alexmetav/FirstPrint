@@ -329,7 +329,7 @@ export function createApiServer(opts: ServerOptions): Server {
   route('GET', '/api/me/rewards', ({ user }) => rewardsOn().summary(user().id));
 
   // The player's Firstprint wallet and every TestFPT transaction made for them, with explorer links.
-  route('GET', '/api/me/chain', ({ user }) => rewardsOn().chainActivity(user().id));
+  route('GET', '/api/me/chain', ({ user, url }) => rewardsOn().chainActivity(user().id, Number(url.searchParams.get('page') ?? 1)));
 
   route('POST', '/api/me/x', async ({ req, user, body }) => {
     rateLimit(`x:${visitor(req)}`, 10, 60_000);
@@ -627,7 +627,8 @@ export function createApiServer(opts: ServerOptions): Server {
     return publicUser(updated, service.clock.now(), service.walletsFor(u.id));
   });
 
-  route('GET', '/api/me/ledger', ({ user }) => ({ entries: service.ledgerFor(user().id) }));
+  // A page at a time (10 entries): long histories never load all at once.
+  route('GET', '/api/me/ledger', ({ user, url }) => service.ledgerPage(user().id, Number(url.searchParams.get('page') ?? 1)));
 
   route('GET', '/api/me/predictions', ({ user }) => ({ predictions: service.myPredictions(user().id) }));
 

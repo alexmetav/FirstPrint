@@ -13496,3 +13496,56 @@ html.in-maint body {
     display: none;
   }
 }
+
+/* Page numbers under long lists (dashboard positions, history, on-chain activity, points). */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 12px 8px 4px;
+}
+.pg-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.pg-btn:hover:not(:disabled) {
+  border-color: var(--text-3, var(--muted));
+}
+.pg-btn.on {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+  font-weight: 600;
+}
+.pg-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pg-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.pg-gap {
+  min-width: 18px;
+  text-align: center;
+  color: var(--muted);
+}
+[data-list-card].is-loading {
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}

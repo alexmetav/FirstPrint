@@ -1585,7 +1585,16 @@ export class FirstprintService {
   // --- Points history and admin log ----------------------------------------------
 
   /** A user's points movements, newest first, with the market each one belongs to. */
-  ledgerFor(userId: string, limit = 50) {
+  /** One page of the player's points history (newest first), with how many pages there are. */
+  ledgerPage(userId: string, page = 1, perPage = 10) {
+    const per = Math.min(50, Math.max(1, Math.floor(perPage) || 10));
+    const total = as<{ n: number }>(this.db.prepare('SELECT COUNT(*) AS n FROM ledger WHERE user_id = ?').get(userId)).n;
+    const pages = Math.max(1, Math.ceil(total / per));
+    const p = Math.min(pages, Math.max(1, Math.floor(page) || 1));
+    return { entries: this.ledgerFor(userId, per, (p - 1) * per), page: p, pages, total };
+  }
+
+  ledgerFor(userId: string, limit = 50, offset = 0) {
     const rows = as<{ id: number; delta: number; reason: string; created_at: number; symbol: string | null; market_id: string | null }[]>(
       this.db
         .prepare(
@@ -1593,9 +1602,9 @@ export class FirstprintService {
            FROM ledger l
            LEFT JOIN predictions p ON p.id = l.ref
            LEFT JOIN markets m ON m.id = p.market_id
-           WHERE l.user_id = ? ORDER BY l.created_at DESC, l.id DESC LIMIT ?`,
+           WHERE l.user_id = ? ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?`,
         )
-        .all(userId, Math.min(200, Math.max(1, Math.floor(limit)))),
+        .all(userId, Math.min(200, Math.max(1, Math.floor(limit))), Math.max(0, Math.floor(offset))),
     );
     return rows.map((r) => ({ id: r.id, delta: r.delta, reason: r.reason, at: r.created_at, symbol: r.symbol, marketId: r.market_id }));
   }

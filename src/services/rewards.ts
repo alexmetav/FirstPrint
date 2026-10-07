@@ -585,46 +585,55 @@ export class RewardsService {
   }
 
   /** The player's on-chain record: their Firstprint wallet and every TestFPT transaction for them. */
-  chainActivity(userId: string) {
+  /** One page (8 entries) of the player's TestFPT transactions, newest first: server sends and their own claims. */
+  chainActivity(userId: string, page = 1, perPage = 8) {
     const cluster = this.token?.cluster ?? null;
     const url = (sig: string | null) => (sig && cluster ? explorerTx(sig, cluster) : null);
     const wallet = this.embeddedAddress(userId);
-    const symbolOf = (predictionId: string | null) =>
-      predictionId
-        ? (as<{ symbol: string; market_id: string } | undefined>(
-            this.db.prepare('SELECT m.symbol, p.market_id FROM predictions p JOIN markets m ON m.id = p.market_id WHERE p.id = ?').get(predictionId),
-          ) ?? null)
-        : null;
-    const mints = as<MintRow[]>(this.db.prepare('SELECT * FROM chain_mints WHERE user_id = ? ORDER BY created_at DESC LIMIT 30').all(userId)).map((m) => ({
-      kind: m.kind,
-      // A stake leaves the wallet; everything else arrives in it.
-      amount: m.kind === 'stake' ? -m.amount : m.amount,
-      symbol: symbolOf(m.subject)?.symbol ?? null,
-      marketId: symbolOf(m.subject)?.market_id ?? null,
-      wallet: m.wallet,
-      status: m.status,
-      at: m.created_at,
-      explorerUrl: m.status === 'confirmed' ? url(m.signature) : null,
-    }));
-    const claims = as<ClaimRow[]>(this.db.prepare('SELECT * FROM claims WHERE user_id = ? ORDER BY created_at DESC LIMIT 30').all(userId)).map((c) => ({
-      kind: 'claim',
-      amount: c.amount,
-      symbol: null,
-      marketId: null,
-      wallet: c.wallet,
-      status: c.status,
-      at: c.created_at,
-      explorerUrl: c.status === 'confirmed' ? url(c.signature) : null,
-    }));
+    const per = Math.min(50, Math.max(1, Math.floor(perPage) || 8));
+    const total = as<{ n: number }>(
+      this.db.prepare('SELECT (SELECT COUNT(*) FROM chain_mints WHERE user_id = ?) + (SELECT COUNT(*) FROM claims WHERE user_id = ?) AS n').get(userId, userId),
+    ).n;
+    const pages = Math.max(1, Math.ceil(total / per));
+    const p = Math.min(pages, Math.max(1, Math.floor(page) || 1));
+    const rows = as<{ kind: string; amount: number; subject: string | null; wallet: string; status: string; signature: string | null; created_at: number }[]>(
+      this.db
+        .prepare(
+          // Same moment: server sends before claims, then the later row first, so pages never shuffle.
+          `SELECT kind, amount, subject, wallet, status, signature, created_at, 0 AS src, rowid AS r FROM chain_mints WHERE user_id = ?
+           UNION ALL SELECT 'claim', amount, NULL, wallet, status, signature, created_at, 1, rowid FROM claims WHERE user_id = ?
+           ORDER BY created_at DESC, src, r DESC LIMIT ? OFFSET ?`,
+        )
+        .all(userId, userId, per, (p - 1) * per),
+    );
+    const market = this.db.prepare('SELECT m.symbol, p.market_id FROM predictions p JOIN markets m ON m.id = p.market_id WHERE p.id = ?');
+    const activity = rows.map((r) => {
+      const m = r.subject ? as<{ symbol: string; market_id: string } | undefined>(market.get(r.subject)) : undefined;
+      return {
+        kind: r.kind,
+        // A stake leaves the wallet; everything else arrives in it.
+        amount: r.kind === 'stake' ? -r.amount : r.amount,
+        symbol: m?.symbol ?? null,
+        marketId: m?.market_id ?? null,
+        wallet: r.wallet,
+        status: r.status,
+        at: r.created_at,
+        explorerUrl: r.status === 'confirmed' ? url(r.signature) : null,
+      };
+    });
     return {
       onChain: this.ready(),
       cluster,
       wallet,
       walletUrl: wallet && cluster ? explorerAddress(wallet, cluster) : null,
       mint: this.mint,
-      activity: [...mints, ...claims].sort((a, b) => b.at - a.at).slice(0, 30),
+      activity,
+      page: p,
+      pages,
+      total,
     };
   }
+
 
   /** Counts for the admin page. */
   chainCounts() {

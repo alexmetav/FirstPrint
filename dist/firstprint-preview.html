@@ -13527,6 +13527,59 @@ html.in-maint body {
   }
 }
 
+/* Page numbers under long lists (dashboard positions, history, on-chain activity, points). */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 12px 8px 4px;
+}
+.pg-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.pg-btn:hover:not(:disabled) {
+  border-color: var(--text-3, var(--muted));
+}
+.pg-btn.on {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+  font-weight: 600;
+}
+.pg-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pg-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.pg-gap {
+  min-width: 18px;
+  text-align: center;
+  color: var(--muted);
+}
+[data-list-card].is-loading {
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
 </style>
   </head>
   <body>
@@ -14103,7 +14156,7 @@ function createApi(baseUrl = '') {
     daily: () => request('/api/me/daily'),
     publicAnalytics: (key, days = 30) => request(`/api/public/analytics?key=${encodeURIComponent(key)}&days=${days}`),
     myPredictions: () => request('/api/me/predictions'),
-    ledger: () => request('/api/me/ledger'),
+    ledger: (page = 1) => request(`/api/me/ledger?page=${page}`),
     stats: () => request('/api/me/stats'),
     markets: (filter) => request(`/api/markets?filter=${filter}`),
     market: (m) => request(`/api/markets/${id(m)}`),
@@ -14123,7 +14176,7 @@ function createApi(baseUrl = '') {
     walletChallenge: (address) => request(`/api/auth/wallet/challenge?address=${encodeURIComponent(address)}`),
     walletVerify: (body) => post('/api/auth/wallet/verify', { ...body, ref: referralCode() }),
     rewards: () => request('/api/me/rewards'),
-    chain: () => request('/api/me/chain'),
+    chain: (page = 1) => request(`/api/me/chain?page=${page}`),
     connectX: (username) => post('/api/me/x', { username }),
     verifyX: () => post('/api/me/x/verify'),
     startTask: (t) => post(`/api/tasks/${id(t)}/start`),
@@ -15317,6 +15370,7 @@ const P = {
   alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/>',
   info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
   arrowLeft: '<path d="m12 19-7-7 7-7M19 12H5"/>',
+  chevronLeft: '<path d="m15 18-6-6 6-6"/>',
   chevronRight: '<path d="m9 18 6-6-6-6"/>',
   refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
   edit: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
@@ -15751,6 +15805,8 @@ async function onRoute() {
   if (S.maint?.on) queueMicrotask(() => applyMaintenance(S.maint));
   const changed = next.name !== S.route.name || next.id !== S.route.id;
   S.route = next;
+  // Opening a page fresh starts its long lists on their first page; refreshes keep the page shown.
+  if (changed) S.pg = {};
   S.menuOpen = false;
   S.streakOpen = false;
   if (changed) {
@@ -15853,9 +15909,11 @@ async function loadRoute() {
       setHtml(view, earnView());
     } else if (S.route.name === 'portfolio') {
       const preds = S.me ? (await S.api.myPredictions()).predictions : [];
-      const history = S.me && S.api.ledger ? (await S.api.ledger().catch(() => ({ entries: [] }))).entries : [];
+      // Long lists come a page at a time (the page shown stays put when the dashboard refreshes).
+      S.pg ??= {};
+      const history = S.me && S.api.ledger ? await S.api.ledger(S.pg.ledger ?? 1).catch(() => ({ entries: [] })) : { entries: [] };
       const stats = S.me && S.api.stats ? await S.api.stats().catch(() => null) : null;
-      const chain = S.me && S.api.chain ? await S.api.chain().catch(() => null) : null;
+      const chain = S.me && S.api.chain ? await S.api.chain(S.pg.chain ?? 1).catch(() => null) : null;
       // Open markets give the active positions their crowd share, payout and closing time.
       if (S.me && preds.some((p) => p.marketStatus === 'open' || p.marketStatus === 'locked')) {
         const [open, live] = await Promise.all(['open', 'live'].map((f) => S.api.markets(f).catch(() => null)));
@@ -17834,7 +17892,82 @@ function leaderboardView(lb) {
     ${S.me && !lb.me ? '<p class="fine">You’ll appear here after one of your predictions settles.</p>' : ''}`;
 }
 
-function portfolioView(preds, history = [], stats = null, chain = null) {
+const PER_PAGE = 10;
+
+/**
+ * Page numbers under a long list, like a block explorer: ‹ 1 … 4 5 6 … 12 ›. `list` names which
+ * list the buttons move; nothing shows for a single page.
+ */
+function pager(list, page, pages) {
+  if (!pages || pages <= 1) return '';
+  const show = new Set([1, pages, page - 1, page, page + 1]);
+  if (page <= 3) [2, 3, 4].forEach((n) => show.add(n));
+  if (page >= pages - 2) [pages - 1, pages - 2, pages - 3].forEach((n) => show.add(n));
+  const nums = [...show].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b);
+  const btn = (n, label, aria, off = false) =>
+    `<button class="pg-btn${n === page && !aria ? ' on' : ''}" data-action="page" data-list="${list}" data-page="${n}"${off ? ' disabled' : ''}${n === page && !aria ? ' aria-current="page"' : ''} aria-label="${aria ?? `Page ${n}`}">${label}</button>`;
+  let prev = 0;
+  const parts = [];
+  for (const n of nums) {
+    if (n - prev > 1) parts.push('<span class="pg-gap" aria-hidden="true">…</span>');
+    parts.push(btn(n, String(n)));
+    prev = n;
+  }
+  return `<nav class="pager" aria-label="Pages">${btn(page - 1, ico('chevronLeft'), 'Previous page', page <= 1)}${parts.join('')}${btn(page + 1, ico('chevronRight'), 'Next page', page >= pages)}</nav>`;
+}
+
+/** The rows of one page of a list kept in the browser, and the pager for it. */
+function pageOf(list, rows) {
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const page = Math.min(pages, Math.max(1, S.pg?.[list] ?? 1));
+  return { rows: rows.slice((page - 1) * PER_PAGE, page * PER_PAGE), nav: pager(list, page, pages) };
+}
+
+/** Moves a dashboard list to another page: from memory for positions and history, from the server for the rest. */
+async function goPage(list, page, btn) {
+  S.pg ??= {};
+  const [preds, history, stats, chain] = S.dashData ?? [];
+  const card = btn?.closest('[data-list-card]');
+  try {
+    if (list.startsWith('profile-')) {
+      S.pg[list] = page;
+      if (S.profile) $('#view').innerHTML = profileView(S.profile);
+      document.querySelector(`[data-pager-anchor="${list}"]`)?.scrollIntoView({ block: 'start' });
+      return;
+    }
+    if (list === 'positions' || list === 'past') {
+      S.pg[list] = page;
+      const active = preds.filter((p) => p.marketStatus === 'open' || p.marketStatus === 'locked');
+      const panel = document.getElementById(list === 'positions' ? 'dp-active' : 'dp-past');
+      if (panel) panel.innerHTML = list === 'positions' ? activeTable(active) : pastTable(stats);
+    } else if (list === 'chain') {
+      card?.classList.add('is-loading');
+      const data = await S.api.chain(page);
+      S.pg.chain = data.page;
+      S.dashData[3] = data;
+      card?.replaceWith(htmlNode(chainCard(data)));
+    } else if (list === 'ledger') {
+      card?.classList.add('is-loading');
+      const data = await S.api.ledger(page);
+      S.pg.ledger = data.page;
+      S.dashData[1] = data;
+      card?.replaceWith(htmlNode(historyView(data)));
+    }
+  } catch (err) {
+    card?.classList.remove('is-loading');
+    return toast(err.message, true);
+  }
+  // Keep the list in view when it gets shorter on its last page.
+  document.querySelector(`[data-list-card="${list}"]`)?.scrollIntoView({ block: 'nearest' });
+}
+
+const htmlNode = (html) => {
+  const t = document.createElement('template');
+  t.innerHTML = html.trim();
+  return t.content.firstElementChild;
+};
+
+function portfolioView(preds, history = { entries: [] }, stats = null, chain = null) {
   if (!S.me) {
     return `
       <header class="page-head"><span class="page-ico">${ico('dashboard')}</span><div><h1 class="page-title">Your dashboard</h1></div></header>
@@ -18001,7 +18134,8 @@ function positions(active) {
 function activeTable(active) {
   if (!active.length) return dashEmpty('target', 'No open positions. Pick an outcome on any open market to start your record.', `<a class="btn btn-sm" href="#/">${ico('grid')}Explore markets</a>`);
   const markets = new Map([...S.lists.open, ...S.lists.live].map((m) => [m.id, m]));
-  return `<table class="table dash-table pos-table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right hide-sm">Crowd</th><th class="right">If it wins</th><th class="right hide-sm">Status</th></tr></thead><tbody>${positions(active)
+  const pg = pageOf('positions', positions(active));
+  return `<table class="table dash-table pos-table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right hide-sm">Crowd</th><th class="right">If it wins</th><th class="right hide-sm">Status</th></tr></thead><tbody>${pg.rows
     .map((p) => {
       const m = markets.get(p.marketId);
       const yn = p.outcomes === 'binary';
@@ -18018,14 +18152,15 @@ function activeTable(active) {
         <td class="right hide-sm">${status}</td>
       </tr>`;
     })
-    .join('')}</tbody></table><p class="fine pos-note">“If it wins” is your stake at the pool’s current payout. Earlier picks get a bonus, so yours can be higher.</p>`;
+    .join('')}</tbody></table>${pg.nav}<p class="fine pos-note">“If it wins” is your stake at the pool’s current payout. Earlier picks get a bonus, so yours can be higher.</p>`;
 }
 
 function pastTable(st) {
   const rows = st?.history ?? [];
   const refunds = st?.refundedMarkets ? `<p class="fine">${st.refundedMarkets} cancelled market${st.refundedMarkets === 1 ? ' was' : 's were'} refunded and ${st.refundedMarkets === 1 ? 'doesn’t' : 'don’t'} count toward your record.</p>` : '';
   if (!rows.length) return dashEmpty('history', 'No settled markets yet. Your results appear here when markets you predicted on are settled.') + refunds;
-  return `<table class="table dash-table"><thead><tr><th>Market</th><th>Your pick</th><th class="hide-sm">Result</th><th class="right">Staked</th><th class="right">Points</th></tr></thead><tbody>${rows
+  const pg = pageOf('past', rows);
+  return `<table class="table dash-table"><thead><tr><th>Market</th><th>Your pick</th><th class="hide-sm">Result</th><th class="right">Staked</th><th class="right">Points</th></tr></thead><tbody>${pg.rows
     .map(
       (m) => `<tr>
         <td><a class="mkt-cell" href="#/market/${encodeURIComponent(m.marketId)}">${tokenAvatar(m, 'avatar-sm')}<span>${esc(m.symbol)}<small class="muted">${fmtAgo(m.settledAt)}</small></span></a></td>
@@ -18035,7 +18170,7 @@ function pastTable(st) {
         <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b>${pnlButton(m.marketId, m.symbol, 'icon-btn pnl-mini', true)}</td>
       </tr>`,
     )
-    .join('')}</tbody></table>${refunds}`;
+    .join('')}</tbody></table>${pg.nav}${refunds}`;
 }
 
 const CHAIN_KIND = { daily: 'Daily streak', claim: 'Rewards claim', stake: 'Prediction', payout: 'Winnings', refund: 'Refund' };
@@ -18045,15 +18180,15 @@ function chainCard(c) {
   if (!c?.onChain || (!c.activity.length && !c.wallet)) return '';
   const state = { confirmed: '', queued: 'sending…', submitted: 'confirming…', pending: 'waiting for your wallet', failed: 'failed', expired: 'expired' };
   return `
-    <section class="dash-card">
-      <div class="dash-card-head"><h2>${ico('token')}On-chain activity</h2>${c.activity.length ? `<span class="count">${c.activity.length}</span>` : ''}</div>
+    <section class="dash-card" data-list-card="chain">
+      <div class="dash-card-head"><h2>${ico('token')}On-chain activity</h2>${c.total ?? c.activity.length ? `<span class="count">${fmtNum(c.total ?? c.activity.length)}</span>` : ''}</div>
       ${
         c.activity.length
           ? `<ul class="chain-list">${c.activity
               .map(
                 (a) => `<li><span><b class="${a.amount < 0 ? '' : 'profit-pos'}">${a.amount < 0 ? '−' : '+'}${fmtNum(Math.abs(a.amount))} TestFPT</b><small class="muted">${esc(CHAIN_KIND[a.kind] ?? a.kind)}${a.symbol ? ` · <a href="#/market/${encodeURIComponent(a.marketId)}">${esc(a.symbol)}</a>` : ''} · ${fmtAgo(a.at)}${state[a.status] ? ` · ${state[a.status]}` : ''}</small></span>${a.explorerUrl ? `<a class="dw-link" href="${esc(a.explorerUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a>` : ''}</li>`,
               )
-              .join('')}</ul>`
+              .join('')}</ul>${pager('chain', c.page, c.pages)}`
           : '<p class="dash-card-text">Your daily streak, rewards, predictions and winnings move as TestFPT on chain, and each one shows up here.</p>'
       }
     </section>`;
@@ -18090,14 +18225,15 @@ function profileView(p) {
   const tile = (icon, color, label, value, sub) =>
     `<div class="stat-tile" style="--c:var(--${color})"><span class="tile-ico">${ico(icon)}</span><dt>${label}</dt><dd>${value}</dd><p>${sub}</p></div>`;
   const pct = st.winRate === null ? null : Math.round(st.winRate * 100);
+  const inPlay = pageOf('profile-positions', p.positions);
   const positions = p.positions.length
-    ? `<table class="table"><thead><tr><th>Market</th><th>Pick</th><th class="right">Points</th><th class="right">Status</th></tr></thead><tbody>${p.positions
+    ? `<table class="table"><thead><tr><th>Market</th><th>Pick</th><th class="right">Points</th><th class="right">Status</th></tr></thead><tbody>${inPlay.rows
         .map(
           (x) => `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(x.marketId)}">${tokenAvatar(x, 'avatar-sm')}<span>${esc(x.symbol)}</span></a></td><td>${outcome(x.bucket, x.outcomes === 'binary')}</td><td class="right num-cell">${fmtNum(x.stake)}</td><td class="right">${
             x.marketStatus === 'open' ? '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>' : '<span class="pill pill-wait">Awaiting result</span>'
           }</td></tr>`,
         )
-        .join('')}</tbody></table>`
+        .join('')}</tbody></table>${inPlay.nav}`
     : '<p class="muted pad">Not in any open market right now.</p>';
   return `
     <section class="profile-card">
@@ -18122,7 +18258,7 @@ function profileView(p) {
     </dl>
     ${st.history.length >= 2 ? `<div class="dash-grid">${profitChart(st.history)}${outcomeRecord(st.byOutcome, p.isMe ? undefined : 'Picks by outcome')}</div>` : ''}
     <section class="section panel panel-flush">
-      <div class="section-head"><span class="section-ico">${ico('target')}</span><h2>In play${p.positions.length ? ` <span class="count-badge">${p.positions.length}</span>` : ''}</h2></div>
+      <div class="section-head" data-pager-anchor="profile-positions"><span class="section-ico">${ico('target')}</span><h2>In play${p.positions.length ? ` <span class="count-badge">${p.positions.length}</span>` : ''}</h2></div>
       ${positions}
     </section>
     ${pastMarkets(st, p.isMe)}`;
@@ -18209,12 +18345,13 @@ function outcomeRecord(byOutcome, title = 'Your picks by outcome') {
 /** Every settled market, one row each, newest first. */
 function pastMarkets(st, mine = false) {
   const rows = st.history;
+  const pg = pageOf('profile-past', rows);
   return `
     <section class="section panel panel-flush">
-      <div class="section-head"><span class="section-ico">${ico('history')}</span><h2>Past markets${rows.length ? ` <span class="count-badge">${rows.length}</span>` : ''}</h2></div>
+      <div class="section-head" data-pager-anchor="profile-past"><span class="section-ico">${ico('history')}</span><h2>Past markets${rows.length ? ` <span class="count-badge">${rows.length}</span>` : ''}</h2></div>
       ${
         rows.length
-          ? `<table class="table"><thead><tr><th>Market</th><th>Your pick</th><th class="hide-sm">Result</th><th class="right">Staked</th><th class="right">Points</th></tr></thead><tbody>${rows
+          ? `<table class="table"><thead><tr><th>Market</th><th>Your pick</th><th class="hide-sm">Result</th><th class="right">Staked</th><th class="right">Points</th></tr></thead><tbody>${pg.rows
               .map(
                 (m) => `<tr>
                   <td><a class="mkt-cell" href="#/market/${encodeURIComponent(m.marketId)}">${tokenAvatar(m, 'avatar-sm')}<span>${esc(m.symbol)}</span></a> <span class="muted hide-sm">${fmtAgo(m.settledAt)}</span></td>
@@ -18224,7 +18361,7 @@ function pastMarkets(st, mine = false) {
                   <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b>${mine ? pnlButton(m.marketId, m.symbol, 'icon-btn pnl-mini', true) : ''}</td>
                 </tr>`,
               )
-              .join('')}</tbody></table>`
+              .join('')}</tbody></table>${pg.nav}`
           : '<p class="muted pad">Your results appear here after markets settle.</p>'
       }
       ${st.refundedMarkets ? `<p class="fine">${st.refundedMarkets} cancelled market${st.refundedMarkets === 1 ? ' was' : 's were'} refunded and ${st.refundedMarkets === 1 ? 'doesn’t' : 'don’t'} count toward your record.</p>` : ''}
@@ -18271,10 +18408,11 @@ const HISTORY_LABELS = {
 };
 
 /** Every change to the balance, so points never seem to appear or vanish. */
-function historyView(entries) {
+function historyView(h) {
+  const entries = Array.isArray(h) ? h : (h?.entries ?? []);
   return `
-    <section class="dash-card">
-      <div class="dash-card-head"><h2>${ico('coins')}Points history</h2></div>
+    <section class="dash-card" data-list-card="ledger">
+      <div class="dash-card-head"><h2>${ico('coins')}Points history</h2>${h?.total ? `<span class="count">${fmtNum(h.total)}</span>` : ''}</div>
       ${
         entries.length
           ? `<ul class="dash-ledger">${entries
@@ -18283,7 +18421,7 @@ function historyView(entries) {
                 const name = e.marketId ? `<a href="#/market/${encodeURIComponent(e.marketId)}">${esc(label)}</a>` : esc(label);
                 return `<li><span class="dl-main">${name}<small>${fmtAgo(e.at)}</small></span><b class="${e.delta >= 0 ? 'profit-pos' : 'dl-neg'}">${e.delta >= 0 ? '+' : '−'}${fmtNum(Math.abs(e.delta))}</b></li>`;
               })
-              .join('')}</ul>`
+              .join('')}</ul>${pager('ledger', h?.page, h?.pages)}`
           : '<p class="dash-card-text">Every change to your balance will be listed here.</p>'
       }
     </section>`;
@@ -21531,6 +21669,10 @@ document.addEventListener('click', async (e) => {
       return loadRoute();
     case 'viz-export':
       return downloadAnalytics();
+    case 'page': {
+      const b = t.closest('[data-action]');
+      return goPage(b.dataset.list, Number(b.dataset.page), b);
+    }
     case 'viz-days':
       S.vizDays = Number(t.closest('[data-action]').dataset.days);
       return loadRoute();
