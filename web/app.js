@@ -701,7 +701,8 @@ function streakChip() {
  */
 function claimChip() {
   const r = S.rewards;
-  if (!r?.onChain || r.firstprintWallet || !(r.claimable > 0)) {
+  // Rewards sent by themselves (a Firstprint wallet, or a linked one while the server pays) need no chip.
+  if (!r?.onChain || r.firstprintWallet || (r.autoSend && !r.chainPaused) || !(r.claimable > 0)) {
     S.claimChipShown = false;
     return '';
   }
@@ -3136,7 +3137,7 @@ function earnView() {
       <header class="earn2-head">
         <span class="eyebrow">Rewards</span>
         <h1 class="page-title">Earn points</h1>
-        <p class="page-lede">${r.onChain ? `Rewards arrive as <b>TestFPT</b> on Solana ${clusterName()} when you claim them, and go into your Firstprint balance too.` : 'Complete tasks and invite friends. Points go straight to your balance.'}</p>
+        <p class="page-lede">${r.onChain ? (r.autoSend || r.firstprintWallet ? `Rewards are sent to your wallet as <b>TestFPT</b> on Solana ${clusterName()} by themselves, and go into your Firstprint balance too.` : `Rewards arrive as <b>TestFPT</b> on Solana ${clusterName()} when you claim them, and go into your Firstprint balance too.`) : 'Complete tasks and invite friends. Points go straight to your balance.'}</p>
       </header>
       <div class="earn2-grid">
         <div class="earn2-main">
@@ -3340,12 +3341,14 @@ async function onTaskVerify(taskId, btn) {
     const out = await S.api.verifyTask(taskId);
     S.verifying = null;
     clearInterval(S.verifyTimer);
-    // On-chain rewards wait in the claim bar; otherwise they go straight to the balance.
-    if (!out.onChain) await collectPoints(from, out.points, '.chip.points', { count: true });
+    // Sent straight to the wallet (or no TestFPT): the coins fly into the balance, which counts up.
+    // Otherwise they wait in the claim chip.
+    const direct = !out.onChain || out.sent;
+    if (direct) await collectPoints(from, out.points, '.chip.points', { count: true });
     await refreshMe();
     if (S.route.name === 'earn') $('#view').innerHTML = earnView();
-    if (out.onChain) await collectPoints(from, out.points, $('.claim-chip') ? '.claim-chip' : '.chip.points');
-    rewardToast({ amount: out.points, title: 'Task done', sub: out.onChain ? 'Sent as TestFPT' : '' });
+    if (!direct) await collectPoints(from, out.points, $('.claim-chip') ? '.claim-chip' : '.chip.points');
+    rewardToast({ amount: out.points, title: 'Task done', sub: out.sent ? 'Sent to your wallet as TestFPT' : out.onChain ? 'On its way as TestFPT' : '' });
   } catch (err) {
     S.verifying = null;
     clearInterval(S.verifyTimer);

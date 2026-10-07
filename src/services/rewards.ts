@@ -395,6 +395,32 @@ export class RewardsService {
     return this.embeddedAddress(userId) ?? this.service.walletsFor(userId)[0]?.address ?? null;
   }
 
+  /**
+   * Where rewards are sent by themselves (no Claim button): the player's Firstprint wallet or the
+   * first wallet they linked, while the server signs and pays for claims. Null when they must claim.
+   */
+  private autoSendWallet(userId: string): string | null {
+    if (!this.ready() || !this.serverPaysClaims) return null;
+    return this.payoutWallet(userId);
+  }
+
+  /**
+   * Sends the player's unclaimed rewards to their wallet now (after a task, so the points land at
+   * once). True once confirmed; false when it can't go now, and the background run retries.
+   */
+  private async sendRewardsNow(userId: string): Promise<boolean> {
+    const wallet = this.autoSendWallet(userId);
+    if (!wallet || !this.funded || this.paused()) return false;
+    if (this.db.prepare("SELECT 1 FROM claims WHERE user_id = ? AND status IN ('pending', 'submitted')").get(userId)) return false;
+    try {
+      const id = await this.serverClaim(userId, wallet);
+      if (!id) return false;
+      return (await this.refreshClaim(userId, id)).status === 'confirmed';
+    } catch {
+      return false;
+    }
+  }
+
   /** Queues a server-paid chain transaction (inside the caller's transaction). Nothing happens without TestFPT or a wallet. */
   private queueMint(userId: string, kind: string, ref: string, amount: number, wallet = this.payoutWallet(userId), subject: string | null = null) {
     if (!this.ready() || amount <= 0 || !wallet) return;
@@ -464,18 +490,22 @@ export class RewardsService {
     }
     if (funded) {
       // Rewards first (the welcome bonus funds a new wallet), then stakes, payouts and mints in order.
+      // Every player with a wallet: their Firstprint wallet, or the one they linked (the server pays).
       const owed = as<{ user_id: string }[]>(
         this.db
           .prepare(
-            `SELECT DISTINCT r.user_id FROM rewards r JOIN embedded_wallets e ON e.user_id = r.user_id
-             WHERE r.claim_id IS NULL AND NOT EXISTS (SELECT 1 FROM claims c WHERE c.user_id = r.user_id AND c.status IN ('pending', 'submitted')) LIMIT 20`,
+            `SELECT DISTINCT r.user_id FROM rewards r
+             WHERE r.claim_id IS NULL
+               AND (EXISTS (SELECT 1 FROM embedded_wallets e WHERE e.user_id = r.user_id)
+                    OR (? AND EXISTS (SELECT 1 FROM wallets w WHERE w.user_id = r.user_id)))
+               AND NOT EXISTS (SELECT 1 FROM claims c WHERE c.user_id = r.user_id AND c.status IN ('pending', 'submitted')) LIMIT 20`,
           )
-          .all(),
+          .all(this.serverPaysClaims ? 1 : 0),
       );
       for (const { user_id } of owed) {
         if (this.paused()) return;
         try {
-          await this.serverClaim(user_id);
+          await this.serverClaim(user_id, this.payoutWallet(user_id));
         } catch (err) {
           this.service.log(`auto-claim for ${user_id} failed: ${(err as Error).message}`);
         }
@@ -785,6 +815,8 @@ export class RewardsService {
       claimable,
       // A Firstprint wallet: rewards are sent to it by the server, no claim or fee needed.
       firstprintWallet: this.embeddedAddress(userId),
+      // Rewards are sent to a wallet by themselves (nothing to claim) while the server pays.
+      autoSend: Boolean(this.autoSendWallet(userId)),
       // The server is out of test SOL: sends wait, and claims would need the wallet to pay.
       chainPaused: this.ready() && !this.funded,
       welcomeClaimed: welcome ? welcome.claim_id !== null && this.isClaimed(welcome.claim_id) : true,
@@ -1061,12 +1093,17 @@ export class RewardsService {
       }
     }
     if (this.tg && t.kind === 'telegram') await this.checkTelegram(userId, t.target);
-    return tx(this.db, () => {
+    const out = tx(this.db, () => {
       const { t: task, xUsername: x } = this.taskReady(userId, taskId);
       this.db.prepare('UPDATE task_completions SET completed_at = ?, x_username = ? WHERE task_id = ? AND user_id = ?').run(this.now(), x, taskId, userId);
       this.award(userId, 'task', taskId, task.points);
-      return { points: task.points, onChain: this.ready() };
+      return { points: task.points, onChain: this.ready(), sent: false };
     });
+    // On chain with a wallet: send it now, so the points reach the wallet and balance straight away.
+    if (out.onChain && this.autoSendWallet(userId)) {
+      out.sent = await Promise.race([this.sendRewardsNow(userId), new Promise<boolean>((r) => setTimeout(() => r(false), 25_000).unref?.())]);
+    }
+    return out;
   }
 
   /** Throws unless the task can be confirmed now; checked before asking X and again when paying. */
