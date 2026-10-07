@@ -243,6 +243,21 @@ test('resetting a task opens it to everyone again, with no limit, and pays once 
   assert.equal(rewards.listTasksAdmin().find((t) => t.id === link)?.active, false, 'the old one is switched off');
 });
 
+test('only a switched-off task can be deleted; points it paid stay', async () => {
+  const { clock, service, rewards } = await setup();
+  const { user: a } = await player(service, 'a@example.com');
+  const link = rewards.createTask({ kind: 'link', target: 'https://firstprint.fun/x', points: 40 });
+  rewards.startTask(a.id, link);
+  clock.advance(TASK_MIN_WAIT_MS);
+  await rewards.verifyTask(a.id, link);
+  assert.throws(() => rewards.deleteTask(link), failsWith('task_active'));
+  rewards.updateTask(link, { active: false });
+  rewards.deleteTask(link);
+  assert.equal(rewards.listTasksAdmin().some((t) => t.id === link), false);
+  assert.equal(service.db.prepare("SELECT COUNT(*) AS n FROM rewards WHERE user_id = ? AND kind = 'task'").get(a.id)?.n, 1);
+  assert.throws(() => rewards.deleteTask(link), failsWith('task_not_found'));
+});
+
 test('an admin reset of Connect X lets everyone link X and earn it again, at the new points', async () => {
   const { service, rewards } = await setup();
   const { user: a } = await player(service, 'a@example.com');

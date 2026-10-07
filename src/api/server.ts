@@ -380,6 +380,7 @@ export function createApiServer(opts: ServerOptions): Server {
     return rewardsOn().submitClaim(user().id, params.id, String(b.transaction ?? ''));
   });
 
+  route('GET', '/api/me/claims', ({ user, url }) => rewardsOn().claimsPage(user().id, Number(url.searchParams.get('page') ?? 1)));
   route('GET', '/api/me/claims/:id', ({ user, params }) => rewardsOn().refreshClaim(user().id, params.id));
 
   // --- Email code and Google sign-in -----------------------------------------------
@@ -1110,6 +1111,13 @@ export function createApiServer(opts: ServerOptions): Server {
     requireAdmin('tasks');
     const r = rewardsOn();
     return { tasks: r.listTasksAdmin(), xChecks: Boolean(r.xcheck), xCredit: await r.xCredit(), xConnect: r.xConnectAdmin() };
+  });
+
+  route('POST', '/api/admin/tasks/:id/delete', ({ req, params, requireAdmin }) => {
+    requireAdmin('tasks');
+    rewardsOn().deleteTask(params.id);
+    audit(req, 'task_deleted', params.id, '');
+    return { ok: true };
   });
 
   // A task opened to everyone again (a fresh copy, no limit; the old one is switched off).

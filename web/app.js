@@ -234,6 +234,7 @@ async function refreshMe() {
 /** Rewards, tasks and the referral link for the signed-in player (nothing for visitors). */
 async function refreshRewards() {
   S.rewards = S.me && S.api.rewards ? await S.api.rewards().catch(() => null) : null;
+  S.claimsPage = null; // back to the newest claims
 }
 
 async function loadHome() {
@@ -654,6 +655,7 @@ function drawTop() {
           S.me
             ? `<button class="chip bell${S.me.unreadNotifications ? ' has-new' : ''}" data-action="inbox" aria-label="Your results${S.me.unreadNotifications ? `, ${S.me.unreadNotifications} new` : ''}">${ico('bell')}${S.me.unreadNotifications ? `<span class="bell-n">${S.me.unreadNotifications > 9 ? '9+' : S.me.unreadNotifications}</span>` : ''}</button>
                ${streakChip()}
+               ${claimChip()}
                <a class="chip points" href="#/portfolio" title="Your points balance">${ico('coins')}${tick('me:points:top', S.me.points)}<span class="unit">pts</span></a>
                <a class="chip wallet-chip" href="#/portfolio" title="Signed in as ${esc(S.me.username)}">${avatar(S.me.username, 'avatar-sm')}<span>${wallet ? esc(shortAddress(wallet)) : esc(S.me.username)}</span></a>`
             : `<a class="top-link hide-sm" href="#/" data-action="how">${ico('info')}How it works</a><button class="btn btn-gold" data-action="connect">Log in</button>`
@@ -690,6 +692,24 @@ function streakChip() {
   const can = S.me.canClaimDaily;
   const label = `Daily streak: ${d.streak} day${d.streak === 1 ? '' : 's'}${can ? `. Claim +${d.next} today` : ''}`;
   return `<button class="chip streak-chip${d.streak ? ' lit' : ''}${can ? ' can-claim' : ''}" data-action="streak" aria-label="${label}" aria-haspopup="dialog" aria-expanded="${S.streakOpen ? 'true' : 'false'}" aria-controls="streak-pop">${ico('flame')}<span class="streak-n">${d.streak}</span>${can ? '<i class="streak-dot" aria-hidden="true"></i>' : ''}</button>`;
+}
+
+/**
+ * TestFPT waiting to be claimed, as a small chip in the top bar. It shows up when a reward is
+ * earned and goes once it is claimed (the coins fly into the points balance). Players with a
+ * Firstprint wallet never see it: their rewards are sent by themselves.
+ */
+function claimChip() {
+  const r = S.rewards;
+  if (!r?.onChain || r.firstprintWallet || !(r.claimable > 0)) {
+    S.claimChipShown = false;
+    return '';
+  }
+  // It pops in only when it first appears, not on every redraw of the top bar.
+  const fresh = !S.claimChipShown;
+  S.claimChipShown = true;
+  const busy = Boolean(S.claimBusy);
+  return `<button class="chip claim-chip${fresh ? ' is-new' : ''}${busy ? ' is-busy' : ''}" data-action="claim-tokens"${busy ? ' disabled' : ''} title="${busy ? 'Claiming your TestFPT…' : `Claim ${fmtNum(r.claimable)} TestFPT to your wallet`}" aria-label="${busy ? 'Claiming' : `Claim ${fmtNum(r.claimable)} TestFPT`}">${busy ? '<span class="spin" aria-hidden="true"></span>' : ico('token')}<span class="claim-n">${fmtNum(r.claimable)}</span><span class="claim-word">${busy ? 'Claiming' : 'Claim'}</span></button>`;
 }
 
 /** The streak, small: seven days as circles (green once claimed) with their points, and the claim button. */
@@ -2525,6 +2545,14 @@ async function goPage(list, page, btn) {
   const [preds, history, stats, chain] = S.dashData ?? [];
   const card = btn?.closest('[data-list-card]');
   try {
+    if (list === 'claims') {
+      card?.classList.add('is-loading');
+      S.claimsPage = await S.api.claims(page);
+      S.claimsOpen = true;
+      card?.replaceWith(htmlNode(claimsList(S.rewards)));
+      document.querySelector('[data-list-card="claims"]')?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
     if (list.startsWith('profile-')) {
       S.pg[list] = page;
       if (S.profile) $('#view').innerHTML = profileView(S.profile);
@@ -3113,7 +3141,6 @@ function earnView() {
       <div class="earn2-grid">
         <div class="earn2-main">
           ${tasksCard(r)}
-          ${r.onChain ? claimCard(r) : ''}
           ${r.onChain ? claimsList(r) : ''}
         </div>
         <aside class="earn2-side">
@@ -3122,32 +3149,6 @@ function earnView() {
         </aside>
       </div>
     </div>`;
-}
-
-function claimCard(r) {
-  const wallets = S.me.wallets;
-  if (r.firstprintWallet) {
-    return `
-    <section class="claim-card${r.claimable ? ' has-claim' : ' is-empty'}">
-      <div class="claim-amount"><span class="claim-ico">${ico('token')}</span><div><b>${r.claimable ? (r.chainPaused ? `<span class="num">${fmtNum(r.claimable)}</span> TestFPT on its way` : `Sending <span class="num">${fmtNum(r.claimable)}</span> TestFPT to your wallet…`) : 'Rewards arrive by themselves'}</b><span class="muted">${r.claimable && r.chainPaused ? 'Sending is paused for a little while on our side. It goes out by itself as soon as it restarts; nothing for you to do.' : `Everything you earn is sent to your Firstprint wallet (${esc(shortAddress(r.firstprintWallet))}) as TestFPT, on chain, with no fee for you.`}</span></div></div>
-      <div class="claim-side"><p class="fine" id="claim-status" role="status">${r.mintUrl ? `<a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a>` : ''}</p></div>
-    </section>`;
-  }
-  return `
-    <section class="claim-card${r.claimable ? ' has-claim' : ' is-empty'}">
-      <div class="claim-amount"><span class="claim-ico">${ico('token')}</span><div><b>${r.claimable ? `<span class="num">${fmtNum(r.claimable)}</span> TestFPT ready to claim` : 'Nothing to claim yet'}</b><span class="muted">${r.claimable ? 'Send it to your wallet whenever you like.' : 'Finish a task or invite a friend, then claim it here as TestFPT.'}</span></div></div>
-      <div class="claim-side">
-        ${
-          !wallets.length
-            ? '<p class="muted" style="margin:0">Link a Solana wallet to claim to it.</p><button class="btn btn-solid" data-action="link-wallet">Link wallet</button>'
-            : !(r.claimable || S.claimBusy)
-            ? ''
-            : `${wallets.length > 1 ? `<label class="select">To <select id="claim-wallet">${wallets.map((w) => `<option value="${esc(w.address)}">${esc(shortAddress(w.address))}${w.walletName ? ` · ${esc(w.walletName)}` : ''}</option>`).join('')}</select></label>` : `<span class="muted">To ${esc(shortAddress(wallets[0].address))}</span>`}
-               <button class="btn btn-gold" data-action="claim-tokens"${S.claimBusy ? ' disabled' : ''}>${S.claimBusy ? 'Claiming…' : `Claim ${fmtNum(r.claimable)} TestFPT`}</button>`
-        }
-        <p class="fine" id="claim-status" role="status">${r.chainPaused ? 'Right now your wallet may ask you to approve the claim and pay a tiny fee in test SOL.' : 'No fee and nothing to approve: Firstprint sends it and pays the network fee.'}${r.mintUrl ? ` · <a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a>` : ''}</p>
-      </div>
-    </section>`;
 }
 
 function referralCard(r) {
@@ -3220,7 +3221,11 @@ function tasksCard(r) {
                   // Follow, repost and post tasks are checked on X: after too many misses the player waits.
                   const wait = r.xChecks && X_CHECKED.has(t.kind) ? xWait(r) : '';
                   const bot = needsBot ? `<a class="btn" href="${esc(r.telegram.botUrl)}" target="_blank" rel="noopener noreferrer">${ico('send')}Open bot</a>` : '';
-                  action = `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}Open</a>${bot}${wait || `<button class="btn btn-solid" data-action="task-verify" data-task="${esc(t.id)}">${ico('check')}Verify</button>`}`;
+                  const busy = S.verifying?.id === t.id;
+                  const verify = busy
+                    ? `<button class="btn btn-solid is-busy" disabled aria-live="polite"><span class="spin" aria-hidden="true"></span>Verifying<span class="verify-s" data-since="${S.verifying.at}">${Math.floor((now() - S.verifying.at) / 1000)}s</span></button>`
+                    : `<button class="btn btn-solid" data-action="task-verify" data-task="${esc(t.id)}"${S.verifying ? ' disabled' : ''}>${ico('check')}Verify</button>`;
+                  action = `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}Open</a>${bot}${wait || verify}`;
                 }
                 else action = `<a class="btn btn-solid" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer" data-action="task-go" data-task="${esc(t.id)}">${TASK_GO[t.kind] ?? 'Start'} ${ico('chevronRight')}</a>`;
                 return `<li class="task${t.done ? ' is-done' : ''}${full ? ' is-full' : ''}${expanded ? ' is-open' : ''}">
@@ -3252,22 +3257,21 @@ const X_TASKS = new Set(['follow', 'repost', 'like', 'share']);
 
 function claimsList(r) {
   if (!r.claims.length) return '';
+  // Page 1 comes with the rewards summary; other pages are fetched when asked for.
+  const data = S.claimsPage ?? { claims: r.claims, page: 1, pages: Math.max(1, Math.ceil((r.claimsTotal ?? r.claims.length) / PER_PAGE)), total: r.claimsTotal ?? r.claims.length };
   const label = { pending: 'Waiting for wallet', submitted: 'Confirming', confirmed: 'Claimed', failed: 'Failed', expired: 'Expired' };
   return `
-    <section class="section panel">
-      <div class="section-head"><span class="section-ico">${ico('token')}</span><h2>Your claims</h2></div>
-      <ul class="activity">${r.claims
+    <details class="section panel claims-box" data-list-card="claims"${S.claimsOpen ? ' open' : ''}>
+      <summary class="section-head"><span class="section-ico">${ico('token')}</span><h2>Your claims <span class="count-badge">${fmtNum(data.total)}</span></h2><span class="claims-chev" aria-hidden="true">${ico('chevronRight')}</span></summary>
+      <ul class="activity">${data.claims
         .map(
           (c) => `<li><span>${fmtNum(c.amount)} TestFPT to ${esc(shortAddress(c.wallet))} · <b class="${c.status === 'confirmed' ? 'profit-pos' : c.status === 'failed' || c.status === 'expired' ? 'profit-neg' : ''}">${label[c.status] ?? c.status}</b>${c.error && c.status !== 'confirmed' ? ` <span class="muted">${esc(c.error)}</span>` : ''}</span>
             <span class="muted">${c.explorerUrl ? `<a href="${esc(c.explorerUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a> · ` : ''}${fmtAgo(c.at)}</span></li>`,
         )
         .join('')}</ul>
-    </section>`;
-}
-
-function setClaimStatus(text) {
-  const el = $('#claim-status');
-  if (el) el.textContent = text;
+      ${pager('claims', data.page, data.pages)}
+      ${r.mintUrl ? `<p class="fine claims-mint"><a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a></p>` : ''}
+    </details>`;
 }
 
 /**
@@ -3276,33 +3280,29 @@ function setClaimStatus(text) {
  */
 async function claimTokens() {
   if (S.claimBusy) return;
-  const wallet = $('#claim-wallet')?.value || S.me?.wallets?.[0]?.address;
+  const wallet = S.me?.wallets?.[0]?.address;
   if (!wallet) return openAuth('link');
   S.claimBusy = true;
-  const btn = $('[data-action="claim-tokens"]');
-  const from = btn?.getBoundingClientRect();
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Claiming…';
-  }
-  setClaimStatus('Sending your TestFPT on Solana…');
+  renderTop();
   try {
     const c = await S.api.startClaim(wallet);
     let res = c;
     if (!c.serverPaid) {
-      setClaimStatus(`Approve the transaction in your wallet: it mints ${fmtNum(c.amount)} TestFPT to ${shortAddress(wallet)}.`);
+      toast(`Approve the transaction in your wallet: it mints ${fmtNum(c.amount)} TestFPT to ${shortAddress(wallet)}.`);
       const walletName = S.me.wallets.find((w) => w.address === wallet)?.walletName;
       const signedTx = await signTransactionWith(wallet, c.transaction, c.cluster, walletName);
-      setClaimStatus('Sending to Solana…');
       res = await S.api.submitClaim(c.claimId, signedTx);
     }
     for (let i = 0; res.status === 'submitted' && i < 20; i++) {
-      setClaimStatus('Confirming on Solana…');
       await new Promise((r) => setTimeout(r, 3_000));
       res = await S.api.claimStatus(c.claimId);
     }
     if (res.status === 'confirmed') {
-      await collectPoints(from, res.amount);
+      // The chip goes, and its coins fly into the balance, which counts up.
+      const chip = $('.claim-chip');
+      const from = chip?.getBoundingClientRect();
+      chip?.remove();
+      await collectPoints(from, res.amount, '.chip.points', { count: true });
       celebrate('moon');
       rewardToast({ amount: res.amount, unit: 'TestFPT', title: 'Claimed', sub: 'Check your wallet' });
     } else if (res.status === 'submitted') {
@@ -3320,17 +3320,35 @@ async function claimTokens() {
   }
 }
 
+/** Shows the Verify button as busy (spinner and a seconds counter) while the check runs. */
+function showVerifying(taskId) {
+  S.verifying = taskId ? { id: taskId, at: now() } : null;
+  clearInterval(S.verifyTimer);
+  if (S.route.name === 'earn') $('#view').innerHTML = earnView();
+  if (!taskId) return;
+  S.verifyTimer = setInterval(() => {
+    const el = $('.verify-s');
+    if (el) el.textContent = `${Math.floor((now() - Number(el.dataset.since)) / 1000)}s`;
+  }, 1000);
+}
+
 async function onTaskVerify(taskId, btn) {
+  if (S.verifying) return; // one check at a time; the first click is already running
   const from = btn?.getBoundingClientRect();
+  showVerifying(taskId);
   try {
     const out = await S.api.verifyTask(taskId);
+    S.verifying = null;
+    clearInterval(S.verifyTimer);
     // On-chain rewards wait in the claim bar; otherwise they go straight to the balance.
     if (!out.onChain) await collectPoints(from, out.points, '.chip.points', { count: true });
     await refreshMe();
     if (S.route.name === 'earn') $('#view').innerHTML = earnView();
-    if (out.onChain) await collectPoints(from, out.points, '.claim-card .claim-ico');
+    if (out.onChain) await collectPoints(from, out.points, $('.claim-chip') ? '.claim-chip' : '.chip.points');
     rewardToast({ amount: out.points, title: 'Task done', sub: out.onChain ? 'Sent as TestFPT' : '' });
   } catch (err) {
+    S.verifying = null;
+    clearInterval(S.verifyTimer);
     toast(err.message, true);
     if (err.code === 'x_required' || err.code === 'x_unverified') S.xOpenTask = taskId;
     await refreshMe();
@@ -4767,13 +4785,13 @@ function xCheckNote() {
 function xConnectAdmin() {
   const x = A.xConnect;
   if (!x) return '';
-  return `<section class="panel">
-    <div class="section-head"><span class="section-ico">${ico('x')}</span><div><h2>Connect X</h2><p class="muted">${fmtNum(x.players)} player${x.players === 1 ? '' : 's'} earned <b>+${fmtNum(x.points)}</b> for linking X${x.round ? ' since the last reset' : ''}.</p></div></div>
-    <form id="admin-x-reset" class="admin-form task-form" novalidate>
-      <label><span class="field-label">Points</span><input name="points" type="number" min="1" max="10000" value="${x.points}" required /></label>
-      <button class="btn" type="submit">${ico('refresh')}Reset for everyone</button>
+  return `<section class="panel x-reset-bar">
+    <span class="task-ico task-ico-sm">${ico('x')}</span>
+    <div class="x-reset-text"><b>Connect X</b><span class="muted">${fmtNum(x.players)} earned +${fmtNum(x.points)}${x.round ? ' since the last reset' : ''}</span></div>
+    <form id="admin-x-reset" class="x-reset-form" novalidate title="Reset clears every player’s linked X account, so each can link X again and earn these points. Points already given are kept; nothing is announced.">
+      <label class="pts-field"><input name="points" type="number" min="1" max="10000" value="${x.points}" required aria-label="Points for linking X" /><span>pts</span></label>
+      <button class="btn btn-sm" type="submit">${ico('refresh')}Reset for everyone</button>
     </form>
-    ${how('Reset clears every player’s linked X account. Players see Connect X again and earn these points again when they link (and verify) it. Points already given are kept, and nothing is announced.')}
   </section>`;
 }
 
@@ -4805,7 +4823,7 @@ function tasksAdminSection(tasks) {
                 <td><span class="mkt-cell"><span class="task-ico task-ico-sm">${ico(TASK_ICONS[t.kind] ?? 'star')}</span><span><a href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${esc(t.title)}</a>${t.active ? '' : ' <span class="pill pill-off">Off</span>'}</span></span></td>
                 <td class="right num-cell">+${fmtNum(t.points)}</td>
                 <td><span class="progress-cell">${fmtNum(t.completions)}${t.maxCompletions ? ` / ${fmtNum(t.maxCompletions)}` : ''}${pct === null ? '' : `<span class="meter"><i style="width:${pct}%"></i></span>`}</span></td>
-                <td class="right"><span class="row-actions"><button class="btn btn-sm" data-action="admin-task-edit" data-id="${esc(t.id)}">${ico('edit')}Edit</button><button class="btn btn-sm" data-action="admin-task-toggle" data-id="${esc(t.id)}" data-active="${t.active ? '1' : '0'}">${ico('power')}${t.active ? 'Switch off' : 'Switch on'}</button>${t.active ? `<button class="btn btn-sm" data-action="admin-task-reset" data-id="${esc(t.id)}" data-title="${esc(t.title)}" data-points="${t.points}">${ico('refresh')}Reset</button>` : ''}</span></td>
+                <td class="right"><span class="row-actions"><button class="btn btn-sm" data-action="admin-task-edit" data-id="${esc(t.id)}">${ico('edit')}Edit</button><button class="btn btn-sm" data-action="admin-task-toggle" data-id="${esc(t.id)}" data-active="${t.active ? '1' : '0'}">${ico('power')}${t.active ? 'Switch off' : 'Switch on'}</button>${t.active ? `<button class="btn btn-sm" data-action="admin-task-reset" data-id="${esc(t.id)}" data-title="${esc(t.title)}" data-points="${t.points}">${ico('refresh')}Reset</button>` : `<button class="btn btn-sm btn-danger" data-action="admin-task-delete" data-id="${esc(t.id)}" data-title="${esc(t.title)}">${ico('trash')}Delete</button>`}</span></td>
               </tr>${
                 A.editTask === t.id
                   ? `<tr class="row-edit"><td colspan="4"><form class="admin-form task-form" data-task-edit="${esc(t.id)}" novalidate>
@@ -5604,6 +5622,15 @@ async function onAdminAction(action, el) {
     case 'admin-task-edit':
       A.editTask = el.dataset.id || null;
       return renderAdmin();
+    case 'admin-task-delete':
+      if (!confirm(`Delete "${el.dataset.title}"? It disappears from the list. Points it already paid stay with the players.`)) return;
+      try {
+        await A.api.deleteTask(el.dataset.id);
+        toast('Task deleted');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return renderAdmin();
     case 'admin-task-reset':
       if (!confirm(`Reset "${el.dataset.title}" for everyone? Every player can do it again and earn ${fmtNum(Number(el.dataset.points))} points, with no player limit. Points already given are kept.`)) return;
       try {
@@ -6195,6 +6222,15 @@ async function submitAdminResult(form, intent) {
 }
 
 // ------------------------------------------------------------------ Events
+
+// Remember whether "Your claims" is open, so a redraw of the Earn page keeps it as the player left it.
+document.addEventListener(
+  'toggle',
+  (e) => {
+    if (e.target instanceof HTMLDetailsElement && e.target.matches('.claims-box')) S.claimsOpen = e.target.open;
+  },
+  true,
+);
 
 document.addEventListener('click', async (e) => {
   const t = e.target;

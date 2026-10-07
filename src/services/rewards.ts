@@ -773,7 +773,7 @@ export class RewardsService {
       this.db.prepare("SELECT COUNT(*) AS n, SUM(amount) AS pts FROM rewards WHERE user_id = ? AND kind = 'referral'").get(userId),
     );
     const invited = as<{ n: number }>(this.db.prepare('SELECT COUNT(*) AS n FROM users WHERE referred_by = ?').get(userId)).n;
-    const claims = as<ClaimRow[]>(this.db.prepare('SELECT * FROM claims WHERE user_id = ? ORDER BY created_at DESC LIMIT 10').all(userId));
+    const claims = as<ClaimRow[]>(this.db.prepare('SELECT * FROM claims WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 10').all(userId));
     const welcome = as<{ claim_id: string | null } | undefined>(this.db.prepare("SELECT claim_id FROM rewards WHERE user_id = ? AND kind = 'welcome'").get(userId));
     const link = `${this.siteUrl}/?ref=${code}`;
     return {
@@ -802,8 +802,19 @@ export class RewardsService {
       referral: { code, link, invited, rewarded: referrals.n, points: referrals.pts ?? 0, limit: REFERRAL_LIMIT, perReferral: REFERRAL_POINTS, markets: REFERRAL_MARKETS },
       rewards: rewards.map((r) => ({ kind: r.kind, ref: r.ref, amount: r.amount, at: r.created_at, claimed: r.claim_id !== null && this.isClaimed(r.claim_id) })),
       claims: claims.map((c) => this.publicClaim(c)),
+      claimsTotal: as<{ n: number }>(this.db.prepare('SELECT COUNT(*) AS n FROM claims WHERE user_id = ?').get(userId)).n,
       tasks: this.tasksFor(userId, code),
     };
+  }
+
+  /** One page (10) of the player's claims, newest first. */
+  claimsPage(userId: string, page = 1, perPage = 10) {
+    const per = Math.min(50, Math.max(1, Math.floor(perPage) || 10));
+    const total = as<{ n: number }>(this.db.prepare('SELECT COUNT(*) AS n FROM claims WHERE user_id = ?').get(userId)).n;
+    const pages = Math.max(1, Math.ceil(total / per));
+    const p = Math.min(pages, Math.max(1, Math.floor(page) || 1));
+    const rows = as<ClaimRow[]>(this.db.prepare('SELECT * FROM claims WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?').all(userId, per, (p - 1) * per));
+    return { claims: rows.map((c) => this.publicClaim(c)), page: p, pages, total };
   }
 
   private tgStatus(userId: string) {
@@ -1202,6 +1213,21 @@ export class RewardsService {
       this.service.log(`task reset: ${id} -> ${fresh} (${pts} points)`);
       return { id: fresh, points: pts };
     });
+  }
+
+  /**
+   * Removes a switched-off task and who did it. Points it paid stay with the players (rewards don't
+   * depend on the task row). Active tasks must be switched off first.
+   */
+  deleteTask(id: string) {
+    const t = as<TaskRow | undefined>(this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(id));
+    if (!t) throw new AppError(404, 'task_not_found', 'Task not found.');
+    if (t.active) throw new AppError(409, 'task_active', 'Switch the task off before deleting it.');
+    tx(this.db, () => {
+      this.db.prepare('DELETE FROM task_completions WHERE task_id = ?').run(id);
+      this.db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+    });
+    this.service.log(`task deleted: ${id} (${t.title})`);
   }
 
   listTasksAdmin() {
