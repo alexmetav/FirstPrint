@@ -1530,14 +1530,12 @@ function featuredView(m, rank = null) {
         <div class="feat-kicker"><span class="st ${pre ? 'st-soon' : 'st-live'}"><i aria-hidden="true"></i>${pre ? 'Upcoming' : 'Open'}</span><span aria-hidden="true">·</span><span>${rank === null ? 'Featured market' : `${ico('flame')}Trending #${rank + 1}`}</span></div>
         <div class="feat-id">
           ${tokenAvatar(m, 'avatar-lg')}
-          <div><h2 id="featured-title${rank ?? ''}">${esc(m.symbol)}</h2>${m.name ? `<p>${esc(m.name)}</p>` : ''}</div>
+          <div class="feat-name"><h2 id="featured-title${rank ?? ''}">${esc(m.symbol)}</h2>${m.name ? `<p>${esc(m.name)}</p>` : ''}</div>
+          <a class="btn btn-gold feat-open-btn" href="${href}" aria-label="Open market">Open<span class="feat-open-word"> market</span> ${ico('arrowRight')}</a>
         </div>
         <p class="feat-q">${question}</p>
         <dl class="feat-facts">${facts}</dl>
-        <div class="feat-actions">
-          <a class="btn btn-gold" href="${href}">Open market ${ico('arrowRight')}</a>
-          ${m.pool ? '' : '<span class="feat-hint">No predictions yet. Early picks earn the biggest bonus.</span>'}
-        </div>
+        ${m.pool ? '' : '<p class="feat-hint">No predictions yet. Early picks earn the biggest bonus.</p>'}
       </div>
       <div class="feat-side" role="group" aria-label="Pick an outcome">
         <div class="feat-side-head"><span>${yn ? 'Your answer' : 'Outcomes'}</span><span>${m.pool ? 'Crowd' : 'Tap to pick'}</span></div>
