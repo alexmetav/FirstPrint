@@ -2,8 +2,9 @@ import { asAdmin } from '../exchanges/coingeckoGate.ts';
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
+import { readFileSync, statSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
-import { extname, join, normalize, resolve } from 'node:path';
+import { dirname, extname, join, normalize, resolve } from 'node:path';
 import { AppError, DAILY_MAX, DAILY_POINTS, dailyStatus, LEADERBOARD_PERIODS, LIVE_PRESETS, MIN_STAKE, SESSION_MS, SUGGESTED_LIVE_TOKENS, type FirstprintService, type LeaderboardPeriod, type UserRow } from '../services/firstprint.ts';
 import type { Scheduler } from '../workers/scheduler.ts';
 import type { LiveFeed } from '../workers/liveFeed.ts';
@@ -1270,6 +1271,28 @@ export function createApiServer(opts: ServerOptions): Server {
    */
   const staticCache = new Map<string, { mtimeMs: number; size: number; type: string; raw: Buffer; gz: Buffer | null; etag: string }>();
 
+  /** A short hash of a file's content, remembered until the file changes. */
+  const fingerprints = new Map<string, { mtimeMs: number; v: string }>();
+  function fingerprint(path: string): string | null {
+    try {
+      const st = statSync(path);
+      const hit = fingerprints.get(path);
+      if (hit && hit.mtimeMs === st.mtimeMs) return hit.v;
+      const v = createHash('sha1').update(readFileSync(path)).digest('base64url').slice(0, 10);
+      fingerprints.set(path, { mtimeMs: st.mtimeMs, v });
+      return v;
+    } catch {
+      return null;
+    }
+  }
+  /** Adds ?v=<fingerprint> to every "./name.js" or "./name.css" that exists next to the file. */
+  function fingerprintRefs(text: string, dir: string) {
+    return text.replace(/(["'])\.\/([\w.-]+\.(?:js|css))\1/g, (whole, q: string, name: string) => {
+      const v = fingerprint(join(dir, name));
+      return v ? `${q}./${name}?v=${v}${q}` : whole;
+    });
+  }
+
   async function serveStatic(res: ServerResponse, root: string, pathname: string, linkToApp = false) {
     const rel = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '');
     let file = join(root, rel === '/' ? 'index.html' : rel);
@@ -1296,6 +1319,9 @@ export function createApiServer(opts: ServerOptions): Server {
         if (linkToApp && LINKED_SITE_FILES.has(file.slice(root.length + 1))) {
           data = Buffer.from(linkSiteToApp(data.toString('utf8'), APP_PREFIX, file));
         }
+        // The app's page and modules name each other with a fingerprint of the file (app.js?v=…), so a
+        // deploy changes every address that changed and no browser keeps running an old script.
+        if (!linkToApp && ['.html', '.js'].includes(extname(file))) data = Buffer.from(fingerprintRefs(data.toString('utf8'), dirname(file)));
         const type = MIME[extname(file)] ?? 'application/octet-stream';
         hit = {
           mtimeMs: st.mtimeMs,
