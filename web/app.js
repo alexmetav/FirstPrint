@@ -5165,7 +5165,7 @@ function userActivityView(d) {
         ? `<div class="table-scroll"><table class="table act-table"><thead><tr><th>When</th><th>Player</th><th>What</th><th class="right">Points</th></tr></thead><tbody>${rows
             .map(
               (e) => `<tr class="${e.reason === 'payout' ? 'act-win' : ''}"><td class="muted nowrap">${fmtAgo(e.at)}</td>
-                <td><button class="link-btn" type="button" data-action="admin-act-user" data-name="${esc(e.user.username)}">${esc(e.user.username)}</button><small class="muted act-bal">${fmtNum(e.user.balance)} pts now</small></td>
+                <td><span class="act-who">${userLink(e.user.username)}<button class="act-only" type="button" data-action="admin-act-user" data-name="${esc(e.user.username)}" title="Show only this player" aria-label="Show only ${esc(e.user.username)}">${ico('search')}</button></span><small class="muted act-bal">${fmtNum(e.user.balance)} pts now</small></td>
                 <td>${what(e)}</td>
                 <td class="right num-cell ${e.delta >= 0 ? 'profit-pos' : 'dl-neg'}">${e.delta >= 0 ? '+' : '−'}${fmtNum(Math.abs(e.delta))}</td></tr>`,
             )

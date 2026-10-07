@@ -14130,8 +14130,11 @@ html.in-maint body {
 .act-search { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .act-search input { flex: 1; min-width: 180px; max-width: 320px; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-strong, var(--line)); background: var(--surface-2, var(--surface)); color: var(--text); font: inherit; }
 .act-table td { vertical-align: top; }
-.act-table .link-btn { background: none; border: 0; padding: 0; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
-.act-table .link-btn:hover { text-decoration: underline; }
+.act-who { display: inline-flex; align-items: center; gap: 6px; }
+.act-table .user-link { text-decoration: underline; text-underline-offset: 3px; }
+.act-only { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer; }
+.act-only:hover { background: var(--raised); color: var(--text); }
+.act-only svg { width: 13px; height: 13px; }
 .act-bal { display: block; font-size: 11px; }
 .act-table tr.act-win td { background: color-mix(in srgb, var(--up) 6%, transparent); }
 .act-foot:empty { display: none; }
