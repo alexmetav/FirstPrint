@@ -22969,11 +22969,21 @@ async function shrinkImage(file, size) {
   const w = img.naturalWidth || size;
   const h = img.naturalHeight || size;
   const side = Math.min(w, h);
-  const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size });
-  canvas.getContext('2d').drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, size, size);
-  const webp = canvas.toDataURL('image/webp', 0.9);
-  return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/png');
+  // Safari can't encode WebP and falls back to PNG, which for a detailed logo can pass the server's
+  // size limit, so step down in size until the copy fits. A 64 × 64 PNG always does.
+  let out = '';
+  for (const s of [size, Math.round(size * 0.75), Math.round(size / 2)]) {
+    const canvas = Object.assign(document.createElement('canvas'), { width: s, height: s });
+    canvas.getContext('2d').drawImage(img, (w - side) / 2, (h - side) / 2, side, side, 0, 0, s, s);
+    const webp = canvas.toDataURL('image/webp', 0.9);
+    out = webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/png');
+    if (out.length <= LOGO_MAX_CHARS) return out;
+  }
+  return out;
 }
+
+/** Longest logo data URL the server accepts (MAX_LOGO in src/services/firstprint.ts), with some room. */
+const LOGO_MAX_CHARS = 38_000;
 
 document.addEventListener('input', (e) => {
   if (e.target.id !== 'auth-code') return;
