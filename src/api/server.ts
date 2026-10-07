@@ -594,9 +594,10 @@ export function createApiServer(opts: ServerOptions): Server {
   route('GET', '/api/me', async ({ req, user }) => {
     const u = user();
     // Players who signed up before countries were recorded get theirs on their next visit.
-    if (!u.country) service.noteCountry(u.id, countryOf(req));
+    // (Neither while handing over to a new deploy: what's saved now would be lost.)
+    if (!u.country && service.handingOff === null) service.noteCountry(u.id, countryOf(req));
     // Email and Google players get a Firstprint wallet the first time they come back (or sign up).
-    if (opts.rewards) await opts.rewards.ensureWallet(u.id).catch((err: Error) => service.log(`wallet for ${u.id} failed: ${err.message}`));
+    if (opts.rewards && service.handingOff === null) await opts.rewards.ensureWallet(u.id).catch((err: Error) => service.log(`wallet for ${u.id} failed: ${err.message}`));
     const adminLevel = accountLevel(req, u);
     return { ...publicUser(u, service.clock.now(), service.walletsFor(u.id)), unreadNotifications: service.unreadNotifications(u.id), isAdmin: adminLevel !== null, adminLevel };
   });
@@ -1558,6 +1559,10 @@ export function createApiServer(opts: ServerOptions): Server {
       }
       if (req.method === 'POST' && !String(req.headers['content-type'] ?? '').startsWith('application/json')) {
         throw new AppError(415, 'json_required', 'Requests must use Content-Type: application/json.');
+      }
+      // While handing over to a new deploy nothing may be saved, not even by admins: it would be lost.
+      if (req.method === 'POST' && service.handingOff !== null && url.pathname !== '/api/auth/logout') {
+        throw new AppError(503, 'maintenance', service.maintenance().message);
       }
       // Maintenance: players can read but not write; admins (key or admin account) can still test.
       if (req.method === 'POST' && !url.pathname.startsWith('/api/admin/') && url.pathname !== '/api/auth/logout' && service.maintenance().on) {
