@@ -13904,3 +13904,93 @@ html.in-maint body {
   background: transparent;
   box-shadow: none;
 }
+
+/* Market page: a large live countdown, to the second. */
+.big-cd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin: 4px 0 2px;
+  padding: 14px 18px;
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--gold) 7%, var(--surface));
+}
+.big-cd.is-open {
+  border-color: color-mix(in srgb, var(--up) 30%, var(--line));
+  background: color-mix(in srgb, var(--up) 6%, var(--surface));
+}
+.cd-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.cd-label .i {
+  width: 15px;
+  height: 15px;
+  color: var(--gold);
+}
+.big-cd.is-open .cd-label .i {
+  color: var(--up);
+}
+.cd-digits {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.cd-unit {
+  display: grid;
+  justify-items: center;
+  min-width: 52px;
+}
+.cd-unit b {
+  font-family: var(--mono);
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.cd-unit small {
+  margin-top: 2px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.cd-sep {
+  font-family: var(--mono);
+  font-size: 30px;
+  line-height: 1.1;
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+}
+.big-cd.is-last-hour .cd-unit b {
+  color: var(--gold);
+}
+@media (max-width: 640px) {
+  .big-cd {
+    padding: 12px 14px;
+  }
+  .cd-digits {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .cd-unit {
+    min-width: 0;
+    flex: 1;
+  }
+  .cd-unit b {
+    font-size: 30px;
+  }
+  .cd-sep {
+    font-size: 26px;
+  }
+}
