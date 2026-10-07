@@ -380,6 +380,7 @@ export function createApiServer(opts: ServerOptions): Server {
     return rewardsOn().submitClaim(user().id, params.id, String(b.transaction ?? ''));
   });
 
+  route('GET', '/api/me/claims', ({ user, url }) => rewardsOn().claimsPage(user().id, Number(url.searchParams.get('page') ?? 1)));
   route('GET', '/api/me/claims/:id', ({ user, params }) => rewardsOn().refreshClaim(user().id, params.id));
 
   // --- Email code and Google sign-in -----------------------------------------------

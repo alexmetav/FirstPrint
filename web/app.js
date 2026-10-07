@@ -234,6 +234,7 @@ async function refreshMe() {
 /** Rewards, tasks and the referral link for the signed-in player (nothing for visitors). */
 async function refreshRewards() {
   S.rewards = S.me && S.api.rewards ? await S.api.rewards().catch(() => null) : null;
+  S.claimsPage = null; // back to the newest claims
 }
 
 async function loadHome() {
@@ -2544,6 +2545,14 @@ async function goPage(list, page, btn) {
   const [preds, history, stats, chain] = S.dashData ?? [];
   const card = btn?.closest('[data-list-card]');
   try {
+    if (list === 'claims') {
+      card?.classList.add('is-loading');
+      S.claimsPage = await S.api.claims(page);
+      S.claimsOpen = true;
+      card?.replaceWith(htmlNode(claimsList(S.rewards)));
+      document.querySelector('[data-list-card="claims"]')?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
     if (list.startsWith('profile-')) {
       S.pg[list] = page;
       if (S.profile) $('#view').innerHTML = profileView(S.profile);
@@ -3212,7 +3221,11 @@ function tasksCard(r) {
                   // Follow, repost and post tasks are checked on X: after too many misses the player waits.
                   const wait = r.xChecks && X_CHECKED.has(t.kind) ? xWait(r) : '';
                   const bot = needsBot ? `<a class="btn" href="${esc(r.telegram.botUrl)}" target="_blank" rel="noopener noreferrer">${ico('send')}Open bot</a>` : '';
-                  action = `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}Open</a>${bot}${wait || `<button class="btn btn-solid" data-action="task-verify" data-task="${esc(t.id)}">${ico('check')}Verify</button>`}`;
+                  const busy = S.verifying?.id === t.id;
+                  const verify = busy
+                    ? `<button class="btn btn-solid is-busy" disabled aria-live="polite"><span class="spin" aria-hidden="true"></span>Verifying<span class="verify-s" data-since="${S.verifying.at}">${Math.floor((now() - S.verifying.at) / 1000)}s</span></button>`
+                    : `<button class="btn btn-solid" data-action="task-verify" data-task="${esc(t.id)}"${S.verifying ? ' disabled' : ''}>${ico('check')}Verify</button>`;
+                  action = `<a class="btn" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${ico('external')}Open</a>${bot}${wait || verify}`;
                 }
                 else action = `<a class="btn btn-solid" href="${esc(t.url)}" target="_blank" rel="noopener noreferrer" data-action="task-go" data-task="${esc(t.id)}">${TASK_GO[t.kind] ?? 'Start'} ${ico('chevronRight')}</a>`;
                 return `<li class="task${t.done ? ' is-done' : ''}${full ? ' is-full' : ''}${expanded ? ' is-open' : ''}">
@@ -3244,17 +3257,21 @@ const X_TASKS = new Set(['follow', 'repost', 'like', 'share']);
 
 function claimsList(r) {
   if (!r.claims.length) return '';
+  // Page 1 comes with the rewards summary; other pages are fetched when asked for.
+  const data = S.claimsPage ?? { claims: r.claims, page: 1, pages: Math.max(1, Math.ceil((r.claimsTotal ?? r.claims.length) / PER_PAGE)), total: r.claimsTotal ?? r.claims.length };
   const label = { pending: 'Waiting for wallet', submitted: 'Confirming', confirmed: 'Claimed', failed: 'Failed', expired: 'Expired' };
   return `
-    <section class="section panel">
-      <div class="section-head"><span class="section-ico">${ico('token')}</span><h2>Your claims</h2>${r.mintUrl ? `<a class="head-action fine" href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Explorer ${ico('external')}</a>` : ''}</div>
-      <ul class="activity">${r.claims
+    <details class="section panel claims-box" data-list-card="claims"${S.claimsOpen ? ' open' : ''}>
+      <summary class="section-head"><span class="section-ico">${ico('token')}</span><h2>Your claims <span class="count-badge">${fmtNum(data.total)}</span></h2><span class="claims-chev" aria-hidden="true">${ico('chevronRight')}</span></summary>
+      <ul class="activity">${data.claims
         .map(
           (c) => `<li><span>${fmtNum(c.amount)} TestFPT to ${esc(shortAddress(c.wallet))} · <b class="${c.status === 'confirmed' ? 'profit-pos' : c.status === 'failed' || c.status === 'expired' ? 'profit-neg' : ''}">${label[c.status] ?? c.status}</b>${c.error && c.status !== 'confirmed' ? ` <span class="muted">${esc(c.error)}</span>` : ''}</span>
             <span class="muted">${c.explorerUrl ? `<a href="${esc(c.explorerUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a> · ` : ''}${fmtAgo(c.at)}</span></li>`,
         )
         .join('')}</ul>
-    </section>`;
+      ${pager('claims', data.page, data.pages)}
+      ${r.mintUrl ? `<p class="fine claims-mint"><a href="${esc(r.mintUrl)}" target="_blank" rel="noopener noreferrer">TestFPT on Solana Explorer ${ico('external')}</a></p>` : ''}
+    </details>`;
 }
 
 /**
@@ -3303,10 +3320,26 @@ async function claimTokens() {
   }
 }
 
+/** Shows the Verify button as busy (spinner and a seconds counter) while the check runs. */
+function showVerifying(taskId) {
+  S.verifying = taskId ? { id: taskId, at: now() } : null;
+  clearInterval(S.verifyTimer);
+  if (S.route.name === 'earn') $('#view').innerHTML = earnView();
+  if (!taskId) return;
+  S.verifyTimer = setInterval(() => {
+    const el = $('.verify-s');
+    if (el) el.textContent = `${Math.floor((now() - Number(el.dataset.since)) / 1000)}s`;
+  }, 1000);
+}
+
 async function onTaskVerify(taskId, btn) {
+  if (S.verifying) return; // one check at a time; the first click is already running
   const from = btn?.getBoundingClientRect();
+  showVerifying(taskId);
   try {
     const out = await S.api.verifyTask(taskId);
+    S.verifying = null;
+    clearInterval(S.verifyTimer);
     // On-chain rewards wait in the claim bar; otherwise they go straight to the balance.
     if (!out.onChain) await collectPoints(from, out.points, '.chip.points', { count: true });
     await refreshMe();
@@ -3314,6 +3347,8 @@ async function onTaskVerify(taskId, btn) {
     if (out.onChain) await collectPoints(from, out.points, $('.claim-chip') ? '.claim-chip' : '.chip.points');
     rewardToast({ amount: out.points, title: 'Task done', sub: out.onChain ? 'Sent as TestFPT' : '' });
   } catch (err) {
+    S.verifying = null;
+    clearInterval(S.verifyTimer);
     toast(err.message, true);
     if (err.code === 'x_required' || err.code === 'x_unverified') S.xOpenTask = taskId;
     await refreshMe();
@@ -6178,6 +6213,15 @@ async function submitAdminResult(form, intent) {
 }
 
 // ------------------------------------------------------------------ Events
+
+// Remember whether "Your claims" is open, so a redraw of the Earn page keeps it as the player left it.
+document.addEventListener(
+  'toggle',
+  (e) => {
+    if (e.target instanceof HTMLDetailsElement && e.target.matches('.claims-box')) S.claimsOpen = e.target.open;
+  },
+  true,
+);
 
 document.addEventListener('click', async (e) => {
   const t = e.target;

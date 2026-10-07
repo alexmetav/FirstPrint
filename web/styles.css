@@ -13713,3 +13713,53 @@ html.in-maint body {
     animation: none;
   }
 }
+
+/* "Your claims": closed until opened, with pages when it grows. */
+.claims-box > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+.claims-box > summary::-webkit-details-marker {
+  display: none;
+}
+.claims-box > summary h2 {
+  flex: 1 1 auto;
+}
+.claims-chev {
+  display: inline-flex;
+  color: var(--muted);
+  transition: transform 160ms var(--ease-out);
+}
+.claims-box[open] .claims-chev {
+  transform: rotate(90deg);
+}
+.claims-box:not([open]) > summary {
+  margin-bottom: 0;
+}
+.claims-box .pager {
+  margin-top: 12px;
+}
+.claims-mint {
+  margin: 12px 0 0;
+}
+.claims-box.is-loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Verify, while the check runs: a spinner and how long it has taken. */
+.btn.is-busy {
+  gap: 8px;
+  cursor: progress;
+}
+.btn.is-busy .spin {
+  width: 14px;
+  height: 14px;
+}
+.verify-s {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  opacity: 0.7;
+}

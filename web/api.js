@@ -122,6 +122,7 @@ export function createApi(baseUrl = '') {
     startClaim: (wallet) => post('/api/me/claims', { wallet }),
     submitClaim: (c, transaction) => post(`/api/me/claims/${id(c)}/submit`, { transaction }),
     claimStatus: (c) => request(`/api/me/claims/${id(c)}`),
+    claims: (page = 1) => request(`/api/me/claims?page=${page}`),
     linkWallet: (body) => post('/api/me/wallets', body),
     setUsername: (username) => post('/api/me/profile', { username }),
     detectedListings: () => request('/api/listings/detected'),
