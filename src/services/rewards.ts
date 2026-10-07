@@ -1215,6 +1215,21 @@ export class RewardsService {
     });
   }
 
+  /**
+   * Removes a switched-off task and who did it. Points it paid stay with the players (rewards don't
+   * depend on the task row). Active tasks must be switched off first.
+   */
+  deleteTask(id: string) {
+    const t = as<TaskRow | undefined>(this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(id));
+    if (!t) throw new AppError(404, 'task_not_found', 'Task not found.');
+    if (t.active) throw new AppError(409, 'task_active', 'Switch the task off before deleting it.');
+    tx(this.db, () => {
+      this.db.prepare('DELETE FROM task_completions WHERE task_id = ?').run(id);
+      this.db.prepare('DELETE FROM tasks WHERE id = ?').run(id);
+    });
+    this.service.log(`task deleted: ${id} (${t.title})`);
+  }
+
   listTasksAdmin() {
     const rows = as<TaskRow[]>(this.db.prepare('SELECT * FROM tasks ORDER BY created_at DESC').all());
     return rows.map((t) => ({

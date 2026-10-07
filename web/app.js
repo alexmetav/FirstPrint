@@ -4785,13 +4785,13 @@ function xCheckNote() {
 function xConnectAdmin() {
   const x = A.xConnect;
   if (!x) return '';
-  return `<section class="panel">
-    <div class="section-head"><span class="section-ico">${ico('x')}</span><div><h2>Connect X</h2><p class="muted">${fmtNum(x.players)} player${x.players === 1 ? '' : 's'} earned <b>+${fmtNum(x.points)}</b> for linking X${x.round ? ' since the last reset' : ''}.</p></div></div>
-    <form id="admin-x-reset" class="admin-form task-form" novalidate>
-      <label><span class="field-label">Points</span><input name="points" type="number" min="1" max="10000" value="${x.points}" required /></label>
-      <button class="btn" type="submit">${ico('refresh')}Reset for everyone</button>
+  return `<section class="panel x-reset-bar">
+    <span class="task-ico task-ico-sm">${ico('x')}</span>
+    <div class="x-reset-text"><b>Connect X</b><span class="muted">${fmtNum(x.players)} earned +${fmtNum(x.points)}${x.round ? ' since the last reset' : ''}</span></div>
+    <form id="admin-x-reset" class="x-reset-form" novalidate title="Reset clears every player’s linked X account, so each can link X again and earn these points. Points already given are kept; nothing is announced.">
+      <label class="pts-field"><input name="points" type="number" min="1" max="10000" value="${x.points}" required aria-label="Points for linking X" /><span>pts</span></label>
+      <button class="btn btn-sm" type="submit">${ico('refresh')}Reset for everyone</button>
     </form>
-    ${how('Reset clears every player’s linked X account. Players see Connect X again and earn these points again when they link (and verify) it. Points already given are kept, and nothing is announced.')}
   </section>`;
 }
 
@@ -4823,7 +4823,7 @@ function tasksAdminSection(tasks) {
                 <td><span class="mkt-cell"><span class="task-ico task-ico-sm">${ico(TASK_ICONS[t.kind] ?? 'star')}</span><span><a href="${esc(t.url)}" target="_blank" rel="noopener noreferrer">${esc(t.title)}</a>${t.active ? '' : ' <span class="pill pill-off">Off</span>'}</span></span></td>
                 <td class="right num-cell">+${fmtNum(t.points)}</td>
                 <td><span class="progress-cell">${fmtNum(t.completions)}${t.maxCompletions ? ` / ${fmtNum(t.maxCompletions)}` : ''}${pct === null ? '' : `<span class="meter"><i style="width:${pct}%"></i></span>`}</span></td>
-                <td class="right"><span class="row-actions"><button class="btn btn-sm" data-action="admin-task-edit" data-id="${esc(t.id)}">${ico('edit')}Edit</button><button class="btn btn-sm" data-action="admin-task-toggle" data-id="${esc(t.id)}" data-active="${t.active ? '1' : '0'}">${ico('power')}${t.active ? 'Switch off' : 'Switch on'}</button>${t.active ? `<button class="btn btn-sm" data-action="admin-task-reset" data-id="${esc(t.id)}" data-title="${esc(t.title)}" data-points="${t.points}">${ico('refresh')}Reset</button>` : ''}</span></td>
+                <td class="right"><span class="row-actions"><button class="btn btn-sm" data-action="admin-task-edit" data-id="${esc(t.id)}">${ico('edit')}Edit</button><button class="btn btn-sm" data-action="admin-task-toggle" data-id="${esc(t.id)}" data-active="${t.active ? '1' : '0'}">${ico('power')}${t.active ? 'Switch off' : 'Switch on'}</button>${t.active ? `<button class="btn btn-sm" data-action="admin-task-reset" data-id="${esc(t.id)}" data-title="${esc(t.title)}" data-points="${t.points}">${ico('refresh')}Reset</button>` : `<button class="btn btn-sm btn-danger" data-action="admin-task-delete" data-id="${esc(t.id)}" data-title="${esc(t.title)}">${ico('trash')}Delete</button>`}</span></td>
               </tr>${
                 A.editTask === t.id
                   ? `<tr class="row-edit"><td colspan="4"><form class="admin-form task-form" data-task-edit="${esc(t.id)}" novalidate>
@@ -5621,6 +5621,15 @@ async function onAdminAction(action, el) {
       return renderAdmin();
     case 'admin-task-edit':
       A.editTask = el.dataset.id || null;
+      return renderAdmin();
+    case 'admin-task-delete':
+      if (!confirm(`Delete "${el.dataset.title}"? It disappears from the list. Points it already paid stay with the players.`)) return;
+      try {
+        await A.api.deleteTask(el.dataset.id);
+        toast('Task deleted');
+      } catch (err) {
+        toast(err.message, true);
+      }
       return renderAdmin();
     case 'admin-task-reset':
       if (!confirm(`Reset "${el.dataset.title}" for everyone? Every player can do it again and earn ${fmtNum(Number(el.dataset.points))} points, with no player limit. Points already given are kept.`)) return;

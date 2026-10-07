@@ -1113,6 +1113,13 @@ export function createApiServer(opts: ServerOptions): Server {
     return { tasks: r.listTasksAdmin(), xChecks: Boolean(r.xcheck), xCredit: await r.xCredit(), xConnect: r.xConnectAdmin() };
   });
 
+  route('POST', '/api/admin/tasks/:id/delete', ({ req, params, requireAdmin }) => {
+    requireAdmin('tasks');
+    rewardsOn().deleteTask(params.id);
+    audit(req, 'task_deleted', params.id, '');
+    return { ok: true };
+  });
+
   // A task opened to everyone again (a fresh copy, no limit; the old one is switched off).
   route('POST', '/api/admin/tasks/:id/reset', async ({ req, params, body, requireAdmin }) => {
     requireAdmin();

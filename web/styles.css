@@ -13763,3 +13763,144 @@ html.in-maint body {
   font-size: 12px;
   opacity: 0.7;
 }
+
+/* Task forms (add and edit): even, quiet fields — same height, label on top, no browser spinners. */
+.task-form {
+  align-items: end;
+  gap: 14px 12px;
+}
+.admin-main .task-form label:not(.check) {
+  gap: 6px;
+}
+.task-form .field-label {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--muted);
+}
+.task-form .field-label .muted {
+  font-weight: 400;
+  opacity: 0.75;
+}
+.admin-form.task-form input:not([type='checkbox']),
+.admin-form.task-form select {
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 60%, var(--bg));
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color 140ms var(--ease-out), box-shadow 140ms var(--ease-out), background-color 140ms var(--ease-out);
+}
+.admin-form.task-form input::placeholder {
+  color: color-mix(in srgb, var(--muted) 75%, transparent);
+}
+.admin-form.task-form input:hover,
+.admin-form.task-form select:hover {
+  border-color: var(--line-strong);
+}
+.admin-form.task-form input:focus,
+.admin-form.task-form select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--text) 40%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 8%, transparent);
+  background: var(--bg);
+}
+.admin-form.task-form select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8b95' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  cursor: pointer;
+}
+.admin-form.task-form input[type='number'],
+.x-reset-form input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+  font-variant-numeric: tabular-nums;
+}
+.admin-form.task-form input[type='number']::-webkit-inner-spin-button,
+.admin-form.task-form input[type='number']::-webkit-outer-spin-button,
+.x-reset-form input[type='number']::-webkit-inner-spin-button,
+.x-reset-form input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.task-form > .btn {
+  height: 42px;
+  border-radius: 10px;
+}
+
+/* Connect X: one slim row — what it pays, and the reset. */
+.panel.x-reset-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 14px;
+  padding: 14px 18px;
+}
+.x-reset-text {
+  display: grid;
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.x-reset-text .muted {
+  font-size: 13px;
+}
+.x-reset-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+.pts-field {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 10px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 60%, var(--bg));
+}
+.pts-field:focus-within {
+  border-color: color-mix(in srgb, var(--text) 40%, var(--line));
+}
+.pts-field input {
+  width: 70px;
+  height: 100%;
+  padding: 0 4px 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  text-align: right;
+  outline: none;
+}
+.pts-field span {
+  font-size: 12px;
+  color: var(--muted);
+}
+/* Wide screens: the add-task fields and the button sit on one line. */
+@media (min-width: 1000px) {
+  #admin-task.task-form {
+    grid-template-columns: minmax(130px, 1fr) minmax(160px, 1.4fr) minmax(150px, 1.3fr) minmax(90px, 0.7fr) minmax(100px, 0.8fr) auto;
+  }
+  #admin-task.task-form > .btn {
+    padding: 0 18px;
+  }
+}
+.x-reset-form .pts-field input[type='number'] {
+  width: 64px;
+  height: 100%;
+  min-height: 0;
+  padding: 0 4px 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+}
