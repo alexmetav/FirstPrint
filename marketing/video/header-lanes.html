@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="./stage.css" />
+<style>
+  html, body { width: 1500px; height: 500px; }
+  #h { position: absolute; inset: 0; overflow: hidden; background: #08080a; }
+  .lane { position: absolute; left: 0; right: 0; }
+  .lane .fill { position: absolute; inset: 0; background: var(--c); opacity: 0.075; }
+  .lane .edge { position: absolute; left: 0; right: 0; top: 0; height: 1px; background: var(--c); opacity: 0.22; }
+  .lane .tag { position: absolute; right: 34px; top: 50%; transform: translateY(-50%); display: inline-flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 15px; letter-spacing: 0.14em; color: var(--c); }
+  .lane .tag .rg { color: #71717a; letter-spacing: 0.04em; }
+  .lane .tag .i { width: 17px; height: 17px; }
+  .mark-l { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1.5px dashed rgba(255,255,255,0.22); }
+  .mark-l span { position: absolute; top: 12px; left: 10px; font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.16em; color: #a1a1aa; white-space: nowrap; }
+  .grain { position: absolute; inset: 0; opacity: 0.12; mix-blend-mode: overlay; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+</style>
+</head>
+<body>
+<div id="h"></div>
+<script type="module">
+  import { el, logo, ico, OUTCOMES, oIcon } from './lib.js';
+  await document.fonts.load('600 60px Geist');
+  await document.fonts.load('400 30px Geist');
+  await document.fonts.load('500 30px "Geist Mono"');
+  await document.fonts.ready;
+  const root = document.querySelector('#h');
+  const LH = 100; // lane height: five lanes fill the 500px header
+  const RANGE = ['+50%', '+10 to +50%', '±10%', '−10 to −50%', '−50%'];
+  OUTCOMES.forEach((o, i) => {
+    const up = o.b === 'up';
+    root.append(el(`<div class="lane" style="--c:${o.c};top:${i * LH}px;height:${LH}px">
+      <div class="fill" style="${up ? 'opacity:0.16' : ''}"></div>${i ? '<div class="edge"></div>' : ''}
+      <div class="tag"><span style="display:inline-flex">${oIcon(o.b)}</span>${o.name.toUpperCase()}<span class="rg">${RANGE[i]}</span></div>
+    </div>`));
+  });
+
+  // Start and result markers.
+  const X0 = 680, X1 = 1130;
+  root.append(el(`<div class="mark-l" style="left:${X0}px"><span>START</span></div>`));
+  root.append(el(`<div class="mark-l" style="left:${X1}px"><span>RESULT</span></div>`));
+
+  // The price line: starts on Flat, wanders, breaks out and lands in the Up lane.
+  const yFlat = 2.5 * LH, yUp = 1.5 * LH;
+  const pts = [];
+  const n = 90;
+  for (let k = 0; k <= n; k++) {
+    const u = k / n;
+    const x = X0 + (X1 - X0) * u;
+    const drift = yFlat + (yUp - yFlat) * Math.pow(u, 1.6);
+    const wig = Math.sin(u * 19) * 9 * (1 - u * 0.6) + Math.sin(u * 47 + 1.3) * 4 * (1 - u) + (u > 0.35 && u < 0.5 ? 16 * Math.sin((u - 0.35) / 0.15 * Math.PI) : 0);
+    pts.push([x, drift + wig]);
+  }
+  const d = pts.map(([x, y], k) => `${k ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+  const [ex, ey] = pts[pts.length - 1];
+  root.append(el(`<svg class="abs" style="left:0;top:0;overflow:visible" width="1500" height="500" viewBox="0 0 1500 500">
+    <defs>
+      <linearGradient id="g" x1="${X0}" x2="${X1}" y1="0" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#d4d4d8" stop-opacity="0.55"/><stop offset="0.55" stop-color="#e9ffe9"/><stop offset="1" stop-color="#30d158"/></linearGradient>
+      <linearGradient id="a" x1="0" x2="0" y1="${yUp - 40}" y2="${yFlat + 60}" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#30d158" stop-opacity="0.22"/><stop offset="1" stop-color="#30d158" stop-opacity="0"/></linearGradient>
+      <filter id="glow" x="-20%" y="-50%" width="140%" height="200%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <path d="${d} L${ex} ${yFlat + 60} L${X0} ${yFlat + 60} Z" fill="url(#a)"/>
+    <path d="${d}" fill="none" stroke="url(#g)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round" filter="url(#glow)"/>
+    <circle cx="${X0}" cy="${pts[0][1]}" r="5" fill="#d4d4d8"/>
+    <circle cx="${ex}" cy="${ey}" r="22" fill="#30d158" opacity="0.18"/>
+    <circle cx="${ex}" cy="${ey}" r="13" fill="#30d158" opacity="0.28"/>
+    <circle cx="${ex}" cy="${ey}" r="7" fill="#30d158"/>
+  </svg>`));
+  // The pick that was right.
+  root.append(el(`<div class="abs" style="left:${ex + 22}px;top:${ey - 19}px;display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px 0 11px;border-radius:999px;background:rgba(9,9,11,0.85);box-shadow:inset 0 0 0 1.5px var(--up);font-size:16px;font-weight:600;color:var(--up)"><span style="display:inline-flex;font-size:18px">${ico('checkCircle')}</span>You 100</div>`));
+
+  // Message, laid out on the lanes like rows of the app.
+  root.append(el(`<div class="abs" style="left:84px;top:${LH * 2 + 22}px;font-size:46px;font-weight:600;letter-spacing:-0.04em;line-height:1">call where crypto lands</div>`));
+  root.append(el(`<div class="abs" style="left:84px;top:${LH + 33}px;display:flex;align-items:center;gap:14px"><span class="wordmark" style="font-size:24px;gap:11px">${logo(28)}<span>Firstprint</span></span></div>`));
+  root.append(el(`<div class="abs" style="left:84px;top:${LH * 3 + 36}px;display:flex;align-items:center;gap:16px;font-size:16px;color:#a1a1aa"><span class="mono" style="color:var(--text)">firstprint.fun</span><span style="width:1px;height:16px;background:#35353e"></span><span style="display:inline-flex;align-items:center;gap:8px"><i style="width:7px;height:7px;border-radius:50%;background:var(--up);box-shadow:0 0 0 3px rgba(48,209,88,0.2)"></i>Testnet live on Solana</span></div>`));
+  root.append(el('<div class="grain"></div>'));
+  window.READY = true;
+</script>
+</body>
+</html>
