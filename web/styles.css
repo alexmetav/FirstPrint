@@ -13589,3 +13589,57 @@ html.in-maint body {
   font: inherit;
   letter-spacing: inherit;
 }
+
+/* Featured card: "Open market" sits beside the token name, so the facts get the full width below. */
+.feat-main,
+.feat-id,
+.feat-name {
+  min-width: 0;
+}
+.feat-name {
+  flex: 1 1 auto;
+}
+.feat-name h2,
+.feat-name p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feat-open-btn {
+  flex: 0 0 auto;
+  align-self: center;
+  min-height: 40px;
+  padding: 0 16px;
+}
+.feat-open-btn .i {
+  width: 15px;
+  height: 15px;
+}
+.feat-main > .feat-hint {
+  margin: 0;
+}
+@media (max-width: 640px) {
+  .feat-id {
+    gap: 12px;
+  }
+  .feat {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .feat-id .feat-open-btn {
+    min-height: 36px;
+    padding: 0 12px;
+    font-size: var(--fs-sm);
+  }
+  /* Two facts per row: roomy and evenly lined up. */
+  .feat-facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 20px;
+  }
+}
+/* Narrow phones: a shorter button leaves the token name room. */
+@media (max-width: 420px) {
+  .feat-open-word {
+    display: none;
+  }
+}
