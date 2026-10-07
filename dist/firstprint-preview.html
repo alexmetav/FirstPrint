@@ -14371,6 +14371,7 @@ function createAdminApi(key, baseUrl = '') {
     teamRemove: (id) => post(`/api/admin/team/${encodeURIComponent(id)}/remove`),
     createTask: (body) => post('/api/admin/tasks', body),
     updateTask: (id, body) => post(`/api/admin/tasks/${encodeURIComponent(id)}`, body),
+    resetXConnect: (points) => post('/api/admin/x-connect/reset', { points }),
   };
 }
 
@@ -19614,6 +19615,7 @@ async function renderAdmin() {
   const [{ markets }, detected, { log }, token, tasksData, teamData] = loaded;
   const { tasks } = tasksData;
   A.xCheck = { on: Boolean(tasksData.xChecks), credit: tasksData.xCredit ?? null };
+  A.xConnect = tasksData.xConnect ?? null;
   A.markets = markets;
   void backfillLogoPngs(markets);
   A.detected = detected;
@@ -20260,6 +20262,20 @@ function xCheckNote() {
   return `<p class="x-check-note${low ? ' form-error' : ''}">${ico(low ? 'alert' : 'checkCircle')} <span><b>Checked on X</b> <span class="muted">Follow, repost and post tasks are checked before they pay (likes stay honour-based); players verify their X username with a code in their bio.${x.credit !== null ? ` GetXAPI credit: <b>$${x.credit.toFixed(2)}</b> (about ${fmtNum(Math.floor(x.credit * 1000))} checks)${low ? ', top it up at getxapi.com' : ''}.` : ''}</span></span></p>`;
 }
 
+/** Connect X reward: its points, and a reset that lets everyone link X and earn it again. */
+function xConnectAdmin() {
+  const x = A.xConnect;
+  if (!x) return '';
+  return `<section class="panel">
+    <div class="section-head"><span class="section-ico">${ico('x')}</span><div><h2>Connect X</h2><p class="muted">${fmtNum(x.players)} player${x.players === 1 ? '' : 's'} earned <b>+${fmtNum(x.points)}</b> for linking X${x.round ? ' since the last reset' : ''}.</p></div></div>
+    <form id="admin-x-reset" class="admin-form task-form" novalidate>
+      <label><span class="field-label">Points</span><input name="points" type="number" min="1" max="10000" value="${x.points}" required /></label>
+      <button class="btn" type="submit">${ico('refresh')}Reset for everyone</button>
+    </form>
+    ${how('Reset clears every player’s linked X account. Players see Connect X again and earn these points again when they link (and verify) it. Points already given are kept, and nothing is announced.')}
+  </section>`;
+}
+
 function tasksAdminSection(tasks) {
   return `<section class="panel">
     <div class="section-head"><span class="section-ico">${ico('plusCircle')}</span><div><h2>Add a task</h2></div></div>
@@ -20276,6 +20292,7 @@ function tasksAdminSection(tasks) {
     </form>
     ${how(A.xCheck?.on ? 'Players open the task, do it on X, then press Verify. Follow, repost and post tasks are checked on X through GetXAPI (about $0.001 a check); likes can’t be checked, so they stay honour-based. Players first prove their X username with a code in their bio, each X account can be verified by one Firstprint account only, and each task pays once per player.' : 'Players open the task, do it on X, then press Verify. Without GETXAPI_KEY it’s honour-based: each X username can only be linked to one account, and each task pays once per player.')}
   </section>
+  ${xConnectAdmin()}
   <section class="panel panel-flush">
     <div class="section-head"><span class="section-ico">${ico('sparkles')}</span><h2>Tasks <span class="count-badge">${tasks.length}</span></h2></div>
     ${
@@ -20343,6 +20360,7 @@ async function renderTasksOnly(view) {
     const data = await A.api.tasks();
     tasks = data.tasks;
     A.xCheck = { on: Boolean(data.xChecks), credit: data.xCredit ?? null };
+    A.xConnect = data.xConnect ?? null;
   } catch (err) {
     view.innerHTML = `<div class="empty"><p><strong>Couldn’t load tasks.</strong><br />${esc(err.message)}</p></div>`;
     return;
@@ -21486,6 +21504,17 @@ async function onAdminSubmit(form, submitter) {
     try {
       await A.api.createTask({ ...data, points: Number(data.points), maxCompletions: data.maxCompletions ? Number(data.maxCompletions) : null });
       toast('Task added');
+      return renderAdmin();
+    } catch (err) {
+      return toast(err.message, true);
+    }
+  }
+  if (form.id === 'admin-x-reset') {
+    const points = Number(new FormData(form).get('points'));
+    if (!confirm(`Reset Connect X for everyone? Every player's X link is cleared, and each can earn ${fmtNum(points)} points again by linking X.`)) return;
+    try {
+      const out = await A.api.resetXConnect(points);
+      toast(`Connect X reset: ${fmtNum(out.cleared)} account${out.cleared === 1 ? '' : 's'} unlinked`);
       return renderAdmin();
     } catch (err) {
       return toast(err.message, true);

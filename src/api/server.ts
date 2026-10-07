@@ -1109,7 +1109,15 @@ export function createApiServer(opts: ServerOptions): Server {
   route('GET', '/api/admin/tasks', async ({ requireAdmin }) => {
     requireAdmin('tasks');
     const r = rewardsOn();
-    return { tasks: r.listTasksAdmin(), xChecks: Boolean(r.xcheck), xCredit: await r.xCredit() };
+    return { tasks: r.listTasksAdmin(), xChecks: Boolean(r.xcheck), xCredit: await r.xCredit(), xConnect: r.xConnectAdmin() };
+  });
+
+  // Connect X: a new round for everyone (all X links cleared, the reward can be earned again).
+  route('POST', '/api/admin/x-connect/reset', async ({ req, body, requireAdmin }) => {
+    requireAdmin();
+    const out = rewardsOn().resetXConnect(Number((await body()).points));
+    audit(req, 'x_connect_reset', String(out.round), `${out.points} pts, ${out.cleared} unlinked`);
+    return out;
   });
 
   // A tasks-only team member can add tasks worth up to TEAM_TASK_MAX points; bigger ones need an admin.

@@ -233,6 +233,41 @@ export class RewardsService {
     this.saveSetting('testfpt.authority', this.vault ? this.vault.seal(secret) : secret);
   }
 
+  // --- Connect X reward ------------------------------------------------------------------
+  // Paid once per round; an admin reset starts a new round (everyone links X again and can earn it
+  // again) and can change the points.
+
+  /** Points for linking (verifying) an X account in the current round. */
+  xConnectPoints() {
+    const n = Number(this.setting('x.connect.points'));
+    return Number.isInteger(n) && n > 0 ? n : X_CONNECT_POINTS;
+  }
+  private xConnectRef() {
+    const round = Number(this.setting('x.connect.round')) || 0;
+    return round ? `x#${round}` : 'x';
+  }
+  xConnectAdmin() {
+    const players = as<{ n: number }>(this.db.prepare("SELECT COUNT(*) AS n FROM rewards WHERE kind = 'x_connect' AND ref = ?").get(this.xConnectRef())).n;
+    return { points: this.xConnectPoints(), round: Number(this.setting('x.connect.round')) || 0, players };
+  }
+  /**
+   * Starts a new Connect X round: every account's X link is cleared, so players link (and verify)
+   * again and earn the reward again. Points already given are kept.
+   */
+  resetXConnect(points: number) {
+    const pts = Math.floor(Number(points));
+    if (!(pts >= 1 && pts <= 10_000)) throw new AppError(400, 'bad_points', 'Choose between 1 and 10,000 points.');
+    return tx(this.db, () => {
+      const round = (Number(this.setting('x.connect.round')) || 0) + 1;
+      this.saveSetting('x.connect.round', String(round));
+      this.saveSetting('x.connect.points', String(pts));
+      const cleared = this.db.prepare('UPDATE users SET x_username = NULL, x_verified = 0, x_pending = NULL, x_code = NULL WHERE x_username IS NOT NULL OR x_pending IS NOT NULL').run().changes;
+      this.xFails.clear();
+      this.service.log(`Connect X reset: round ${round}, ${pts} points, ${cleared} accounts unlinked`);
+      return { ...this.xConnectAdmin(), cleared };
+    });
+  }
+
   private setting(key: string): string | null {
     return as<{ value: string } | undefined>(this.db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key))?.value ?? null;
   }
@@ -754,7 +789,7 @@ export class RewardsService {
       chainPaused: this.ready() && !this.funded,
       welcomeClaimed: welcome ? welcome.claim_id !== null && this.isClaimed(welcome.claim_id) : true,
       xUsername: user.x_username,
-      xConnectPoints: X_CONNECT_POINTS,
+      xConnectPoints: this.xConnectPoints(),
       // With X checks on: whether the linked username is proven, and the code waiting to be found.
       xChecks: Boolean(this.xcheck),
       xVerified: user.x_verified === 1,
@@ -833,8 +868,9 @@ export class RewardsService {
       const taken = as<{ id: string } | undefined>(this.db.prepare('SELECT id FROM users WHERE x_username = ? COLLATE NOCASE AND id != ?').get(name, userId));
       if (taken) throw new AppError(409, 'x_taken', 'That X account is already linked to another Firstprint account.');
       this.db.prepare('UPDATE users SET x_username = ? WHERE id = ?').run(name, userId);
-      const rewarded = this.award(userId, 'x_connect', 'x', X_CONNECT_POINTS);
-      return { xUsername: name, pending: false, code: null, rewarded: rewarded ? X_CONNECT_POINTS : 0 };
+      const pts = this.xConnectPoints();
+      const rewarded = this.award(userId, 'x_connect', this.xConnectRef(), pts);
+      return { xUsername: name, pending: false, code: null, rewarded: rewarded ? pts : 0 };
     });
   }
 
@@ -871,8 +907,9 @@ export class RewardsService {
       // Someone who only typed this username in (no proof) loses it to its real owner.
       this.db.prepare('UPDATE users SET x_username = NULL WHERE x_username = ? COLLATE NOCASE AND id != ?').run(name, userId);
       this.db.prepare('UPDATE users SET x_username = ?, x_verified = 1, x_pending = NULL, x_code = NULL WHERE id = ?').run(canonical, userId);
-      const rewarded = this.award(userId, 'x_connect', 'x', X_CONNECT_POINTS);
-      return { xUsername: canonical, verified: true, rewarded: rewarded ? X_CONNECT_POINTS : 0 };
+      const pts = this.xConnectPoints();
+      const rewarded = this.award(userId, 'x_connect', this.xConnectRef(), pts);
+      return { xUsername: canonical, verified: true, rewarded: rewarded ? pts : 0 };
     });
   }
 
