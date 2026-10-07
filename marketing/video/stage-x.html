@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="./stage.css" />
+</head>
+<body>
+<div id="stage"></div>
+<script type="module">
+  // The X cut: square frame, a short hook up front, the video a little slower, and a longer end card.
+  const q = new URLSearchParams(location.search);
+  const v = q.get('v') || 'v1';
+  globalThis.STAGE_H = Number(q.get('h') || 1080);
+  globalThis.ZMUL = Number(q.get('z') || 0.62);
+  globalThis.YOFF = Number(q.get('yo') || 20);
+  document.documentElement.style.setProperty('--h', `${globalThis.STAGE_H}px`);
+  const STRETCH = Number(q.get('stretch') || 1.22);
+  const HOOK_S = 2.6;
+  const HOLD = 2.6;
+  const mod = await import(`./${v}.js`);
+  // Each video can tune its square framing (zoom and a vertical shift).
+  if (mod.SQ && !q.get('z')) globalThis.ZMUL = mod.SQ.z;
+  if (mod.SQ && !q.get('yo')) globalThis.YOFF = mod.SQ.yo;
+  const lib = await import('./lib.js');
+  await document.fonts.load('600 76px Geist');
+  await document.fonts.load('400 40px Geist');
+  await document.fonts.load('500 36px "Geist Mono"');
+  await document.fonts.ready;
+  const render = mod.build();
+  const vidEnd = mod.DURATION - 0.5; // stop before the video's own fade-out, then hold
+  const total = HOOK_S + vidEnd * STRETCH + HOLD;
+
+  // Hook: just the two caption lines, centred, then a quick wipe into the video.
+  const H = globalThis.STAGE_H;
+  const hook = lib.el(`<div style="position:absolute;inset:0;z-index:70;background:#09090b;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+    <div class="ht" style="text-align:center;font-size:118px;font-weight:600;letter-spacing:-0.045em;line-height:1.02">${mod.HOOK.map((l) => `<span style="display:block;overflow:hidden"><span style="display:block">${l}</span></span>`).join('')}</div>
+  </div>`);
+  document.querySelector('#stage').append(hook);
+  const lines = [...hook.querySelectorAll('.ht > span > span')];
+  const black = lib.el('<div style="position:absolute;inset:0;z-index:80;background:#000;pointer-events:none"></div>');
+  document.querySelector('#stage').append(black);
+
+  window.DURATION = total;
+  window.SFX_FINAL = [
+    ...lines.map((_, i) => [0.35 + i * 0.22, 'note', i]),
+    ...mod.SFX.filter(([t]) => t <= vidEnd).map(([t, k, x]) => [HOOK_S + t * STRETCH, k, x]),
+  ];
+  window.render = (t) => {
+    const { ep, ease } = lib;
+    // Hook.
+    lines.forEach((l, i) => {
+      const k = ep(t, 0.3 + i * 0.22, 1.1 + i * 0.22, ease.outQuint);
+      const o = ep(t, HOOK_S - 0.45, HOOK_S - 0.1, ease.in);
+      l.style.transform = `translateY(${(1 - k) * 60 - o * 40}%)`;
+      l.style.opacity = String(Math.min(k * 1.4, 1) * (1 - o));
+      l.style.filter = `blur(${(1 - k) * 14}px)`;
+    });
+    const wipe = ep(t, HOOK_S - 0.3, HOOK_S + 0.15, ease.inOut);
+    hook.style.opacity = String(1 - wipe);
+    hook.style.transform = `scale(${1 + wipe * 0.06})`;
+    hook.style.display = wipe >= 1 ? 'none' : 'flex';
+    // Video, a little slower; held on the end card at the close.
+    const local = Math.min(vidEnd, Math.max(0, (t - HOOK_S) / STRETCH));
+    render(t < HOOK_S ? 0 : local);
+    black.style.opacity = String(Math.max(1 - ep(t, 0, 0.25, ease.out), ep(t, total - 0.45, total, ease.in)));
+  };
+  window.render(0);
+  window.READY = true;
+</script>
+</body>
+</html>

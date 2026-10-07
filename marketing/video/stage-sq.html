@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="./stage.css" />
+</head>
+<body>
+<div id="stage"></div>
+<script type="module">
+  // Natively square videos: no hook or stretch, the module owns the whole timeline.
+  globalThis.STAGE_H = 1080;
+  globalThis.ZMUL = 1;
+  globalThis.YOFF = 0;
+  document.documentElement.style.setProperty('--h', '1080px');
+  const v = new URLSearchParams(location.search).get('v') || 'x1';
+  await document.fonts.load('600 76px Geist');
+  await document.fonts.load('400 40px Geist');
+  await document.fonts.load('500 36px "Geist Mono"');
+  await document.fonts.ready;
+  const mod = await import(`./${v}.js`);
+  if (mod.preload) await mod.preload();
+  const render = mod.build();
+  window.DURATION = mod.DURATION;
+  window.SFX_FINAL = mod.SFX;
+  window.render = (t) => render(t);
+  render(0);
+  window.READY = true;
+</script>
+</body>
+</html>
