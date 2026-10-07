@@ -35,6 +35,19 @@ test('public API (read-only): markets, upcoming tokens and the leaderboard, with
     const u = await service.createUser({ email: 'secret@example.com', username: 'alice' });
     service.placePrediction(priced, u.id, 'up', 100);
 
+    // The app's scripts are never kept by Cloudflare (a deploy must show at once); images may be.
+    const script = await fetch(`${base}/app.js`);
+    assert.equal(script.headers.get('cloudflare-cdn-cache-control'), 'no-store');
+    assert.equal(script.headers.get('cache-control'), 'no-cache');
+    // Each module is named with a fingerprint of its content, so a deploy changes the addresses.
+    const appJs = await script.text();
+    assert.match(appJs, /from '\.\/api\.js\?v=[\w-]{10}'/);
+    const page = await (await fetch(`${base}/`)).text();
+    assert.match(page, /<script type="module" src="\.\/app\.js\?v=[\w-]{10}"><\/script>/);
+    assert.match(page, /href="\.\/styles\.css\?v=[\w-]{10}"/);
+    const v = /app\.js\?v=([\w-]{10})/.exec(page)![1];
+    assert.equal((await fetch(`${base}/app.js?v=${v}`)).status, 200);
+
     const index = await get('/api/v1');
     assert.equal(index.status, 200);
     assert.equal(index.cors, '*', 'any site may call it');

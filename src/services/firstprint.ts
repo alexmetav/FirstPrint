@@ -2107,7 +2107,14 @@ export class FirstprintService {
    * claim) and the background workers pause, so the copy a new server starts from has everything.
    * Stored in the database, so a freshly deployed server starts in maintenance too.
    */
+  /**
+   * Set while this server hands over to a newly deployed one (memory only, never saved): it works
+   * like maintenance mode, for admins too, since anything saved here now would be lost.
+   */
+  handingOff: number | null = null;
+
   maintenance(): { on: boolean; message: string; since: number | null } {
+    if (this.handingOff !== null) return { on: true, message: 'Firstprint is updating. Back in about a minute.', since: this.handingOff };
     try {
       const v = JSON.parse(this.getSetting('maintenance') ?? 'null') as { message?: string; since?: number } | null;
       if (v) return { on: true, message: String(v.message ?? ''), since: Number(v.since) || null };

@@ -2,8 +2,9 @@ import { asAdmin } from '../exchanges/coingeckoGate.ts';
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
+import { readFileSync, statSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
-import { extname, join, normalize, resolve } from 'node:path';
+import { dirname, extname, join, normalize, resolve } from 'node:path';
 import { AppError, DAILY_MAX, DAILY_POINTS, dailyStatus, LEADERBOARD_PERIODS, LIVE_PRESETS, MIN_STAKE, SESSION_MS, SUGGESTED_LIVE_TOKENS, type FirstprintService, type LeaderboardPeriod, type UserRow } from '../services/firstprint.ts';
 import type { Scheduler } from '../workers/scheduler.ts';
 import type { LiveFeed } from '../workers/liveFeed.ts';
@@ -594,9 +595,10 @@ export function createApiServer(opts: ServerOptions): Server {
   route('GET', '/api/me', async ({ req, user }) => {
     const u = user();
     // Players who signed up before countries were recorded get theirs on their next visit.
-    if (!u.country) service.noteCountry(u.id, countryOf(req));
+    // (Neither while handing over to a new deploy: what's saved now would be lost.)
+    if (!u.country && service.handingOff === null) service.noteCountry(u.id, countryOf(req));
     // Email and Google players get a Firstprint wallet the first time they come back (or sign up).
-    if (opts.rewards) await opts.rewards.ensureWallet(u.id).catch((err: Error) => service.log(`wallet for ${u.id} failed: ${err.message}`));
+    if (opts.rewards && service.handingOff === null) await opts.rewards.ensureWallet(u.id).catch((err: Error) => service.log(`wallet for ${u.id} failed: ${err.message}`));
     const adminLevel = accountLevel(req, u);
     return { ...publicUser(u, service.clock.now(), service.walletsFor(u.id)), unreadNotifications: service.unreadNotifications(u.id), isAdmin: adminLevel !== null, adminLevel };
   });
@@ -1269,6 +1271,28 @@ export function createApiServer(opts: ServerOptions): Server {
    */
   const staticCache = new Map<string, { mtimeMs: number; size: number; type: string; raw: Buffer; gz: Buffer | null; etag: string }>();
 
+  /** A short hash of a file's content, remembered until the file changes. */
+  const fingerprints = new Map<string, { mtimeMs: number; v: string }>();
+  function fingerprint(path: string): string | null {
+    try {
+      const st = statSync(path);
+      const hit = fingerprints.get(path);
+      if (hit && hit.mtimeMs === st.mtimeMs) return hit.v;
+      const v = createHash('sha1').update(readFileSync(path)).digest('base64url').slice(0, 10);
+      fingerprints.set(path, { mtimeMs: st.mtimeMs, v });
+      return v;
+    } catch {
+      return null;
+    }
+  }
+  /** Adds ?v=<fingerprint> to every "./name.js" or "./name.css" that exists next to the file. */
+  function fingerprintRefs(text: string, dir: string) {
+    return text.replace(/(["'])\.\/([\w.-]+\.(?:js|css))\1/g, (whole, q: string, name: string) => {
+      const v = fingerprint(join(dir, name));
+      return v ? `${q}./${name}?v=${v}${q}` : whole;
+    });
+  }
+
   async function serveStatic(res: ServerResponse, root: string, pathname: string, linkToApp = false) {
     const rel = normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '');
     let file = join(root, rel === '/' ? 'index.html' : rel);
@@ -1295,6 +1319,9 @@ export function createApiServer(opts: ServerOptions): Server {
         if (linkToApp && LINKED_SITE_FILES.has(file.slice(root.length + 1))) {
           data = Buffer.from(linkSiteToApp(data.toString('utf8'), APP_PREFIX, file));
         }
+        // The app's page and modules name each other with a fingerprint of the file (app.js?v=…), so a
+        // deploy changes every address that changed and no browser keeps running an old script.
+        if (!linkToApp && ['.html', '.js'].includes(extname(file))) data = Buffer.from(fingerprintRefs(data.toString('utf8'), dirname(file)));
         const type = MIME[extname(file)] ?? 'application/octet-stream';
         hit = {
           mtimeMs: st.mtimeMs,
@@ -1314,6 +1341,10 @@ export function createApiServer(opts: ServerOptions): Server {
         // Pages, scripts and styles are checked on every load (a cheap 304 when unchanged), so after a
         // deploy no browser or CDN mixes a new script with an old stylesheet. Images may wait 5 minutes.
         'cache-control': ['.html', '.js', '.css'].includes(extname(file)) ? 'no-cache' : 'public, max-age=300',
+        // Cloudflare (in front of the site) must never keep its own copy of pages, scripts or styles:
+        // it once kept serving the old app after a deploy until its cache was purged by hand.
+        // Browsers still revalidate them with the ETag, so this costs nothing.
+        ...(['.html', '.js', '.css'].includes(extname(file)) ? { 'cloudflare-cdn-cache-control': 'no-store' } : {}),
         etag: hit.etag,
         vary: 'accept-encoding',
       };
@@ -1558,6 +1589,10 @@ export function createApiServer(opts: ServerOptions): Server {
       }
       if (req.method === 'POST' && !String(req.headers['content-type'] ?? '').startsWith('application/json')) {
         throw new AppError(415, 'json_required', 'Requests must use Content-Type: application/json.');
+      }
+      // While handing over to a new deploy nothing may be saved, not even by admins: it would be lost.
+      if (req.method === 'POST' && service.handingOff !== null && url.pathname !== '/api/auth/logout') {
+        throw new AppError(503, 'maintenance', service.maintenance().message);
       }
       // Maintenance: players can read but not write; admins (key or admin account) can still test.
       if (req.method === 'POST' && !url.pathname.startsWith('/api/admin/') && url.pathname !== '/api/auth/logout' && service.maintenance().on) {

@@ -218,3 +218,90 @@ test('backup: copies less often as the database grows, to stay inside the hostâ€
   assert.equal(DbBackup.minGap(3_000_000), 5 * 60_000);
   assert.equal(DbBackup.minGap(20_000_000), 15 * 60_000);
 });
+
+// --- Deploy hand-over -----------------------------------------------------------------
+
+const { DeployHandoff, LEASE_STALE_MS } = await import('../src/db/handoff.ts');
+const pause = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const leaseOf = (storage: ReturnType<typeof fakeStorage>) => {
+  const raw = storage.objects.get('firstprint.db.lease.json');
+  return raw ? (JSON.parse(raw.toString()) as { id: string; beat: number; released?: boolean }) : null;
+};
+
+test('deploy hand-over: a new server waits until the running one has saved, then the old one never uploads again', async () => {
+  const storage = fakeStorage();
+  const p = join(dir(), 'firstprint.db');
+  const db = openDb(p);
+  db.prepare("INSERT INTO users (id, username, points, created_at) VALUES ('u1', 'ana', 0, 1)").run();
+  const backup = new DbBackup(db, p, cfg, quiet, storage.fetchFn);
+  const steps: string[] = [];
+
+  // The running server keeps its lease and watches for a newer one.
+  const old = new DeployHandoff(cfg, quiet, { fetchFn: storage.fetchFn, beatMs: 20, watchMs: 10, wait: () => pause(5) });
+  old.start(async () => {
+    steps.push('old: stop changes');
+    // A change made just before the hand-over is in the last copy.
+    db.prepare("INSERT INTO users (id, username, points, created_at) VALUES ('u2', 'bea', 0, 2)").run();
+    assert.equal(await backup.halt(), true);
+    steps.push('old: last copy');
+  });
+  await pause(40);
+  assert.equal(leaseOf(storage)?.id, old.id);
+
+  // The new deploy asks, waits, then restores a copy that has the last change.
+  const fresh = new DeployHandoff(cfg, quiet, { fetchFn: storage.fetchFn, wait: () => pause(10) });
+  assert.equal(await fresh.claim(), 'handed-over');
+  steps.push('new: restore');
+  assert.deepEqual(steps, ['old: stop changes', 'old: last copy', 'new: restore']);
+  assert.equal(leaseOf(storage)?.released, true);
+  const q = join(dir(), 'firstprint.db');
+  await restoreIfMissing(q, cfg, quiet, storage.fetchFn);
+  const restored = new DatabaseSync(q);
+  assert.deepEqual(restored.prepare('SELECT username FROM users ORDER BY username').all().map((r) => (r as { username: string }).username), ['ana', 'bea']);
+  restored.close();
+
+  // The new server takes the lease; the old one stays out of the way, even on shutdown.
+  fresh.start(async () => {});
+  await pause(60);
+  assert.equal(old.handedOver, true);
+  const uploads = storage.calls.filter((c) => c.method === 'POST' && c.name === 'firstprint.db').length;
+  db.prepare("INSERT INTO users (id, username, points, created_at) VALUES ('u3', 'cy', 0, 3)").run();
+  await backup.stop();
+  assert.equal(storage.calls.filter((c) => c.method === 'POST' && c.name === 'firstprint.db').length, uploads, 'no upload after handing over');
+  old.stop();
+  fresh.stop();
+  db.close();
+});
+
+test('deploy hand-over: no wait after sleep or a crash; a silent old server or a failed new one is not waited on forever', async () => {
+  let t = 1_000_000;
+  const clock = { now: () => t, wait: async (ms: number) => void (t += ms) };
+
+  // Nothing running (first start, or waking from sleep with an old lease): start at once.
+  const storage = fakeStorage();
+  assert.equal(await new DeployHandoff(cfg, quiet, { fetchFn: storage.fetchFn, ...clock }).claim(), 'free');
+  storage.objects.set('firstprint.db.lease.json', Buffer.from(JSON.stringify({ id: 'old', beat: t - LEASE_STALE_MS - 1 })));
+  assert.equal(await new DeployHandoff(cfg, quiet, { fetchFn: storage.fetchFn, ...clock }).claim(), 'free');
+  assert.equal(storage.objects.has('firstprint.db.handoff.json'), false, 'nobody to ask');
+
+  // A live lease that never hands over: the new server starts after two minutes anyway.
+  const beating = { id: 'old', beat: t };
+  const live = fakeStorage();
+  const wrapped = (async (input: string | URL | Request, init?: RequestInit) => {
+    live.objects.set('firstprint.db.lease.json', Buffer.from(JSON.stringify({ ...beating, beat: t })));
+    return live.fetchFn(input, init);
+  }) as typeof fetch;
+  assert.equal(await new DeployHandoff(cfg, quiet, { fetchFn: wrapped, ...clock }).claim(), 'timeout');
+
+  // The old server handed over but the new one never came up: it carries on after ten minutes.
+  const s2 = fakeStorage();
+  const old = new DeployHandoff(cfg, quiet, { fetchFn: s2.fetchFn, ...clock, beatMs: 5, watchMs: 5 });
+  let resumed = false;
+  old.onResume = () => (resumed = true);
+  old.start(async () => {});
+  s2.objects.set('firstprint.db.handoff.json', Buffer.from(JSON.stringify({ to: 'new-that-fails', at: t })));
+  for (let i = 0; i < 100 && !resumed; i++) await pause(5);
+  assert.equal(resumed, true);
+  assert.equal(old.handedOver, false);
+  old.stop();
+});

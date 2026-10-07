@@ -10,9 +10,9 @@ import type { DB } from './db.ts';
  *
  * Copies are gzip-compressed (a SQLite file shrinks about 5×) and taken when something changed:
  * every minute while the database is small, less often as it grows (see minGap), plus one on
- * shutdown and one when maintenance mode is turned on. A deploy starts the new server from the
- * latest copy before the old one stops, so the gap between copies is what a deploy can lose;
- * maintenance mode closes that gap.
+ * shutdown and one when maintenance mode is turned on. A deploy starts the new server while the
+ * old one still runs; the two hand over through the bucket (see handoff.ts), so the new server
+ * restores a copy taken after the old one stopped saving and nothing in between is lost.
  * One dated copy is kept per day for the last 30 days.
  */
 export interface BackupConfig {
@@ -41,8 +41,8 @@ export function backupConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Backu
   return { url, serviceKey, bucket: env.BACKUP_BUCKET || 'firstprint-backups', object: env.BACKUP_OBJECT || 'firstprint.db' };
 }
 
-const headers = (cfg: BackupConfig) => ({ authorization: `Bearer ${cfg.serviceKey}`, apikey: cfg.serviceKey });
-const objectUrl = (cfg: BackupConfig, name: string, authenticated = false) =>
+export const headers = (cfg: BackupConfig) => ({ authorization: `Bearer ${cfg.serviceKey}`, apikey: cfg.serviceKey });
+export const objectUrl = (cfg: BackupConfig, name: string, authenticated = false) =>
   `${cfg.url}/storage/v1/object/${authenticated ? 'authenticated/' : ''}${encodeURIComponent(cfg.bucket)}/${encodeURIComponent(name)}`;
 
 /**
@@ -148,8 +148,30 @@ export class DbBackup {
     return { enabled: true, lastOkAt: this.lastOkAt, lastError: this.lastError, sizeBytes: this.lastBytes || null };
   }
 
+  private halted = false;
+
+  /**
+   * Stops all copies for good, after a final one: this server has handed over to a newly deployed
+   * one, which now owns the backup. A later copy from here (on shutdown) would overwrite its newer data.
+   */
+  async halt() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    if (this.inFlight) await this.inFlight;
+    const ok = await this.runOnce(true);
+    this.halted = true;
+    return ok;
+  }
+
+  /** Takes copies again (the hand-over was abandoned: the new server never came up). */
+  resume(everyMs = 60_000) {
+    this.halted = false;
+    if (!this.timer) this.start(everyMs);
+  }
+
   /** Uploads a consistent snapshot if anything changed since the last one (or always with force). */
   runOnce(force = false): Promise<boolean> {
+    if (this.halted) return Promise.resolve(false);
     if (this.inFlight) return Promise.resolve(false);
     this.inFlight = this.snapshot(force).finally(() => {
       this.inFlight = null;

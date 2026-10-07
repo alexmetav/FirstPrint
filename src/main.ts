@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.ts';
 import { openDb } from './db/db.ts';
 import { DbBackup, backupConfigFromEnv, restoreIfMissing } from './db/backup.ts';
+import { DeployHandoff } from './db/handoff.ts';
 import { systemClock } from './clock.ts';
 import { FirstprintService } from './services/firstprint.ts';
 import { Scheduler } from './workers/scheduler.ts';
@@ -31,6 +32,10 @@ if (cfg.dbPath !== ':memory:') mkdirSync(dirname(cfg.dbPath), { recursive: true 
 // Hosts without a persistent disk (Render's free plan) lose the database file on every restart,
 // so it is restored from, and regularly copied to, a private Supabase Storage bucket.
 const backupCfg = cfg.dbPath === ':memory:' ? null : backupConfigFromEnv();
+// A deploy starts this server while the previous one still runs: it is asked to save and hand over
+// first, so the copy restored below has everything (see db/handoff.ts).
+const handoff = backupCfg ? new DeployHandoff(backupCfg, log) : null;
+if (handoff) await handoff.claim();
 if (backupCfg) await restoreIfMissing(cfg.dbPath, backupCfg, log, fetch, process.env.ALLOW_EMPTY_DB === '1');
 else if (process.env.NODE_ENV === 'production') {
   log('WARNING: no SUPABASE_URL / SUPABASE_SERVICE_KEY set. Unless DB_PATH is on a persistent disk, accounts and points are lost whenever this server restarts.');
@@ -223,10 +228,23 @@ server.listen(cfg.port, '0.0.0.0', () => {
   scheduler.start();
   backup?.start();
   if (backup) void backup.runOnce(true); // first copy right away, so a brand-new database is protected too
+  // A newer deploy asking to take over: stop changes, let on-chain sends finish, take the last copy.
+  handoff?.start(async () => {
+    service.handingOff = Date.now();
+    await Promise.race([rewards.chainIdle(), new Promise((r) => setTimeout(r, 60_000))]);
+    const saved = await backup!.halt();
+    if (!saved) log('deploy: the last copy failed; the new server starts from the one before');
+  });
+  if (handoff)
+    handoff.onResume = () => {
+      service.handingOff = null;
+      backup?.resume();
+    };
 });
 
 const shutdown = () => {
   log('shutting down');
+  handoff?.stop();
   scheduler.stop();
   // Stop taking requests, and end open live-update streams: they never close on their own,
   // so waiting for them would let the host kill us before the final backup.
