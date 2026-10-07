@@ -8721,41 +8721,48 @@ p,
   letter-spacing: -0.02em;
   color: var(--text);
 }
-/* Top payout: only the number moves. It burns: a fiery orange number with a flickering flame glow. */
+/* Top payout: only the number moves. It uses the theme's green (dark on light, bright on dark), so it
+   stays sharp in both themes, with a marker-pen highlight that swipes under it and a periodic pop. */
 .hero-stats dd .hero-top {
+  position: relative;
+  isolation: isolate;
   display: inline-block;
+  padding: 0 0.12em;
   font-size: 1.35em;
   font-weight: 700;
   line-height: 1;
-  color: #ff6a00;
+  color: var(--up);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--up) 40%, transparent);
   transform-origin: left bottom;
-  animation: hero-top-fire 1.4s ease-in-out infinite alternate;
+  animation: hero-top-pop 3.2s ease-in-out infinite;
 }
-@keyframes hero-top-fire {
-  0% {
-    color: #ff6a00;
-    transform: scale(1);
-    text-shadow: 0 0 4px #ffd60a, 0 -2px 8px #ff9f0a, 0 -5px 14px #ff4500, 0 -9px 22px rgba(255, 40, 0, 0.55);
-  }
-  35% {
-    color: #ff8a00;
-    text-shadow: 0 0 5px #ffe066, -1px -4px 10px #ffb000, 1px -8px 18px #ff5a00, 0 -13px 28px rgba(255, 40, 0, 0.6);
-  }
-  70% {
-    color: #ff5a00;
-    text-shadow: 0 0 3px #ffd60a, 1px -3px 9px #ff9f0a, -1px -6px 15px #ff4500, 0 -10px 24px rgba(255, 30, 0, 0.5);
-  }
-  100% {
-    color: #ff7a00;
-    transform: scale(1.07);
-    text-shadow: 0 0 6px #fff1a8, 0 -5px 12px #ffc300, 0 -10px 20px #ff5a00, 0 -16px 32px rgba(255, 40, 0, 0.65);
-  }
+.hero-stats dd .hero-top::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: 0;
+  right: 0;
+  bottom: 0.02em;
+  height: 0.5em;
+  border-radius: 0.2em;
+  background: color-mix(in srgb, var(--up) 24%, transparent);
+  transform-origin: left center;
+  animation: hero-top-marker 3.2s ease-in-out infinite;
+}
+@keyframes hero-top-pop {
+  0%, 62%, 100% { transform: scale(1); }
+  70% { transform: scale(1.12); }
+  80% { transform: scale(0.98); }
+  88% { transform: scale(1.03); }
+}
+@keyframes hero-top-marker {
+  0% { transform: scaleX(0); }
+  30%, 85% { transform: scaleX(1); }
+  100% { transform: scaleX(1); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .hero-stats dd .hero-top {
-    animation: none;
-    text-shadow: 0 0 4px #ffd60a, 0 -3px 10px #ff9f0a, 0 -6px 16px rgba(255, 69, 0, 0.6);
-  }
+  .hero-stats dd .hero-top,
+  .hero-stats dd .hero-top::before { animation: none; }
 }
 .hero-next {
   display: flex;
