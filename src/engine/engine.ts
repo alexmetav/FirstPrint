@@ -42,7 +42,7 @@ export interface MarketConfig {
   thresholds: Thresholds;
   /** Missing on older markets, which are all ladders. */
   outcomes?: OutcomeStyle;
-  /** Early-bird strength. 0.5 → earliest prediction weighs 1.5×, last 1.0×. */
+  /** Early-bird strength. 1 → earliest prediction weighs 2×, last 1.0×. */
   earlyBirdK: number;
   /** Pool fee in basis points (400 = 4%). */
   feeBps: number;
@@ -73,7 +73,7 @@ const HOUR = 60 * MINUTE;
 
 export const DEFAULT_CONFIG: MarketConfig = {
   thresholds: DEFAULT_THRESHOLDS,
-  earlyBirdK: 0.5,
+  earlyBirdK: 1,
   feeBps: 400,
   softCap: 50_000,
   volumeCapRatio: null,
@@ -269,6 +269,91 @@ export function weightFor(placedAt: number, tOpen: number, tClose: number, k: nu
   if (tClose <= tOpen) return 1;
   const f = (tClose - placedAt) / (tClose - tOpen);
   return 1 + k * Math.min(1, Math.max(0, f));
+}
+
+// ---------------------------------------------------------------------------
+// Reverting a prediction
+// ---------------------------------------------------------------------------
+
+/**
+ * A player can take a prediction back before predictions close. The fee is small in the first half
+ * of the prediction window and climbs steeply in the second half, so faking a big bet to move the
+ * odds and leaving just before the close costs more than it can win. Half the fee is burned and half
+ * goes to the players who predicted in the first half and stayed in.
+ */
+export interface RevertRules {
+  /** Fee in the first half of the window (200 = 2%). */
+  baseBps: number;
+  /** Fee right at the close. */
+  maxBps: number;
+  /** A prediction taken back this soon after it was placed, in the first half, costs nothing. */
+  undoMs: number;
+  /** Reverts stop this long before the close. */
+  lockMs: number;
+  /** Share of the fee that is burned (5000 = half); the rest goes to early players. */
+  burnBps: number;
+}
+
+export const DEFAULT_REVERT_RULES: RevertRules = {
+  baseBps: 200,
+  maxBps: 5_000,
+  undoMs: 2 * MINUTE,
+  lockMs: 10 * MINUTE,
+  burnBps: 5_000,
+};
+
+/** True when a prediction placed at this time counts as early (first half of the window). */
+export function isEarly(placedAt: number, tOpen: number, tClose: number): boolean {
+  return placedAt < tOpen + (tClose - tOpen) / 2;
+}
+
+/** The fee rate, in basis points, for taking a prediction back at `now`. */
+export function revertBps(now: number, tOpen: number, tClose: number, rules: Pick<RevertRules, 'baseBps' | 'maxBps'>): number {
+  if (tClose <= tOpen) return rules.maxBps;
+  const left = Math.min(1, Math.max(0, (tClose - now) / (tClose - tOpen)));
+  if (left >= 0.5) return rules.baseBps;
+  const x = (0.5 - left) / 0.5;
+  return Math.round(rules.baseBps + (rules.maxBps - rules.baseBps) * x * x * x);
+}
+
+export interface RevertQuote {
+  /** False when predictions have closed or the last minutes before the close have started. */
+  allowed: boolean;
+  /** Fee rate in basis points. */
+  bps: number;
+  fee: number;
+  /** Stake returned to the player. */
+  back: number;
+  burn: number;
+  /** Goes to the early players at settlement. */
+  toEarly: number;
+  /** Inside the free undo window. */
+  free: boolean;
+}
+
+export function revertQuote(stake: number, placedAt: number, now: number, tOpen: number, tClose: number, rules: RevertRules): RevertQuote {
+  const allowed = now < tClose - rules.lockMs;
+  const free = now - placedAt <= rules.undoMs && isEarly(now, tOpen, tClose);
+  const bps = free ? 0 : revertBps(now, tOpen, tClose, rules);
+  const fee = Math.min(stake, Math.ceil((stake * bps) / 10_000));
+  const burn = fee - Math.floor((fee * (10_000 - rules.burnBps)) / 10_000);
+  return { allowed, bps, fee, back: stake - fee, burn, toEarly: fee - burn, free };
+}
+
+/** Splits the early players' share of revert fees by accepted stake. Rounding remainder is burned. */
+export function splitEarlyPot(pot: number, early: readonly { id: string; accepted: number }[]): { shares: Map<string, number>; burned: number } {
+  const total = early.reduce((s, p) => s + p.accepted, 0);
+  const shares = new Map<string, number>();
+  if (pot <= 0 || total <= 0) return { shares, burned: Math.max(0, pot) };
+  let paid = 0;
+  for (const p of early) {
+    const n = Math.floor((pot * p.accepted) / total);
+    if (n > 0) {
+      shares.set(p.id, n);
+      paid += n;
+    }
+  }
+  return { shares, burned: pot - paid };
 }
 
 export function hardCapFor(cfg: MarketConfig, baselineVolume: number): number {

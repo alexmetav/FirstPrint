@@ -511,7 +511,7 @@ svg {
   font-size: 26px;
   font-weight: 500;
   letter-spacing: -0.02em;
-  scroll-margin-top: 80px;
+  scroll-margin-top: 120px;
 }
 .doc-body h2 .n {
   margin-right: 10px;
@@ -523,6 +523,7 @@ svg {
   margin: 28px 0 8px;
   font-size: 18px;
   font-weight: 600;
+  scroll-margin-top: 120px;
 }
 .doc-body p,
 .doc-body li {

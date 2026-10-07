@@ -37,6 +37,7 @@
         <a href="#markets">2. Market design</a>
         <a href="#prices">3. Start and result prices</a>
         <a href="#payouts">4. Pools and payouts</a>
+        <a href="#take-back">Taking a prediction back</a>
         <a href="#integrity">5. Integrity rules</a>
         <a href="#listings">6. Tokens and listings</a>
         <a href="#accounts">7. Accounts and wallets</a>
@@ -108,16 +109,45 @@
         <p>Markets are parimutuel: all stakes go into one pool, and the players who picked the winning outcome share it. There is no house taking the other side, so Firstprint never bets against its players.</p>
         <div class="formula">
           net pool = pool × (1 − fee)                 fee = 4%<br />
-          weight(p) = 1 + k × (time left when placed ÷ prediction window)   k = 0.5<br />
+          weight(p) = 1 + k × (time left when placed ÷ prediction window)   k = 1<br />
           payout(p) = net pool × stake(p) × weight(p) ÷ Σ winners (stake × weight)
         </div>
         <ul>
-          <li><b>Early-bird weights.</b> A prediction placed when the market opens weighs 1.5×; one placed at the last moment weighs 1.0×. Calling it early is rewarded, which also brings liquidity in sooner.</li>
+          <li><b>Early-bird weights.</b> A prediction placed when the market opens weighs 2×; one placed at the last moment weighs 1×, and in between the weight falls steadily, minute by minute. The weight only changes how the winners share the pool; it never adds points. Calling it early is rewarded, which also brings liquidity in sooner.</li>
           <li><b>Caps.</b> A pool has a size cap, and one player’s accepted stake is limited to a share of it (10% by default). A stake that would go over the pool cap or your limit isn’t accepted, so no single player can dominate a market.</li>
           <li><b>Rounding.</b> Payouts are rounded down; the fee and the remainder are not paid out to anyone.</li>
           <li><b>No winners.</b> If nobody picked the winning outcome, everyone picked the same outcome, or a market is cancelled, every stake is refunded in full.</li>
         </ul>
         <div class="callout" style="--c: var(--up)"><p><b>Example.</b> A 10,000-point pool, 4% fee: 9,600 points are shared. If the winners staked 2,000 points at equal weight, each winning point returns 4.8 points.</p></div>
+
+        <h3 id="take-back">Taking a prediction back</h3>
+        <p>A player can take a prediction back while predictions are open. The stake comes back minus a fee, and the prediction leaves the pool. The fee is there so that a large stake can’t be used to move the odds and then pulled out at the last moment.</p>
+        <div class="formula">
+          early window = first half of the prediction window<br />
+          fee = 2%                                          in the early window<br />
+          fee = 2% + 48% × ((0.5 − time left ÷ window) ÷ 0.5)³   after it, up to 50%<br />
+          stake back = stake − fee (fee rounded up to the nearest point)
+        </div>
+        <ul>
+          <li><b>Early window.</b> The first half of the time between the market opening and predictions closing. In a market open for three days, it is the first 36 hours. The market page shows the exact time.</li>
+          <li><b>Rising fee.</b> The fee is 2% in the early window. After that it rises, slowly at first and steeply near the close, up to 50%. In a 72-hour market, it is about 4% with 24 hours left, 16% with 12 hours left, 30% with 6 hours left and 46% with one hour left. The exact fee is shown before you confirm.</li>
+          <li><b>Free undo.</b> Taking a prediction back within 2 minutes of placing it is free, as long as it is still the early window. This covers mistakes, not strategy.</li>
+          <li><b>Lock.</b> Predictions can’t be taken back in the last 10 minutes before predictions close.</li>
+          <li><b>Early bonus is lost.</b> Taking a prediction back gives up its early bonus. A new prediction gets the weight for the moment it is placed, and counts as early only if it is placed in the early window.</li>
+        </ul>
+
+        <h3 id="early-rewards">Where the fee goes</h3>
+        <ul>
+          <li><b>Half is burned.</b> Those points are removed for good. Once Firstprint moves to FPT, this becomes a real token burn.</li>
+          <li><b>Half goes to early players.</b> It is shared among predictions placed in the early window that were never taken back, in proportion to their stake. It is paid when the market settles, next to any winnings.</li>
+          <li><b>Win or lose.</b> An early prediction gets its early reward whether its outcome wins or loses. A prediction that was taken back gets none.</li>
+          <li><b>Separate from the pool.</b> Early rewards come only from take-back fees. The pool is the stakes still in at the close, and the winners split it exactly as described above, so early rewards never reduce anyone’s winnings.</li>
+          <li><b>No early players.</b> If no prediction qualifies, the early half is burned too.</li>
+          <li><b>Cancelled markets.</b> Every stake still in is refunded, but take-back fees are not returned, and the early half is burned.</li>
+          <li><b>Changes.</b> Firstprint may change these numbers. A change applies only to predictions taken back after it.</li>
+          <li><b>No cash value.</b> Points, burned points and early rewards have no cash value.</li>
+        </ul>
+        <div class="callout" style="--c: var(--up)"><p><b>Example.</b> A player takes back 1,000 points with a 30% fee. They get 700 back; 150 points are burned and 150 go to the early predictions. If those total 5,000 points, an early player with 500 points staked gets 15 points at the result, win or lose.</p></div>
 
         <h2 id="integrity"><span class="n">5</span>Integrity rules</h2>
         <p>Token prices can be pushed around, new listings and smaller tokens most of all. The rules are written so that the cheapest manipulation doesn’t pay.</p>

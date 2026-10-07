@@ -92,6 +92,34 @@ CREATE TABLE IF NOT EXISTS predictions (
 CREATE INDEX IF NOT EXISTS predictions_market ON predictions(market_id, placed_at);
 CREATE INDEX IF NOT EXISTS predictions_user ON predictions(user_id, placed_at);
 
+-- Predictions a player took back before the close. The prediction row is removed (so pools, caps
+-- and payouts never see it) and kept here with the fee: `burned` is gone for good, `to_early` waits
+-- for the market's early players (see early_pots).
+CREATE TABLE IF NOT EXISTS prediction_reverts (
+  id           TEXT PRIMARY KEY,   -- the prediction's id
+  market_id    TEXT NOT NULL,      -- no foreign key: the record (and the burn) outlives a deleted market
+  user_id      TEXT NOT NULL REFERENCES users(id),
+  bucket       TEXT NOT NULL,
+  stake        INTEGER NOT NULL,
+  placed_at    INTEGER NOT NULL,
+  reverted_at  INTEGER NOT NULL,
+  fee          INTEGER NOT NULL,
+  burned       INTEGER NOT NULL,
+  to_early     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS prediction_reverts_market ON prediction_reverts(market_id);
+CREATE INDEX IF NOT EXISTS prediction_reverts_user ON prediction_reverts(user_id);
+
+-- What happened to a market's early-player share of revert fees when it settled: paid out to the
+-- early predictions still in, or burned (no early players, rounding, or a cancelled market).
+CREATE TABLE IF NOT EXISTS early_pots (
+  market_id   TEXT PRIMARY KEY,
+  pot         INTEGER NOT NULL,
+  paid        INTEGER NOT NULL,
+  burned      INTEGER NOT NULL,
+  settled_at  INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS candles (
   market_id  TEXT NOT NULL REFERENCES markets(id),
   venue      TEXT NOT NULL,
