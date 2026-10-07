@@ -39,6 +39,8 @@ const REPOST_PAGES = 5;
 export class GetXApi implements XChecker {
   private key: string;
   private fetchImpl: typeof fetch;
+  /** Called once per paid call (every call but the credit check), to count how many were used. */
+  onCall: (() => void) | null = null;
 
   constructor(key: string, fetchImpl: typeof fetch = fetch) {
     this.key = key.trim();
@@ -48,6 +50,7 @@ export class GetXApi implements XChecker {
   private async get(path: string, params: Record<string, string>): Promise<Record<string, unknown>> {
     const url = new URL(BASE + path);
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+    if (path !== '/account/me') this.onCall?.();
     let res: Response;
     try {
       res = await this.fetchImpl(url, { headers: { authorization: `Bearer ${this.key}` }, signal: AbortSignal.timeout(20_000) });

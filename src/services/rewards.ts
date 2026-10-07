@@ -1006,6 +1006,21 @@ export class RewardsService {
     return this.xcheck ? this.xcheck.credit() : null;
   }
 
+  /** Counts one paid GetXAPI call: in total, and today (UTC). */
+  countXCall() {
+    const day = new Date(this.now()).toISOString().slice(0, 10);
+    const u = this.xUsage();
+    this.service.setSetting('xcheck_calls', String(u.total + 1));
+    this.service.setSetting('xcheck_calls_day', `${day}:${u.today + 1}`);
+  }
+
+  /** Paid GetXAPI calls made so far, in total and today (UTC). */
+  xUsage() {
+    const day = new Date(this.now()).toISOString().slice(0, 10);
+    const [d, n] = (this.service.getSetting('xcheck_calls_day') ?? '').split(':');
+    return { total: Number(this.service.getSetting('xcheck_calls')) || 0, today: d === day ? Number(n) || 0 : 0 };
+  }
+
   // --- Tasks ------------------------------------------------------------------------
 
   private taskUrl(t: TaskRow, code: string) {

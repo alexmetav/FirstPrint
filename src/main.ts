@@ -90,7 +90,11 @@ const rewards = new RewardsService(
 await rewards.init();
 // X checks (GetXAPI): players prove their X username, and follow, repost and post tasks are checked.
 // Without the key both stay honour-based.
-if (process.env.GETXAPI_KEY?.trim()) rewards.xcheck = new GetXApi(process.env.GETXAPI_KEY);
+if (process.env.GETXAPI_KEY?.trim()) {
+  const x = new GetXApi(process.env.GETXAPI_KEY);
+  x.onCall = () => rewards.countXCall();
+  rewards.xcheck = x;
+}
 // Server-paid TestFPT: daily streak mints, Firstprint-wallet reward claims, and confirmations.
 // Paused in maintenance: a mint sent on chain but not yet saved could otherwise be sent twice after a deploy.
 const paused = () => service.maintenance().on;

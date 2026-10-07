@@ -4253,7 +4253,7 @@ async function renderAdmin() {
   }
   const [{ markets }, detected, { log }, token, tasksData, teamData, errorsData] = loaded;
   const { tasks } = tasksData;
-  A.xCheck = { on: Boolean(tasksData.xChecks), credit: tasksData.xCredit ?? null };
+  A.xCheck = { on: Boolean(tasksData.xChecks), credit: tasksData.xCredit ?? null, usage: tasksData.xUsage ?? null };
   A.xConnect = tasksData.xConnect ?? null;
   A.markets = markets;
   void backfillLogoPngs(markets);
@@ -4973,12 +4973,22 @@ function errorsView(data) {
 const TASK_TARGET_HINT = { follow: 'X handle, e.g. @firstprint', repost: 'Link to the post on X', like: 'Link to the post on X', share: 'Text of the post (the player’s invite link is added)', link: 'https:// link', telegram: 'Public channel, e.g. @firstprint' };
 
 /** Tasks players complete for points: create, set a limit, switch off. */
-/** Whether tasks are checked on X (GetXAPI), and the credit left for those checks. */
+/** Whether tasks are checked on X (GetXAPI): the credit left, the checks it pays for, and the checks used. */
 function xCheckNote() {
   const x = A.xCheck;
-  if (!x?.on) return `<p class="muted x-check-note">${ico('info')} Tasks are honour-based. Set <code>GETXAPI_KEY</code> in Render to check follows, reposts and posts on X.</p>`;
+  if (!x?.on) return `<section class="panel"><p class="muted x-check-note">${ico('info')} Tasks are honour-based. Set <code>GETXAPI_KEY</code> in Render to check follows, reposts and posts on X.</p></section>`;
   const low = x.credit !== null && x.credit < 1;
-  return `<p class="x-check-note${low ? ' form-error' : ''}">${ico(low ? 'alert' : 'checkCircle')} <span><b>Checked on X</b> <span class="muted">Follow, repost and post tasks are checked before they pay (likes stay honour-based); players verify their X username with a code in their bio.${x.credit !== null ? ` GetXAPI credit: <b>$${x.credit.toFixed(2)}</b> (about ${fmtNum(Math.floor(x.credit * 1000))} checks)${low ? ', top it up at getxapi.com' : ''}.` : ''}</span></span></p>`;
+  const tile = (icon, color, label, value, sub) =>
+    `<div class="stat-tile" style="--c:var(--${color})"><span class="tile-ico">${ico(icon)}</span><dt>${label}</dt><dd>${value}</dd><p>${sub}</p></div>`;
+  return `<section class="panel x-usage">
+    <div class="section-head"><span class="section-ico">${ico('x')}</span><div><h2>X checks <span class="pill ${low ? 'pill-hot' : 'pill-live'}">${low ? 'Low credit' : 'On'}</span></h2><p class="muted">Follow, repost and post tasks are checked on X before they pay. Likes stay honour-based.</p></div>${low ? '<a class="btn btn-sm head-action" href="https://getxapi.com" target="_blank" rel="noopener">Top up</a>' : ''}</div>
+    <dl class="stat-tiles">
+      ${tile('wallet', low ? 'down' : 'up', 'GetXAPI credit', x.credit !== null ? `$${x.credit.toFixed(2)}` : '–', x.credit !== null ? 'Balance on the account' : 'Couldn’t read the balance')}
+      ${tile('checkCircle', low ? 'down' : 'brand', 'Checks left', x.credit !== null ? fmtNum(Math.floor(x.credit * 1000)) : '–', 'About $0.001 each')}
+      ${tile('activity', 'brand', 'Used today', fmtNum(x.usage?.today ?? 0), 'Checks since 00:00 UTC')}
+      ${tile('history', 'flat', 'Used in total', fmtNum(x.usage?.total ?? 0), `About $${((x.usage?.total ?? 0) / 1000).toFixed(2)} spent`)}
+    </dl>
+  </section>`;
 }
 
 /** Connect X reward: its points, and a reset that lets everyone link X and earn it again. */
@@ -4996,9 +5006,9 @@ function xConnectAdmin() {
 }
 
 function tasksAdminSection(tasks) {
-  return `<section class="panel">
+  return `${xCheckNote()}
+  <section class="panel">
     <div class="section-head"><span class="section-ico">${ico('plusCircle')}</span><div><h2>Add a task</h2></div></div>
-    ${xCheckNote()}
     <form id="admin-task" class="admin-form task-form" novalidate>
       <label><span class="field-label">Type</span><select name="kind">
         <option value="follow">Follow on X</option><option value="repost">Repost on X</option><option value="like">Like on X</option><option value="share">Post on X (with invite link)</option><option value="link">Visit a link</option><option value="telegram">Join Telegram channel</option>
@@ -5078,7 +5088,7 @@ async function renderTasksOnly(view) {
   try {
     const data = await A.api.tasks();
     tasks = data.tasks;
-    A.xCheck = { on: Boolean(data.xChecks), credit: data.xCredit ?? null };
+    A.xCheck = { on: Boolean(data.xChecks), credit: data.xCredit ?? null, usage: data.xUsage ?? null };
     A.xConnect = data.xConnect ?? null;
   } catch (err) {
     view.innerHTML = `<div class="empty"><p><strong>Couldn’t load tasks.</strong><br />${esc(err.message)}</p></div>`;
@@ -5165,7 +5175,7 @@ function userActivityView(d) {
         ? `<div class="table-scroll"><table class="table act-table"><thead><tr><th>When</th><th>Player</th><th>What</th><th class="right">Points</th></tr></thead><tbody>${rows
             .map(
               (e) => `<tr class="${e.reason === 'payout' ? 'act-win' : ''}"><td class="muted nowrap">${fmtAgo(e.at)}</td>
-                <td><button class="link-btn" type="button" data-action="admin-act-user" data-name="${esc(e.user.username)}">${esc(e.user.username)}</button><small class="muted act-bal">${fmtNum(e.user.balance)} pts now</small></td>
+                <td><span class="act-who">${userLink(e.user.username)}<button class="act-only" type="button" data-action="admin-act-user" data-name="${esc(e.user.username)}" title="Show only this player" aria-label="Show only ${esc(e.user.username)}">${ico('search')}</button></span><small class="muted act-bal">${fmtNum(e.user.balance)} pts now</small></td>
                 <td>${what(e)}</td>
                 <td class="right num-cell ${e.delta >= 0 ? 'profit-pos' : 'dl-neg'}">${e.delta >= 0 ? '+' : '−'}${fmtNum(Math.abs(e.delta))}</td></tr>`,
             )
