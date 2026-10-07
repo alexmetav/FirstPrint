@@ -1184,6 +1184,26 @@ export class RewardsService {
       .run(c.title || t.title, c.target ?? t.target, c.points ?? t.points, c.max === undefined ? t.max_completions : c.max, c.active ?? t.active, id);
   }
 
+  /**
+   * Opens a task to everyone again: a fresh copy (same type, target and points, no player limit)
+   * replaces it, so every player can do it and earn it once more. The old one is switched off and
+   * keeps its history; points already given are kept.
+   */
+  resetTask(id: string, points?: number) {
+    const t = as<TaskRow | undefined>(this.db.prepare('SELECT * FROM tasks WHERE id = ?').get(id));
+    if (!t) throw new AppError(404, 'task_not_found', 'Task not found.');
+    const pts = points === undefined ? t.points : this.cleanTask({ points }, t.kind).points ?? t.points;
+    return tx(this.db, () => {
+      const fresh = `task-${randomUUID().slice(0, 8)}`;
+      this.db
+        .prepare('INSERT INTO tasks (id, kind, title, target, points, max_completions, active, created_at) VALUES (?, ?, ?, ?, ?, NULL, 1, ?)')
+        .run(fresh, t.kind, t.title, t.target, pts, this.now());
+      this.db.prepare('UPDATE tasks SET active = 0 WHERE id = ?').run(id);
+      this.service.log(`task reset: ${id} -> ${fresh} (${pts} points)`);
+      return { id: fresh, points: pts };
+    });
+  }
+
   listTasksAdmin() {
     const rows = as<TaskRow[]>(this.db.prepare('SELECT * FROM tasks ORDER BY created_at DESC').all());
     return rows.map((t) => ({

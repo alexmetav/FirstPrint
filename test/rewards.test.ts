@@ -221,6 +221,28 @@ test('tasks: link X, open the task, wait, confirm once; limits; rewards wait for
   assert.equal(rewards.summary(a.id).tasks.some((t) => t.id === repost), false);
 });
 
+test('resetting a task opens it to everyone again, with no limit, and pays once more', async () => {
+  const { clock, service, rewards } = await setup();
+  const { user: a } = await player(service, 'a@example.com');
+  const { user: b } = await player(service, 'b@example.com');
+  const link = rewards.createTask({ kind: 'link', target: 'https://firstprint.fun/x', points: 500, maxCompletions: 1 });
+  rewards.startTask(a.id, link);
+  clock.advance(TASK_MIN_WAIT_MS);
+  await rewards.verifyTask(a.id, link);
+  assert.equal(rewards.summary(b.id).tasks.find((t) => t.id === link)?.remaining, 0, 'full before the reset');
+
+  const fresh = rewards.resetTask(link).id;
+  assert.notEqual(fresh, link);
+  const tasks = rewards.summary(a.id).tasks;
+  assert.deepEqual(tasks.map((t) => [t.id, t.done, t.remaining, t.points]), [[fresh, false, null, 500]], 'only the fresh copy shows');
+  for (const u of [a, b]) {
+    rewards.startTask(u.id, fresh);
+    clock.advance(TASK_MIN_WAIT_MS);
+    assert.equal((await rewards.verifyTask(u.id, fresh)).points, 500);
+  }
+  assert.equal(rewards.listTasksAdmin().find((t) => t.id === link)?.active, false, 'the old one is switched off');
+});
+
 test('an admin reset of Connect X lets everyone link X and earn it again, at the new points', async () => {
   const { service, rewards } = await setup();
   const { user: a } = await player(service, 'a@example.com');
