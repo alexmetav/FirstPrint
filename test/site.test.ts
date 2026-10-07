@@ -31,7 +31,7 @@ test('with the website: landing page at /, its Launch app buttons open /app/, wh
 
     const app = await fetch(`${s.base}/app/`);
     assert.equal(app.status, 200);
-    assert.match(await app.text(), /<script type="module" src="\.\/app\.js">/);
+    assert.match(await app.text(), /<script type="module" src="\.\/app\.js\?v=[\w-]{10}">/);
     assert.match(await (await fetch(`${s.base}/app/app.js`)).text(), /Firstprint website\. Vanilla ES modules/);
 
     for (const path of ['/app', '/play/', '/play']) {
@@ -51,7 +51,7 @@ test('with the website: landing page at /, its Launch app buttons open /app/, wh
 test('without the website, the app is served at / as before', async () => {
   const s = await serve(null);
   try {
-    assert.match(await (await fetch(`${s.base}/`)).text(), /<script type="module" src="\.\/app\.js">/);
+    assert.match(await (await fetch(`${s.base}/`)).text(), /<script type="module" src="\.\/app\.js\?v=[\w-]{10}">/);
   } finally {
     s.close();
   }
