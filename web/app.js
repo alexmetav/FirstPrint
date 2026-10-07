@@ -1728,8 +1728,41 @@ function renderMarket() {
     S.tradeKey = '';
   }
   setHtml($('#market-main'), marketMain(m));
+  tickCountdowns();
   setHtml($('#mobile-bar-root'), mobileBar(m));
   renderTrade();
+}
+
+/**
+ * A large live countdown on the market page, to seconds: to the close while predictions are open,
+ * then to the result. The digits are filled in by the one-second ticker (tickCountdowns).
+ */
+function bigCountdown(m) {
+  if (m.status === 'resolved' || m.status === 'void') return '';
+  const open = m.status === 'open' && m.phase !== 'awaiting_result' && m.phase !== 'running';
+  const to = open ? m.closeAt : m.settleAt;
+  if (!to || to <= now()) return '';
+  const label = open ? (isUpcoming(m) ? 'Lists and predictions close in' : 'Predictions close in') : 'Result in';
+  const unit = (k, name) => `<span class="cd-unit"><b data-cd-part="${k}">00</b><small>${name}</small></span>`;
+  const sep = '<span class="cd-sep" aria-hidden="true">:</span>';
+  return `<div class="big-cd${open ? ' is-open' : ''}" data-cd="${to}" role="timer" aria-label="${label}">
+    <span class="cd-label">${ico('clock')}${label}</span>
+    <span class="cd-digits">${unit('d', 'days')}${sep}${unit('h', 'hours')}${sep}${unit('m', 'min')}${sep}${unit('s', 'sec')}</span>
+  </div>`;
+}
+
+/** Fills in every big countdown on the page; called each second and right after a redraw. */
+function tickCountdowns() {
+  document.querySelectorAll('[data-cd]').forEach((el) => {
+    const s = Math.max(0, Math.floor((Number(el.dataset.cd) - now()) / 1000));
+    const parts = { d: Math.floor(s / 86400), h: Math.floor((s % 86400) / 3600), m: Math.floor((s % 3600) / 60), s: s % 60 };
+    for (const [k, v] of Object.entries(parts)) {
+      const b = el.querySelector(`[data-cd-part="${k}"]`);
+      const text = String(v).padStart(2, '0');
+      if (b && b.textContent !== text) b.textContent = text;
+    }
+    el.classList.toggle('is-last-hour', s < 3600);
+  });
 }
 
 function statusLine(m) {
@@ -1834,6 +1867,7 @@ function marketMain(m) {
           : ''
       }
       ${m.status === 'resolved' || m.status === 'void' || m.phase === 'awaiting_result' ? `<p class="m-status">${statusLine(m)}</p>` : ''}
+      ${bigCountdown(m)}
       <dl class="m-facts">${facts}</dl>
       <div class="m-refs">${ico('landmark')}<span>${isManual(m) ? 'Reference' : 'Prices from'} ${esc(venueNames(m))}</span>${priceLinks(m)}</div>
     </header>
@@ -6755,6 +6789,7 @@ setInterval(() => {
     if (el.textContent !== text) el.textContent = text;
     if (left <= 0 && left > -1500) expired = true;
   });
+  tickCountdowns();
   if (expired) setTimeout(refresh, 1200);
 }, 1000);
 
