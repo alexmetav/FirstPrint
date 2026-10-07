@@ -116,6 +116,9 @@ function migrate(db: DB) {
   ensure('users', 'x_code', 'x_code TEXT');
   // Telegram account (for the "join the channel" task): the player's Telegram user ID, found when
   // they press Start in our bot with their code, and that code while it waits.
+  // Where the player signed up from: the two-letter country Cloudflare sees (CF-IPCountry), for
+  // the analytics page. Only the country, never the address.
+  ensure('users', 'country', 'country TEXT');
   ensure('users', 'tg_id', 'tg_id TEXT');
   ensure('users', 'tg_code', 'tg_code TEXT');
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_tg ON users(tg_id) WHERE tg_id IS NOT NULL');

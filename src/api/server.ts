@@ -164,6 +164,17 @@ export function createApiServer(opts: ServerOptions): Server {
     const chain = String(req.headers['x-forwarded-for'] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
     return chain.length >= proxyHops ? chain[chain.length - proxyHops] : direct;
   }
+  /**
+   * The visitor's country (two letters) as Cloudflare reports it, believed only when the request
+   * really came through Cloudflare (as for CF-Connecting-IP). Unknown (XX) and Tor (T1) count as none.
+   */
+  function countryOf(req: IncomingMessage): string | null {
+    if (!opts.behindCloudflare) return null;
+    const edge = proxiedIp(req);
+    if (!isCloudflareAddress(edge) && !isPrivateAddress(edge)) return null;
+    const c = String(req.headers['cf-ipcountry'] ?? '').trim().toUpperCase();
+    return /^[A-Z]{2}$/.test(c) && c !== 'XX' && c !== 'T1' ? c : null;
+  }
   /** The rate-limit key for a visitor: their IPv4 address, or their IPv6 /64 (one home or server usually gets a whole /64). */
   const visitor = (req: IncomingMessage) => ipBucket(clientIp(req));
   const { service } = opts;
@@ -318,7 +329,7 @@ export function createApiServer(opts: ServerOptions): Server {
   route('GET', '/api/me/rewards', ({ user }) => rewardsOn().summary(user().id));
 
   // The player's Firstprint wallet and every TestFPT transaction made for them, with explorer links.
-  route('GET', '/api/me/chain', ({ user }) => rewardsOn().chainActivity(user().id));
+  route('GET', '/api/me/chain', ({ user, url }) => rewardsOn().chainActivity(user().id, Number(url.searchParams.get('page') ?? 1)));
 
   route('POST', '/api/me/x', async ({ req, user, body }) => {
     rateLimit(`x:${visitor(req)}`, 10, 60_000);
@@ -396,6 +407,7 @@ export function createApiServer(opts: ServerOptions): Server {
     checkNewAccount(req, emailIsNew(String(b.email ?? '')));
     const { user, created } = service.verifyEmailCode(String(b.email ?? ''), String(b.code ?? ''), refOf(b));
     countNewAccount(req, created);
+    service.noteCountry(user.id, countryOf(req));
     const session = service.createSession(user.id, 'email');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
@@ -410,6 +422,7 @@ export function createApiServer(opts: ServerOptions): Server {
     checkNewAccount(req, emailIsNew(who.email));
     const { user, created } = service.signInWithVerifiedEmail(who.email, who.name, refOf(b));
     countNewAccount(req, created);
+    service.noteCountry(user.id, countryOf(req));
     const session = service.createSession(user.id, 'google');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
@@ -440,6 +453,7 @@ export function createApiServer(opts: ServerOptions): Server {
       ref: refOf(b),
     });
     countNewAccount(req, created);
+    service.noteCountry(user.id, countryOf(req));
     const session = service.createSession(user.id, 'wallet');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)), created };
@@ -450,6 +464,7 @@ export function createApiServer(opts: ServerOptions): Server {
     rateLimit(`login:${visitor(req)}`, 10, 60_000);
     rateLimit(`login:${String(b.email ?? '').toLowerCase()}`, 10, 10 * 60_000);
     const user = await service.authenticate(String(b.email ?? ''), String(b.password ?? ''));
+    service.noteCountry(user.id, countryOf(req));
     const session = service.createSession(user.id, 'password');
     setSessionCookie(res, session.token, SESSION_MS);
     return { user: publicUser(user, service.clock.now(), service.walletsFor(user.id)) };
@@ -578,6 +593,8 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('GET', '/api/me', async ({ req, user }) => {
     const u = user();
+    // Players who signed up before countries were recorded get theirs on their next visit.
+    if (!u.country) service.noteCountry(u.id, countryOf(req));
     // Email and Google players get a Firstprint wallet the first time they come back (or sign up).
     if (opts.rewards) await opts.rewards.ensureWallet(u.id).catch((err: Error) => service.log(`wallet for ${u.id} failed: ${err.message}`));
     const adminLevel = accountLevel(req, u);
@@ -610,7 +627,8 @@ export function createApiServer(opts: ServerOptions): Server {
     return publicUser(updated, service.clock.now(), service.walletsFor(u.id));
   });
 
-  route('GET', '/api/me/ledger', ({ user }) => ({ entries: service.ledgerFor(user().id) }));
+  // A page at a time (10 entries): long histories never load all at once.
+  route('GET', '/api/me/ledger', ({ user, url }) => service.ledgerPage(user().id, Number(url.searchParams.get('page') ?? 1)));
 
   route('GET', '/api/me/predictions', ({ user }) => ({ predictions: service.myPredictions(user().id) }));
 
@@ -818,7 +836,7 @@ export function createApiServer(opts: ServerOptions): Server {
   route('GET', '/api/admin/analytics', ({ url, requireAdmin }) => {
     requireAdmin();
     const data = analytics(service.db, service.clock.now(), Number(url.searchParams.get('days') ?? 30));
-    return { ...data, shareKey: service.getSetting('analytics_share_key') };
+    return { ...data, chain: opts.rewards?.chainInfo() ?? null, shareKey: service.getSetting('analytics_share_key') };
   });
 
   // Create a new partner link (any old link stops working) or turn sharing off.
@@ -832,7 +850,7 @@ export function createApiServer(opts: ServerOptions): Server {
   });
 
   // Partners see numbers at most a minute old; computing them for every page view isn't needed.
-  const statsCache = new Map<number, { at: number; data: ReturnType<typeof analytics> }>();
+  const statsCache = new Map<number, { at: number; data: ReturnType<typeof analytics> & { chain: unknown } }>();
   route('GET', '/api/public/analytics', ({ req, url }) => {
     rateLimit(`stats:${visitor(req)}`, 30, 60_000);
     const key = service.getSetting('analytics_share_key');
@@ -843,7 +861,7 @@ export function createApiServer(opts: ServerOptions): Server {
     const now = service.clock.now();
     const hit = statsCache.get(days);
     if (hit && now - hit.at < 60_000) return hit.data;
-    const data = analytics(service.db, now, days);
+    const data = { ...analytics(service.db, now, days), chain: opts.rewards?.chainInfo() ?? null };
     statsCache.set(days, { at: now, data });
     return data;
   });
@@ -1011,6 +1029,11 @@ export function createApiServer(opts: ServerOptions): Server {
       config: b.config as never,
     });
     return service.getMarket(marketId);
+  });
+
+  route('POST', '/api/admin/detected/ignore-all', ({ requireAdmin }) => {
+    requireAdmin('listings');
+    return { skipped: service.ignoreAllDetections() };
   });
 
   route('POST', '/api/admin/detected/:id/ignore', ({ params, requireAdmin }) => {

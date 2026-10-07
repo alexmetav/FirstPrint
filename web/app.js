@@ -122,6 +122,8 @@ function fmtDate(ts) {
 const until = (ts) => `<span data-until="${ts}">${fmtDur(ts - now())}</span>`;
 /** "Oct 10, 6:00 PM" with the countdown beside it, so the exact time the admin set is always shown. */
 const atAndIn = (ts) => `${fmtDate(ts)} <span class="feat-sub">in ${until(ts)}</span>`;
+/** "Oct 10" with the countdown under it: the short form for cards (the market page has the exact time). */
+const dayAndIn = (ts) => `<span title="${esc(fmtDate(ts))}">${DAY_FMT.format(ts)}</span> <span class="feat-sub">in ${until(ts)}</span>`;
 const outcome = (b, yn = false) => `<b class="oc" style="--c:${oVar(b, yn)}">${icon(b, yn)}${oName(b, yn)}</b>`;
 const rangeLabel = (b, t) => bucketRangeLabel(b, t).replace(/-/g, '−');
 /** The price range an outcome covers, for either kind of market. */
@@ -401,6 +403,8 @@ async function onRoute() {
   if (S.maint?.on) queueMicrotask(() => applyMaintenance(S.maint));
   const changed = next.name !== S.route.name || next.id !== S.route.id;
   S.route = next;
+  // Opening a page fresh starts its long lists on their first page; refreshes keep the page shown.
+  if (changed) S.pg = {};
   S.menuOpen = false;
   S.streakOpen = false;
   if (changed) {
@@ -503,9 +507,11 @@ async function loadRoute() {
       setHtml(view, earnView());
     } else if (S.route.name === 'portfolio') {
       const preds = S.me ? (await S.api.myPredictions()).predictions : [];
-      const history = S.me && S.api.ledger ? (await S.api.ledger().catch(() => ({ entries: [] }))).entries : [];
+      // Long lists come a page at a time (the page shown stays put when the dashboard refreshes).
+      S.pg ??= {};
+      const history = S.me && S.api.ledger ? await S.api.ledger(S.pg.ledger ?? 1).catch(() => ({ entries: [] })) : { entries: [] };
       const stats = S.me && S.api.stats ? await S.api.stats().catch(() => null) : null;
-      const chain = S.me && S.api.chain ? await S.api.chain().catch(() => null) : null;
+      const chain = S.me && S.api.chain ? await S.api.chain(S.pg.chain ?? 1).catch(() => null) : null;
       // Open markets give the active positions their crowd share, payout and closing time.
       if (S.me && preds.some((p) => p.marketStatus === 'open' || p.marketStatus === 'locked')) {
         const [open, live] = await Promise.all(['open', 'live'].map((f) => S.api.markets(f).catch(() => null)));
@@ -856,7 +862,86 @@ function hbars(rows, unit = '') {
     .join('')}</div>`;
 }
 
+/** Country name and flag from a two-letter code (no code: "Unknown"). */
+const REGION_NAMES = (() => {
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'region' });
+  } catch {
+    return null;
+  }
+})();
+const countryName = (code) => (code ? (REGION_NAMES?.of(code) ?? code) : 'Unknown');
+const countryFlag = (code) => (code ? String.fromCodePoint(...[...code].map((c) => 0x1f1a5 + c.charCodeAt(0))) : '🌐');
+
+/** Everything on the analytics page as one sheet (CSV, opens in Excel or Google Sheets): one block per section. */
+function analyticsCsv(d) {
+  const cell = (v) => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const rows = [];
+  const block = (title, head, body) => {
+    if (rows.length) rows.push([]);
+    rows.push([title]);
+    rows.push(head);
+    for (const r of body) rows.push(r);
+  };
+  const P = d.period;
+  const T = d.totals;
+  const C = d.onChain;
+  block('Firstprint analytics', ['Item', 'Value'], [
+    ['Period (UTC)', `${d.from} to ${d.to}`],
+    ['Generated', new Date(d.generatedAt).toISOString()],
+    ['Players (all time)', T.players],
+    [`New players (${d.days} days)`, P.newPlayers],
+    [`Active players (${d.days} days)`, P.active],
+    ['Returning players', P.returning],
+    [`Predictions (${d.days} days)`, P.predictions],
+    [`Points staked (${d.days} days)`, P.staked],
+    ['Predictions (all time)', T.predictions],
+    ['Points staked (all time)', T.staked],
+    ['Wallets linked', T.walletsLinked],
+    ['Markets (open / settled / total)', `${T.marketsOpen} / ${T.marketsSettled} / ${T.marketsTotal}`],
+    ['Players invited by friends', T.referred],
+    ['Tasks completed', T.tasksDone],
+  ]);
+  block('Daily (UTC)', ['Day', 'Active', 'New players', 'Predictions', 'Points staked', 'On-chain transfers'], d.series.map((x) => [x.day, x.active, x.newPlayers, x.predictions, x.staked, x.onChain ?? 0]));
+  block('Countries', ['Country', 'Code', 'Players', `New in ${d.days} days`], (d.countries ?? []).map((c) => [countryName(c.country), c.country ?? '', c.players, c.newPlayers]));
+  block('Sign-in', ['Method', 'Players'], [['Google or email', d.signIn.emailOnly], ['Wallet', d.signIn.walletOnly], ['Both', d.signIn.both]]);
+  block(`Most played markets (${d.days} days)`, ['Token', 'Name', 'Exchange', 'Status', 'Predictions', 'Participants', 'Points staked'], d.topMarkets.map((m) => [m.symbol, m.name ?? '', m.exchange, m.status, m.predictions, m.predictors, m.staked]));
+  if (C)
+    block('On chain (TestFPT, Solana ' + (d.chain?.cluster ?? 'testnet') + ')', ['Item', 'Transfers', 'TestFPT'], [
+      ['All transfers', C.transfers, ''],
+      [`Transfers in ${d.days} days`, C.transfersInPeriod, ''],
+      ['Rewards sent', C.rewards.transfers, C.rewards.amount],
+      ['Stakes', C.stakes.transfers, C.stakes.amount],
+      ['Payouts', C.payouts.transfers, C.payouts.amount],
+      ['Refunds', C.refunds.transfers, C.refunds.amount],
+      ['Claims signed by players', C.claims.transfers, C.claims.amount],
+      ['Wallets that received TestFPT', C.holders, ''],
+      ['Firstprint wallets', C.firstprintWallets, ''],
+      ['Waiting to send', C.waiting, ''],
+      ['Failed', C.failed, ''],
+      ['Mint', d.chain?.mint ?? '', ''],
+    ]);
+  return '\ufeff' + rows.map((r) => r.map(cell).join(',')).join('\r\n');
+}
+
+function downloadAnalytics() {
+  const d = S.vizData;
+  if (!d) return;
+  const blob = new Blob([analyticsCsv(d)], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `firstprint-analytics-${d.to}-${d.days}d.csv`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 function analyticsView(d, { shared = false } = {}) {
+  S.vizData = d;
   const P = d.period;
   const T = d.totals;
   const days = d.series.map((x) => x.day);
@@ -878,7 +963,7 @@ function analyticsView(d, { shared = false } = {}) {
           ? `<header class="viz-head"><div><span class="eyebrow">Firstprint · live stats</span><h1 class="page-title">How Firstprint is growing</h1><p class="page-lede">A free prediction game on crypto tokens, on Solana testnet. Updated ${fmtAgo(d.generatedAt)}.</p></div></header>`
           : ''
       }
-      <div class="viz-filters">${seg(shared ? 'viz-days' : 'admin-viz-days')}<span class="muted">${range}</span></div>
+      <div class="viz-filters">${seg(shared ? 'viz-days' : 'admin-viz-days')}<span class="muted">${range}</span><button class="btn btn-sm viz-export" data-action="viz-export">${ico('download')}Download sheet</button></div>
       <div class="viz-tiles">
         ${tile('Players', fmtNum(T.players), `+${fmtNum(P.newPlayers)} in ${d.days} days`, vizDelta(P.newPlayers, P.newPlayersPrev))}
         ${tile('Active players', fmtNum(P.active), `${pct(P.returning, P.active)} came back`, vizDelta(P.active, P.activePrev))}
@@ -916,12 +1001,14 @@ function analyticsView(d, { shared = false } = {}) {
             : '<p class="muted">No predictions in this period yet.</p>',
           true,
         )}
+        ${countriesCard(d, card)}
       </div>
+      ${onChainSection(d, card, tile, days)}
       <div class="viz-extra">
         <div><b>${fmtNum(T.predictions)}</b><span>predictions all time</span></div>
         <div><b>${fmtCompact(T.staked)}</b><span>points staked all time</span></div>
         <div><b>${fmtNum(T.referred)}</b><span>players invited by friends</span></div>
-        <div><b>${fmtNum(T.tasksDone)}</b><span>tasks completed on X</span></div>
+        <div><b>${fmtNum(T.tasksDone)}</b><span>tasks completed</span></div>
         <div><b>${fmtNum(T.testfptClaimers)}</b><span>players claimed TestFPT (${fmtCompact(T.testfptClaimed)} total)</span></div>
       </div>
       <details class="viz-table"><summary>Daily numbers as a table</summary>
@@ -929,6 +1016,58 @@ function analyticsView(d, { shared = false } = {}) {
         <tbody>${[...d.series].reverse().map((x) => `<tr><td>${fmtShortDay(x.day)}</td><td class="right">${fmtNum(x.active)}</td><td class="right">${fmtNum(x.newPlayers)}</td><td class="right">${fmtNum(x.predictions)}</td><td class="right">${fmtNum(x.staked)}</td></tr>`).join('')}</tbody></table></div>
       </details>
       <p class="fine">Totals only: no names, emails or wallets are shown. Test accounts are left out. Points have no cash value.</p>
+    </div>`;
+}
+
+/** Where players come from, by the country they first signed in from. */
+function countriesCard(d, card) {
+  const list = d.countries ?? [];
+  const known = list.filter((c) => c.country);
+  const shown = list.slice(0, 12);
+  const rest = list.slice(12).reduce((n, c) => n + c.players, 0);
+  return card(
+    'Where players come from',
+    known.length ? `${fmtNum(known.length)} countr${known.length === 1 ? 'y' : 'ies'} · by where they first signed in` : 'By where they first signed in',
+    shown.length
+      ? hbars(
+          [
+            ...shown.map((c) => ({
+              label: countryName(c.country),
+              html: `<span class="flag" aria-hidden="true">${countryFlag(c.country)}</span> ${esc(countryName(c.country))}${c.newPlayers ? ` <span class="muted">+${fmtNum(c.newPlayers)} new</span>` : ''}`,
+              value: c.players,
+            })),
+            ...(rest ? [{ label: 'Other countries', value: rest }] : []),
+          ],
+          'players',
+        )
+      : '<p class="muted">No players yet.</p>',
+    true,
+  );
+}
+
+/** TestFPT on Solana: what the server sent and players claimed, all on the public chain. */
+function onChainSection(d, card, tile, days) {
+  const C = d.onChain;
+  // Nothing to show on a server without TestFPT that never sent any.
+  if (!C || (!d.chain && !C.transfers)) return '';
+  const groups = [
+    ['Rewards sent', C.rewards],
+    ['Stakes', C.stakes],
+    ['Payouts', C.payouts],
+    ['Refunds', C.refunds],
+    ['Claimed by players', C.claims],
+  ];
+  const mint = d.chain?.mintUrl ? `<a href="${esc(d.chain.mintUrl)}" target="_blank" rel="noopener noreferrer">${ico('external')}See the token on the explorer</a>` : '';
+  return `
+    <div class="viz-section-head"><h2>${ico('link')} On chain</h2><p class="muted">TestFPT on Solana ${esc(d.chain?.cluster ?? 'testnet')}: every reward, stake, payout and claim is a public transaction. ${mint}</p></div>
+    <div class="viz-tiles">
+      ${tile('Transfers', fmtNum(C.transfers), `${fmtNum(C.transfersInPeriod)} in ${d.days} days${C.waiting ? ` · ${fmtNum(C.waiting)} waiting` : ''}${C.failed ? ` · ${fmtNum(C.failed)} failed` : ''}`)}
+      ${tile('Wallets holding TestFPT', fmtNum(C.holders), 'received at least one transfer')}
+      ${tile('Firstprint wallets', fmtNum(C.firstprintWallets), 'made for email and Google players')}
+    </div>
+    <div class="viz-grid">
+      ${card('On-chain transfers', 'Confirmed per day, sent and claimed', columnChart(days, d.series.map((x) => x.onChain ?? 0), 'transfers'))}
+      ${card('By type', 'All time, TestFPT moved', hbars(groups.map(([label, g]) => ({ label, html: `${esc(label)} <span class="muted">${fmtNum(g.transfers)} tx</span>`, value: g.amount })), 'TestFPT'))}
     </div>`;
 }
 
@@ -1212,7 +1351,7 @@ function homeHero(showLive = true) {
           ? `<a class="hero-next" href="#/market/${encodeURIComponent(next.id)}">
         <span class="hero-next-head"><span>Closing next</span><span class="st st-live"><i aria-hidden="true"></i>Open</span></span>
         <span class="hero-next-id">${tokenAvatar(next, 'avatar-md')}<span><b>${esc(next.symbol)}</b>${next.name ? `<small>${esc(next.name)}</small>` : ''}</span></span>
-        <span class="hero-next-facts"><span><small>Predictions close</small><b>${fmtDate(next.closeAt)}</b><small>in ${until(next.closeAt)}</small></span><span><small>Pool</small><b>${fmtNum(next.pool || 0)} pts</b></span></span>
+        <span class="hero-next-facts"><span><small>Closes</small><b title="${esc(fmtDate(next.closeAt))}">${DAY_FMT.format(next.closeAt)}</b><small>in ${until(next.closeAt)}</small></span><span><small>Pool</small><b>${fmtNum(next.pool || 0)} pts</b></span></span>
         <span class="btn btn-gold btn-sm">Predict ${ico('arrowRight')}</span>
       </a>`
           : ''
@@ -1368,8 +1507,8 @@ function featuredView(m, rank = null) {
   const fact = (label, value) => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
   const facts = [
     manual ? fact(yn ? 'Target price' : 'Start price', hasStart(m) ? fmtPrice(m.basePrice) : m.startAtClose ? 'At the close' : 'At listing <span class="feat-sub">opening price</span>') : '',
-    pre ? fact(m.kind === 'live_test' ? 'Starts' : 'Lists', atAndIn(isUpcoming(m) ? m.closeAt : m.listingAt)) : fact('Predictions close', atAndIn(m.closeAt)),
-    manual && !pre ? fact('Result', fmtDate(m.settleAt)) : '',
+    pre ? fact(m.kind === 'live_test' ? 'Starts' : 'Lists', dayAndIn(isUpcoming(m) ? m.closeAt : m.listingAt)) : fact('Closes', dayAndIn(m.closeAt)),
+    manual && !pre ? fact('Result', `<span title="${esc(fmtDate(m.settleAt))}">${DAY_FMT.format(m.settleAt)}</span>`) : '',
     m.pool ? fact('Pool', `${tick(`pool:hero:${m.id}`, m.pool)} pts <span class="feat-sub">${fmtNum(m.predictors)} player${m.predictors === 1 ? '' : 's'}</span>`) : '',
   ].join('');
 
@@ -2351,7 +2490,82 @@ function leaderboardView(lb) {
     ${S.me && !lb.me ? '<p class="fine">You’ll appear here after one of your predictions settles.</p>' : ''}`;
 }
 
-function portfolioView(preds, history = [], stats = null, chain = null) {
+const PER_PAGE = 10;
+
+/**
+ * Page numbers under a long list, like a block explorer: ‹ 1 … 4 5 6 … 12 ›. `list` names which
+ * list the buttons move; nothing shows for a single page.
+ */
+function pager(list, page, pages) {
+  if (!pages || pages <= 1) return '';
+  const show = new Set([1, pages, page - 1, page, page + 1]);
+  if (page <= 3) [2, 3, 4].forEach((n) => show.add(n));
+  if (page >= pages - 2) [pages - 1, pages - 2, pages - 3].forEach((n) => show.add(n));
+  const nums = [...show].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b);
+  const btn = (n, label, aria, off = false) =>
+    `<button class="pg-btn${n === page && !aria ? ' on' : ''}" data-action="page" data-list="${list}" data-page="${n}"${off ? ' disabled' : ''}${n === page && !aria ? ' aria-current="page"' : ''} aria-label="${aria ?? `Page ${n}`}">${label}</button>`;
+  let prev = 0;
+  const parts = [];
+  for (const n of nums) {
+    if (n - prev > 1) parts.push('<span class="pg-gap" aria-hidden="true">…</span>');
+    parts.push(btn(n, String(n)));
+    prev = n;
+  }
+  return `<nav class="pager" aria-label="Pages">${btn(page - 1, ico('chevronLeft'), 'Previous page', page <= 1)}${parts.join('')}${btn(page + 1, ico('chevronRight'), 'Next page', page >= pages)}</nav>`;
+}
+
+/** The rows of one page of a list kept in the browser, and the pager for it. */
+function pageOf(list, rows) {
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const page = Math.min(pages, Math.max(1, S.pg?.[list] ?? 1));
+  return { rows: rows.slice((page - 1) * PER_PAGE, page * PER_PAGE), nav: pager(list, page, pages) };
+}
+
+/** Moves a dashboard list to another page: from memory for positions and history, from the server for the rest. */
+async function goPage(list, page, btn) {
+  S.pg ??= {};
+  const [preds, history, stats, chain] = S.dashData ?? [];
+  const card = btn?.closest('[data-list-card]');
+  try {
+    if (list.startsWith('profile-')) {
+      S.pg[list] = page;
+      if (S.profile) $('#view').innerHTML = profileView(S.profile);
+      document.querySelector(`[data-pager-anchor="${list}"]`)?.scrollIntoView({ block: 'start' });
+      return;
+    }
+    if (list === 'positions' || list === 'past') {
+      S.pg[list] = page;
+      const active = preds.filter((p) => p.marketStatus === 'open' || p.marketStatus === 'locked');
+      const panel = document.getElementById(list === 'positions' ? 'dp-active' : 'dp-past');
+      if (panel) panel.innerHTML = list === 'positions' ? activeTable(active) : pastTable(stats);
+    } else if (list === 'chain') {
+      card?.classList.add('is-loading');
+      const data = await S.api.chain(page);
+      S.pg.chain = data.page;
+      S.dashData[3] = data;
+      card?.replaceWith(htmlNode(chainCard(data)));
+    } else if (list === 'ledger') {
+      card?.classList.add('is-loading');
+      const data = await S.api.ledger(page);
+      S.pg.ledger = data.page;
+      S.dashData[1] = data;
+      card?.replaceWith(htmlNode(historyView(data)));
+    }
+  } catch (err) {
+    card?.classList.remove('is-loading');
+    return toast(err.message, true);
+  }
+  // Keep the list in view when it gets shorter on its last page.
+  document.querySelector(`[data-list-card="${list}"]`)?.scrollIntoView({ block: 'nearest' });
+}
+
+const htmlNode = (html) => {
+  const t = document.createElement('template');
+  t.innerHTML = html.trim();
+  return t.content.firstElementChild;
+};
+
+function portfolioView(preds, history = { entries: [] }, stats = null, chain = null) {
   if (!S.me) {
     return `
       <header class="page-head"><span class="page-ico">${ico('dashboard')}</span><div><h1 class="page-title">Your dashboard</h1></div></header>
@@ -2393,7 +2607,7 @@ function portfolioView(preds, history = [], stats = null, chain = null) {
           <div role="tabpanel" id="dp-past" aria-labelledby="dt-past"${tab === 'past' ? '' : ' hidden'}>${pastTable(stats)}</div>
         </section>
         <aside class="dash-side">
-          ${stats ? outcomeRecord(stats.byOutcome) : ''}
+          ${stats ? outcomeRecord(stats.byOutcome, 'Your picks by outcome', true) : ''}
           ${telegramCard()}
           ${walletsCard(chain)}
           ${chainCard(chain)}
@@ -2518,13 +2732,15 @@ function positions(active) {
 function activeTable(active) {
   if (!active.length) return dashEmpty('target', 'No open positions. Pick an outcome on any open market to start your record.', `<a class="btn btn-sm" href="#/">${ico('grid')}Explore markets</a>`);
   const markets = new Map([...S.lists.open, ...S.lists.live].map((m) => [m.id, m]));
-  return `<table class="table dash-table pos-table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right hide-sm">Crowd</th><th class="right">If it wins</th><th class="right hide-sm">Status</th></tr></thead><tbody>${positions(active)
+  const pg = pageOf('positions', positions(active));
+  return `<table class="table dash-table pos-table"><thead><tr><th>Market</th><th>Your pick</th><th class="right">Stake</th><th class="right hide-sm">Crowd</th><th class="right">If it<span class="hide-sm"> </span><br class="show-sm" />wins</th><th class="right hide-sm">Status</th></tr></thead><tbody>${pg.rows
     .map((p) => {
       const m = markets.get(p.marketId);
       const yn = p.outcomes === 'binary';
       const mult = m ? poolMultiple(m, p.bucket) : null;
       const crowd = m?.pool ? `${Math.round(share(m, p.bucket) * 100)}%` : '–';
-      const when = m ? (p.marketStatus === 'open' ? `Closes in ${until(m.closeAt)}` : `Result ${fmtDate(m.settleAt)}`) : '';
+      // On a phone the column is narrow: just the time left ("23h 55m"), not "Closes in 23h 55m".
+      const when = m ? (p.marketStatus === 'open' ? `<span class="hide-sm">Closes in </span>${until(m.closeAt)}` : `Result ${fmtDate(m.settleAt)}`) : '';
       const status = p.marketStatus === 'open' ? '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>' : `<span class="pill pill-wait">${p.mode === 'manual' ? 'Awaiting result' : 'In play'}</span>`;
       return `<tr>
         <td><a class="mkt-cell" href="#/market/${encodeURIComponent(p.marketId)}">${m ? tokenAvatar(m, 'avatar-sm') : tokenAvatar(p, 'avatar-sm')}<span>${esc(p.symbol)}${when ? `<small class="muted">${when}</small>` : ''}</span></a></td>
@@ -2535,14 +2751,15 @@ function activeTable(active) {
         <td class="right hide-sm">${status}</td>
       </tr>`;
     })
-    .join('')}</tbody></table><p class="fine pos-note">“If it wins” is your stake at the pool’s current payout. Earlier picks get a bonus, so yours can be higher.</p>`;
+    .join('')}</tbody></table>${pg.nav}<p class="fine pos-note">“If it wins” is your stake at the pool’s current payout. Earlier picks get a bonus, so yours can be higher.</p>`;
 }
 
 function pastTable(st) {
   const rows = st?.history ?? [];
   const refunds = st?.refundedMarkets ? `<p class="fine">${st.refundedMarkets} cancelled market${st.refundedMarkets === 1 ? ' was' : 's were'} refunded and ${st.refundedMarkets === 1 ? 'doesn’t' : 'don’t'} count toward your record.</p>` : '';
   if (!rows.length) return dashEmpty('history', 'No settled markets yet. Your results appear here when markets you predicted on are settled.') + refunds;
-  return `<table class="table dash-table"><thead><tr><th>Market</th><th>Your pick</th><th class="hide-sm">Result</th><th class="right">Staked</th><th class="right">Points</th></tr></thead><tbody>${rows
+  const pg = pageOf('past', rows);
+  return `<table class="table dash-table"><thead><tr><th>Market</th><th>Your pick</th><th class="hide-sm">Result</th><th class="right">Staked</th><th class="right">Points</th></tr></thead><tbody>${pg.rows
     .map(
       (m) => `<tr>
         <td><a class="mkt-cell" href="#/market/${encodeURIComponent(m.marketId)}">${tokenAvatar(m, 'avatar-sm')}<span>${esc(m.symbol)}<small class="muted">${fmtAgo(m.settledAt)}</small></span></a></td>
@@ -2552,7 +2769,7 @@ function pastTable(st) {
         <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b>${pnlButton(m.marketId, m.symbol, 'icon-btn pnl-mini', true)}</td>
       </tr>`,
     )
-    .join('')}</tbody></table>${refunds}`;
+    .join('')}</tbody></table>${pg.nav}${refunds}`;
 }
 
 const CHAIN_KIND = { daily: 'Daily streak', claim: 'Rewards claim', stake: 'Prediction', payout: 'Winnings', refund: 'Refund' };
@@ -2562,15 +2779,15 @@ function chainCard(c) {
   if (!c?.onChain || (!c.activity.length && !c.wallet)) return '';
   const state = { confirmed: '', queued: 'sending…', submitted: 'confirming…', pending: 'waiting for your wallet', failed: 'failed', expired: 'expired' };
   return `
-    <section class="dash-card">
-      <div class="dash-card-head"><h2>${ico('token')}On-chain activity</h2>${c.activity.length ? `<span class="count">${c.activity.length}</span>` : ''}</div>
+    <section class="dash-card" data-list-card="chain">
+      <div class="dash-card-head"><h2>${ico('token')}On-chain activity</h2>${c.total ?? c.activity.length ? `<span class="count">${fmtNum(c.total ?? c.activity.length)}</span>` : ''}</div>
       ${
         c.activity.length
           ? `<ul class="chain-list">${c.activity
               .map(
                 (a) => `<li><span><b class="${a.amount < 0 ? '' : 'profit-pos'}">${a.amount < 0 ? '−' : '+'}${fmtNum(Math.abs(a.amount))} TestFPT</b><small class="muted">${esc(CHAIN_KIND[a.kind] ?? a.kind)}${a.symbol ? ` · <a href="#/market/${encodeURIComponent(a.marketId)}">${esc(a.symbol)}</a>` : ''} · ${fmtAgo(a.at)}${state[a.status] ? ` · ${state[a.status]}` : ''}</small></span>${a.explorerUrl ? `<a class="dw-link" href="${esc(a.explorerUrl)}" target="_blank" rel="noopener noreferrer">Explorer ${ico('external')}</a>` : ''}</li>`,
               )
-              .join('')}</ul>`
+              .join('')}</ul>${pager('chain', c.page, c.pages)}`
           : '<p class="dash-card-text">Your daily streak, rewards, predictions and winnings move as TestFPT on chain, and each one shows up here.</p>'
       }
     </section>`;
@@ -2607,14 +2824,15 @@ function profileView(p) {
   const tile = (icon, color, label, value, sub) =>
     `<div class="stat-tile" style="--c:var(--${color})"><span class="tile-ico">${ico(icon)}</span><dt>${label}</dt><dd>${value}</dd><p>${sub}</p></div>`;
   const pct = st.winRate === null ? null : Math.round(st.winRate * 100);
+  const inPlay = pageOf('profile-positions', p.positions);
   const positions = p.positions.length
-    ? `<table class="table"><thead><tr><th>Market</th><th>Pick</th><th class="right">Points</th><th class="right">Status</th></tr></thead><tbody>${p.positions
+    ? `<table class="table"><thead><tr><th>Market</th><th>Pick</th><th class="right">Points</th><th class="right">Status</th></tr></thead><tbody>${inPlay.rows
         .map(
           (x) => `<tr><td><a class="mkt-cell" href="#/market/${encodeURIComponent(x.marketId)}">${tokenAvatar(x, 'avatar-sm')}<span>${esc(x.symbol)}</span></a></td><td>${outcome(x.bucket, x.outcomes === 'binary')}</td><td class="right num-cell">${fmtNum(x.stake)}</td><td class="right">${
             x.marketStatus === 'open' ? '<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>Open</span>' : '<span class="pill pill-wait">Awaiting result</span>'
           }</td></tr>`,
         )
-        .join('')}</tbody></table>`
+        .join('')}</tbody></table>${inPlay.nav}`
     : '<p class="muted pad">Not in any open market right now.</p>';
   return `
     <section class="profile-card">
@@ -2639,7 +2857,7 @@ function profileView(p) {
     </dl>
     ${st.history.length >= 2 ? `<div class="dash-grid">${profitChart(st.history)}${outcomeRecord(st.byOutcome, p.isMe ? undefined : 'Picks by outcome')}</div>` : ''}
     <section class="section panel panel-flush">
-      <div class="section-head"><span class="section-ico">${ico('target')}</span><h2>In play${p.positions.length ? ` <span class="count-badge">${p.positions.length}</span>` : ''}</h2></div>
+      <div class="section-head" data-pager-anchor="profile-positions"><span class="section-ico">${ico('target')}</span><h2>In play${p.positions.length ? ` <span class="count-badge">${p.positions.length}</span>` : ''}</h2></div>
       ${positions}
     </section>
     ${pastMarkets(st, p.isMe)}`;
@@ -2707,12 +2925,15 @@ function profitChart(history) {
 }
 
 /** How each outcome has done when you picked it. */
-function outcomeRecord(byOutcome, title = 'Your picks by outcome') {
+function outcomeRecord(byOutcome, title = 'Your picks by outcome', card = false) {
   const rows = LADDER.filter((b) => byOutcome[b].picks);
   if (!rows.length) return '';
+  // In the dashboard's side column it's a card like its neighbours; on profiles a full panel.
+  const head = card
+    ? `<section class="dash-card"><div class="dash-card-head"><h2>${ico('target')}${title}</h2></div>`
+    : `<section class="section panel"><div class="section-head"><span class="section-ico">${ico('target')}</span><h2>${title}</h2></div>`;
   return `
-    <section class="section panel">
-      <div class="section-head"><span class="section-ico">${ico('target')}</span><h2>${title}</h2></div>
+    ${head}
       <ul class="orec">${rows
         .map((b) => {
           const { picks, wins } = byOutcome[b];
@@ -2726,12 +2947,13 @@ function outcomeRecord(byOutcome, title = 'Your picks by outcome') {
 /** Every settled market, one row each, newest first. */
 function pastMarkets(st, mine = false) {
   const rows = st.history;
+  const pg = pageOf('profile-past', rows);
   return `
     <section class="section panel panel-flush">
-      <div class="section-head"><span class="section-ico">${ico('history')}</span><h2>Past markets${rows.length ? ` <span class="count-badge">${rows.length}</span>` : ''}</h2></div>
+      <div class="section-head" data-pager-anchor="profile-past"><span class="section-ico">${ico('history')}</span><h2>Past markets${rows.length ? ` <span class="count-badge">${rows.length}</span>` : ''}</h2></div>
       ${
         rows.length
-          ? `<table class="table"><thead><tr><th>Market</th><th>Your pick</th><th class="hide-sm">Result</th><th class="right">Staked</th><th class="right">Points</th></tr></thead><tbody>${rows
+          ? `<table class="table"><thead><tr><th>Market</th><th>Your pick</th><th class="hide-sm">Result</th><th class="right">Staked</th><th class="right">Points</th></tr></thead><tbody>${pg.rows
               .map(
                 (m) => `<tr>
                   <td><a class="mkt-cell" href="#/market/${encodeURIComponent(m.marketId)}">${tokenAvatar(m, 'avatar-sm')}<span>${esc(m.symbol)}</span></a> <span class="muted hide-sm">${fmtAgo(m.settledAt)}</span></td>
@@ -2741,7 +2963,7 @@ function pastMarkets(st, mine = false) {
                   <td class="right"><b class="${m.won ? 'profit-pos' : 'profit-neg'}">${signed(m.profit)}</b>${mine ? pnlButton(m.marketId, m.symbol, 'icon-btn pnl-mini', true) : ''}</td>
                 </tr>`,
               )
-              .join('')}</tbody></table>`
+              .join('')}</tbody></table>${pg.nav}`
           : '<p class="muted pad">Your results appear here after markets settle.</p>'
       }
       ${st.refundedMarkets ? `<p class="fine">${st.refundedMarkets} cancelled market${st.refundedMarkets === 1 ? ' was' : 's were'} refunded and ${st.refundedMarkets === 1 ? 'doesn’t' : 'don’t'} count toward your record.</p>` : ''}
@@ -2788,10 +3010,11 @@ const HISTORY_LABELS = {
 };
 
 /** Every change to the balance, so points never seem to appear or vanish. */
-function historyView(entries) {
+function historyView(h) {
+  const entries = Array.isArray(h) ? h : (h?.entries ?? []);
   return `
-    <section class="dash-card">
-      <div class="dash-card-head"><h2>${ico('coins')}Points history</h2></div>
+    <section class="dash-card" data-list-card="ledger">
+      <div class="dash-card-head"><h2>${ico('coins')}Points history</h2>${h?.total ? `<span class="count">${fmtNum(h.total)}</span>` : ''}</div>
       ${
         entries.length
           ? `<ul class="dash-ledger">${entries
@@ -2800,7 +3023,7 @@ function historyView(entries) {
                 const name = e.marketId ? `<a href="#/market/${encodeURIComponent(e.marketId)}">${esc(label)}</a>` : esc(label);
                 return `<li><span class="dl-main">${name}<small>${fmtAgo(e.at)}</small></span><b class="${e.delta >= 0 ? 'profit-pos' : 'dl-neg'}">${e.delta >= 0 ? '+' : '−'}${fmtNum(Math.abs(e.delta))}</b></li>`;
               })
-              .join('')}</ul>`
+              .join('')}</ul>${pager('ledger', h?.page, h?.pages)}`
           : '<p class="dash-card-text">Every change to your balance will be listed here.</p>'
       }
     </section>`;
@@ -5158,7 +5381,8 @@ function reviewPrefill(d) {
 function listingsList(pending) {
   const now = Date.now();
   const when = (d) => (!d.listingAt ? 'Start time not published' : d.listingAt > now ? `Trading starts ${fmtDate(d.listingAt)} · in ${until(d.listingAt)}` : `Trading started ${fmtDate(d.listingAt)}`);
-  return `<ul class="todo">${pending
+  const skipAll = pending.length > 1 ? `<div class="todo-bar"><span class="muted">${fmtNum(pending.length)} waiting</span><button class="btn btn-sm" data-action="admin-review-ignore-all">${ico('forward')}Skip all</button></div>` : '';
+  return `${skipAll}<ul class="todo">${pending
     .map(
       (d) => `<li style="--c:var(--${d.listingAt && d.listingAt > now ? 'up' : 'warn'})"><span class="todo-ico">${ico('coins')}</span><div><b>${esc(d.symbol || '?')}${d.name ? ` <span class="muted">${esc(d.name)}</span>` : ''}</b><span class="muted">${esc(d.exchangeName)} · ${when(d)}</span></div>
         <span class="todo-actions"><button class="btn btn-sm btn-solid" data-action="admin-review" data-id="${d.id}">Review</button><button class="btn btn-sm" data-action="admin-review-ignore" data-id="${d.id}">Skip</button></span></li>`,
@@ -5525,6 +5749,18 @@ async function onAdminAction(action, el) {
       return adminMaintenance(el.dataset.on === '1');
     case 'admin-top-up':
       return adminTopUp(el.dataset.amount);
+    case 'admin-review-ignore-all': {
+      const n = A.detected?.length ?? 0;
+      if (!confirm(`Skip all ${n} listings? They leave the list and no markets are made.`)) return;
+      try {
+        const out = await A.api.ignoreAll();
+        toast(`Skipped ${out.skipped} listing${out.skipped === 1 ? '' : 's'}`);
+      } catch (err) {
+        toast(err.message, true);
+      }
+      A.review = null;
+      return renderAdmin();
+    }
     case 'admin-review-ignore':
       if (!confirm('Skip this listing? It leaves the list and no market is made.')) return;
       try {
@@ -6033,6 +6269,12 @@ document.addEventListener('click', async (e) => {
       return loadRoute();
     case 'viz-retry':
       return loadRoute();
+    case 'viz-export':
+      return downloadAnalytics();
+    case 'page': {
+      const b = t.closest('[data-action]');
+      return goPage(b.dataset.list, Number(b.dataset.page), b);
+    }
     case 'viz-days':
       S.vizDays = Number(t.closest('[data-action]').dataset.days);
       return loadRoute();

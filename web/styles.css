@@ -2436,6 +2436,13 @@ code {
 .task-body small {
   color: var(--muted);
 }
+.todo-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+}
 .task-body .task-hint {
   margin-top: 4px;
   color: var(--text-2, var(--muted));
@@ -3701,8 +3708,9 @@ main .input-wrap input:not([type='checkbox']) {
   stroke-width: 2.5;
 }
 .orec li {
-  grid-template-columns: 100px 1fr auto;
-  padding: 6px 0;
+  grid-template-columns: minmax(64px, max-content) minmax(40px, 1fr) auto;
+  gap: 10px;
+  padding: 4px 0;
 }
 .orec-name .oc {
   display: inline-flex;
@@ -10110,8 +10118,9 @@ a.wallet-option {
   width: 22px;
   height: 22px;
 }
+/* The button sits under the text it belongs to, not under the logo. */
 .tg-card .tg-join {
-  grid-column: 1 / -1;
+  grid-column: 2;
   justify-self: start;
 }
 .tg-channel-form {
@@ -10363,6 +10372,35 @@ a.wallet-option {
 }
 .viz-filters .tabs {
   margin: 0;
+}
+.viz-filters .viz-export {
+  margin-left: auto;
+}
+.viz-section-head {
+  margin: 8px 0 -2px;
+}
+.viz-section-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+.viz-section-head h2 svg {
+  width: 18px;
+  height: 18px;
+}
+.viz-section-head p {
+  margin: 0;
+  font-size: 13px;
+}
+.viz-section-head a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.hbar .flag {
+  font-family: 'Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif;
 }
 .viz-tiles {
   display: grid;
@@ -10887,11 +10925,11 @@ svg.viz.viz-narrow {
   flex: 0 1 auto;
 }
 
-/* Featured facts: two tidy columns, dates kept on one line with the countdown underneath. */
+/* Featured facts: side by side, each only as wide as it needs; they wrap on narrow screens. */
 .feat-facts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, max-content));
-  gap: 14px 40px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 28px;
 }
 .feat-facts dd {
   white-space: nowrap;
@@ -10900,9 +10938,9 @@ svg.viz.viz-narrow {
   display: block;
   margin: 2px 0 0;
 }
-@media (max-width: 380px) {
+@media (max-width: 640px) {
   .feat-facts {
-    grid-template-columns: minmax(0, 1fr);
+    gap: 12px 22px;
   }
 }
 
@@ -13459,4 +13497,95 @@ html.in-maint body {
   .tn-strip-sub {
     display: none;
   }
+}
+
+/* Page numbers under long lists (dashboard positions, history, on-chain activity, points). */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 12px 8px 4px;
+}
+.pg-btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.pg-btn:hover:not(:disabled) {
+  border-color: var(--text-3, var(--muted));
+}
+.pg-btn.on {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+  font-weight: 600;
+}
+.pg-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pg-btn svg {
+  width: 16px;
+  height: 16px;
+}
+.pg-gap {
+  min-width: 18px;
+  text-align: center;
+  color: var(--muted);
+}
+[data-list-card].is-loading {
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+/* Dashboard side column: the cards are spaced by the column's gap only (no panel margins). */
+.dash-side > * {
+  margin: 0;
+}
+.dash-side .tg-card {
+  padding: 16px;
+}
+.show-sm {
+  display: none;
+}
+@media (max-width: 640px) {
+  .show-sm {
+    display: inline;
+  }
+  /* Positions on a phone: tighter cells so market, pick, stake and payout fit without clipping. */
+  .pos-table th,
+  .pos-table td {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .pos-table th:first-child,
+  .pos-table td:first-child {
+    padding-left: 14px;
+  }
+  .pos-table th:last-child,
+  .pos-table td:last-child {
+    padding-right: 14px;
+  }
+  .pos-table th {
+    white-space: nowrap;
+  }
+}
+/* "Closes in" stays small text; only the time after it is set bold. */
+.pos-table .mkt-cell small .hide-sm {
+  font: inherit;
+  letter-spacing: inherit;
 }

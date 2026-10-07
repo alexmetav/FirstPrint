@@ -416,3 +416,34 @@ test('review queue: deleting a draft made from a listing returns it to the queue
   service.expireDetections(clock.now() - 3 * 24 * 60 * MIN);
   assert.equal(service.detections({ status: 'pending' }).length, 0, 'listings without a start time drop off too');
 });
+
+test('review queue: skip all clears it, and skipped listings stay skipped when the exchanges are checked again', async () => {
+  const clock = new ManualClock(T);
+  const state = {
+    pairs: [
+      { pair: 'AAAUSDT', base: 'AAA', listingAt: T + 60 * MIN },
+      { pair: 'BBBUSDT', base: 'BBB', listingAt: T + 90 * MIN },
+      { pair: 'CCCUSDT', base: 'CCC', listingAt: T + 120 * MIN },
+    ],
+    anns: [{ id: 'a1', title: 'EXA Will List Delta (DDD)', listingAt: T + 24 * 60 * MIN }],
+  };
+  const venue = fakeVenue('exa', state);
+  const service = new FirstprintService(openDb(':memory:'), clock, [venue]);
+  const tracker = new ListingTracker(service, [venue], { autoCreate: false, review: true });
+  await tracker.run();
+  const pending = () => service.detections({ status: 'pending' }).map((d) => d.symbol).sort();
+  assert.deepEqual(pending(), ['AAA', 'BBB', 'CCC', 'DDD']);
+
+  service.ignoreDetection(service.detections({ status: 'pending' }).find((d) => d.symbol === 'AAA')!.id);
+  await tracker.run();
+  assert.deepEqual(pending(), ['BBB', 'CCC', 'DDD'], 'one skipped listing stays skipped');
+
+  assert.equal(service.ignoreAllDetections(), 3);
+  clock.advance(5 * MIN);
+  await tracker.run();
+  assert.deepEqual(pending(), [], 'a new check finds the same listings and leaves them skipped');
+
+  state.pairs.push({ pair: 'EEEUSDT', base: 'EEE', listingAt: T + 200 * MIN });
+  await tracker.run();
+  assert.deepEqual(pending(), ['EEE'], 'a really new listing still shows up');
+});

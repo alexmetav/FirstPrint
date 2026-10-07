@@ -116,7 +116,7 @@ export class ChannelPoster {
     if (!this.telegram || !channel) throw new Error('No player channel is set.');
     const m = this.service.getMarket(id, undefined, true);
     if (!m.published || m.status !== 'open') throw new Error('Only open, published markets can be posted.');
-    await this.post(channel, await this.bannerFor('live', id, m), marketLiveText(m, this.link(id)), { text: 'Predict now', url: this.link(id) });
+    await this.post(channel, await this.bannerFor('live', id, m), marketLiveText(m), { text: 'Predict now', url: this.link(id) });
     this.service.markAnnounced(id);
   }
 
@@ -124,7 +124,7 @@ export class ChannelPoster {
     const channel = this.channel;
     if (!this.telegram || !channel) return;
     const m = this.service.getMarket(id);
-    const text = marketResultText(m, this.link(id));
+    const text = marketResultText(m);
     if (text) await this.post(channel, await this.bannerFor('result', id, m), text, { text: 'See the result', url: this.link(id) });
   }
 
@@ -149,7 +149,7 @@ export class ChannelPoster {
       .filter((m) => m.status === 'open' && m.closeAt > now)
       .sort((a, b) => a.closeAt - b.closeAt);
     const link = `${this.appUrl}#/`;
-    const text = liveSummaryText(open.map((m) => ({ symbol: m.symbol, closeAt: m.closeAt, participants: m.predictors })), link, now);
+    const text = liveSummaryText(open.map((m) => ({ symbol: m.symbol, closeAt: m.closeAt, participants: m.predictors })), now);
     if (!text) throw new Error('There are no open markets to post.');
     let banner: Uint8Array | null = null;
     try {
@@ -174,7 +174,7 @@ export class ChannelPoster {
         try {
           // Read when it is sent, so the time left on the banner is right.
           const m = this.service.getMarket(id);
-          await this.post(channel, await this.bannerFor('closing', id, m), closingSoonText(m, this.link(id)), { text: 'Predict now', url: this.link(id) });
+          await this.post(channel, await this.bannerFor('closing', id, m), closingSoonText(m), { text: 'Predict now', url: this.link(id) });
           this.service.markReminded(id);
         } finally {
           this.reminding.delete(id);

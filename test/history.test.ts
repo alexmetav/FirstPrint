@@ -53,6 +53,17 @@ test('points history: every balance change, newest first, tied to its market', a
     assert.deepEqual(service.ledgerFor(b.id).map((e) => e.reason), ['stake', 'signup']);
     assert.equal(service.ledgerFor(a.id, 1).length, 1);
 
+    // A page at a time: 10 per page, the last page holds the rest, out-of-range pages are clamped.
+    for (let i = 0; i < 22; i++) service.addPoints(a.id, 1, 'admin_topup', `t${i}`);
+    const p1 = service.ledgerPage(a.id, 1);
+    assert.deepEqual([p1.page, p1.pages, p1.total, p1.entries.length], [1, 3, 25, 10]);
+    const p3 = service.ledgerPage(a.id, 3);
+    assert.deepEqual([p3.page, p3.entries.length, p3.entries.at(-1)!.reason], [3, 5, 'signup'], 'the oldest entry is last on the last page');
+    assert.equal(service.ledgerPage(a.id, 99).page, 3);
+    assert.equal(service.ledgerPage(a.id, -4).page, 1);
+    const all = [1, 2, 3].flatMap((n) => service.ledgerPage(a.id, n).entries.map((e) => e.id));
+    assert.equal(new Set(all).size, 25, 'no entry is skipped or repeated across pages');
+
     // Portfolio rows say which kind of market they belong to, so the page can say "Awaiting result".
     assert.equal(service.myPredictions(a.id)[0].mode, 'manual');
 

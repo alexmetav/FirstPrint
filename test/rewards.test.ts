@@ -616,3 +616,24 @@ test('tasks: a full task opens again for new players when the admin raises or cl
   clock.advance(TASK_MIN_WAIT_MS);
   assert.equal((await rewards.verifyTask(b.id, follow)).points, 500);
 });
+
+test('on-chain activity comes a page at a time: sends and claims together, newest first', async () => {
+  const { clock, service, rewards } = await setup(false);
+  const { user } = await player(service, 'a@example.com');
+  const mint = service.db.prepare("INSERT INTO chain_mints (id, user_id, wallet, kind, ref, amount, status, created_at, updated_at) VALUES (?, ?, 'W', 'daily', ?, 10, 'confirmed', ?, ?)");
+  for (let i = 0; i < 15; i++) {
+    clock.advance(60_000);
+    mint.run(`m${i}`, user.id, `d${i}`, clock.now(), clock.now());
+  }
+  clock.advance(60_000);
+  service.db
+    .prepare("INSERT INTO claims (id, user_id, wallet, amount, status, message, last_valid_height, created_at, updated_at) VALUES ('c1', ?, 'W', 500, 'confirmed', 'm', 1, ?, ?)")
+    .run(user.id, clock.now(), clock.now());
+  const p1 = rewards.chainActivity(user.id, 1);
+  assert.deepEqual([p1.page, p1.pages, p1.total, p1.activity.length], [1, 2, 16, 8]);
+  assert.equal(p1.activity[0].kind, 'claim', 'the newest first');
+  const p2 = rewards.chainActivity(user.id, 2);
+  assert.equal(p2.activity.length, 8);
+  assert.equal(p2.activity.at(-1)!.at, Math.min(...[...p1.activity, ...p2.activity].map((a) => a.at)));
+  assert.equal(rewards.chainActivity(user.id, 50).page, 2);
+});

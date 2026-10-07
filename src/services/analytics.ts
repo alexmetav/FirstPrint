@@ -45,7 +45,7 @@ export function analytics(db: DatabaseSync, now: number, days = 30) {
   const series = [];
   for (let t = start; t < end; t += DAY) {
     const d = isoDay(t);
-    series.push({ day: d, newPlayers: n(signups.get(d)?.c), active: n(activeDays.get(d)?.c), predictions: n(predDays.get(d)?.c), staked: n(predDays.get(d)?.s) });
+    series.push({ day: d, newPlayers: n(signups.get(d)?.c), active: n(activeDays.get(d)?.c), predictions: n(predDays.get(d)?.c), staked: n(predDays.get(d)?.s), onChain: 0 });
   }
 
   // How players sign in.
@@ -83,6 +83,51 @@ export function analytics(db: DatabaseSync, now: number, days = 30) {
   const tasks = n(one(`SELECT COUNT(*) c FROM task_completions WHERE completed_at IS NOT NULL AND user_id IN (${REAL})`).c);
   const claimed = one(`SELECT COUNT(DISTINCT user_id) u, COALESCE(SUM(amount), 0) a FROM claims WHERE status = 'confirmed' AND user_id IN (${REAL})`);
 
+  // Where players come from: the country Cloudflare saw when they first signed in.
+  const countries = all(
+    `SELECT COALESCE(country, '') c, COUNT(*) players, SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) recent
+     FROM users WHERE id IN (${REAL}) GROUP BY c ORDER BY players DESC, c`,
+    start,
+  ).map((r) => ({ country: String(r.c) || null, players: n(r.players), newPlayers: n(r.recent) }));
+
+  // TestFPT on Solana: transfers the server sent (rewards, stakes, payouts, refunds) and claims
+  // players signed themselves. Totals only.
+  const chainKinds = all(`SELECT kind, COUNT(*) c, COALESCE(SUM(amount), 0) a FROM chain_mints WHERE status = 'confirmed' GROUP BY kind`);
+  const group = (k: string): 'stakes' | 'payouts' | 'refunds' | 'rewards' => (k === 'stake' ? 'stakes' : k === 'payout' ? 'payouts' : k === 'refund' ? 'refunds' : 'rewards');
+  type Moved = { transfers: number; amount: number };
+  const byGroup: { rewards: Moved; stakes: Moved; payouts: Moved; refunds: Moved } = { rewards: { transfers: 0, amount: 0 }, stakes: { transfers: 0, amount: 0 }, payouts: { transfers: 0, amount: 0 }, refunds: { transfers: 0, amount: 0 } };
+  for (const r of chainKinds) {
+    const g = byGroup[group(String(r.kind)) as keyof typeof byGroup];
+    g.transfers += n(r.c);
+    g.amount += n(r.a);
+  }
+  const chainState = one(`SELECT
+      SUM(CASE WHEN status IN ('queued', 'submitted') THEN 1 ELSE 0 END) waiting,
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) failed,
+      SUM(CASE WHEN status = 'confirmed' AND updated_at >= ? THEN 1 ELSE 0 END) recent
+    FROM chain_mints`, start);
+  const claimsAll = one(`SELECT COUNT(*) c, COALESCE(SUM(amount), 0) a, SUM(CASE WHEN updated_at >= ? THEN 1 ELSE 0 END) recent FROM claims WHERE status = 'confirmed'`, start);
+  const holders = n(one(`SELECT COUNT(*) c FROM (SELECT wallet FROM chain_mints WHERE status = 'confirmed' AND kind != 'stake' UNION SELECT wallet FROM claims WHERE status = 'confirmed')`).c);
+  const chainDays = byDay(
+    `SELECT d, SUM(c) c FROM (
+       SELECT date(updated_at / 1000, 'unixepoch') d, COUNT(*) c FROM chain_mints WHERE status = 'confirmed' AND updated_at >= ? GROUP BY d
+       UNION ALL SELECT date(updated_at / 1000, 'unixepoch') d, COUNT(*) c FROM claims WHERE status = 'confirmed' AND updated_at >= ? GROUP BY d
+     ) GROUP BY d`,
+    start,
+    start,
+  );
+  for (const x of series) Object.assign(x, { onChain: n(chainDays.get(x.day)?.c) });
+  const onChain = {
+    transfers: Object.values(byGroup).reduce((t, g) => t + g.transfers, 0) + n(claimsAll.c),
+    transfersInPeriod: n(chainState.recent) + n(claimsAll.recent),
+    waiting: n(chainState.waiting),
+    failed: n(chainState.failed),
+    holders,
+    firstprintWallets: n(one('SELECT COUNT(*) c FROM embedded_wallets').c),
+    claims: { transfers: n(claimsAll.c), amount: n(claimsAll.a) },
+    ...byGroup,
+  };
+
   return {
     generatedAt: now,
     days,
@@ -117,5 +162,7 @@ export function analytics(db: DatabaseSync, now: number, days = 30) {
     series,
     topMarkets,
     streaks: Object.entries(streaks).map(([label, count]) => ({ label, count })),
+    countries,
+    onChain,
   };
 }

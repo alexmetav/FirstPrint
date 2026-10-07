@@ -87,6 +87,8 @@ export interface UserRow {
   x_username?: string | null;
   referral_code?: string | null;
   referred_by?: string | null;
+  /** Two-letter country seen at sign-in (CF-IPCountry), for analytics. */
+  country?: string | null;
 }
 
 export interface MarketRow {
@@ -613,6 +615,12 @@ export class FirstprintService {
   }
 
   /** `via` is how the user proved who they are; an email only counts for admin access after an email code or Google. */
+  /** Records the player's country (two letters) the first time it's known; later sign-ins don't change it. */
+  noteCountry(userId: string, country: string | null) {
+    if (!country) return;
+    this.db.prepare('UPDATE users SET country = ? WHERE id = ? AND country IS NULL').run(country, userId);
+  }
+
   createSession(userId: string, via: 'email' | 'google' | 'wallet' | 'password' | null = null): { token: string; expiresAt: number } {
     const token = randomBytes(32).toString('base64url');
     const now = this.clock.now();
@@ -1577,7 +1585,16 @@ export class FirstprintService {
   // --- Points history and admin log ----------------------------------------------
 
   /** A user's points movements, newest first, with the market each one belongs to. */
-  ledgerFor(userId: string, limit = 50) {
+  /** One page of the player's points history (newest first), with how many pages there are. */
+  ledgerPage(userId: string, page = 1, perPage = 10) {
+    const per = Math.min(50, Math.max(1, Math.floor(perPage) || 10));
+    const total = as<{ n: number }>(this.db.prepare('SELECT COUNT(*) AS n FROM ledger WHERE user_id = ?').get(userId)).n;
+    const pages = Math.max(1, Math.ceil(total / per));
+    const p = Math.min(pages, Math.max(1, Math.floor(page) || 1));
+    return { entries: this.ledgerFor(userId, per, (p - 1) * per), page: p, pages, total };
+  }
+
+  ledgerFor(userId: string, limit = 50, offset = 0) {
     const rows = as<{ id: number; delta: number; reason: string; created_at: number; symbol: string | null; market_id: string | null }[]>(
       this.db
         .prepare(
@@ -1585,9 +1602,9 @@ export class FirstprintService {
            FROM ledger l
            LEFT JOIN predictions p ON p.id = l.ref
            LEFT JOIN markets m ON m.id = p.market_id
-           WHERE l.user_id = ? ORDER BY l.created_at DESC, l.id DESC LIMIT ?`,
+           WHERE l.user_id = ? ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?`,
         )
-        .all(userId, Math.min(200, Math.max(1, Math.floor(limit)))),
+        .all(userId, Math.min(200, Math.max(1, Math.floor(limit))), Math.max(0, Math.floor(offset))),
     );
     return rows.map((r) => ({ id: r.id, delta: r.delta, reason: r.reason, at: r.created_at, symbol: r.symbol, marketId: r.market_id }));
   }
@@ -2114,6 +2131,11 @@ export class FirstprintService {
   setSetting(key: string, value: string | null) {
     if (value === null) this.db.prepare('DELETE FROM settings WHERE key = ?').run(key);
     else this.db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
+  }
+
+  /** Skips every listing still waiting for review. Returns how many were skipped. */
+  ignoreAllDetections() {
+    return Number(this.db.prepare("UPDATE detected_listings SET status = 'ignored' WHERE status = 'pending'").run().changes);
   }
 
   ignoreDetection(id: number) {
