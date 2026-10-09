@@ -26,3 +26,16 @@ ffmpeg -i out-x/firstprint-x1-silent.mp4 -i out-x/x1.wav -map 0:v -map 1:a -c:v 
 ```
 
 Check single frames first with `node record.mjs x1 60 --stills 2.2,7.0,15.7` (PNG files in `out-x/`).
+
+## Partnership loop (`xp.js`)
+
+A ~9 s square loop for partner announcements. Only the partner name and logo change. Put the partner logo in `partners/` (transparent PNG or SVG works best), then:
+
+```sh
+cd marketing/video
+Q="name=LETSBURN&logo=partners/letsburn.png" node record.mjs xp 60
+python3 gen_audio.py out-x/xp.sfx.json out-x/xp.wav
+ffmpeg -i out-x/firstprint-xp-silent.mp4 -i out-x/xp.wav -map 0:v -map 1:a -c:v copy -af "volume=1.3dB,alimiter=limit=0.95" -c:a aac -b:a 192k -shortest -movflags +faststart firstprint-x-letsburn-loop.mp4
+```
+
+Long names shrink to fit. The length is four bars of the music bed, and it starts and ends on black, so it loops cleanly on X.

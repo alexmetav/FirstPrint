@@ -20,7 +20,7 @@ mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({ args: ['--allow-file-access-from-files', '--font-render-hinting=none'] });
 const page = await browser.newPage({ viewport: { width: 1080, height: VH }, deviceScaleFactor: 1 });
 page.on('pageerror', (e) => console.error('page error:', e.message));
-await page.goto(`file://${here}/${native ? 'stage-sq' : mode === 'x' ? 'stage-x' : 'stage'}.html?v=${v}`);
+await page.goto(`file://${here}/${native ? 'stage-sq' : mode === 'x' ? 'stage-x' : 'stage'}.html?v=${v}${process.env.Q ? `&${process.env.Q}` : ''}`); // Q: extra params, e.g. name=X&logo=partners/x.png
 await page.waitForFunction(() => window.READY === true, null, { timeout: 30000 });
 const duration = await page.evaluate(() => window.DURATION);
 if (mode === 'x') {
