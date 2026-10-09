@@ -20,6 +20,8 @@ const CLOSE_WAIT_MS = 2 * 60 * MINUTE;
 const RESULT_WAIT_MS = 2 * 60 * MINUTE;
 /** Between reads of the result price for one market, so a slow source isn't asked every 30 seconds. */
 const RESULT_RETRY_MS = 2 * MINUTE;
+/** Between reads once the admin has been asked: the price may still turn up (an exchange back from an outage). */
+const LATE_RESULT_RETRY_MS = 15 * MINUTE;
 
 /** "9 Oct, 12:00 UTC" */
 export function utcTime(ts: number) {
@@ -201,14 +203,15 @@ export class AutoOpener {
     const now = this.service.clock.now();
     // Let the last minute before the result time finish on the exchanges first.
     if (now < at + 2 * MINUTE) return;
-    if (now - (this.resultTried.get(m.id) ?? 0) < RESULT_RETRY_MS) return;
+    const asked = m.result_price_failed === 1;
+    if (now - (this.resultTried.get(m.id) ?? 0) < (asked ? LATE_RESULT_RETRY_MS : RESULT_RETRY_MS)) return;
     this.resultTried.set(m.id, now);
     const r = await this.service.readPriceAt(m.id, at);
     if (r.price !== null) {
       this.resultTried.delete(m.id);
       const note = `Final price ${fmt(r.price)}: the price at ${utcTime(at)} on ${r.from.join(', ')}.`;
       const { summary, notes } = this.service.resolveManualMarket(m.id, { finalPrice: r.price, note }, 'auto');
-      this.service.noteAutoOpen(m.id, `Result posted by itself. ${note}`);
+      this.service.noteAutoOpen(m.id, `Result posted by itself${asked ? ' (found after the admin was asked)' : ''}. ${note}`);
       const what = summary.voidReason
         ? `It was cancelled and refunded (${summary.voidReason}).`
         : `${summary.winningBucket ? summary.winningBucket[0].toUpperCase() + summary.winningBucket.slice(1) : '?'} won (${summary.returnPct >= 0 ? '+' : ''}${(summary.returnPct * 100).toFixed(2)}%), ${summary.winnerCount} winner${summary.winnerCount === 1 ? '' : 's'} paid.`;
@@ -216,8 +219,12 @@ export class AutoOpener {
       await this.onSettled(notes);
       return;
     }
+    if (asked) {
+      // Already asked: keep the admin's note, and quietly try again later.
+      this.service.noteAutoOpen(m.id, `Final price not found yet, still checking every 15 minutes: ${r.missing.join('; ') || 'no source answered'}`);
+      return;
+    }
     if (now - at > RESULT_WAIT_MS) {
-      this.resultTried.delete(m.id);
       const why = r.missing.join('; ') || 'no source answered';
       this.service.resultPriceFailed(m.id, `Final price not found: no price at ${utcTime(at)} (${why}).`);
       this.service.markResultAlerted(m.id);

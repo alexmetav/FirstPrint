@@ -37,6 +37,8 @@ import {
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
+/** How long after a market's result time the server keeps trying to read the final price, even after asking the admin. */
+export const RESULT_RETRY_FOR_MS = 2 * DAY;
 export const START_POINTS = 1_000;
 /** Daily claim: 50 points on day 1 of a streak, 25 more each day after, up to 200 from day 7. */
 export const DAILY_MIN = 50;
@@ -1506,20 +1508,21 @@ export class FirstprintService {
 
   /**
    * Published markets whose result time has come and whose start price is in: the server reads the
-   * price at the exact result time and posts the result by itself. Stops once that read has failed
-   * (the admin was asked for the price then).
+   * price at the exact result time and posts the result by itself. Once the admin has been asked
+   * (the read failed for two hours), it still tries now and then for two days, since an exchange
+   * that blocked or lagged usually answers later; whichever comes first, the admin or the price, posts it.
    */
   resultPriceDue(now = this.clock.now()) {
     return as<MarketRow[]>(
       this.db
-        .prepare("SELECT * FROM markets WHERE mode = 'manual' AND published = 1 AND status = 'locked' AND base_price IS NOT NULL AND result_price_failed = 0")
+        .prepare("SELECT * FROM markets WHERE mode = 'manual' AND published = 1 AND status = 'locked' AND base_price IS NOT NULL")
         .all(),
     )
       .map((m) => ({ m, at: m.listing_at + parseConfig(m).durationMs }))
-      .filter((x) => x.at <= now);
+      .filter((x) => x.at <= now && (x.m.result_price_failed !== 1 || now - x.at < RESULT_RETRY_FOR_MS));
   }
 
-  /** The price at the result time could not be read: stop trying, so the admin enters it. */
+  /** The price at the result time could not be read: the admin is asked to enter it (the server keeps trying now and then). */
   resultPriceFailed(marketId: string, note: string) {
     this.db.prepare('UPDATE markets SET result_price_failed = 1, auto_open_note = ? WHERE id = ?').run(note.slice(0, 300), marketId);
     this.marketChanged(marketId);
