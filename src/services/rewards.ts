@@ -510,6 +510,9 @@ export class RewardsService {
         try {
           await this.serverClaim(user_id, this.payoutWallet(user_id));
         } catch (err) {
+          // A claim started at the same moment (the player's own, or the send right after a task)
+          // already took these rewards: nothing went wrong, so it isn't reported as a failure.
+          if (err instanceof AppError && err.code === 'claim_conflict') continue;
           this.service.log(`auto-claim for ${user_id} failed: ${(err as Error).message}`);
         }
       }
