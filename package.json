@@ -20,6 +20,7 @@
     "build:web": "node scripts/build-web.ts",
     "check": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/check-exchanges.ts",
     "live": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env scripts/live-markets.ts",
+    "build:media-kit": "node scripts/build-media-kit.ts",
     "build:site": "node --disable-warning=ExperimentalWarning scripts/build-site.ts"
   },
   "devDependencies": {

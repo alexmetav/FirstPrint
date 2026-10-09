@@ -131,6 +131,7 @@ const MIME: Record<string, string> = {
   '.png': 'image/png',
   '.json': 'application/json',
   '.ico': 'image/x-icon',
+  '.zip': 'application/zip',
 };
 
 export function createApiServer(opts: ServerOptions): Server {
