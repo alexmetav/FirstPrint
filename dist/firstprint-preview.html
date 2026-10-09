@@ -16320,7 +16320,7 @@ const S = {
   filter: 'trending',
   sort: 'predictors',
   heroIdx: 0,
-  lbPeriod: 'week',
+  lbPeriod: 'all',
   query: '',
   lists: { open: [], live: [], settled: [] },
   /** Predictor counts as last drawn on each card, to float "+N" when more people join. */
@@ -16561,10 +16561,10 @@ async function loadHome() {
   const featured = featuredMarket();
   const [odds, leaders] = await Promise.all([
     featured && S.api.odds ? S.api.odds(featured.id).catch(() => null) : null,
-    S.api.leaderboard ? S.api.leaderboard('week').catch(() => null) : null,
+    S.api.leaderboard ? S.api.leaderboard('all').catch(() => null) : null,
   ]);
   S.featuredOdds = featured ? { id: featured.id, odds } : null;
-  S.weekLeaders = leaders?.entries?.slice(0, 5) ?? [];
+  S.topLeaders = leaders?.entries?.slice(0, 5) ?? [];
 }
 
 async function loadMarket(id) {
@@ -17754,17 +17754,17 @@ function showHeroSlide(i, animate = true) {
   deck.querySelectorAll('[data-hero-dot]').forEach((b) => b.setAttribute('aria-current', String(Number(b.dataset.heroDot) === to)));
 }
 
-/** Right column: this week's best players, ways to earn, and the daily claim. */
+/** Right column: the best players of all time, ways to earn, and the daily claim. */
 function homeRail() {
-  const leaders = S.weekLeaders ?? [];
+  const leaders = S.topLeaders ?? [];
   return `
     ${S.me?.canClaimDaily ? `<section class="rail-card rail-claim"><div><b>Your daily ${dailyNext()} points</b><p>${dailyLine()}</p></div><button class="btn btn-gold btn-sm" data-action="claim">${ico('gift')}Claim</button></section>` : ''}
     <section class="rail-card">
-      <div class="rail-head"><h3>Top this week</h3><a href="#/leaderboard">See all ${ico('chevronRight')}</a></div>
+      <div class="rail-head"><h3>Top players</h3><a href="#/leaderboard">See all ${ico('chevronRight')}</a></div>
       ${
         leaders.length
           ? `<ol class="rail-list">${leaders.map((e) => `<li><span class="rail-rank">${e.rank}</span>${avatar(e.name, 'avatar-sm')}${userLink(e.name)}<b class="${e.profit >= 0 ? 'profit-pos' : 'profit-neg'}">${signed(e.profit)}</b></li>`).join('')}</ol>`
-          : '<p class="rail-empty">No settled markets this week yet. Win one to top the board.</p>'
+          : '<p class="rail-empty">No markets have settled yet. Win one to top the board.</p>'
       }
     </section>
     <section class="rail-card rail-earn">
@@ -18890,10 +18890,10 @@ const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
 // ------------------------------------------------------------------ Leaderboard & portfolio
 
 const LB_PERIODS = [
-  ['day', 'Today'],
-  ['week', 'This week'],
-  ['month', 'This month'],
   ['all', 'All time'],
+  ['month', 'This month'],
+  ['week', 'This week'],
+  ['day', 'Today'],
 ];
 const LB_LEDE = {
   day: 'Points won or lost on markets settled today (UTC).',
@@ -18933,9 +18933,9 @@ function leaderboardView(lb) {
     <header class="page-head">
       <span class="page-ico">${ico('trophy')}</span>
       <div><h1 class="page-title">Leaderboard</h1>
-      <p class="page-lede">${LB_LEDE[lb.period ?? 'week']}</p></div>
+      <p class="page-lede">${LB_LEDE[lb.period ?? 'all']}</p></div>
     </header>
-    <div class="tabs lb-tabs" role="tablist" aria-label="Leaderboard period">${LB_PERIODS.map(([id, label]) => `<button role="tab" aria-selected="${(lb.period ?? 'week') === id}" data-lb-period="${id}">${label}</button>`).join('')}</div>
+    <div class="tabs lb-tabs" role="tablist" aria-label="Leaderboard period">${LB_PERIODS.map(([id, label]) => `<button role="tab" aria-selected="${(lb.period ?? 'all') === id}" data-lb-period="${id}">${label}</button>`).join('')}</div>
     ${
       lb.entries.length
         ? `${podium}<div class="panel panel-flush"><table class="table"><thead><tr><th>Rank</th><th>Participant</th><th class="right">Profit</th><th class="right hide-sm">Correct</th></tr></thead><tbody>${rows}</tbody></table></div>`
