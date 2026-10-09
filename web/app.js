@@ -4955,9 +4955,9 @@ function adminMarketsTab(markets, waiting, pending, counting = [], tooLong = [],
     : '';
   // Closed markets still counting down: nothing to do until the result is due (they move up then).
   const countdown = counting.length
-    ? `<details class="adm-collapse"><summary>${ico('clock')}<b>Counting down</b><span class="count-badge">${counting.length}</span><span class="muted">closed, result not due yet</span></summary>
+    ? `<details class="adm-collapse"><summary>${ico('clock')}<b>Counting down</b><span class="count-badge">${counting.length}</span><span class="muted">closed, the result posts by itself</span></summary>
         <ul class="todo">${counting
-          .map((m) => `<li style="--c:var(--flat)"><span class="todo-ico">${tokenAvatar(m, 'avatar-sm')}</span><div><b>${esc(m.symbol)}</b><span class="muted">Start ${m.basePrice != null ? fmtPrice(m.basePrice) : 'being read'} · result ${fmtDate(m.settleAt)} · in <span data-until="${m.settleAt}">${fmtDur(m.settleAt - now())}</span> · ${fmtPts(m.pool)}</span></div>
+          .map((m) => `<li style="--c:var(--flat)"><span class="todo-ico">${tokenAvatar(m, 'avatar-sm')}</span><div><b>${esc(m.symbol)}</b><span class="muted">Start ${m.basePrice != null ? fmtPrice(m.basePrice) : 'being read'} · ${m.settleAt <= now() ? `reading the price at ${esc(fmtUtc(m.settleAt))}, the result posts by itself` : `result ${fmtDate(m.settleAt)} · in <span data-until="${m.settleAt}">${fmtDur(m.settleAt - now())}</span>`} · ${fmtPts(m.pool)}</span></div>
             ${canAdmin('admin') ? `<span class="todo-actions"><button class="btn btn-sm" type="button" data-action="admin-cancel" data-id="${esc(m.id)}">Cancel and refund</button></span>` : ''}</li>`)
           .join('')}</ul></details>`
     : '';
@@ -5553,7 +5553,38 @@ function marketForm(m, pre = null) {
     </form>`;
 }
 
-/** One awaiting-result market: enter the final price, preview winners, then confirm. */
+/** "9 Oct, 12:00 UTC": exchanges keep their candles in UTC, so the admin checks the same minute. */
+function fmtUtc(ts) {
+  const d = new Date(ts);
+  return `${d.getUTCDate()} ${d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })}, ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} UTC`;
+}
+
+/** Links to each source's own 1-minute candle ending at the exact time, for reading the price by hand. */
+function checkLinksHtml(check) {
+  if (!check?.links?.length) return '';
+  return `<details class="price-check"><summary>${ico('activity')}Check the price at ${esc(fmtUtc(check.at))} yourself</summary>
+    <ul>${check.links.map((l) => `<li><a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.name)} ↗</a> <span class="muted">${esc(l.hint)}</span></li>`).join('')}</ul>
+    <p class="muted">Each link opens the 1-minute candle that ends at that time: its close is the price then.</p></details>`;
+}
+
+/** "Get price at …": reads the price at the exact close or result time from the market's sources. */
+function priceAtButton(m, which, field) {
+  const at = which === 'start' ? m.closeAt : m.settleAt;
+  return `<button class="btn btn-sm live-fill" type="button" data-action="admin-price-at" data-id="${esc(m.id)}" data-which="${which}" data-field="${field}">${ico('activity')}Get price at ${esc(fmtUtc(at))}</button>`;
+}
+
+/** What the result would be (percent change, winning side, winners), shown as soon as a price is in. */
+function previewHtml(s, yn) {
+  return `<p><b>${fmtPrice(s.basePrice)} → ${fmtPrice(s.finalPrice)} is ${fmtPct(s.returnPct)}</b>, ${s.voidReason ? `so the market would be <b>cancelled and refunded</b> (${esc(VOID_REASONS[s.voidReason] ?? s.voidReason)})` : `so <b>${oName(s.winningBucket, yn)}</b> wins${s.overridden ? ` (you overrode ${oName(s.computedBucket, yn)} from the price)` : ''}`}.</p>
+    <p class="muted">${s.voidReason ? '' : `${s.winnerCount} winner${s.winnerCount === 1 ? '' : 's'} share ${fmtPts(s.netPool)} (pool ${fmtPts(s.pool)} minus ${fmtPts(s.fee)} fee).`}</p>
+    ${s.winners.length ? `<ul class="activity">${s.winners.slice(0, 10).map((w) => `<li><span>${esc(w.username)} picked ${outcome(w.bucket, yn)}</span><span class="muted">${fmtPts(w.stake)} → <b>${fmtPts(w.payout)}</b></span></li>`).join('')}</ul>` : ''}`;
+}
+
+/**
+ * One awaiting-result market the server couldn't settle by itself: the admin enters the price at the
+ * exact result time (or gets it again, or checks it on the exchanges), the percent change and the
+ * winning side are worked out at once, and one button publishes the result.
+ */
 function resultForm(m) {
   const p = A.preview?.id === m.id ? A.preview : null;
   const v = p?.inputs ?? {};
@@ -5563,33 +5594,93 @@ function resultForm(m) {
   return `
     <form class="admin-detect admin-result" data-resolve="${esc(m.id)}">
       <div><b>${esc(m.symbol)}</b> <span class="muted">${esc(venueNames(m))}</span><br>
-        <span class="muted">Start price ${hasStart(m) ? fmtPrice(m.basePrice) : '<b>not set yet</b>'} · Pool ${fmtPts(m.pool)} from ${m.predictors} participant${m.predictors === 1 ? '' : 's'} · ${dist}</span><br>
-        <span class="muted">${bucketsOf(m).map((b) => `${oName(b, yn)} ${rangeOf(m, b)}`).join(' · ')}</span></div>
+        <span class="muted">Start price ${hasStart(m) ? fmtPrice(m.basePrice) : '<b>not set yet</b>'} · Result time <b>${esc(fmtUtc(m.settleAt))}</b> · Pool ${fmtPts(m.pool)} from ${m.predictors} participant${m.predictors === 1 ? '' : 's'} · ${dist}</span><br>
+        <span class="muted">${bucketsOf(m).map((b) => `${oName(b, yn)} ${rangeOf(m, b)}`).join(' · ')}</span>
+        ${m.autoOpenNote ? `<br><small class="muted auto-note">${esc(m.autoOpenNote)}</small>` : ''}</div>
       ${
         hasStart(m)
           ? ''
-          : `<label><span class="field-label">${m.startAtClose ? 'Start price at the close (USD)' : 'Opening price (USD)'}</span><input name="basePrice" type="number" step="any" min="0" value="${esc(v.basePrice ?? '')}" placeholder="${m.startAtClose ? `Price at ${esc(fmtDate(m.closeAt))}` : 'First trade price'}" />${m.startAtClose ? '' : liveFillButton(m, 'basePrice')}</label>`
+          : `<label><span class="field-label">${m.startAtClose ? `Start price at ${esc(fmtUtc(m.closeAt))} (USD)` : 'Opening price (USD)'}</span><input name="basePrice" type="number" step="any" min="0" value="${esc(v.basePrice ?? '')}" placeholder="${m.startAtClose ? 'Price when predictions closed' : 'First trade price'}" />${m.startAtClose ? priceAtButton(m, 'start', 'basePrice') : liveFillButton(m, 'basePrice')}${checkLinksHtml(m.priceChecks?.start)}</label>`
       }
-      <label><span class="field-label">Final price (USD)</span><input name="finalPrice" type="number" step="any" min="0" value="${esc(v.finalPrice ?? '')}"${hasStart(m) ? ' required' : ''} />${liveFillButton(m, 'finalPrice')}</label>
+      <label><span class="field-label">Final price at ${esc(fmtUtc(m.settleAt))} (USD)</span><input name="finalPrice" type="number" step="any" min="0" value="${esc(v.finalPrice ?? '')}"${hasStart(m) ? ' required' : ''} />${priceAtButton(m, 'final', 'finalPrice')}${checkLinksHtml(m.priceChecks?.final)}</label>
       <label><span class="field-label">Winning outcome</span>
         <select name="winningBucket"><option value="">Pick from the price (recommended)</option>${bucketsOf(m).map((b) => `<option value="${b}"${v.winningBucket === b ? ' selected' : ''}>${oName(b, yn)}</option>`).join('')}</select></label>
-      <label style="grid-column:1/-1"><span class="field-label">Note shown to users (optional)</span><input name="note" maxlength="2000" value="${esc(v.note ?? '')}" placeholder="e.g. Binance XYZ/USDT close at 12:00 UTC" /></label>
-      ${
-        s
-          ? `<div class="admin-preview" style="grid-column:1/-1">
-              <p><b>Preview:</b> ${fmtPrice(s.basePrice)} → ${fmtPrice(s.finalPrice)} is <b>${fmtPct(s.returnPct)}</b>, ${s.voidReason ? `so the market would be <b>cancelled and refunded</b> (${esc(VOID_REASONS[s.voidReason] ?? s.voidReason)})` : `so <b>${oName(s.winningBucket, yn)}</b> wins${s.overridden ? ` (you overrode ${oName(s.computedBucket, yn)} from the price)` : ''}`}.</p>
-              <p class="muted">${s.voidReason ? '' : `${s.winnerCount} winner${s.winnerCount === 1 ? '' : 's'} share ${fmtPts(s.netPool)} (pool ${fmtPts(s.pool)} minus ${fmtPts(s.fee)} fee).`}</p>
-              ${s.winners.length ? `<ul class="activity">${s.winners.slice(0, 10).map((w) => `<li><span>${esc(w.username)} picked ${outcome(w.bucket, yn)}</span><span class="muted">${fmtPts(w.stake)} → <b>${fmtPts(w.payout)}</b></span></li>`).join('')}</ul>` : ''}
-            </div>`
-          : ''
-      }
+      <label style="grid-column:1/-1"><span class="field-label">Note shown to users (optional)</span><input name="note" maxlength="2000" value="${esc(v.note ?? '')}" placeholder="e.g. Binance XYZ/USDT price at ${esc(fmtUtc(m.settleAt))}" /></label>
+      <div class="admin-preview" data-preview-slot style="grid-column:1/-1"${s ? '' : ' hidden'}>${s ? previewHtml(s, yn) : ''}</div>
       <div class="admin-actions" style="grid-column:1/-1">
         ${hasStart(m) ? '' : `<button class="btn" type="submit" name="intent" value="start">${m.startAtClose ? 'Save start price' : 'Save opening price'}</button>`}
-        <button class="btn${s ? '' : ' btn-solid'}" type="submit" name="intent" value="preview">Preview result</button>
-        ${s ? '<button class="btn btn-solid" type="submit" name="intent" value="resolve">Confirm and pay winners</button>' : ''}
+        <button class="btn btn-solid" type="submit" name="intent" value="resolve" data-publish${s ? '' : ' disabled'}>${ico('send')}Publish result</button>
         <button class="btn" type="button" data-action="admin-cancel" data-id="${esc(m.id)}">Cancel and refund</button>
       </div>
     </form>`;
+}
+
+/** The form's prices as typed, and the request body for them. */
+function resultInputs(form) {
+  const d = new FormData(form);
+  const inputs = {
+    basePrice: String(d.get('basePrice') || ''),
+    finalPrice: String(d.get('finalPrice') || ''),
+    winningBucket: String(d.get('winningBucket') || ''),
+    note: String(d.get('note') || '').trim(),
+  };
+  const body = {
+    finalPrice: Number(inputs.finalPrice),
+    basePrice: inputs.basePrice ? Number(inputs.basePrice) : undefined,
+    winningBucket: inputs.winningBucket || undefined,
+    note: inputs.note || undefined,
+  };
+  return { inputs, key: JSON.stringify(inputs), body };
+}
+
+/** Works the result out as the admin types (no redraw, so the field keeps its focus). */
+async function autoPreview(form) {
+  const id = form.dataset.resolve;
+  const m = A.markets?.find((x) => x.id === id);
+  const slot = form.querySelector('[data-preview-slot]');
+  const publish = form.querySelector('[data-publish]');
+  const { inputs, key, body } = resultInputs(form);
+  if (!slot || !publish) return;
+  publish.disabled = true;
+  if (!inputs.finalPrice || (!m?.basePrice && !inputs.basePrice)) {
+    if (A.preview?.id === id) A.preview = null;
+    slot.hidden = true;
+    return;
+  }
+  form.dataset.previewKey = key;
+  try {
+    const summary = await A.api.previewResult(id, body);
+    if (form.dataset.previewKey !== key) return; // typed again since
+    A.preview = { id, key, inputs, summary };
+    slot.innerHTML = previewHtml(summary, isYesNo(m ?? summary));
+    publish.disabled = false;
+  } catch (err) {
+    if (form.dataset.previewKey !== key) return;
+    if (A.preview?.id === id) A.preview = null;
+    slot.innerHTML = `<p class="muted">${esc(err.message)}</p>`;
+  }
+  slot.hidden = false;
+}
+
+async function fillPriceAt(el) {
+  const form = el.closest('form');
+  const input = form?.querySelector(`[name=${el.dataset.field}]`);
+  if (!input) return;
+  const label = el.innerHTML;
+  el.disabled = true;
+  el.textContent = 'Getting price…';
+  try {
+    const r = await A.api.priceAt(el.dataset.id, el.dataset.which);
+    if (r.price === null) throw new Error(`No price at ${fmtUtc(r.at)} (${r.missing.join('; ') || 'no source answered'}). Check it with the links and type it in.`);
+    input.value = String(r.price);
+    toast(`Filled ${fmtPrice(r.price)}: the price at ${fmtUtc(r.at)} on ${r.from.join(', ')}.`);
+    await autoPreview(form);
+  } catch (err) {
+    toast(err.message, true);
+  } finally {
+    el.disabled = false;
+    el.innerHTML = label;
+  }
 }
 
 /** "Use live price" under a price field: fills it with the median live price from the market's exchanges. */
@@ -5913,7 +6004,7 @@ function adminPhase(m) {
     if (m.phase === 'baseline') return `Open, closes ${fmtDate(m.closeAt)} (in ${fmtDur(m.closeAt - now())})`;
     if (m.phase === 'awaiting_result' && m.basePrice == null && !/not found/i.test(m.autoOpenNote ?? '')) return m.startAtClose ? 'Reading the price at the close' : 'Reading the opening price';
     if (m.phase === 'awaiting_result' && m.basePrice != null && m.settleAt > now()) return `Closed, result due ${fmtDate(m.settleAt)}`;
-    if (m.phase === 'awaiting_result') return 'Awaiting your result';
+    if (m.phase === 'awaiting_result') return m.resultPriceFailed || m.basePrice == null ? 'Awaiting your result' : 'Reading the result price';
   }
   return { pre_listing: `Starts in ${fmtDur(m.listingAt - now())}`, baseline: 'Open, trading', running: `Running, ${fmtDur(m.settleAt - now())} left`, resolved: `Settled: ${NAMES[m.result?.winningBucket] ?? ''}`, void: 'Cancelled' }[m.phase] ?? m.phase;
 }
@@ -6305,6 +6396,8 @@ async function onAdminAction(action, el) {
       return renderAdmin();
     case 'admin-live-fill':
       return fillLivePrice(el);
+    case 'admin-price-at':
+      return fillPriceAt(el);
     case 'admin-tg-connect':
       try {
         await A.api.telegramConnect(A.tgCode);
@@ -6673,20 +6766,7 @@ async function submitAdminMarket(form, intent) {
 
 async function submitAdminResult(form, intent) {
   const id = form.dataset.resolve;
-  const d = new FormData(form);
-  const inputs = {
-    basePrice: String(d.get('basePrice') || ''),
-    finalPrice: String(d.get('finalPrice') || ''),
-    winningBucket: String(d.get('winningBucket') || ''),
-    note: String(d.get('note') || '').trim(),
-  };
-  const key = JSON.stringify(inputs);
-  const body = {
-    finalPrice: Number(inputs.finalPrice),
-    basePrice: inputs.basePrice ? Number(inputs.basePrice) : undefined,
-    winningBucket: inputs.winningBucket || undefined,
-    note: inputs.note || undefined,
-  };
+  const { inputs, key, body } = resultInputs(form);
   if (intent === 'start' && !inputs.basePrice) return toast('Enter the opening price first.', true);
   if (intent !== 'start' && !inputs.finalPrice) return toast('Enter the final price.', true);
   const buttons = form.querySelectorAll('button');
@@ -6695,24 +6775,24 @@ async function submitAdminResult(form, intent) {
     // A token listed after its market opened: record the opening price so players can see it.
     if (intent === 'start') {
       await A.api.setStartPrice(id, Number(inputs.basePrice));
-      toast('Opening price saved. Players can see it now.');
+      toast('Start price saved. Players can see it now.');
       return renderAdmin();
     }
-    // Money moves only after the admin has seen a preview of exactly these inputs.
-    if (intent === 'resolve' && A.preview?.id === id && A.preview.key === key) {
-      const s = A.preview.summary;
-      const what = s.voidReason ? 'Cancel this market and refund everyone' : `Declare ${oName(s.winningBucket, s.outcomes === 'binary')} the winner and pay ${s.winnerCount} winner${s.winnerCount === 1 ? '' : 's'} ${fmtPts(s.totalPaid)}`;
-      if (!confirm(`${what}? This can’t be undone.`)) {
-        buttons.forEach((b) => (b.disabled = false));
-        return;
-      }
-      const out = await A.api.resolve(id, body);
-      A.preview = null;
-      toast(out.voidReason ? 'Market cancelled and refunded' : `Result posted. ${out.winnerCount} winner${out.winnerCount === 1 ? '' : 's'} paid.`);
-    } else {
+    // Money moves only after the admin has seen the result for exactly these inputs.
+    if (!(A.preview?.id === id && A.preview.key === key)) {
       A.preview = { id, key, inputs, summary: await A.api.previewResult(id, body) };
-      if (intent === 'resolve') toast('Check the preview, then confirm.');
+      toast('Check the result, then publish.');
+      return renderAdmin();
     }
+    const s = A.preview.summary;
+    const what = s.voidReason ? 'Cancel this market and refund everyone' : `Publish: ${oName(s.winningBucket, s.outcomes === 'binary')} wins (${fmtPct(s.returnPct)}), ${s.winnerCount} winner${s.winnerCount === 1 ? '' : 's'} get ${fmtPts(s.totalPaid)}`;
+    if (!confirm(`${what}? This can’t be undone.`)) {
+      buttons.forEach((b) => (b.disabled = false));
+      return;
+    }
+    const out = await A.api.resolve(id, body);
+    A.preview = null;
+    toast(out.voidReason ? 'Market cancelled and refunded' : `Result published. ${out.winnerCount} winner${out.winnerCount === 1 ? '' : 's'} paid.`);
   } catch (err) {
     toast(err.message, true);
   }
@@ -7018,6 +7098,12 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('input', (e) => {
+  const resultForm = e.target.closest?.('form[data-resolve]');
+  if (resultForm) {
+    clearTimeout(autoPreview.timer);
+    autoPreview.timer = setTimeout(() => void autoPreview(resultForm), 400);
+    return;
+  }
   if (e.target.matches?.('#admin-market [type=datetime-local]')) return updateUtcHints();
   if (e.target.matches?.('#admin-market [name=symbol], #admin-market [name=name]')) {
     clearTimeout(refreshLogoSources.timer);

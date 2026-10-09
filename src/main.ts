@@ -139,7 +139,9 @@ setInterval(() => {
 }, 60_000).unref();
 
 // Upcoming tokens the admin scheduled: opened by themselves once trading has really started.
-const autoOpener = new AutoOpener(service, venues, alert, (id) => resultDueText(service.getMarket(id), adminUrl));
+// They also post results by themselves once the price at the result time is read (players are notified like
+// for an admin's result); the admin is asked only when no source has that price.
+const autoOpener = new AutoOpener(service, venues, alert, (id) => resultDueText(service.getMarket(id), adminUrl), (notes) => scheduler.notify(notes));
 setInterval(() => void (paused() ? null : autoOpener.run()), 30_000).unref();
 
 // Manual-only servers still watch some exchanges for new listings (LISTING_VENUES: MEXC, OKX, Gate,
@@ -208,9 +210,9 @@ const scheduler = new Scheduler(
   },
 );
 
-// Admin-run markets are asked for their result when it is due, not when predictions close (with a
-// 15 to 30 day wait between the two): AutoOpener's resultAlertsDue sends that alert. A market priced
-// at the close, or an upcoming token, first gets its start price read from its sources there too.
+// Admin-run markets settle by themselves when their result is due: AutoOpener reads the price at the
+// exact result time and posts the result. Only if no source has it is the admin asked (with links to
+// check it). A market priced at the close, or an upcoming token, first gets its start price read there too.
 
 // CoinGecko's trending list for Admin → Find tokens; a free demo key (optional) raises its rate limit.
 const discover = new Discover(service, { apiKey: process.env.COINGECKO_API_KEY?.trim() || null });

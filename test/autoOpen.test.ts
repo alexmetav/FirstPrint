@@ -155,10 +155,22 @@ test('upcoming markets: the opening price is read from the first minutes of trad
 
   await opener.run();
   assert.equal(alerts.length, 0, 'result not due yet');
+  // Result time: the token stopped trading, so there is no price then. The server keeps trying for
+  // two hours, then asks the admin once, with links to check the price at that exact minute.
   clock.advance(48 * HOUR);
   await opener.run();
+  assert.equal(alerts.length, 0, 'still trying');
+  assert.match(service.getMarket(id, undefined, true).autoOpenNote ?? '', /Reading the price at the result time/);
+  clock.advance(2 * HOUR);
   await opener.run();
-  assert.equal(alerts.length, 1, 'asked for the result once, when it is due');
+  await opener.run();
+  assert.equal(alerts.length, 1, 'asked for the result once');
+  assert.match(alerts[0], /Result due: evaa-m-/);
+  assert.match(alerts[0], /api\.mexc\.com\/api\/v3\/klines\?symbol=EVAAUSDT&amp;interval=1m&amp;startTime=/);
+  const m = service.getMarket(id, undefined, true);
+  assert.equal(m.resultPriceFailed, true);
+  assert.equal(m.priceChecks?.final.at, m.settleAt);
+  assert.equal(service.resultPriceDue().length, 0, 'stops trying');
 });
 
 test('upcoming markets: no trades a day after the close, the admin is asked for the opening price', async () => {
@@ -220,20 +232,11 @@ test('priced at the close: the start price is the price just before predictions 
 
   clock.advance(closeAt + 3 * MIN - clock.now());
   await opener.run();
-  // Minutes close-3, close-2, close-1: 1.07, 1.08, 1.09; never a price from after the close.
-  assert.equal(service.getMarket(id).basePrice, 1.08);
-  assert.match(service.getMarket(id, undefined, true).autoOpenNote ?? '', /Start price \$1\.08 set by itself: the price when predictions closed, on MEXC/);
+  // The minute ending at the close (close-1 → close) ended at 1.09: the price at that exact moment,
+  // never one from after the close.
+  assert.equal(service.getMarket(id).basePrice, 1.09);
+  assert.match(service.getMarket(id, undefined, true).autoOpenNote ?? '', /Start price \$1\.09 set by itself: the price at .* UTC when predictions closed, on MEXC/);
   assert.equal(alerts.length, 0, 'nothing for the admin to do yet');
-
-  // The admin is asked for the result when it is due, 15 days later, once.
-  clock.advance(closeAt + 15 * 24 * HOUR - MIN - clock.now());
-  await opener.run();
-  assert.equal(alerts.length, 0);
-  clock.advance(closeAt + 15 * 24 * HOUR + MIN - clock.now());
-  await opener.run();
-  await opener.run();
-  assert.equal(alerts.length, 1);
-  assert.match(alerts[0], /Result due: pump-m-/);
 });
 
 test('priced at the close: a price-only source (CoinGecko) works, and with no price the admin is asked for it', async () => {
@@ -246,7 +249,7 @@ test('priced at the close: a price-only source (CoinGecko) works, and with no pr
   cg.clock.advance(closeAt + 10 * MIN - cg.clock.now());
   await new Scheduler(cg.service, async () => {}, { tickMs: 1000 }).tick();
   await cg.opener.run();
-  assert.equal(cg.service.getMarket(id).basePrice, 0.034, 'the last three points before the close, not the spike after it');
+  assert.equal(cg.service.getMarket(id).basePrice, 0.035, 'the last point before the close, not the spike after it');
 
   const ex = closeSetup();
   const gone = ex.service.createManualMarket({ symbol: 'GONE', exchanges: ['mexc'], basePrice: null, startAtClose: true, closeAt, resultAt: closeAt + 15 * 24 * HOUR, publish: true } as never);
@@ -293,4 +296,45 @@ test('three-day limit for new markets, and older long markets close now or in a 
   assert.equal(m.settleAt, settleAt);
   assert.equal(m.basePrice, 0.5, 'its fixed start price stays');
   assert.throws(() => service.closePredictions(id), /Only published markets/);
+});
+
+test('result: read at the exact result time and posted by itself, with players paid and the channel told', async () => {
+  const { clock, prices, service, alerts, venue } = closeSetup();
+  const { Scheduler } = await import('../src/workers/scheduler.ts');
+  const settled: string[] = [];
+  const announced: string[] = [];
+  service.onAnnounce = (kind, id) => void announced.push(`${kind}:${id}`);
+  const opener = new AutoOpener(service, [venue], (t) => void alerts.push(t), (id) => `Result due: ${id}`, async (notes) => void settled.push(...notes.map((n) => `${n.userId}:${n.payout}`)));
+  const closeAt = T0 + 24 * HOUR;
+  const resultAt = closeAt + 48 * HOUR;
+  const id = service.createManualMarket({ symbol: 'PUMP', exchanges: ['mexc'], basePrice: 1, closeAt, resultAt, logoUrl: LOGO, publish: true } as never);
+  const [a, b] = await Promise.all(['alice', 'bob'].map((username) => service.createUser({ username })));
+  service.placePrediction(id, a.id, 'moon', 100);
+  service.placePrediction(id, b.id, 'down', 100);
+  clock.advance(closeAt + MIN - clock.now());
+  await new Scheduler(service, async () => {}, { tickMs: 1000 }).tick();
+  assert.equal(service.getMarket(id).phase, 'awaiting_result');
+
+  // 1.50 in the minute ending at the result time; a spike to 9 just after must not count.
+  for (let t = resultAt - 10 * MIN; t < resultAt - MIN; t += MIN) prices.set(t, 1.2);
+  prices.set(resultAt - MIN, 1.5);
+  prices.set(resultAt, 9);
+  prices.set(resultAt + MIN, 9);
+  clock.advance(resultAt + MIN - clock.now());
+  await opener.run();
+  assert.equal(service.getMarket(id).status, 'locked', 'waits for the last minute to finish on the exchange');
+
+  clock.advance(2 * MIN);
+  await opener.run();
+  const m = service.getMarket(id);
+  assert.equal(m.status, 'resolved', 'no admin step');
+  assert.equal(m.result?.finalPrice, 1.5);
+  assert.equal(m.result?.winningBucket, 'moon', '+50% picks Moon by itself');
+  assert.deepEqual(announced.filter((x) => x.startsWith('result:')), [`result:${id}`], 'posted to the channel');
+  assert.equal(settled.length, 2, 'players notified');
+  assert.ok(settled.includes(`${b.id}:0`));
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0], /PUMP result posted/);
+  assert.match(alerts[0], /Moon won \(\+50\.00%\)/);
+  assert.equal(service.resultPriceDue().length, 0);
 });

@@ -14320,3 +14320,29 @@ html.in-maint body {
 .m-rules .m-rules-more a {
   color: var(--brand);
 }
+
+/* Result form: links to each exchange's candle at the exact result time */
+.price-check {
+  margin-top: 6px;
+  font-size: 0.85em;
+}
+.price-check summary {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+.price-check ul {
+  margin: 6px 0 4px;
+  padding-left: 18px;
+}
+.price-check li {
+  margin: 2px 0;
+}
+.price-check p {
+  margin: 0;
+}
+.admin-result [data-publish]:disabled {
+  opacity: 0.5;
+}
