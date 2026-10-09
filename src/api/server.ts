@@ -1025,6 +1025,14 @@ export function createApiServer(opts: ServerOptions): Server {
     return service.previewResolution(params.id, resolveBody(await body()));
   });
 
+  // The price at the market's close or result time, read again from its sources (to fill the result form).
+  route('POST', '/api/admin/manual-markets/:id/price-at', async ({ params, body, requireAdmin }) => {
+    requireAdmin();
+    const which = (await body()).which === 'start' ? 'start' : 'final';
+    const m = service.getMarket(params.id, undefined, true);
+    return service.readPriceAt(params.id, which === 'start' ? m.closeAt : m.settleAt);
+  });
+
   route('POST', '/api/admin/manual-markets/:id/resolve', async ({ req, params, body, requireAdmin }) => {
     requireAdmin();
     const out = service.resolveManualMarket(params.id, resolveBody(await body()));

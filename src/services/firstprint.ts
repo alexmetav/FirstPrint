@@ -5,6 +5,7 @@ import { buildSiwsMessage, decodeSignature, verifyEd25519 } from '../solana/siws
 import { tx, type DB } from '../db/db.ts';
 import type { Clock } from '../clock.ts';
 import type { Venue } from '../exchanges/types.ts';
+import { checkLinks, priceAt } from '../exchanges/priceAt.ts';
 import {
   BUCKETS,
   DEFAULT_CONFIG,
@@ -117,6 +118,8 @@ export interface MarketRow {
   result_alerted_at?: number | null;
   /** 1 when the opening price couldn't be read from the exchange and the admin was told to add it. */
   opening_price_failed?: number;
+  /** 1 when the price at the result time couldn't be read, so the admin was asked to enter it. */
+  result_price_failed?: number;
   /** 1 when the start price is the price at the moment predictions close (read by the server then). */
   start_at_close?: number;
   announced_listing_at: number;
@@ -1502,16 +1505,53 @@ export class FirstprintService {
   }
 
   /**
-   * Upcoming-token markets whose opening price is in and whose result time has come, where the
-   * admin hasn't been asked for the result yet. (Markets with a start price from the start are
-   * announced as soon as predictions close.)
+   * Published markets whose result time has come and whose start price is in: the server reads the
+   * price at the exact result time and posts the result by itself. Stops once that read has failed
+   * (the admin was asked for the price then).
    */
-  resultAlertsDue(now = this.clock.now()) {
+  resultPriceDue(now = this.clock.now()) {
     return as<MarketRow[]>(
       this.db
-        .prepare("SELECT * FROM markets WHERE mode = 'manual' AND published = 1 AND status = 'locked' AND result_alerted_at IS NULL AND base_price IS NOT NULL")
+        .prepare("SELECT * FROM markets WHERE mode = 'manual' AND published = 1 AND status = 'locked' AND base_price IS NOT NULL AND result_price_failed = 0")
         .all(),
-    ).filter((m) => m.listing_at + parseConfig(m).durationMs <= now);
+    )
+      .map((m) => ({ m, at: m.listing_at + parseConfig(m).durationMs }))
+      .filter((x) => x.at <= now);
+  }
+
+  /** The price at the result time could not be read: stop trying, so the admin enters it. */
+  resultPriceFailed(marketId: string, note: string) {
+    this.db.prepare('UPDATE markets SET result_price_failed = 1, auto_open_note = ? WHERE id = ?').run(note.slice(0, 300), marketId);
+    this.marketChanged(marketId);
+  }
+
+  /**
+   * The price of a market's token at an exact moment, from each of its sources (the median of those
+   * that answered), with why the others didn't.
+   */
+  async readPriceAt(marketId: string, at: number) {
+    const m = this.row(marketId);
+    const found: { name: string; price: number }[] = [];
+    const missing: string[] = [];
+    for (const ref of JSON.parse(m.venues) as VenueRef[]) {
+      const venue = this.venues.get(ref.venue);
+      if (!venue) continue;
+      const r = await priceAt(venue, ref.symbol, at);
+      if (typeof r === 'string') missing.push(`${venue.name}: ${r}`);
+      else found.push({ name: venue.name, price: r.price });
+    }
+    const sorted = found.map((f) => f.price).sort((a, b) => a - b);
+    const price = !sorted.length ? null : sorted.length % 2 ? sorted[(sorted.length - 1) / 2] : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
+    return { at, price, from: found.map((f) => f.name), found, missing };
+  }
+
+  /** Links the admin can open to read the price at a market's close and result times on each source. */
+  private priceCheckLinks(m: MarketRow, closeAt: number, settleAt: number) {
+    const refs = (JSON.parse(m.venues) as VenueRef[]).map((v) => ({ venue: v.venue, name: this.venues.get(v.venue)?.name ?? v.venue, pair: v.symbol }));
+    return {
+      start: m.base_price === null && m.start_at_close === 1 ? { at: closeAt, links: checkLinks(refs, closeAt) } : null,
+      final: { at: settleAt, links: checkLinks(refs, settleAt) },
+    };
   }
 
   markResultAlerted(marketId: string) {
@@ -1622,12 +1662,16 @@ export class FirstprintService {
   }
 
   /** Records the admin's result and pays the pool out. Returns user notifications. */
-  resolveManualMarket(marketId: string, input: ResolveInput): { summary: ReturnType<FirstprintService['describeResolution']>; notes: Notification[] } {
+  resolveManualMarket(
+    marketId: string,
+    input: ResolveInput,
+    by: 'admin' | 'auto' = 'admin',
+  ): { summary: ReturnType<FirstprintService['describeResolution']>; notes: Notification[] } {
     const { m, plan, rows } = this.planResolution(marketId, input);
     const now = this.clock.now();
     const stored = {
       ...plan.result,
-      manual: { resolvedBy: 'admin', note: plan.note, overridden: plan.overridden, basePrice: plan.base, finalPrice: plan.final },
+      manual: { resolvedBy: by, note: plan.note, overridden: plan.overridden, basePrice: plan.base, finalPrice: plan.final },
     };
     const dataHash = sha256(JSON.stringify({ marketId, base: plan.base, final: plan.final, bucket: plan.result.winningBucket, note: plan.note, at: now }));
     const notes = this.commitSettlement(m, rows, stored, dataHash, now);
@@ -3034,6 +3078,9 @@ export class FirstprintService {
       hasLogoPng: Boolean(m.logo_png ?? m.has_logo_png),
       autoOpenAt: m.auto_open_at ?? null,
       autoOpenNote: m.auto_open_note ?? null,
+      // Waiting for its result: where the admin can read the exact prices, and whether the server gave up reading them.
+      resultPriceFailed: m.result_price_failed === 1,
+      priceChecks: manual && m.status === 'locked' ? this.priceCheckLinks(m, w.closeAt, w.settleAt) : null,
       status: m.status,
       phase,
       announcedListingAt: m.announced_listing_at,

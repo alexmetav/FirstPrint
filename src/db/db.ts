@@ -107,6 +107,8 @@ function migrate(db: DB) {
     added_at INTEGER NOT NULL
   )`);
   ensure('markets', 'opening_price_failed', 'opening_price_failed INTEGER NOT NULL DEFAULT 0');
+  // 1: the price at the result time couldn't be read, so the admin enters it (otherwise the result posts by itself).
+  ensure('markets', 'result_price_failed', 'result_price_failed INTEGER NOT NULL DEFAULT 0');
   ensure('markets', 'reminded_at', 'reminded_at INTEGER');
   // 1: the start price is the live price when predictions close, read by the server then.
   ensure('markets', 'start_at_close', 'start_at_close INTEGER NOT NULL DEFAULT 0');

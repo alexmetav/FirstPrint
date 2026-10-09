@@ -201,6 +201,7 @@ export function createAdminApi(key, baseUrl = '') {
     deleteDraft: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/delete`),
     deleteMarket: (id) => post(`/api/admin/markets/${encodeURIComponent(id)}/delete`),
     previewResult: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/preview`, body),
+    priceAt: (id, which) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/price-at`, { which }),
     resolve: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/resolve`, body),
     analytics: (days = 30) => request(`/api/admin/analytics?days=${days}`),
     revertRules: () => request('/api/admin/revert-rules'),
