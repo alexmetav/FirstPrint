@@ -21346,16 +21346,24 @@ const ERROR_KINDS = {
 };
 const SOURCE_LABEL = { server: 'Server', background: 'Background', app: 'Player’s app' };
 
+/** One problem as plain text, for pasting into a support chat. */
+function errorText(e) {
+  const kind = ERROR_KINDS[e.code] ?? { label: e.code.replace(/_/g, ' ') };
+  return `${kind.label} (${e.code}) · ${e.where ?? ''}\n${e.message}\nSeen ${e.count}×, last ${new Date(e.lastAt).toISOString()}${e.userId ? `\nPlayer ${e.userId}` : ''}${e.detail ? `\n\n${e.detail}` : ''}`;
+}
+
 function errorsView(data) {
   if (!data) return '<div class="empty"><p>Errors aren’t available on this server.</p></div>';
   const view = A.errView ?? 'open';
   const rows = data.errors;
+  // Kept for "Copy all", which copies every problem in this list at once.
+  A.errRows = rows;
   const tabs = `<div class="seg err-seg" role="tablist">${[['open', `Open${data.counts.open ? ` (${fmtNum(data.counts.open)})` : ''}`], ['fixed', 'Fixed']]
     .map(([id, label]) => `<button type="button" role="tab" data-action="admin-err-view" data-view="${id}" aria-selected="${view === id}">${label}</button>`)
     .join('')}</div>`;
   const head = `<section class="panel err-head">
       <div class="err-stats"><div><b class="mono">${fmtNum(data.counts.open)}</b><span class="muted">open problems</span></div><div><b class="mono">${fmtNum(data.counts.today)}</b><span class="muted">errors in the last 24 h</span></div></div>
-      <div class="row-actions">${tabs}${view === 'open' && rows.length ? `<button class="btn btn-sm" data-action="admin-err-resolve-all">${ico('check')}Mark all fixed</button>` : ''}${view === 'fixed' && rows.length ? `<button class="btn btn-sm btn-danger" data-action="admin-err-clear">${ico('trash')}Clear fixed</button>` : ''}</div>
+      <div class="row-actions">${tabs}${rows.length ? `<button class="btn btn-sm" data-action="admin-err-copy-all">${ico('copy')}Copy all</button>` : ''}${view === 'open' && rows.length ? `<button class="btn btn-sm" data-action="admin-err-resolve-all">${ico('check')}Mark all fixed</button>` : ''}${view === 'fixed' && rows.length ? `<button class="btn btn-sm btn-danger" data-action="admin-err-clear">${ico('trash')}Clear fixed</button>` : ''}</div>
     </section>`;
   if (!rows.length) {
     return `${head}<div class="empty"><div class="empty-art">${ico(view === 'open' ? 'checkCircle' : 'history')}</div><p><strong>${view === 'open' ? 'No open problems.' : 'Nothing fixed yet.'}</strong><br />${view === 'open' ? 'Failed requests, failed background work and crashes in players’ apps show up here.' : ''}</p></div>`;
@@ -21363,7 +21371,7 @@ function errorsView(data) {
   return `${head}<section class="panel panel-flush"><ul class="err-list">${rows
     .map((e) => {
       const kind = ERROR_KINDS[e.code] ?? { label: e.code.replace(/_/g, ' '), help: '' };
-      const copy = `${kind.label} (${e.code}) · ${e.where ?? ''}\n${e.message}\nSeen ${e.count}×, last ${new Date(e.lastAt).toISOString()}${e.userId ? `\nPlayer ${e.userId}` : ''}${e.detail ? `\n\n${e.detail}` : ''}`;
+      const copy = errorText(e);
       return `<li class="err-item">
         <div class="err-top"><span class="pill err-kind">${esc(kind.label)}</span><span class="muted err-src">${SOURCE_LABEL[e.source] ?? e.source}</span>${e.count > 1 ? `<span class="pill err-count mono">${fmtNum(e.count)}×</span>` : ''}<span class="muted err-when">${fmtAgo(e.lastAt)}</span></div>
         <p class="err-msg">${esc(e.message)}</p>
@@ -22346,6 +22354,11 @@ async function onAdminAction(action, el) {
     case 'admin-act-clear':
       A.act = { page: 1, all: false, q: '' };
       return renderAdmin();
+    case 'admin-err-copy-all': {
+      const rows = A.errRows ?? [];
+      const head = `${rows.length} ${A.errView === 'fixed' ? 'fixed' : 'open'} problem${rows.length === 1 ? '' : 's'} on ${location.host}, copied ${new Date().toISOString()}`;
+      return copyText([head, ...rows.map((e, i) => `#${i + 1} ${errorText(e)}`)].join('\n\n----------\n\n'));
+    }
     case 'admin-err-resolve-all':
       if (!confirm('Mark every open problem as fixed? New ones still show up.')) return;
       try {
