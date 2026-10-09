@@ -713,3 +713,29 @@ test('rewards: paid GetXAPI calls are counted in total and per UTC day; the cred
   await x.follows('a', 'd');
   assert.deepEqual(rewards.xUsage(), { total: 3, today: 1 });
 });
+
+test('rewards: the GetXAPI balance is read at most once a minute; a slow answer never holds up the admin', async () => {
+  const { clock, rewards } = await setup(false);
+  let calls = 0;
+  let answer: (v: number) => void = () => {};
+  rewards.xcheck = {
+    profile: async () => null,
+    follows: async () => false,
+    reposted: async () => false,
+    recentPosts: async () => [],
+    credit: () => (calls++, new Promise<number>((ok) => (answer = ok))),
+  };
+  const first = rewards.xCredit();
+  answer(2.5);
+  assert.equal(await first, 2.5);
+  assert.equal(await rewards.xCredit(), 2.5);
+  assert.equal(calls, 1, 'within a minute the known balance is reused');
+  clock.advance(61_000);
+  // GetXAPI is slow now: the known balance comes back at once while it is read again behind it.
+  assert.equal(await rewards.xCredit(), 2.5);
+  assert.equal(calls, 2);
+  answer(1.25);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(await rewards.xCredit(), 1.25);
+  assert.equal(calls, 2);
+});

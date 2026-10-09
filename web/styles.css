@@ -1915,8 +1915,8 @@ code {
     bottom: 0;
     z-index: 32;
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
-    background: color-mix(in srgb, var(--surface) 94%, transparent);
-    backdrop-filter: blur(10px);
+    /* Solid rather than blurred: at 94% the blur barely showed, and it re-blurred the page on every scroll frame. */
+    background: var(--surface);
     border-top: 1px solid var(--line);
   }
   .tabbar a {
@@ -4266,6 +4266,12 @@ main .input-wrap input:not([type='checkbox']) {
 .progress-cell .meter {
   margin-top: 4px;
   height: 5px;
+}
+/* A tab that still has to load from the server: dimmed after a beat, so a quick switch never flickers. */
+.admin-main.is-switching {
+  opacity: 0.55;
+  pointer-events: none;
+  transition: opacity 0.15s ease 0.12s;
 }
 .admin-main .admin-form label:not(.check) {
   display: grid;
@@ -8704,7 +8710,8 @@ p,
   color: var(--up);
   text-shadow: 0 0 14px color-mix(in srgb, var(--up) 40%, transparent);
   transform-origin: left bottom;
-  animation: hero-top-pop 3.2s ease-in-out infinite;
+  /* Pops a few times when Home opens, then rests, so an idle Home costs no CPU. */
+  animation: hero-top-pop 3.2s ease-in-out 3;
 }
 .hero-stats dd .hero-top::before {
   content: '';
@@ -8717,7 +8724,7 @@ p,
   border-radius: 0.2em;
   background: color-mix(in srgb, var(--up) 24%, transparent);
   transform-origin: left center;
-  animation: hero-top-marker 3.2s ease-in-out infinite;
+  animation: hero-top-marker 3.2s ease-in-out 3;
 }
 @keyframes hero-top-pop {
   0%, 62%, 100% { transform: scale(1); }
@@ -13232,7 +13239,8 @@ html.in-maint body {
   border-radius: 50%;
   background: var(--earn);
   box-shadow: 0 0 0 0 color-mix(in srgb, var(--earn) 60%, transparent);
-  animation: earn-ping 1.8s ease-out infinite;
+  /* A few pings, then it rests: an endless one repaints the tab bar on every frame of every page. */
+  animation: earn-ping 1.8s ease-out 4;
 }
 .subnav a.nav-earn.has-more::before {
   top: 9px;
