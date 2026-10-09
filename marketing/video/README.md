@@ -7,6 +7,7 @@ The approved look is written down in `STYLE.md`. Follow it for new videos.
 ## Files
 
 - `x1.js`: video 1, the approved square X cut (kinetic type, token orbit, SOL card, green wipe). Use it as the template for new videos.
+- `x2.js` … `x5.js`: videos 2 to 5 rebuilt in the same square style (three taps, the clock decides, free points every day, get in early).
 - `v1.js` … `v5.js`: the first five videos (vertical 1080×1920; `stage-x.html` turns them into a square cut).
 - `lib.js`: motion helpers (easing, keyframes, camera, captions, taps, coins) and Firstprint UI pieces (market card, outcome rows, end card).
 - `tokens.js`: token logos as inline SVG (cryptocurrency-icons, CC0; SOL is the official Solana mark).
