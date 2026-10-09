@@ -305,3 +305,25 @@ test('deploy hand-over: no wait after sleep or a crash; a silent old server or a
   assert.equal(old.handedOver, false);
   old.stop();
 });
+
+test('deploy hand-over: one slow answer from storage is retried quietly; a run of failures is logged once', async () => {
+  const storage = fakeStorage();
+  let failing = 1;
+  const flaky = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (failing > 0) throw new Error('The operation was aborted due to timeout');
+    return storage.fetchFn(input, init);
+  }) as typeof fetch;
+  const lines: string[] = [];
+  const h = new DeployHandoff(cfg, (m: string) => lines.push(m), { fetchFn: flaky, beatMs: 10, watchMs: 10 });
+  h.start(async () => {});
+  await pause(5);
+  failing = 0;
+  await pause(40);
+  assert.deepEqual(lines.filter((l) => /failed/.test(l)), [], 'a single failed beat or check is not reported');
+  failing = Infinity;
+  await pause(80);
+  const failed = lines.filter((l) => /failed/.test(l));
+  assert.ok(failed.some((l) => /lease update failed 2 times in a row/.test(l)));
+  assert.equal(failed.filter((l) => /lease update/.test(l)).length, 1, 'logged once per run, not on every beat');
+  h.stop();
+});

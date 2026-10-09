@@ -510,6 +510,9 @@ export class RewardsService {
         try {
           await this.serverClaim(user_id, this.payoutWallet(user_id));
         } catch (err) {
+          // A claim started at the same moment (the player's own, or the send right after a task)
+          // already took these rewards: nothing went wrong, so it isn't reported as a failure.
+          if (err instanceof AppError && err.code === 'claim_conflict') continue;
           this.service.log(`auto-claim for ${user_id} failed: ${(err as Error).message}`);
         }
       }
@@ -1010,9 +1013,29 @@ export class RewardsService {
   }
 
   /** Credit left for X checks (GetXAPI, in dollars), for the admin page; null when off or unknown. */
-  async xCredit() {
-    return this.xcheck ? this.xcheck.credit() : null;
+  /**
+   * The GetXAPI balance for the admin's Tasks box. Every admin tab loads it, and GetXAPI can take
+   * seconds to answer, so it is read at most once a minute: a known balance comes back at once (and
+   * is refreshed behind it); the first read waits up to 3 s, then the box says it couldn't read it.
+   */
+  async xCredit(): Promise<number | null> {
+    if (!this.xcheck) return null;
+    const c = this.creditCache;
+    if (this.now() - c.at > 60_000 && !c.loading) {
+      c.loading = this.xcheck
+        .credit()
+        .then((v) => {
+          c.value = v;
+          c.at = this.now();
+        })
+        .catch(() => {})
+        .finally(() => (c.loading = null));
+    }
+    if (c.at || !c.loading) return c.value;
+    await Promise.race([c.loading, new Promise((ok) => setTimeout(ok, 3_000))]);
+    return c.value;
   }
+  private creditCache: { value: number | null; at: number; loading: Promise<void> | null } = { value: null, at: 0, loading: null };
 
   /** Counts one paid GetXAPI call: in total, and today (UTC). */
   countXCall() {

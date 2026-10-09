@@ -33,6 +33,8 @@ type Fetch = typeof fetch;
 export const LEASE_STALE_MS = 75_000;
 const BEAT_MS = 20_000;
 const WATCH_MS = 5_000;
+/** Failed lease updates or hand-over checks in a row before it is logged (and shown in Admin → Errors). */
+const FAILS_BEFORE_LOG = 2;
 const CLAIM_POLL_MS = 3_000;
 /** How long a new server waits for the old one to hand over. */
 export const CLAIM_WAIT_MS = 120_000;
@@ -133,7 +135,7 @@ export class DeployHandoff {
    */
   start(onHandover: () => Promise<void>) {
     this.startedAt = this.now();
-    const beat = () => this.write('lease', { id: this.id, beat: this.now() } satisfies Lease).catch((err: Error) => this.log(`deploy: lease update failed: ${err.message}`));
+    const beat = () => this.beat();
     void beat();
     this.beatTimer = setInterval(() => void beat(), this.beatMs);
     this.beatTimer.unref();
@@ -144,8 +146,10 @@ export class DeployHandoff {
       try {
         const h = await this.read<{ to: string; at: number }>('handoff');
         if (h && h.to !== this.id && h.at >= this.startedAt) await this.handOver(h.to, onHandover);
+        this.watchFails = 0;
       } catch (err) {
-        this.log(`deploy: hand-over check failed: ${(err as Error).message}`);
+        // Checked every few seconds, so one slow answer from storage is simply retried; only a run of them is a problem.
+        if (++this.watchFails === FAILS_BEFORE_LOG) this.log(`deploy: hand-over check failed ${FAILS_BEFORE_LOG} times in a row: ${(err as Error).message}`);
       } finally {
         busy = false;
       }
@@ -174,12 +178,24 @@ export class DeployHandoff {
     this.onResume?.();
     this.startedAt = this.now();
     void this.write('lease', { id: this.id, beat: this.now() } satisfies Lease).catch(() => {});
-    this.beatTimer = setInterval(
-      () => void this.write('lease', { id: this.id, beat: this.now() } satisfies Lease).catch((err: Error) => this.log(`deploy: lease update failed: ${err.message}`)),
-      this.beatMs,
-    );
+    this.beatTimer = setInterval(() => void this.beat(), this.beatMs);
     this.beatTimer.unref();
   }
+
+  /**
+   * Keeps the lease fresh. The lease only goes stale after several missed beats, so a single
+   * failed update (a slow answer from storage) is retried quietly; a run of them is reported.
+   */
+  private async beat() {
+    try {
+      await this.write('lease', { id: this.id, beat: this.now() } satisfies Lease);
+      this.beatFails = 0;
+    } catch (err) {
+      if (++this.beatFails === FAILS_BEFORE_LOG) this.log(`deploy: lease update failed ${FAILS_BEFORE_LOG} times in a row: ${(err as Error).message}`);
+    }
+  }
+  private beatFails = 0;
+  private watchFails = 0;
 
   /** Called when an abandoned hand-over is undone (re-enable changes and backups). */
   onResume: (() => void) | null = null;

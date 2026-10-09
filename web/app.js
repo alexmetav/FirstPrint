@@ -835,7 +835,8 @@ function streakCard(compact = false) {
 
 // --- Analytics (admin, and the read-only partner link) --------------------------------------
 const VIZ = { W: 640, H: 210, L: 40, R: 14, T: 14, B: 26 };
-const fmtShortDay = (d) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const SHORT_DAY_FMT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const fmtShortDay = (d) => SHORT_DAY_FMT.format(new Date(`${d}T00:00:00Z`));
 
 function niceMax(v) {
   if (v <= 4) return 4;
@@ -4318,7 +4319,52 @@ const canAdmin = (level) => (ADMIN_RANK[A.info?.level] ?? ADMIN_RANK.owner) >= A
 const TAB_LEVEL = { overview: 'listings', markets: 'listings', discover: 'listings', create: 'listings', tasks: 'tasks', activity: 'listings' };
 const adminTabs = () => ADMIN_TABS.filter(([id]) => canAdmin(TAB_LEVEL[id] ?? 'admin'));
 
-async function renderAdmin() {
+/** Everything most admin tabs need, kept so switching tabs can draw at once (see renderAdmin). */
+const ADMIN_BASE_FRESH_MS = 30_000;
+function loadAdminBase(manualOnly) {
+  return Promise.all([
+    A.api.markets(),
+    manualOnly && !A.info.autoListings ? Promise.resolve([]) : A.api.detected().then((d) => d.detected).catch(() => []),
+    A.api.log().catch(() => ({ log: [] })),
+    A.api.token().catch(() => ({ enabled: false })),
+    A.api.tasks().catch(() => ({ tasks: [] })),
+    A.info.level === 'owner' ? A.api.team().catch(() => null) : Promise.resolve(null),
+    canAdmin('admin') ? A.api.errors(A.errView ?? 'open').catch(() => null) : Promise.resolve(null),
+  ]).then((loaded) => {
+    A.base = { loaded, at: Date.now() };
+    return loaded;
+  });
+}
+
+/** One tab's own data (Markets, Users, Analytics, Settings), reused the same way when switching tabs. */
+async function adminTabData(key, load, cached) {
+  A.tabData ??= {};
+  const hit = A.tabData[key];
+  const save = (v) => ((A.tabData[key] = { v, at: Date.now() }), v);
+  if (cached && hit && Date.now() - hit.at < ADMIN_BASE_FRESH_MS) {
+    if (Date.now() - hit.at > 5_000) load().then(save, () => {});
+    return hit.v;
+  }
+  return save(await load());
+}
+
+/** The tab just clicked shows as open at once, and the page dims until it has drawn. */
+function markAdminTab(tab) {
+  for (const b of document.querySelectorAll('.admin-nav [data-tab]')) {
+    if (b.dataset.tab === tab) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  }
+  $('.admin-main')?.classList.add('is-switching');
+}
+/** Resolves once the browser has painted, so a tap shows its effect before heavier work starts. */
+const nextPaint = () => new Promise((ok) => requestAnimationFrame(() => setTimeout(ok, 0)));
+
+/**
+ * Draws the admin console. Switching tabs ({ cached: true }) reuses the data loaded in the last
+ * 30 seconds and refreshes it behind the scenes, so a tab opens without waiting on the server;
+ * anything else (a save, a refresh, opening the console) loads fresh data first.
+ */
+async function renderAdmin({ cached = false } = {}) {
   const view = $('#view');
   if (S.api.demo) {
     view.innerHTML = `
@@ -4364,15 +4410,12 @@ async function renderAdmin() {
   const manualOnly = Boolean(A.info.manualOnly);
   let loaded;
   try {
-    loaded = await Promise.all([
-      A.api.markets(),
-      manualOnly && !A.info.autoListings ? Promise.resolve([]) : A.api.detected().then((d) => d.detected).catch(() => []),
-      A.api.log().catch(() => ({ log: [] })),
-      A.api.token().catch(() => ({ enabled: false })),
-      A.api.tasks().catch(() => ({ tasks: [] })),
-      A.info.level === 'owner' ? A.api.team().catch(() => null) : Promise.resolve(null),
-      canAdmin('admin') ? A.api.errors(A.errView ?? 'open').catch(() => null) : Promise.resolve(null),
-    ]);
+    const age = A.base ? Date.now() - A.base.at : Infinity;
+    if (cached && age < ADMIN_BASE_FRESH_MS) {
+      loaded = A.base.loaded;
+      // Fresh for the next switch (and the next save), without holding up this one.
+      if (age > 5_000 && !A.baseLoading) A.baseLoading = loadAdminBase(manualOnly).catch(() => {}).finally(() => (A.baseLoading = null));
+    } else loaded = await loadAdminBase(manualOnly);
   } catch (err) {
     // The server may be waking up or busy: say so instead of leaving the old tab on screen.
     view.innerHTML = `<div class="empty"><div class="empty-art">${ico('alert')}</div><p><strong>Couldn’t load the admin panel.</strong><br />${esc(err.message)}</p><button class="btn btn-solid" data-action="admin-token-refresh">${ico('refresh')}Try again</button></div>`;
@@ -4418,19 +4461,19 @@ async function renderAdmin() {
   if (tab === 'overview') body = adminOverview({ markets, waiting, drafts, token, tasks, log, pending, tooLong });
   if (tab === 'overview') setTimeout(loadTopUp, 0);
   else if (tab === 'markets') {
-    const old = canAdmin('admin') ? await A.api.oldResults().catch(() => null) : null;
+    const old = canAdmin('admin') ? await adminTabData('oldResults', () => A.api.oldResults().catch(() => null), cached) : null;
     body = adminMarketsTab(markets, waiting, pending, counting, tooLong, old?.results ?? []);
   } else if (tab === 'users') {
     A.act ??= { page: 1, all: false, q: '' };
     try {
-      body = userActivityView(await A.api.userActivity(A.act.page, A.act.all ? 50 : 10, A.act.q));
+      body = userActivityView(await adminTabData(`users:${A.act.page}:${A.act.all}:${A.act.q}`, () => A.api.userActivity(A.act.page, A.act.all ? 50 : 10, A.act.q), cached));
     } catch (err) {
       body = `<div class="empty"><p>${esc(err.message)}</p></div>`;
     }
   }
   else if (tab === 'analytics') {
     try {
-      const data = await A.api.analytics(S.vizDays ?? 30);
+      const data = await adminTabData(`analytics:${S.vizDays ?? 30}`, () => A.api.analytics(S.vizDays ?? 30), cached);
       body = analyticsSharePanel(data.shareKey) + analyticsView(data);
     } catch (err) {
       body = `<div class="empty"><p>${esc(err.message)}</p></div>`;
@@ -4446,7 +4489,7 @@ async function renderAdmin() {
   else if (tab === 'settings')
     body = `
       ${canAdmin('admin') ? maintenancePanel() : ''}
-      ${canAdmin('admin') ? revertRulesPanel(await A.api.revertRules().catch(() => null)) : ''}
+      ${canAdmin('admin') ? revertRulesPanel(await adminTabData('revertRules', () => A.api.revertRules().catch(() => null), cached)) : ''}
       ${autoListingsPanel(A.info.autoListings)}
       ${telegramPanel(A.info.telegram)}
       <section class="panel">
@@ -4617,13 +4660,14 @@ function checksView(list) {
     </details>`;
 }
 
+const UTC_HINT_FMT = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
 /** Shows each date-time field in UTC, since exchanges announce listing times in UTC. */
 function updateUtcHints() {
   document.querySelectorAll('[data-utc-for]').forEach((hint) => {
     const input = hint.closest('form')?.querySelector(`[name="${hint.dataset.utcFor}"]`);
     const d = input?.value ? new Date(input.value) : null;
     hint.textContent = d && !Number.isNaN(d.getTime())
-      ? `= ${d.toLocaleString('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })} UTC`
+      ? `= ${UTC_HINT_FMT.format(d)} UTC`
       : '';
   });
 }
@@ -6009,7 +6053,9 @@ async function onAdminAction(action, el) {
       A.edit = null;
       A.review = null;
       A.prefill = null;
-      await renderAdmin();
+      markAdminTab(prev);
+      await nextPaint();
+      await renderAdmin({ cached: true });
       return window.scrollTo({ top: 0 });
     }
     case 'admin-tab':
@@ -6018,7 +6064,9 @@ async function onAdminAction(action, el) {
       A.edit = null;
       A.review = null;
       A.prefill = null;
-      await renderAdmin();
+      markAdminTab(A.tab);
+      await nextPaint();
+      await renderAdmin({ cached: true });
       return window.scrollTo({ top: 0 });
     case 'admin-token-refresh':
       return renderAdmin();
