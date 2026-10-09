@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="./stage.css" />
+<style>
+  html, body { width: var(--w); height: var(--h); }
+  #b { position: absolute; inset: 0; overflow: hidden; background: radial-gradient(110% 80% at 50% 35%, #131317 0%, #09090b 62%); }
+  #b::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(130% 95% at 50% 50%, transparent 58%, rgba(0,0,0,0.5) 100%); }
+  .glow { position: absolute; pointer-events: none; border-radius: 50%; filter: blur(10px); }
+  .foot { position: absolute; display: flex; align-items: center; justify-content: space-between; }
+  .foot .wordmark { font-size: 34px; gap: 14px; }
+  .url { font-family: var(--mono); font-size: 26px; color: var(--muted); letter-spacing: 0.02em; }
+  h1 { font-weight: 600; letter-spacing: -0.04em; line-height: 1.02; }
+  .sub { color: var(--muted); font-weight: 400; letter-spacing: -0.015em; line-height: 1.3; }
+  .tok { border-radius: 50%; overflow: hidden; flex: none; box-shadow: 0 0 0 2px rgba(255,255,255,0.14); }
+  .tok svg { display: block; width: 100%; height: 100%; }
+  .orow { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 22px; height: 92px; padding: 0 34px; border-top: 1.5px solid var(--line); color: var(--c); font-size: 36px; font-weight: 600; }
+  .orow .rg { font-family: var(--mono); font-size: 24px; color: var(--muted); font-weight: 400; }
+  .orow .ic { display: inline-flex; font-size: 36px; }
+  .fake { background: var(--surface); border: 1.5px solid var(--line); border-radius: 32px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 40px 90px -40px rgba(0,0,0,0.9); overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="b"></div>
+<script type="module">
+  import { ico, OUTCOME_ICONS } from './icons.js';
+  import { TOKENS } from './tokens.js';
+  const OUT = [
+    ['moon', 'Moon', 'var(--moon)', '+50% or better'],
+    ['up', 'Up', 'var(--up)', '+10% to +50%'],
+    ['flat', 'Flat', 'var(--flat)', '−10% to +10%'],
+    ['down', 'Down', 'var(--down)', '−50% to −10%'],
+    ['crash', 'Crash', 'var(--crash)', '−50% or worse'],
+  ];
+  const oi = (b) => ico(OUTCOME_ICONS[b]);
+  const logo = (s) => `<span class="mark" style="transform:scale(${s / 32});transform-origin:0 0;margin-right:${s - 32}px;margin-bottom:${s - 32}px"><i></i><i></i><i></i><i></i><i></i></span>`;
+  const tok = (k, s) => `<div class="tok" style="width:${s}px;height:${s}px">${TOKENS[k]}</div>`;
+  const foot = (x, y, w) => `<div class="foot" style="left:${x}px;top:${y}px;width:${w}px"><span class="wordmark">${logo(40)}<span>Firstprint</span></span><span class="url">firstprint.fun</span></div>`;
+  const glow = (x, y, w, h, c) => `<div class="glow" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px;background:radial-gradient(50% 50% at 50% 50%, ${c}, transparent 70%)"></div>`;
+
+  // Each banner: [width, height, html]
+  const B = {
+    // 16:9. The five outcomes, explained.
+    outcomes: [1600, 900, `
+      ${glow(700, 300, 1100, 800, 'rgba(48,209,88,0.10)')}
+      <div class="abs" style="left:100px;top:150px;width:640px">
+        <div class="eyebrow" style="font-size:24px">How Firstprint works</div>
+        <h1 style="font-size:82px;margin-top:26px">Five ways a price can land.</h1>
+        <p class="sub" style="font-size:36px;margin-top:30px">Pick one, stake free points, and if you're right you share the pool.</p>
+      </div>
+      <div class="fake abs" style="left:830px;top:110px;width:670px">
+        <div style="display:flex;align-items:center;gap:20px;padding:30px 34px">${tok('sol', 72)}<div><div style="font-size:42px;font-weight:600;letter-spacing:-0.03em">SOL</div><div class="muted" style="font-size:22px">Final price vs start</div></div><span class="pill pill-open" style="margin-left:auto;font-size:22px;height:42px"><i class="dot" style="width:11px;height:11px"></i>Open</span></div>
+        ${OUT.map(([b, n, c, r]) => `<div class="orow" style="--c:${c}"><span class="ic">${oi(b)}</span><span>${n}</span><span class="rg">${r}</span></div>`).join('')}
+      </div>
+      ${foot(100, 770, 1400)}`],
+
+    // 1:1. Early bonus.
+    early: [1080, 1080, `
+      ${glow(140, 260, 800, 600, 'rgba(255,214,10,0.10)')}
+      <div class="abs" style="left:96px;top:110px;right:96px">
+        <div class="eyebrow" style="font-size:24px">Early bonus</div>
+        <h1 style="font-size:74px;margin-top:24px">Early picks count for more.</h1>
+      </div>
+      <div class="abs mono" style="left:96px;top:390px;font-size:230px;font-weight:600;letter-spacing:-0.05em;color:var(--gold);line-height:1">1.50×</div>
+      <div class="abs" style="left:96px;right:96px;top:690px">
+        <div style="position:relative;height:16px;border-radius:16px;background:linear-gradient(90deg,var(--gold),#7a6a1a 70%,var(--line-strong))"></div>
+        <div style="display:flex;justify-content:space-between;margin-top:22px" class="eyebrow"><span style="font-size:22px;color:var(--gold)">Market opens · 1.50×</span><span style="font-size:22px">Predictions close · 1.00×</span></div>
+        <p class="sub" style="font-size:34px;margin-top:50px">When the pool is split, a pick made early weighs up to 1.5 times more than one made at the close.</p>
+      </div>
+      ${foot(96, 975, 888)}`],
+
+    // 4:5. Daily streak.
+    streak: [1080, 1350, `
+      ${glow(90, 380, 900, 700, 'rgba(255,159,10,0.11)')}
+      <div class="abs" style="left:96px;top:120px;right:96px">
+        <div class="eyebrow" style="font-size:24px">Daily streak</div>
+        <h1 style="font-size:92px;margin-top:26px">Free points,<br>every day.</h1>
+        <p class="sub" style="font-size:38px;margin-top:30px">Claim once a day. Keep the streak and it grows to 200 points a day.</p>
+      </div>
+      <div class="fake abs" style="left:96px;right:96px;top:700px;padding:40px">
+        <div style="display:flex;align-items:center;gap:20px"><span style="display:inline-grid;place-items:center;width:72px;height:72px;border-radius:20px;background:rgba(255,159,10,0.14);color:var(--down);font-size:38px">${ico('flame')}</span><div><div style="font-size:40px;font-weight:600;letter-spacing:-0.02em">7 day streak</div><div class="muted" style="font-size:24px">Miss a day and it resets</div></div></div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:14px;margin-top:40px">${[50, 75, 100, 125, 150, 175, 200].map((v, i) => `<div style="display:grid;justify-items:center;gap:14px"><div style="width:88px;height:88px;border-radius:50%;display:grid;place-items:center;${i < 6 ? 'background:var(--up);color:#09090b' : 'box-shadow:inset 0 0 0 4px var(--down);color:var(--down)'};font-size:40px">${i < 6 ? ico('check') : ico('flame')}</div><span class="mono" style="font-size:24px;color:${i < 6 ? 'var(--muted)' : 'var(--down)'}">+${v}</span></div>`).join('')}</div>
+      </div>
+      ${foot(96, 1230, 888)}`],
+
+    // 16:9. Poll-style question.
+    poll: [1600, 900, `
+      ${glow(300, 150, 1000, 700, 'rgba(153,69,255,0.12)')}
+      <div class="abs" style="left:0;right:0;top:110px;display:flex;flex-direction:column;align-items:center">
+        ${tok('sol', 120)}
+        <h1 style="font-size:80px;margin-top:36px;text-align:center">Where does SOL land this week?</h1>
+      </div>
+      <div class="abs" style="left:100px;right:100px;top:480px;display:grid;grid-template-columns:repeat(5,1fr);gap:22px">
+        ${OUT.map(([b, n, c, r]) => `<div style="--c:${c};display:grid;justify-items:center;gap:12px;padding:30px 0 26px;border-radius:28px;background:var(--surface);box-shadow:inset 0 0 0 2px color-mix(in srgb, ${c} 45%, transparent);color:var(--c)"><span style="display:inline-flex;font-size:52px">${oi(b)}</span><span style="font-size:40px;font-weight:600;letter-spacing:-0.02em">${n}</span><span class="mono muted" style="font-size:20px">${r}</span></div>`).join('')}
+      </div>
+      ${foot(100, 790, 1400)}`],
+
+    // 1:1. Public record / leaderboard.
+    record: [1080, 1080, `
+      ${glow(140, 300, 800, 600, 'rgba(48,209,88,0.09)')}
+      <div class="abs" style="left:96px;top:100px;right:96px">
+        <div class="eyebrow" style="font-size:24px">Leaderboard</div>
+        <h1 style="font-size:74px;margin-top:24px">Every call is on the record.</h1>
+        <p class="sub" style="font-size:34px;margin-top:22px">Results are public, so a good call becomes a track record.</p>
+      </div>
+      <div class="fake abs" style="left:96px;right:96px;top:470px">
+        ${[['1', 'you', '8,900', true], ['2', 'satoshi_fan', '8,420'], ['3', 'moonwalker', '7,915'], ['4', 'chartgazer', '7,300']].map(([r, n, p, me], i) => `<div style="display:grid;grid-template-columns:70px 64px 1fr auto;align-items:center;gap:20px;height:104px;padding:0 34px;${i ? 'border-top:1.5px solid var(--line);' : ''}${me ? 'background:rgba(48,209,88,0.10);box-shadow:inset 0 0 0 2px rgba(48,209,88,0.5);border-radius:30px 30px 0 0' : ''}"><span class="mono" style="font-size:30px;color:${me ? 'var(--gold)' : 'var(--muted)'}">#${r}</span><span style="width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:26px;background:${me ? 'var(--up)' : 'var(--raised)'};color:${me ? '#09090b' : 'var(--muted)'}">${n[0].toUpperCase()}</span><span style="font-size:34px;font-weight:${me ? 600 : 500}">${n}${me ? ` <span style="color:var(--gold);font-size:30px;vertical-align:-3px;display:inline-flex">${ico('trophy')}</span>` : ''}</span><span class="mono" style="font-size:32px">${p}</span></div>`).join('')}
+      </div>
+      ${foot(96, 975, 888)}`],
+
+    // 16:9. No wallet needed.
+    signin: [1600, 900, `
+      ${glow(800, 200, 900, 700, 'rgba(48,209,88,0.08)')}
+      <div class="abs" style="left:100px;top:170px;width:700px">
+        <div class="eyebrow" style="font-size:24px">Free to play</div>
+        <h1 style="font-size:88px;margin-top:26px">No wallet?<br>No problem.</h1>
+        <p class="sub" style="font-size:36px;margin-top:30px">Sign in with Google or email and we make a Solana wallet for you.</p>
+      </div>
+      <div class="abs" style="left:900px;top:190px;width:600px;display:grid;gap:22px">
+        ${[['mail', 'Continue with Google'], ['mail', 'Continue with email'], ['link', 'Connect a Solana wallet']].map(([i, t], k) => `<div style="display:flex;align-items:center;gap:22px;height:116px;padding:0 36px;border-radius:999px;font-size:36px;font-weight:600;letter-spacing:-0.02em;${k === 0 ? 'background:#f5f5f7;color:#09090b' : 'background:var(--surface);box-shadow:inset 0 0 0 2px var(--line-strong)'}"><span style="display:inline-flex;font-size:38px">${k === 0 ? '<b style="font-size:40px;font-weight:700;color:#4285f4">G</b>' : ico(i)}</span>${t}</div>`).join('')}
+        <div class="mono muted" style="font-size:22px;text-align:center;margin-top:8px">Points and TestFPT have no cash value</div>
+      </div>
+      ${foot(100, 770, 1400)}`],
+  };
+
+  const id = new URLSearchParams(location.search).get('id');
+  const [w, h, html] = B[id];
+  document.documentElement.style.setProperty('--w', `${w}px`);
+  document.documentElement.style.setProperty('--h', `${h}px`);
+  document.querySelector('#b').innerHTML = html;
+  await document.fonts.ready;
+  window.SIZE = [w, h];
+  window.IDS = Object.keys(B);
+  window.READY = true;
+</script>
+</body>
+</html>
