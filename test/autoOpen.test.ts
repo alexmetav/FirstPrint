@@ -170,7 +170,40 @@ test('upcoming markets: the opening price is read from the first minutes of trad
   const m = service.getMarket(id, undefined, true);
   assert.equal(m.resultPriceFailed, true);
   assert.equal(m.priceChecks?.final.at, m.settleAt);
-  assert.equal(service.resultPriceDue().length, 0, 'stops trying');
+
+  // The server keeps trying every 15 minutes: the exchange answers again (say it had blocked the
+  // server), so the result posts by itself, without waiting for the admin.
+  assert.equal(service.resultPriceDue().length, 1, 'still tried now and then');
+  state.listedAt = m.settleAt - 3 * MIN;
+  state.closes = [0.3, 0.31, 0.32];
+  clock.advance(5 * MIN);
+  await opener.run();
+  assert.equal(service.getMarket(id).phase, 'awaiting_result', 'not before 15 minutes');
+  clock.advance(10 * MIN);
+  await opener.run();
+  assert.notEqual(service.getMarket(id).status, 'locked', 'result posted (no predictions here, so it is voided)');
+  assert.match(service.getMarket(id, undefined, true).autoOpenNote ?? '', /found after the admin was asked.*\$0\.32/);
+  assert.equal(alerts.length, 2);
+  assert.match(alerts[1], /EVAA result posted/);
+});
+
+test('result price: after two days of no price the server stops trying and leaves it to the admin', async () => {
+  const { clock, service, alerts, opener } = setup();
+  const { Scheduler } = await import('../src/workers/scheduler.ts');
+  const id = service.createManualMarket({ symbol: 'QUIET', exchanges: ['mexc'], basePrice: 1, closeAt: T0 + HOUR, resultAt: T0 + 3 * HOUR, logoUrl: LOGO, publish: true } as never);
+  clock.advance(HOUR + MIN);
+  await new Scheduler(service, async () => {}, { tickMs: 1000 }).tick();
+  clock.advance(2 * HOUR + 3 * MIN);
+  await opener.run();
+  clock.advance(2 * HOUR);
+  await opener.run();
+  assert.equal(alerts.length, 1, 'asked once');
+  assert.equal(service.resultPriceDue().length, 1);
+  clock.advance(2 * 24 * HOUR);
+  await opener.run();
+  assert.equal(service.resultPriceDue().length, 0, 'stops after two days');
+  assert.equal(alerts.length, 1, 'never asked twice');
+  assert.equal(service.getMarket(id).phase, 'awaiting_result');
 });
 
 test('upcoming markets: no trades a day after the close, the admin is asked for the opening price', async () => {
@@ -337,4 +370,13 @@ test('result: read at the exact result time and posted by itself, with players p
   assert.match(alerts[0], /PUMP result posted/);
   assert.match(alerts[0], /Moon won \(\+50\.00%\)/);
   assert.equal(service.resultPriceDue().length, 0);
+});
+
+test('result price: a thinly traded token whose last trade was 20 minutes before still has a price', async () => {
+  const { priceAt } = await import('../src/exchanges/priceAt.ts');
+  const at = T0 + 10 * HOUR;
+  const venue = { id: 'mexc', name: 'MEXC', fetchCandles: async () => [{ ts: at - 20 * MIN, close: 0.5, volume: 10, trades: 1 }] } as unknown as Venue;
+  assert.deepEqual(await priceAt(venue, 'THINUSDT', at), { price: 0.5, ts: at - 19 * MIN });
+  const old = { ...venue, fetchCandles: async () => [] } as unknown as Venue;
+  assert.equal(await priceAt(old, 'THINUSDT', at), 'no trades in the 30 minutes before');
 });

@@ -1,7 +1,10 @@
 import { MINUTE, type Venue } from './venues.ts';
 
-/** How far back a source may go for the last trade before the moment (a quiet minute has no candle). */
-const LOOKBACK_MS = 10 * MINUTE;
+/**
+ * How far back a source may go for the last trade before the moment (a quiet minute has no candle).
+ * A thinly traded new token can go many minutes without a trade; its last trade is still its price.
+ */
+const LOOKBACK_MS = 30 * MINUTE;
 /** CoinGecko has a point about every 5 minutes, so it may need a little longer. */
 const PRICE_ONLY_LOOKBACK_MS = 30 * MINUTE;
 
@@ -17,7 +20,7 @@ export async function priceAt(venue: Venue, pair: string, at: number): Promise<{
     const candles = (await venue.fetchCandles(pair, from, at)).filter(
       (c) => c.ts < at && c.close > 0 && Number.isFinite(c.close) && (venue.priceOnly || (c.volume > 0 && (c.trades ?? 1) > 0)),
     );
-    if (!candles.length) return venue.priceOnly ? 'no price in the 30 minutes before' : 'no trades in the 10 minutes before';
+    if (!candles.length) return venue.priceOnly ? 'no price in the 30 minutes before' : 'no trades in the 30 minutes before';
     const last = candles[candles.length - 1];
     return { price: last.close, ts: venue.priceOnly ? last.ts : last.ts + MINUTE };
   } catch (err) {
