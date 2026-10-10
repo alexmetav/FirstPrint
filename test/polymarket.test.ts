@@ -212,3 +212,18 @@ test('API: odds, holders, profiles and leaderboard periods', async () => {
     server.close();
   }
 });
+
+test('market page: the market, activity, odds and holders in one answer', async () => {
+  const { service } = setup();
+  const a = await service.createUser({ username: 'alice' });
+  const id = service.createManualMarket(market());
+  service.placePrediction(id, a.id, 'up', 100);
+
+  const page = service.marketPage(id, a.id);
+  assert.deepEqual(page.market, service.getMarket(id, a.id));
+  assert.equal(page.chart, null); // admin-run markets have no price chart
+  assert.deepEqual(page.activity, service.activity(id));
+  assert.deepEqual(page.odds, service.odds(id));
+  assert.deepEqual(page.holders, service.holders(id));
+  assert.equal(page.market.mine.length, 1);
+});

@@ -493,6 +493,8 @@ export function createApiServer(opts: ServerOptions): Server {
 
   route('GET', '/api/markets/:id', ({ params, optionalUser }) => service.getMarket(params.id, optionalUser()?.id));
 
+  route('GET', '/api/markets/:id/page', ({ params, optionalUser }) => service.marketPage(params.id, optionalUser()?.id));
+
   route('GET', '/api/markets/:id/quote', ({ params, url }) =>
     service.quote(params.id, url.searchParams.get('bucket') as Bucket, Number(url.searchParams.get('stake'))),
   );
