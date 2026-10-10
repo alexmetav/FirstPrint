@@ -109,6 +109,8 @@ export function createApi(baseUrl = '') {
     activity: (m) => request(`/api/markets/${id(m)}/activity`),
     leaderboard: (period = 'week') => request(`/api/leaderboard?period=${encodeURIComponent(period)}`),
     odds: (m) => request(`/api/markets/${id(m)}/odds`),
+    results: (page = 1) => request(`/api/results?page=${page}`),
+    resultPlayers: (m, page = 1) => request(`/api/results/${id(m)}?page=${page}`),
     holders: (m) => request(`/api/markets/${id(m)}/holders`),
     profile: (name) => request(`/api/users/${id(name)}`),
     notifications: () => request('/api/me/notifications'),

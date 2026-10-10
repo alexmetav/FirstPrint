@@ -2920,6 +2920,112 @@ export class FirstprintService {
     );
   }
 
+  /**
+   * Settled markets, newest result first, for the Results list under the leaderboard: the token, its
+   * result, how many played and won, and the first few players' names for the little avatar row.
+   * Refunded (void) markets are included, so a player who took part but neither won nor lost shows too.
+   */
+  results(page = 1, perPage = 10) {
+    const per = Math.min(50, Math.max(1, Math.floor(perPage) || 10));
+    const where = "m.status IN ('resolved', 'void') AND m.published = 1 AND EXISTS (SELECT 1 FROM predictions p WHERE p.market_id = m.id)";
+    const total = as<{ n: number }>(this.db.prepare(`SELECT COUNT(*) AS n FROM markets m WHERE ${where}`).get()).n;
+    const pages = Math.max(1, Math.ceil(total / per));
+    const pg = Math.min(pages, Math.max(1, Math.floor(page) || 1));
+    const rows = as<{ id: string; symbol: string; name: string | null; config: string; status: string; logo_url: string | null; logo_ver: string | null; settled_at: number | null; result: string | null; players: number; winners: number; paid: number; pool: number }[]>(
+      this.db
+        .prepare(
+          `SELECT m.id, m.symbol, m.name, m.config, m.status,
+                  CASE WHEN m.logo_url LIKE 'data:%' THEN substr(m.logo_url, 1, 40) ELSE m.logo_url END AS logo_url,
+                  CASE WHEN m.logo_url LIKE 'data:%' THEN length(m.logo_url) || '-' || hex(substr(m.logo_url, length(m.logo_url) / 2, 12) || substr(m.logo_url, -12)) END AS logo_ver,
+                  s.settled_at, s.result,
+                  (SELECT COUNT(DISTINCT p.user_id) FROM predictions p WHERE p.market_id = m.id) AS players,
+                  (SELECT COUNT(DISTINCT p.user_id) FROM predictions p WHERE p.market_id = m.id AND p.payout > 0) AS winners,
+                  (SELECT COALESCE(SUM(p.payout), 0) FROM predictions p WHERE p.market_id = m.id) AS paid,
+                  (SELECT COALESCE(SUM(COALESCE(p.accepted, p.stake)), 0) FROM predictions p WHERE p.market_id = m.id) AS pool
+           FROM markets m LEFT JOIN settlements s ON s.market_id = m.id
+           WHERE ${where}
+           ORDER BY COALESCE(s.settled_at, m.listing_at) DESC, m.id
+           LIMIT ? OFFSET ?`,
+        )
+        .all(per, (pg - 1) * per),
+    );
+    const sample = this.db.prepare(
+      `SELECT u.username FROM predictions p JOIN users u ON u.id = p.user_id WHERE p.market_id = ?
+       GROUP BY p.user_id ORDER BY MAX(COALESCE(p.payout, 0)) DESC, MIN(p.placed_at) LIMIT 4`,
+    );
+    return {
+      page: pg,
+      pages,
+      total,
+      results: rows.map((r) => {
+        let winningBucket: Bucket | null = null;
+        let voidReason: string | null = null;
+        try {
+          const res = r.result ? (JSON.parse(r.result) as { winningBucket?: Bucket | null; voidReason?: string | null }) : {};
+          winningBucket = res.winningBucket ?? null;
+          voidReason = res.voidReason ?? null;
+        } catch {
+          /* an unreadable record shows without its outcome */
+        }
+        return {
+          marketId: r.id,
+          symbol: r.symbol,
+          name: r.name,
+          outcomes: (JSON.parse(r.config) as MarketConfig).outcomes ?? 'ladder',
+          status: r.status as 'resolved' | 'void',
+          winningBucket: r.status === 'resolved' ? winningBucket : null,
+          voidReason: r.status === 'void' ? (voidReason ?? 'refunded') : null,
+          settledAt: r.settled_at,
+          logoUrl: r.logo_url && /^data:image\/(png|jpeg|webp|gif);/.test(r.logo_url) ? `/api/logo/${encodeURIComponent(r.id)}?v=${r.logo_ver}` : (r.logo_url ?? null),
+          players: r.players,
+          winners: r.winners,
+          pool: r.pool,
+          paid: r.paid,
+          sample: as<{ username: string }[]>(sample.all(r.id)).map((u) => u.username),
+        };
+      }),
+    };
+  }
+
+  /** Everyone who played one settled market, winners first (biggest payout first), a page at a time. */
+  resultPlayers(marketId: string, page = 1, perPage = 20) {
+    const m = this.publicRow(marketId);
+    if (m.status !== 'resolved' && m.status !== 'void') throw new AppError(409, 'not_settled', 'This market has no result yet.');
+    const per = Math.min(100, Math.max(1, Math.floor(perPage) || 20));
+    const total = as<{ n: number }>(this.db.prepare('SELECT COUNT(DISTINCT user_id) AS n FROM predictions WHERE market_id = ?').get(marketId)).n;
+    const pages = Math.max(1, Math.ceil(total / per));
+    const pg = Math.min(pages, Math.max(1, Math.floor(page) || 1));
+    const rows = as<{ username: string; buckets: string; stake: number; accepted: number; payout: number; refund: number }[]>(
+      this.db
+        .prepare(
+          `SELECT u.username, GROUP_CONCAT(DISTINCT p.bucket) AS buckets, SUM(p.stake) AS stake,
+                  SUM(COALESCE(p.accepted, 0)) AS accepted, SUM(COALESCE(p.payout, 0)) AS payout, SUM(COALESCE(p.refund, 0)) AS refund
+           FROM predictions p JOIN users u ON u.id = p.user_id
+           WHERE p.market_id = ?
+           GROUP BY p.user_id
+           ORDER BY SUM(COALESCE(p.payout, 0)) DESC, MIN(p.placed_at), u.username
+           LIMIT ? OFFSET ?`,
+        )
+        .all(marketId, per, (pg - 1) * per),
+    );
+    return {
+      marketId,
+      status: m.status,
+      page: pg,
+      pages,
+      total,
+      players: rows.map((r) => ({
+        name: r.username,
+        buckets: r.buckets.split(',') as Bucket[],
+        stake: r.stake,
+        payout: r.payout,
+        refund: r.refund,
+        profit: m.status === 'resolved' ? r.payout - r.accepted : 0,
+        won: r.payout > 0,
+      })),
+    };
+  }
+
   // --- Helpers ------------------------------------------------------------------
 
   /**

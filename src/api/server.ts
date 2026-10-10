@@ -520,6 +520,10 @@ export function createApiServer(opts: ServerOptions): Server {
     return service.leaderboard(optionalUser()?.id, period);
   });
 
+  // Settled markets with who played and who won, for the Results list on the leaderboard page.
+  route('GET', '/api/results', ({ url }) => service.results(Number(url.searchParams.get('page') ?? 1)));
+  route('GET', '/api/results/:id', ({ params, url }) => service.resultPlayers(params.id, Number(url.searchParams.get('page') ?? 1)));
+
   // --- Public API (read-only, no key): markets, tokens coming up, the leaderboard. Docs: /api.html ----
 
   /**
