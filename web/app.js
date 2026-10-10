@@ -1537,7 +1537,7 @@ function homeHero(showLive = true) {
     total ? ['Total markets', fmtNum(total)] : null,
     open.length ? ['Open markets', fmtNum(S.totals?.open ?? open.length)] : null,
     // A guest's short list would undercount the points in play, so it's left out for them.
-    inPlay && !S.limited ? ['In play', `${fmtNum(inPlay)} pts`] : null,
+    inPlay && !S.limited ? ['In play', `${odometer('inplay', inPlay)} pts`] : null,
     topStat,
   ].filter(Boolean);
   const next = [...open].filter((m) => m.phase !== 'awaiting_result').sort((a, b) => a.closeAt - b.closeAt)[0];
@@ -7836,6 +7836,60 @@ function runTicker(el) {
 }
 
 /**
+ * A number whose digits roll like a timer: each digit that changes slides out and the new one comes
+ * in from below (from above when the number drops). It is drawn showing the value last seen, then
+ * rolls to the new one; the first time it rolls up from zero.
+ */
+const ODO_SHOWN = new Map();
+const odometer = (key, n) => {
+  const shown = ODO_SHOWN.get(key) ?? 0;
+  return `<span class="odo" data-odo="${Math.round(n) || 0}" data-odo-key="${esc(key)}" role="text" aria-label="${fmtNum(n)}">${odoDigits(shown, shown)}</span>`;
+};
+
+/** The digits of `to`, each one that differs from `from` (lined up from the right) rolling in. */
+function odoDigits(from, to) {
+  const a = fmtNum(to);
+  const b = fmtNum(from).padStart(a.length, ' ');
+  const up = to >= from;
+  return [...a]
+    .map((ch, i) => {
+      if (!/\d/.test(ch)) return `<span class="odo-sep" aria-hidden="true">${ch}</span>`;
+      const was = b[b.length - a.length + i] ?? ' ';
+      if (was === ch) return `<span class="odo-d" aria-hidden="true">${ch}</span>`;
+      return `<span class="odo-d is-roll ${up ? 'odo-up' : 'odo-down'}" aria-hidden="true"><span class="odo-out">${/\d/.test(was) ? was : ''}</span><span class="odo-in">${ch}</span></span>`;
+    })
+    .join('');
+}
+
+/** Rolls an odometer from the value last shown to its new value in a few quick timer-like steps. */
+function runOdometer(el) {
+  const key = el.dataset.odoKey;
+  const to = Number(el.dataset.odo);
+  const from = ODO_SHOWN.get(key) ?? 0;
+  ODO_SHOWN.set(key, to);
+  if (from === to) return;
+  if (REDUCED_MOTION.matches) {
+    el.innerHTML = odoDigits(to, to);
+    return;
+  }
+  // Big jumps (the first count from zero) pass through a few values on the way, like a counter
+  // spinning up; a few points more just roll the digits that change.
+  const steps = Math.min(10, Math.abs(to - from));
+  let prev = from;
+  let k = 0;
+  const step = () => {
+    if (!el.isConnected) return;
+    k += 1;
+    const t = k / steps;
+    const v = k >= steps ? to : Math.round(from + (to - from) * (1 - Math.pow(1 - t, 3)));
+    if (v !== prev) el.innerHTML = odoDigits(prev, v);
+    prev = v;
+    if (k < steps) setTimeout(step, 90 + k * 12);
+  };
+  step();
+}
+
+/**
  * Moves the sliding highlight of each tab group to its selected tab. Once per frame at most, and all
  * positions are read before any is written, so the page is laid out once instead of once per group.
  */
@@ -7872,6 +7926,8 @@ new MutationObserver((records) => {
       if (n.nodeType !== 1) continue;
       if (n.matches('[data-tick]')) runTicker(n);
       n.querySelectorAll('[data-tick]').forEach(runTicker);
+      if (n.matches('[data-odo]')) runOdometer(n);
+      n.querySelectorAll('[data-odo]').forEach(runOdometer);
       if (n.matches(SEG_GROUPS) || n.querySelector(SEG_GROUPS)) segs = true;
     }
   }

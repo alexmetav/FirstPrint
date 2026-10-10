@@ -8737,6 +8737,45 @@ p,
   30%, 85% { transform: scaleX(1); }
   100% { transform: scaleX(1); opacity: 0; }
 }
+/* In play: each changed digit rolls like a timer, the old one sliding out as the new one comes in
+   from below (from above when the total drops). */
+.odo {
+  display: inline-flex;
+  font-variant-numeric: tabular-nums;
+}
+.odo-d {
+  position: relative;
+  display: inline-block;
+  width: 1ch;
+  height: 1.2em;
+  line-height: 1.2em;
+  overflow: hidden;
+  text-align: center;
+  vertical-align: bottom;
+}
+.odo-sep {
+  line-height: 1.2em;
+}
+.odo-d.is-roll > span {
+  position: absolute;
+  inset: 0;
+}
+.odo-up .odo-out { animation: odo-out-up 0.32s cubic-bezier(0.3, 0.7, 0.3, 1) forwards; }
+.odo-down .odo-out { animation: odo-out-down 0.32s cubic-bezier(0.3, 0.7, 0.3, 1) forwards; }
+.odo-down .odo-in { animation: odo-in-down 0.32s cubic-bezier(0.3, 0.7, 0.3, 1) both; }
+.odo-up .odo-in {
+  color: var(--up);
+  animation: odo-in-up 0.32s cubic-bezier(0.3, 0.7, 0.3, 1) both, odo-tint 0.9s ease forwards;
+}
+@keyframes odo-out-up { to { transform: translateY(-100%); opacity: 0; } }
+@keyframes odo-in-up { from { transform: translateY(100%); opacity: 0; } }
+@keyframes odo-out-down { to { transform: translateY(100%); opacity: 0; } }
+@keyframes odo-in-down { from { transform: translateY(-100%); opacity: 0; } }
+@keyframes odo-tint { to { color: inherit; } }
+@media (prefers-reduced-motion: reduce) {
+  .odo-d.is-roll > span { animation: none; }
+  .odo-out { display: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   .hero-stats dd .hero-top,
   .hero-stats dd .hero-top::before { animation: none; }
