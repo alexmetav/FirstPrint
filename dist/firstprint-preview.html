@@ -15211,6 +15211,7 @@ function createAdminApi(key, baseUrl = '') {
     deleteDraft: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/delete`),
     deleteMarket: (id) => post(`/api/admin/markets/${encodeURIComponent(id)}/delete`),
     previewResult: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/preview`, body),
+    resultNow: (id) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/result-now`),
     priceAt: (id, which) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/price-at`, { which }),
     resolve: (id, body) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/resolve`, body),
     analytics: (days = 30) => request(`/api/admin/analytics?days=${days}`),
@@ -21538,7 +21539,7 @@ function adminMarketsTab(markets, waiting, pending, counting = [], tooLong = [],
           canAdmin('admin')
             ? waiting
                 .map(
-                  (m) => `<details class="adm-row"${A.preview?.id === m.id || waiting.length === 1 ? ' open' : ''}>
+                  (m) => `<details class="adm-row"${A.preview?.id === m.id || A.openResult === m.id || waiting.length === 1 ? ' open' : ''}>
                     <summary><span class="mkt-cell">${tokenAvatar(m, 'avatar-sm')}<span><b>${esc(m.symbol)}</b><small class="muted">Closed ${esc(fmtUtc(m.closeAt))}</small><small class="muted">Result ${esc(fmtUtc(m.settleAt))}</small><small class="muted">${fmtPts(m.pool)} · ${m.predictors} participant${m.predictors === 1 ? '' : 's'}</small></span></span><span class="adm-row-cta">${m.settleAt <= now() ? 'Post result' : 'Add start price'}</span></summary>
                     ${resultForm(m)}
                   </details>`,
@@ -21552,7 +21553,7 @@ function adminMarketsTab(markets, waiting, pending, counting = [], tooLong = [],
     ? `<details class="adm-collapse"><summary>${ico('clock')}<b>Counting down</b><span class="count-badge">${counting.length}</span><span class="muted">closed, the result posts by itself</span></summary>
         <ul class="todo">${counting
           .map((m) => `<li style="--c:var(--flat)"><span class="todo-ico">${tokenAvatar(m, 'avatar-sm')}</span><div><b>${esc(m.symbol)}</b><span class="muted">Start ${m.basePrice != null ? fmtPrice(m.basePrice) : 'being read'} · ${m.settleAt <= now() ? `reading the price at ${esc(fmtUtc(m.settleAt))}, the result posts by itself` : `result ${fmtDate(m.settleAt)} · in <span data-until="${m.settleAt}">${fmtDur(m.settleAt - now())}</span>`} · ${fmtPts(m.pool)}</span></div>
-            ${canAdmin('admin') ? `<span class="todo-actions"><button class="btn btn-sm" type="button" data-action="admin-cancel" data-id="${esc(m.id)}">Cancel and refund</button></span>` : ''}</li>`)
+            ${canAdmin('admin') ? `<span class="todo-actions">${m.settleAt > now() ? resultNowButton(m) : ''}<button class="btn btn-sm" type="button" data-action="admin-cancel" data-id="${esc(m.id)}">Cancel and refund</button></span>` : ''}</li>`)
           .join('')}</ul></details>`
     : '';
   const listings = pending.length
@@ -22161,6 +22162,11 @@ function checkLinksHtml(check) {
     <p class="muted">Each link opens the 1-minute candle that ends at that time: its close is the price then.</p></details>`;
 }
 
+/** "Result now": stops a closed market's countdown so the admin can post its result straight away. */
+function resultNowButton(m) {
+  return `<button class="btn btn-sm" type="button" data-action="admin-result-now" data-id="${esc(m.id)}">${ico('clock')}Stop timer, result now</button>`;
+}
+
 /** "Get price at …": reads the price at the exact close or result time from the market's sources. */
 function priceAtButton(m, which, field) {
   const at = which === 'start' ? m.closeAt : m.settleAt;
@@ -22202,7 +22208,7 @@ function resultForm(m) {
       ${
         due
           ? `<label><span class="field-label">Final price at ${esc(fmtUtc(m.settleAt))} (USD)</span><input name="finalPrice" type="number" step="any" min="0" inputmode="decimal" value="${esc(v.finalPrice ?? '')}"${hasStart(m) ? ' required' : ''} />${priceAtButton(m, 'final', 'finalPrice')}${checkLinksHtml(m.priceChecks?.final)}</label>`
-          : `<p class="muted res-wait">The final price is read at ${esc(fmtUtc(m.settleAt))}. Save the start price now; the result posts by itself then.</p>`
+          : `<p class="muted res-wait">The final price is read at ${esc(fmtUtc(m.settleAt))}. Save the start price now; the result posts by itself then. Or stop the countdown and post the result now.</p><div class="admin-actions" style="grid-column:1/-1">${resultNowButton(m)}</div>`
       }
       <div class="admin-preview" data-preview-slot style="grid-column:1/-1"${s ? '' : ' hidden'}>${s ? previewHtml(s, yn) : ''}</div>
       <div class="admin-actions" style="grid-column:1/-1">
@@ -22589,6 +22595,7 @@ function marketActions(m) {
   if (manualOpen && !m.published) main.push(btn('admin-publish', 'send', 'Publish', ' btn-solid'));
   if (manualOpen) main.push(btn('admin-edit', 'edit', 'Edit'));
   if (manualOpen && m.published && m.phase === 'baseline') more.push(item('admin-close-now', 'lock', 'Close predictions now'));
+  if (canAdmin('admin') && m.mode === 'manual' && m.published && m.status === 'locked' && m.settleAt > now()) more.push(item('admin-result-now', 'clock', 'Stop timer, result now'));
   if (manualOpen && m.published && m.predictors === 0) more.push(item('admin-unpublish', 'eye', 'Unpublish'));
   if (A.info.telegram?.channel && m.status === 'open' && m.published && m.kind !== 'live_test') more.push(item('admin-tg-post', 'telegram', 'Post to Telegram'));
   if (manualOpen && !m.published) more.push(item('admin-delete', 'trash', 'Delete draft', ' danger'));
@@ -23180,6 +23187,29 @@ async function onAdminAction(action, el) {
       if (done) toast(`${done === 1 ? sym : `${done} markets`} now take${done === 1 ? 's' : ''} the start price at the close`);
       A.checks = null;
       return renderAdmin();
+    }
+    case 'admin-result-now': {
+      // Stops the result countdown: the result time becomes now and the result form opens with that price.
+      const id = el.dataset.id;
+      const sym = (A.markets ?? []).find((m) => m.id === id)?.symbol ?? 'this market';
+      if (!confirm(`Stop the countdown on ${sym} and post its result now?\n\nThe result time moves to now. Read the price at that time, check the winning side, then publish.`)) return;
+      try {
+        await A.api.resultNow(id);
+      } catch (err) {
+        return toast(err.message, true);
+      }
+      A.openResult = id;
+      if (A.tab !== 'markets') {
+        A.tab = 'markets';
+        markAdminTab(A.tab);
+      }
+      await renderAdmin();
+      const form = document.querySelector(`form[data-resolve="${CSS.escape(id)}"]`);
+      form?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      const get = form?.querySelector('[data-action="admin-price-at"][data-which="final"]');
+      if (get && !form.querySelector('[name=basePrice]')) await fillPriceAt(get);
+      else toast(`Countdown stopped on ${sym}. Add the start price, then the result.`);
+      return;
     }
     case 'admin-close-now':
     case 'admin-close-24':

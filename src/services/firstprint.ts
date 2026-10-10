@@ -1464,6 +1464,32 @@ export class FirstprintService {
   }
 
   /**
+   * Stops a closed market's countdown: its result time becomes now (the last full minute), and the
+   * server leaves the result to the admin, who reads the price at that time and publishes it at once.
+   */
+  resultNow(marketId: string) {
+    let m = this.manualRow(marketId);
+    const now = this.clock.now();
+    // The scheduler locks markets on its next tick; don't make the admin wait for it.
+    if (m.status === 'open' && m.published === 1 && now >= m.listing_at) {
+      this.closeDueMarkets();
+      m = this.manualRow(marketId);
+    }
+    if (m.status === 'open') throw new AppError(409, 'still_open', 'Predictions are still open. Close predictions first, then stop the countdown.');
+    if (m.status !== 'locked' || m.published !== 1) throw new AppError(409, 'already_settled', 'This market has already been settled.');
+    const cfg = parseConfig(m);
+    if (m.listing_at + cfg.durationMs <= now) return marketId; // the result is already due
+    const at = Math.floor(now / MINUTE) * MINUTE;
+    if (at <= m.listing_at) throw new AppError(409, 'just_closed', 'Predictions closed less than a minute ago. Try again in a minute.');
+    const next = { ...cfg, durationMs: at - m.listing_at };
+    const note = `Countdown stopped by an admin: result time moved to ${new Date(at).toISOString().slice(0, 16).replace('T', ' ')} UTC.`;
+    this.db.prepare('UPDATE markets SET config = ?, result_price_failed = 1, auto_open_note = ? WHERE id = ?').run(JSON.stringify(next), note, marketId);
+    this.log(`result countdown stopped ${marketId}`);
+    this.marketChanged(marketId);
+    return marketId;
+  }
+
+  /**
    * Switches a market with a fixed start price to taking it when predictions close. Only while nobody
    * has predicted: players who did picked against the fixed price, so for them it stays.
    */

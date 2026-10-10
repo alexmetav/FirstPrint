@@ -338,3 +338,33 @@ test('result: read at the exact result time and posted by itself, with players p
   assert.match(alerts[0], /Moon won \(\+50\.00%\)/);
   assert.equal(service.resultPriceDue().length, 0);
 });
+
+test('result now: the admin stops a closed market’s countdown and posts its result at once', async () => {
+  const { clock, prices, service, alerts, venue } = closeSetup();
+  const opener = new AutoOpener(service, [venue], (t) => void alerts.push(t), (id) => `Result due: ${id}`, async () => {});
+  const closeAt = T0 + 24 * HOUR;
+  const id = service.createManualMarket({ symbol: 'STOP', exchanges: ['mexc'], basePrice: 1, closeAt, resultAt: closeAt + 48 * HOUR, logoUrl: LOGO, publish: true } as never);
+  assert.throws(() => service.resultNow(id), /Close predictions first/);
+  clock.advance(closeAt + 30 * 1000 - clock.now());
+  assert.throws(() => service.resultNow(id), /less than a minute/);
+
+  clock.advance(5 * HOUR + 20 * 1000);
+  const stoppedAt = Math.floor(clock.now() / MIN) * MIN;
+  for (let t = stoppedAt - 10 * MIN; t < stoppedAt; t += MIN) prices.set(t, 1.2);
+  service.resultNow(id);
+  const m = service.getMarket(id, undefined, true);
+  assert.equal(m.status, 'locked');
+  assert.equal(m.settleAt, stoppedAt, 'the result time is now (the last full minute)');
+  assert.equal(m.resultPriceFailed, true, 'the admin posts it, not the server');
+  assert.match(m.autoOpenNote ?? '', /Countdown stopped/);
+
+  clock.advance(5 * MIN);
+  await opener.run();
+  assert.equal(service.getMarket(id).status, 'locked', 'the server leaves it to the admin');
+  const r = await service.readPriceAt(id, m.settleAt);
+  assert.equal(r.price, 1.2);
+  const { summary } = service.resolveManualMarket(id, { finalPrice: r.price! });
+  assert.ok(Math.abs(summary.returnPct - 0.2) < 1e-9, 'the % change from the start price');
+  assert.notEqual(service.getMarket(id).status, 'locked', 'settled (cancelled here: nobody predicted)');
+  assert.throws(() => service.resultNow(id), /already been settled/);
+});
