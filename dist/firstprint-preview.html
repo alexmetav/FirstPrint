@@ -14385,6 +14385,89 @@ html.in-maint body {
   opacity: 0.5;
 }
 
+/* Result form: the two times and the start price first, everything else folded away */
+.res-times {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.res-times > div {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  background: var(--bg);
+}
+.res-times dt,
+.res-facts dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.res-times dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+}
+.res-times dd small {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+}
+.res-missing {
+  color: var(--crash);
+}
+.res-wait {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.res-more > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.res-more[open] > summary {
+  margin-bottom: 10px;
+}
+.res-more {
+  display: grid;
+  gap: 12px;
+}
+.res-more[open] {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.res-more > label {
+  display: block;
+  margin-top: 10px;
+}
+.res-more > .admin-actions {
+  margin-top: 10px;
+}
+.res-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.res-facts > div {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 8px;
+}
+.res-facts dd {
+  margin: 0;
+  font-size: 13px;
+}
+.adm-row > summary .mkt-cell small {
+  display: block;
+}
+.adm-row > summary {
+  flex-wrap: nowrap;
+}
+.adm-row > summary .mkt-cell {
+  min-width: 0;
+}
+
 </style>
   </head>
   <body>
@@ -21125,7 +21208,7 @@ function adminOverview({ markets, waiting, drafts, token, tasks, log, pending, t
     `<button type="button" class="adm-stat" style="--c:var(--${color})" data-action="admin-tab" data-tab="${goto}"><span class="adm-stat-l">${label}</span><b>${value}</b><small>${sub}</small></button>`;
   const todo = [];
   if (tooLong.length) todo.push(['alert', 'down', `${tooLong.length} market${tooLong.length === 1 ? ' is' : 's are'} open longer than 3 days`, `${tooLong.map((m) => esc(m.symbol)).slice(0, 4).join(', ')}${tooLong.length > 4 ? '…' : ''}: close them so late players can’t follow the trend`, 'markets', 'Close them']);
-  for (const m of waiting) todo.push(['alert', 'crash', `${esc(m.symbol)} is waiting for its result`, `${fmtPts(m.pool)} from ${m.predictors} participant${m.predictors === 1 ? '' : 's'}`, 'markets', 'Post result']);
+  for (const m of waiting) todo.push(['alert', 'crash', `${esc(m.symbol)} is waiting for its result`, `Result time ${esc(fmtUtc(m.settleAt))} · ${fmtPts(m.pool)} from ${m.predictors} participant${m.predictors === 1 ? '' : 's'}`, 'markets', m.settleAt <= now() ? 'Post result' : 'Add start price']);
   for (const m of drafts) todo.push(['edit', 'flat', `${esc(m.symbol)} is a draft`, 'Hidden until you publish it', 'markets', 'Review']);
   if (token?.enabled && !token.ready) todo.push(['token', 'warn', 'TestFPT isn’t set up', 'Points stay in balances until it exists', 'token', 'Set up']);
   if (token?.enabled && (token.authorityKey || (token.mint && !token.savedInEnv?.mint))) todo.push(['key', 'warn', 'Save the TestFPT keys in Render', 'So a restart can’t lose them', 'token', 'Show keys']);
@@ -21306,7 +21389,7 @@ function adminMarketsTab(markets, waiting, pending, counting = [], tooLong = [],
             ? waiting
                 .map(
                   (m) => `<details class="adm-row"${A.preview?.id === m.id || waiting.length === 1 ? ' open' : ''}>
-                    <summary><span class="mkt-cell">${tokenAvatar(m, 'avatar-sm')}<span><b>${esc(m.symbol)}</b><small class="muted">${fmtPts(m.pool)} · ${m.predictors} participant${m.predictors === 1 ? '' : 's'}</small></span></span><span class="adm-row-cta">Post result</span></summary>
+                    <summary><span class="mkt-cell">${tokenAvatar(m, 'avatar-sm')}<span><b>${esc(m.symbol)}</b><small class="muted">Closed ${esc(fmtUtc(m.closeAt))}</small><small class="muted">Result ${esc(fmtUtc(m.settleAt))}</small><small class="muted">${fmtPts(m.pool)} · ${m.predictors} participant${m.predictors === 1 ? '' : 's'}</small></span></span><span class="adm-row-cta">${m.settleAt <= now() ? 'Post result' : 'Add start price'}</span></summary>
                     ${resultForm(m)}
                   </details>`,
                 )
@@ -21951,28 +22034,48 @@ function resultForm(m) {
   const v = p?.inputs ?? {};
   const s = p?.summary;
   const yn = isYesNo(m);
+  const due = m.settleAt <= now();
   const dist = bucketsOf(m).map((b) => `${oName(b, yn)} ${fmtNum(m.totals[b])}`).join(' · ');
+  const when = (label, ts) => `<div><dt>${label}</dt><dd>${esc(fmtUtc(ts))}<small class="muted">${fmtDate(ts)} local</small></dd></div>`;
   return `
     <form class="admin-detect admin-result" data-resolve="${esc(m.id)}">
-      <div><b>${esc(m.symbol)}</b> <span class="muted">${esc(venueNames(m))}</span><br>
-        <span class="muted">Start price ${hasStart(m) ? fmtPrice(m.basePrice) : '<b>not set yet</b>'} · Result time <b>${esc(fmtUtc(m.settleAt))}</b> · Pool ${fmtPts(m.pool)} from ${m.predictors} participant${m.predictors === 1 ? '' : 's'} · ${dist}</span><br>
-        <span class="muted">${bucketsOf(m).map((b) => `${oName(b, yn)} ${rangeOf(m, b)}`).join(' · ')}</span>
-        ${m.autoOpenNote ? `<br><small class="muted auto-note">${esc(m.autoOpenNote)}</small>` : ''}</div>
+      <dl class="res-times">
+        ${when('Predictions closed', m.closeAt)}
+        ${when(due ? 'Result time' : `Result in ${until(m.settleAt)}`, m.settleAt)}
+        <div><dt>Start price</dt><dd>${hasStart(m) ? fmtPrice(m.basePrice) : '<b class="res-missing">Not set yet</b>'}</dd></div>
+      </dl>
       ${
         hasStart(m)
           ? ''
-          : `<label><span class="field-label">${m.startAtClose ? `Start price at ${esc(fmtUtc(m.closeAt))} (USD)` : 'Opening price (USD)'}</span><input name="basePrice" type="number" step="any" min="0" value="${esc(v.basePrice ?? '')}" placeholder="${m.startAtClose ? 'Price when predictions closed' : 'First trade price'}" />${m.startAtClose ? priceAtButton(m, 'start', 'basePrice') : liveFillButton(m, 'basePrice')}${checkLinksHtml(m.priceChecks?.start)}</label>`
+          : `<label><span class="field-label">${m.startAtClose ? `Start price at ${esc(fmtUtc(m.closeAt))} (USD)` : 'Opening price (USD)'}</span><input name="basePrice" type="number" step="any" min="0" inputmode="decimal" value="${esc(v.basePrice ?? '')}" placeholder="${m.startAtClose ? 'Price when predictions closed' : 'First trade price'}" />${m.startAtClose ? priceAtButton(m, 'start', 'basePrice') : liveFillButton(m, 'basePrice')}${checkLinksHtml(m.priceChecks?.start)}</label>`
       }
-      <label><span class="field-label">Final price at ${esc(fmtUtc(m.settleAt))} (USD)</span><input name="finalPrice" type="number" step="any" min="0" value="${esc(v.finalPrice ?? '')}"${hasStart(m) ? ' required' : ''} />${priceAtButton(m, 'final', 'finalPrice')}${checkLinksHtml(m.priceChecks?.final)}</label>
-      <label><span class="field-label">Winning outcome</span>
-        <select name="winningBucket"><option value="">Pick from the price (recommended)</option>${bucketsOf(m).map((b) => `<option value="${b}"${v.winningBucket === b ? ' selected' : ''}>${oName(b, yn)}</option>`).join('')}</select></label>
-      <label style="grid-column:1/-1"><span class="field-label">Note shown to users (optional)</span><input name="note" maxlength="2000" value="${esc(v.note ?? '')}" placeholder="e.g. Binance XYZ/USDT price at ${esc(fmtUtc(m.settleAt))}" /></label>
+      ${
+        due
+          ? `<label><span class="field-label">Final price at ${esc(fmtUtc(m.settleAt))} (USD)</span><input name="finalPrice" type="number" step="any" min="0" inputmode="decimal" value="${esc(v.finalPrice ?? '')}"${hasStart(m) ? ' required' : ''} />${priceAtButton(m, 'final', 'finalPrice')}${checkLinksHtml(m.priceChecks?.final)}</label>`
+          : `<p class="muted res-wait">The final price is read at ${esc(fmtUtc(m.settleAt))}. Save the start price now; the result posts by itself then.</p>`
+      }
       <div class="admin-preview" data-preview-slot style="grid-column:1/-1"${s ? '' : ' hidden'}>${s ? previewHtml(s, yn) : ''}</div>
       <div class="admin-actions" style="grid-column:1/-1">
-        ${hasStart(m) ? '' : `<button class="btn" type="submit" name="intent" value="start">${m.startAtClose ? 'Save start price' : 'Save opening price'}</button>`}
-        <button class="btn btn-solid" type="submit" name="intent" value="resolve" data-publish${s ? '' : ' disabled'}>${ico('send')}Publish result</button>
-        <button class="btn" type="button" data-action="admin-cancel" data-id="${esc(m.id)}">Cancel and refund</button>
+        ${hasStart(m) ? '' : `<button class="btn${due ? '' : ' btn-solid'}" type="submit" name="intent" value="start">${m.startAtClose ? 'Save start price' : 'Save opening price'}</button>`}
+        ${due ? `<button class="btn btn-solid" type="submit" name="intent" value="resolve" data-publish${s ? '' : ' disabled'}>${ico('send')}Publish result</button>` : ''}
       </div>
+      <details class="res-more" style="grid-column:1/-1"${v.winningBucket || v.note ? ' open' : ''}><summary>More details and options</summary>
+        <dl class="res-facts">
+          <div><dt>Sources</dt><dd>${esc(venueNames(m))}</dd></div>
+          <div><dt>Pool</dt><dd>${fmtPts(m.pool)} from ${m.predictors} participant${m.predictors === 1 ? '' : 's'}</dd></div>
+          <div><dt>Picks</dt><dd>${dist}</dd></div>
+          <div><dt>Outcomes</dt><dd>${bucketsOf(m).map((b) => `${oName(b, yn)} ${rangeOf(m, b)}`).join(' · ')}</dd></div>
+          ${m.autoOpenNote ? `<div><dt>Server note</dt><dd>${esc(m.autoOpenNote)}</dd></div>` : ''}
+        </dl>
+        ${
+          due
+            ? `<label><span class="field-label">Winning outcome</span>
+          <select name="winningBucket"><option value="">Pick from the price (recommended)</option>${bucketsOf(m).map((b) => `<option value="${b}"${v.winningBucket === b ? ' selected' : ''}>${oName(b, yn)}</option>`).join('')}</select></label>
+        <label><span class="field-label">Note shown to users (optional)</span><input name="note" maxlength="2000" value="${esc(v.note ?? '')}" placeholder="e.g. Binance XYZ/USDT price at ${esc(fmtUtc(m.settleAt))}" /></label>`
+            : ''
+        }
+        <div class="admin-actions"><button class="btn btn-sm" type="button" data-action="admin-cancel" data-id="${esc(m.id)}">Cancel and refund</button></div>
+      </details>
     </form>`;
 }
 
@@ -22353,7 +22456,8 @@ function adminPhasePill(m) {
     return `<span class="pill pill-hot">${ico('clock')}${due ? `Opens by itself in <span data-until="${m.autoOpenAt}">${fmtDur(m.autoOpenAt - now())}</span>` : 'Opening: checking prices'}</span>${m.autoOpenNote ? `<small class="muted auto-note">${esc(m.autoOpenNote)}</small>` : ''}`;
   }
   if (m.phase === 'draft') return `<span class="pill pill-off">${text}</span>${m.autoOpenNote ? `<small class="muted auto-note">${esc(m.autoOpenNote)}</small>` : ''}`;
-  if (m.phase === 'awaiting_result') return `<span class="pill pill-hot">${text}</span>${m.autoOpenNote ? `<small class="muted auto-note">${esc(m.autoOpenNote)}</small>` : ''}`;
+  // The server's note is in the result form (More details); the table keeps to the result time.
+  if (m.phase === 'awaiting_result') return `<span class="pill pill-hot"${m.autoOpenNote ? ` title="${esc(m.autoOpenNote)}"` : ''}>${text}</span>${m.settleAt <= now() ? `<small class="muted auto-note">Result ${esc(fmtUtc(m.settleAt))}</small>` : ''}`;
   if (m.status === 'resolved') return `<span class="pill pill-done">${isYesNo(m) ? `Settled: ${oName(m.result?.winningBucket, true)}` : text}</span>`;
   if (m.status === 'void') return `<span class="pill pill-off">${text}</span>`;
   return `<span class="pill pill-live"><span class="dot" aria-hidden="true"></span>${text}</span>`;

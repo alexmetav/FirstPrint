@@ -14354,3 +14354,86 @@ html.in-maint body {
 .admin-result [data-publish]:disabled {
   opacity: 0.5;
 }
+
+/* Result form: the two times and the start price first, everything else folded away */
+.res-times {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.res-times > div {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  background: var(--bg);
+}
+.res-times dt,
+.res-facts dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.res-times dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+}
+.res-times dd small {
+  display: block;
+  font-weight: 400;
+  font-size: 12px;
+}
+.res-missing {
+  color: var(--crash);
+}
+.res-wait {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.res-more > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+.res-more[open] > summary {
+  margin-bottom: 10px;
+}
+.res-more {
+  display: grid;
+  gap: 12px;
+}
+.res-more[open] {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.res-more > label {
+  display: block;
+  margin-top: 10px;
+}
+.res-more > .admin-actions {
+  margin-top: 10px;
+}
+.res-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+.res-facts > div {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 8px;
+}
+.res-facts dd {
+  margin: 0;
+  font-size: 13px;
+}
+.adm-row > summary .mkt-cell small {
+  display: block;
+}
+.adm-row > summary {
+  flex-wrap: nowrap;
+}
+.adm-row > summary .mkt-cell {
+  min-width: 0;
+}
