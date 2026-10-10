@@ -99,6 +99,8 @@ export function createApi(baseUrl = '') {
     stats: () => request('/api/me/stats'),
     markets: (filter) => request(`/api/markets?filter=${filter}`),
     market: (m) => request(`/api/markets/${id(m)}`),
+    /** A market page in one call: { market, chart, activity, odds, holders }. */
+    marketPage: (m) => request(`/api/markets/${id(m)}/page`),
     quote: (m, bucket, stake) => request(`/api/markets/${id(m)}/quote?bucket=${bucket}&stake=${stake}`),
     predict: (m, bucket, stake) => post(`/api/markets/${id(m)}/predictions`, { bucket, stake }),
     revertQuote: (p) => request(`/api/predictions/${id(p)}/revert`),

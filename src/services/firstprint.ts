@@ -2607,7 +2607,8 @@ export class FirstprintService {
 
   /** Public read. Unpublished drafts are only visible to the admin panel (asAdmin). */
   getMarket(id: string, userId?: string, asAdmin = false) {
-    const m = this.row(id);
+    // The admin panel edits the uploaded logo, so it gets the whole row; players get the light one.
+    const m = asAdmin ? this.row(id) : this.lightRow(id);
     if (m.published === 0 && !asAdmin) throw new AppError(404, 'market_not_found', 'Market not found.');
     return this.view(m, userId, asAdmin);
   }
@@ -2921,9 +2922,40 @@ export class FirstprintService {
 
   // --- Helpers ------------------------------------------------------------------
 
+  /**
+   * Everything a market page draws, in one answer: the market, its price chart, recent predictions,
+   * the crowd's odds and the top participants. One round trip instead of five, which is most of the
+   * wait on a phone far from the server.
+   */
+  marketPage(id: string, userId?: string) {
+    const market = this.getMarket(id, userId);
+    const optional = <T>(f: () => T): T | null => {
+      try {
+        return f();
+      } catch {
+        return null;
+      }
+    };
+    return {
+      market,
+      // Admin-run markets and tokens not trading yet have no price chart.
+      chart: market.mode === 'manual' || market.phase === 'pre_listing' ? null : this.chart(id),
+      activity: this.activity(id),
+      odds: optional(() => this.odds(id)),
+      holders: optional(() => this.holders(id)),
+    };
+  }
+
   private publicRow(id: string): MarketRow {
-    const m = this.row(id);
+    const m = this.lightRow(id);
     if (m.published === 0) throw new AppError(404, 'market_not_found', 'Market not found.');
+    return m;
+  }
+
+  /** A market without its uploaded logo and PNG copy (up to a few hundred KB each), for reads that don't show them. */
+  private lightRow(id: string): MarketRow {
+    const m = as<MarketRow | undefined>(this.db.prepare(`SELECT ${this.lightCols} FROM markets WHERE id = ?`).get(id));
+    if (!m) throw new AppError(404, 'market_not_found', 'Market not found.');
     return m;
   }
 

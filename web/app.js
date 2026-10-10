@@ -251,11 +251,17 @@ function syncClock(serverTime) {
 // ------------------------------------------------------------------ Data
 
 async function refreshMe() {
+  const was = S.me?.id ?? null;
   try {
     S.me = await S.api.me();
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) S.me = null;
     else throw err;
+  }
+  // Signed in or out: saved pages show the old player's picks and rank, so drop them.
+  if ((S.me?.id ?? null) !== was) {
+    marketCache.clear();
+    lbCache.clear();
   }
   await refreshRewards();
   renderTop();
@@ -283,26 +289,143 @@ async function loadHome() {
   ]);
   S.featuredOdds = featured ? { id: featured.id, odds } : null;
   S.topLeaders = leaders?.entries?.slice(0, 5) ?? [];
+  if (leaders) lbCache.set('all', { lb: leaders, at: Date.now() });
+  S.homeLoaded = true;
 }
 
-async function loadMarket(id) {
-  const m = await S.api.market(id);
-  syncClock(m.serverTime);
-  const [chart, activity, odds, holders] = await Promise.all([
-    m.phase === 'pre_listing' || isManual(m) ? Promise.resolve(null) : S.api.chart(id),
-    S.api.activity(id),
-    S.api.odds ? S.api.odds(id).catch(() => null) : null,
-    S.api.holders ? S.api.holders(id).catch(() => null) : null,
-  ]);
+// --- Instant pages ----------------------------------------------------------------
+// Each round trip to the server costs a phone far from it a few hundred milliseconds. Pages seen
+// before (and markets from the home lists) are drawn at once from what the browser already has,
+// then quietly updated when the fresh answer lands. Links are fetched as soon as a finger touches
+// them, so the answer is often back by the time the tap ends.
+
+/** Market pages as last loaded: id → { data, at }. */
+const marketCache = new Map();
+/** Market pages being fetched (a prefetch and the page itself share one request): id → promise. */
+const marketInflight = new Map();
+/** Leaderboards as last loaded: period → { lb, at }. */
+const lbCache = new Map();
+const lbInflight = new Map();
+
+/** Fetches a market page: one call to the server (the practice backend has no combined call). */
+function fetchMarketPage(id) {
+  if (marketInflight.has(id)) return marketInflight.get(id);
+  const p = (async () => {
+    let data;
+    if (S.api.marketPage) {
+      const r = await S.api.marketPage(id);
+      data = { market: r.market, chart: r.chart, activity: r.activity ?? [], odds: r.odds, holders: r.holders };
+    } else {
+      const m = await S.api.market(id);
+      const [chart, activity, odds, holders] = await Promise.all([
+        m.phase === 'pre_listing' || isManual(m) ? Promise.resolve(null) : S.api.chart(id),
+        S.api.activity(id),
+        S.api.odds ? S.api.odds(id).catch(() => null) : null,
+        S.api.holders ? S.api.holders(id).catch(() => null) : null,
+      ]);
+      data = { market: m, chart, activity: activity.activity, odds, holders };
+    }
+    if (marketCache.size > 40) marketCache.delete(marketCache.keys().next().value);
+    marketCache.delete(id);
+    marketCache.set(id, { data, at: Date.now() });
+    return data;
+  })().finally(() => marketInflight.delete(id));
+  marketInflight.set(id, p);
+  return p;
+}
+
+function fetchLeaderboard(period) {
+  if (lbInflight.has(period)) return lbInflight.get(period);
+  const p = S.api
+    .leaderboard(period)
+    .then((lb) => {
+      lbCache.set(period, { lb, at: Date.now() });
+      return lb;
+    })
+    .finally(() => lbInflight.delete(period));
+  lbInflight.set(period, p);
+  return p;
+}
+
+/** Starts loading a page the visitor is about to open (finger down, mouse over a link). */
+function prefetchHref(href) {
+  if (!S.api || S.api.demo) return;
+  const m = href.match(/^#\/market\/([^/?#]+)$/);
+  if (m) {
+    const id = decodeURIComponent(m[1]);
+    const hit = marketCache.get(id);
+    if (!hit || Date.now() - hit.at > 5_000) fetchMarketPage(id).catch(() => {});
+  } else if (href === '#/leaderboard') {
+    const hit = lbCache.get(S.lbPeriod);
+    if (!hit || Date.now() - hit.at > 15_000) fetchLeaderboard(S.lbPeriod).catch(() => {});
+  }
+}
+
+/** The market as the home lists have it: enough to draw the page while its chart and activity load. */
+function listedMarket(id) {
+  for (const list of [S.lists.open, S.lists.live, S.lists.settled]) {
+    const hit = (list ?? []).find((x) => x.id === id);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * Draws the page being opened from what the browser already has. Returns false when there is
+ * nothing to draw yet (the loading placeholder shows instead).
+ */
+function paintCached(route) {
+  const view = $('#view');
+  if (route.name === 'market') {
+    const hit = marketCache.get(route.id)?.data;
+    const listed = hit ? null : listedMarket(route.id);
+    if (!hit && !listed) return false;
+    applyMarketData(route.id, hit ?? { market: listed, chart: null, activity: [], odds: null, holders: null, partial: true });
+    renderMarket();
+    return true;
+  }
+  if (route.name === 'leaderboard') {
+    const hit = lbCache.get(S.lbPeriod);
+    if (!hit) return false;
+    setHtml(view, leaderboardView(hit.lb));
+    return true;
+  }
+  if (route.name === 'earn') {
+    // Visitors see the sign-in card; players their rewards as last loaded (kept fresh by the refresh).
+    if (S.me && !S.rewards) return false;
+    setHtml(view, earnView());
+    return true;
+  }
+  if (route.name === 'home') {
+    if (!S.homeLoaded) return false;
+    setHtml(view, homeView());
+    return true;
+  }
+  return false;
+}
+
+async function loadMarket(id, opening = false) {
+  // Opening the page: a prefetch from the last second or so is fresh enough. Refreshes (and reloads
+  // after a prediction) always ask again.
+  const hit = marketCache.get(id);
+  if (opening && hit && !marketInflight.has(id) && Date.now() - hit.at < 1_500) return hit.data;
+  // A prefetch started before a write could answer with the market as it was: wait it out, then ask again.
+  if (!opening && marketInflight.has(id)) await marketInflight.get(id).catch(() => {});
+  return fetchMarketPage(id);
+}
+
+function applyMarketData(id, data) {
   if (S.market?.id !== id) {
     S.trade = { bucket: null, stake: 100, quote: null, seq: 0, busy: false };
     S.tradeKey = '';
   }
-  S.market = m;
-  S.chart = chart;
-  S.activity = activity.activity;
-  S.odds = odds;
-  S.holders = holders;
+  S.market = data.market;
+  S.chart = data.chart;
+  S.activity = data.activity ?? [];
+  S.odds = data.odds;
+  S.holders = data.holders;
+  // Drawn from the home list: the chart is still on its way.
+  S.chartPending = Boolean(data.partial);
 }
 
 async function refresh() {
@@ -444,12 +567,24 @@ async function onRoute() {
     closeSheet();
     // Overlays that belong to the page being left (the tour, results inbox, PnL card) close with it.
     if (['tour', 'inbox', 'pnl'].includes(S.modal) && !S.modalBusy) closeModal();
-    $('#view').innerHTML = skeletonView(next.name);
     window.scrollTo(0, 0);
   }
   renderTop();
+  // A page the browser already has is drawn now and updated when the server answers.
+  let painted = false;
+  if (changed) {
+    try {
+      painted = paintCached(next);
+    } catch (err) {
+      console.error(err);
+    }
+    if (painted) {
+      document.title = titleFor();
+      enterView();
+    } else $('#view').innerHTML = skeletonView(next.name);
+  }
   await loadRoute(changed);
-  if (changed) enterView();
+  if (changed && !painted) enterView();
   if (changed && document.activeElement?.id !== 'market-search') $('#view').focus({ preventScroll: true });
 }
 
@@ -470,7 +605,7 @@ function setHtml(el, html) {
   el.__first = el.firstElementChild;
 }
 
-async function loadRoute() {
+async function loadRoute(opening = false) {
   const view = $('#view');
   // Quick taps from page to page: only the latest page may draw, so a slow earlier one can't
   // land on top of it (or leave the screen blank) when its data finally arrives.
@@ -484,13 +619,16 @@ async function loadRoute() {
       setHtml(view, homeView());
       animateCounts();
     } else if (S.route.name === 'market') {
-      await loadMarket(S.route.id);
+      const id = S.route.id;
+      const data = await loadMarket(id, opening);
+      if (stale() || S.route.id !== id) return;
+      syncClock(data.market.serverTime);
+      applyMarketData(id, data);
       const pending = S.pendingPick;
       if (pending?.id === S.route.id) {
         S.pendingPick = null;
         if (S.market.status === 'open' && bucketsOf(S.market).includes(pending.bucket)) S.trade.bucket = pending.bucket;
       }
-      if (stale()) return;
       renderMarket();
       if (pending?.id === S.route.id && S.trade.bucket) {
         requestQuote();
@@ -498,9 +636,15 @@ async function loadRoute() {
         else setTimeout(() => $('#stake')?.focus({ preventScroll: true }), 50);
       }
     } else if (S.route.name === 'leaderboard') {
-      const lb = await S.api.leaderboard(S.lbPeriod);
-      if (stale()) return;
+      const period = S.lbPeriod;
+      const lb = await fetchLeaderboard(period);
+      if (stale() || period !== S.lbPeriod) return;
       setHtml(view, leaderboardView(lb));
+      // The other tabs are small and cached on the server: load them now so switching is instant.
+      for (const [p] of LB_PERIODS) {
+        const hit = lbCache.get(p);
+        if (p !== period && (!hit || Date.now() - hit.at > 30_000)) fetchLeaderboard(p).catch(() => {});
+      }
     } else if (S.route.name === 'profile') {
       S.profile = await S.api.profile(S.route.id);
       if (stale()) return;
@@ -2215,6 +2359,7 @@ function holdersView(m) {
 }
 
 function chartView(m) {
+  if (S.chartPending && m.phase !== 'pre_listing' && !isManual(m)) return `<div class="chart"><div class="chart-empty">Loading the price chart…</div></div>`;
   if (m.phase === 'pre_listing' || !S.chart?.series?.length) {
     return `<div class="chart"><div class="chart-empty">${
       m.kind === 'live_test' ? 'The price chart appears when the market starts.' : `The price chart starts when ${esc(m.symbol)} begins trading on ${esc(m.exchange)}.`
@@ -2427,9 +2572,12 @@ async function submitPrediction() {
     $('#trade-error').textContent = '';
     closeSheet();
     await refreshMe();
-    await loadMarket(m.id);
-    renderMarket();
-    requestQuote();
+    const fresh = await loadMarket(m.id);
+    if (S.route.name === 'market' && S.route.id === m.id) {
+      applyMarketData(m.id, fresh);
+      renderMarket();
+      requestQuote();
+    }
   } catch (err) {
     const el = $('#trade-error');
     if (el) el.textContent = err.message;
@@ -6901,6 +7049,13 @@ document.addEventListener('click', async (e) => {
   }
   if (lbPeriod) {
     S.lbPeriod = lbPeriod;
+    const hit = lbCache.get(lbPeriod);
+    if (hit) setHtml($('#view'), leaderboardView(hit.lb));
+    else {
+      // Not loaded yet: show the tab as picked while it loads.
+      document.querySelectorAll('[data-lb-period]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.lbPeriod === lbPeriod)));
+      $('.lb-tabs')?.setAttribute('aria-busy', 'true');
+    }
     return loadRoute();
   }
   const rung = t.closest('.rung');
@@ -7484,7 +7639,22 @@ setInterval(() => {
     toast(err.message, true);
   }
   window.addEventListener('hashchange', onRoute);
+  // Start loading a page as soon as a finger touches its link (or the mouse rests on it).
+  const prefetchFrom = (e) => {
+    const a = e.target.closest?.('a[href^="#/"]');
+    if (a) prefetchHref(a.getAttribute('href'));
+  };
+  document.addEventListener('touchstart', prefetchFrom, { passive: true, capture: true });
+  document.addEventListener('pointerdown', prefetchFrom, { passive: true, capture: true });
+  // Mouse: only a link the pointer rests on, not every card it crosses.
+  let hoverTimer = 0;
+  document.addEventListener('mouseover', (e) => {
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => prefetchFrom(e), 120);
+  }, { passive: true });
   await onRoute();
+  // The Earn page's streak calendar, ready before it is opened.
+  if (S.me && !S.daily && S.route.name !== 'earn') setTimeout(() => loadDaily().catch(() => {}), 1500);
   S.refreshedAt = Date.now(); // the page was just loaded: no background refresh straight away
   applyMaintenance(S.cfg.maintenance);
   watchMaintenance();
