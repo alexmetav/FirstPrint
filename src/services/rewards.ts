@@ -280,18 +280,11 @@ export class RewardsService {
     return this.token;
   }
 
-  async tokenStatus() {
+  /** fresh: read the authority's balance now (after a setup step or the admin's Refresh). */
+  async tokenStatus(fresh = false) {
     const token = this.token;
     if (!token) return { enabled: false as const };
-    let balance: number | null = null;
-    let balanceError: string | null = null;
-    if (this.authority) {
-      try {
-        balance = Number(await token.chain.balance(this.authority.address)) / 1e9;
-      } catch (err) {
-        balanceError = `Couldn't read the balance from Solana ${token.cluster}: ${(err as Error).message.slice(0, 160)}`;
-      }
-    }
+    const { balance, balanceError } = this.authority ? await this.authorityBalance(this.authority.address, token, fresh) : { balance: null, balanceError: null };
     return {
       enabled: true as const,
       ready: this.ready(),
@@ -313,6 +306,31 @@ export class RewardsService {
     };
   }
 
+  /**
+   * The mint authority's test SOL, read from Solana at most once a minute. The admin panel never waits
+   * on Solana more than 1.5 s: a slow read finishes in the background and the last one is shown.
+   */
+  private async authorityBalance(address: Address, token: TokenOptions, fresh: boolean) {
+    const c = this.balanceCache;
+    if (c.address !== address || (fresh && !c.loading)) Object.assign(c, { address, at: 0, balance: null, error: null, loading: null });
+    if (this.now() - c.at > 60_000 && !c.loading) {
+      c.loading = token.chain
+        .balance(address)
+        .then((v) => Object.assign(c, { balance: Number(v) / 1e9, error: null }))
+        .catch((err) => Object.assign(c, { error: `Couldn't read the balance from Solana ${token.cluster}: ${(err as Error).message.slice(0, 160)}` }))
+        .finally(() => Object.assign(c, { at: this.now(), loading: null }));
+    }
+    if (c.loading) await Promise.race([c.loading, new Promise((ok) => setTimeout(ok, 1_500))]);
+    return { balance: c.balance, balanceError: c.at ? c.error : null };
+  }
+  private balanceCache: { address: Address | null; at: number; balance: number | null; error: string | null; loading: Promise<unknown> | null } = {
+    address: null,
+    at: 0,
+    balance: null,
+    error: null,
+    loading: null,
+  };
+
   /** Makes the server's mint authority key (once). It needs test SOL before it can create the token. */
   async setupAuthority() {
     this.requireToken();
@@ -321,7 +339,7 @@ export class RewardsService {
       this.saveAuthority(secret);
       this.authority = await signerFromSecret(secret);
     }
-    return this.tokenStatus();
+    return this.tokenStatus(true);
   }
 
   /** Asks the test network's faucet for 1 SOL for the mint authority. Often rate-limited; the web faucet is the fallback. */
@@ -333,7 +351,7 @@ export class RewardsService {
     } catch (err) {
       throw new AppError(502, 'airdrop_failed', `The faucet refused (${(err as Error).message.slice(0, 120)}). Use ${FAUCET_URL} instead.`);
     }
-    return this.tokenStatus();
+    return this.tokenStatus(true);
   }
 
   /** Creates the TestFPT mint on chain, paid by the mint authority. */
@@ -354,7 +372,7 @@ export class RewardsService {
     this.saveSetting('testfpt.mint', mint);
     this.mint = mint;
     this.service.log(`TestFPT created: ${mint}`);
-    return this.tokenStatus();
+    return this.tokenStatus(true);
   }
 
   // --- Firstprint wallets and server-paid mints ----------------------------------------------

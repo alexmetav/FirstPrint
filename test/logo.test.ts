@@ -121,3 +121,13 @@ test('market lists read the logo without loading the image: same link as the mar
   const linked = create('https://assets.coingecko.com/coins/images/1/large/xdp.png');
   assert.equal(service.listMarketsPage('open', undefined, 12).markets.find((m) => m.id === linked)!.logoUrl, 'https://assets.coingecko.com/coins/images/1/large/xdp.png');
 });
+
+test('the admin list links published logos instead of carrying them; drafts keep theirs', () => {
+  const { service, create } = setup();
+  const live = create(PNG);
+  const draft = service.createManualMarket({ symbol: 'drf', exchanges: ['mexc'], basePrice: 1, closeAt: Date.UTC(2026, 9, 4, 14), resultAt: Date.UTC(2026, 9, 4, 15), publish: false, logoUrl: PNG });
+  const byId = Object.fromEntries(service.adminMarkets().map((m) => [m.id, m]));
+  assert.equal(byId[live].logoUrl, service.getMarket(live).logoUrl, 'the same cacheable /api/logo link players get');
+  assert.match(byId[live].logoUrl!, /^\/api\/logo\//);
+  assert.equal(byId[draft].logoUrl, PNG, '/api/logo serves published markets only');
+});

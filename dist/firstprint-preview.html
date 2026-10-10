@@ -15222,7 +15222,7 @@ function createAdminApi(key, baseUrl = '') {
     marketChecks: () => request('/api/admin/market-checks'),
     fetchImage: (url) => request(`/api/admin/fetch-image?url=${encodeURIComponent(url)}`),
     setStartPrice: (id, basePrice) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/start-price`, { basePrice }),
-    token: () => request('/api/admin/token'),
+    token: (fresh) => request(`/api/admin/token${fresh ? '?fresh=1' : ''}`),
     tokenStep: (step) => post(`/api/admin/token/${encodeURIComponent(step)}`),
     tasks: () => request('/api/admin/tasks'),
     errors: (view = 'open') => request(`/api/admin/errors?view=${view}`),
@@ -20726,7 +20726,7 @@ function loadAdminBase(manualOnly) {
     A.api.markets(),
     manualOnly && !A.info.autoListings ? Promise.resolve([]) : A.api.detected().then((d) => d.detected).catch(() => []),
     A.api.log().catch(() => ({ log: [] })),
-    A.api.token().catch(() => ({ enabled: false })),
+    A.api.token(A.tokenFresh).catch(() => ({ enabled: false })).finally(() => (A.tokenFresh = false)),
     A.api.tasks().catch(() => ({ tasks: [] })),
     A.info.level === 'owner' ? A.api.team().catch(() => null) : Promise.resolve(null),
     canAdmin('admin') ? A.api.errors(A.errView ?? 'open').catch(() => null) : Promise.resolve(null),
@@ -21909,7 +21909,7 @@ function marketForm(m, pre = null) {
           <div class="logo-row">
             <span class="logo-preview" data-logo-preview>${v?.logoUrl ? `<img src="${esc(v.logoUrl)}" alt="" referrerpolicy="no-referrer" />` : ico('image')}</span>
             <input type="hidden" name="logoUrl" value="${esc(v?.logoUrl ?? '')}" />
-            <input class="logo-link" data-logo-link type="url" inputmode="url" placeholder="Paste an image link (https://…)" value="${v?.logoUrl && !v.logoUrl.startsWith('data:') ? esc(v.logoUrl) : ''}" autocomplete="off" />
+            <input class="logo-link" data-logo-link type="url" inputmode="url" placeholder="Paste an image link (https://…)" value="${v?.logoUrl && !/^data:|^\/api\/logo\//.test(v.logoUrl) ? esc(v.logoUrl) : ''}" autocomplete="off" />
             <label class="btn btn-sm logo-upload">${ico('upload')}<span>Upload</span><input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" data-logo-file hidden /></label>
             <button class="btn btn-sm" type="button" data-action="logo-find" title="Look the token up on CoinGecko by its ticker and name">${ico('search')}<span>Find</span></button>
             <button class="btn btn-sm" type="button" data-action="logo-clear"${v?.logoUrl ? '' : ' hidden'}>Remove</button>
@@ -22581,6 +22581,7 @@ async function onAdminAction(action, el) {
       await renderAdmin({ cached: true });
       return window.scrollTo({ top: 0 });
     case 'admin-token-refresh':
+      A.tokenFresh = true;
       return renderAdmin();
     case 'admin-task-edit':
       A.editTask = el.dataset.id || null;
@@ -23173,8 +23174,11 @@ async function submitAdminMarket(form, intent) {
     note: String(d.get('note') || '').trim(),
     logoUrl: String(d.get('logoUrl') || '').trim(),
   };
+  // A published market's uploaded logo comes as its /api/logo link: unchanged, so leave it out.
+  const hasLogo = Boolean(body.logoUrl);
+  if (body.logoUrl.startsWith('/api/logo/')) delete body.logoUrl;
   // The server draws Telegram banners with this PNG copy of the logo.
-  const logoPng = await logoPngCopy(body.logoUrl);
+  const logoPng = body.logoUrl ? await logoPngCopy(body.logoUrl) : null;
   if (logoPng) body.logoPng = logoPng;
   // Disabled (locked) fields are absent from FormData and stay unchanged on the server.
   if (d.has('symbol')) body.symbol = String(d.get('symbol') || '').trim();
@@ -23191,7 +23195,7 @@ async function submitAdminMarket(form, intent) {
   if (autoOpen) {
     body.autoOpenAt = inputMs(d.get('autoOpenAt'));
     if (!Number.isFinite(body.autoOpenAt)) return toast('Choose when trading starts.', true);
-    if (!body.logoUrl) return toast('Add the token’s logo first: markets that open by themselves need one.', true);
+    if (!hasLogo) return toast('Add the token’s logo first: markets that open by themselves need one.', true);
   } else if (form.dataset.id) body.autoOpenAt = null;
   if (d.has('crash')) {
     body.config = {
@@ -23666,7 +23670,8 @@ function setLogo(form, value, { keepLink = false } = {}) {
  * library reads PNG but not WebP). Only for logos already saved as data: images; null otherwise.
  */
 async function logoPngCopy(dataUrl) {
-  if (!/^data:image\//.test(dataUrl || '')) return null;
+  // An uploaded logo, or a published market's own /api/logo link (same site, so it can be redrawn).
+  if (!/^data:image\/|^\/api\/logo\//.test(dataUrl || '')) return null;
   if (dataUrl.startsWith('data:image/png')) return dataUrl.length < 290_000 ? dataUrl : null;
   try {
     const img = await new Promise((resolve, reject) => {
@@ -23689,7 +23694,7 @@ async function logoPngCopy(dataUrl) {
 async function backfillLogoPngs(markets) {
   A.pngDone ??= new Set();
   for (const m of markets) {
-    if (!m.logoUrl?.startsWith('data:') || m.hasLogoPng || A.pngDone.has(m.id)) continue;
+    if (!/^data:|^\/api\/logo\//.test(m.logoUrl ?? '') || m.hasLogoPng || A.pngDone.has(m.id)) continue;
     A.pngDone.add(m.id);
     const png = await logoPngCopy(m.logoUrl);
     if (png) await A.api.setLogoPng(m.id, png).catch(() => {});
