@@ -990,6 +990,14 @@ export function createApiServer(opts: ServerOptions): Server {
     return service.getMarket(params.id, undefined, true);
   });
 
+  // Stops a closed market's result countdown: the result time becomes now, for the admin to post the result.
+  route('POST', '/api/admin/manual-markets/:id/result-now', ({ req, params, requireAdmin }) => {
+    requireAdmin();
+    service.resultNow(params.id);
+    audit(req, 'result_now', params.id);
+    return service.getMarket(params.id, undefined, true);
+  });
+
   route('POST', '/api/admin/manual-markets/:id/unpublish', ({ req, params, requireAdmin }) => {
     requireAdmin('listings');
     service.unpublishMarket(params.id);
