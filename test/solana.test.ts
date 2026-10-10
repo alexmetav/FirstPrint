@@ -67,7 +67,8 @@ test('wallet sign-in creates an account once and rejects replays and tampering',
   assert.equal(first.created, true);
   assert.equal(first.user.points, START_POINTS);
   assert.equal(first.user.needs_username, 1);
-  assert.match(first.user.username, /^sol_/);
+  assert.equal(first.user.username, w.address.slice(0, 6));
+  assert.equal(service.publicProfile(`sol_${w.address.slice(0, 6)}`).username, first.user.username, 'old sol_ links still work');
 
   assert.throws(() => service.walletSignIn({ address: w.address, message: c1.message, signature: w.signMessage(c1.message) }), /failed/, 'replay');
 

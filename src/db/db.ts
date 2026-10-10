@@ -70,6 +70,15 @@ function migrate(db: DB) {
     db.exec('ALTER TABLE markets ADD COLUMN result_alerted_at INTEGER');
     db.exec("UPDATE markets SET result_alerted_at = created_at WHERE status != 'open' AND base_price IS NOT NULL");
   }
+  // Wallet accounts were named "sol_<address start>" until the player picked a name; they are now
+  // named with the address start alone. Names players chose themselves are left as they are.
+  const solNamed = db.prepare("SELECT id, username FROM users WHERE needs_username = 1 AND username LIKE 'sol\\_%' ESCAPE '\\'").all() as { id: string; username: string }[];
+  for (const u of solNamed) {
+    const base = u.username.slice(4);
+    let name = base;
+    for (let i = 2; db.prepare('SELECT 1 FROM users WHERE username = ? COLLATE NOCASE AND id <> ?').get(name, u.id); i++) name = `${base}${i}`;
+    db.prepare('UPDATE users SET username = ? WHERE id = ?').run(name, u.id);
+  }
   // Firstprint wallets made for players who sign up without one (key sealed, see solana/vault.ts).
   db.exec(`CREATE TABLE IF NOT EXISTS embedded_wallets (
     user_id TEXT PRIMARY KEY REFERENCES users(id),

@@ -573,7 +573,8 @@ export class FirstprintService {
         this.db.prepare('UPDATE wallets SET last_login = ?, wallet_name = COALESCE(?, wallet_name) WHERE address = ?').run(now, input.walletName ?? null, input.address);
         return { user: this.getUser(existing.user_id), created: false };
       }
-      const base = `sol_${input.address.slice(0, 6)}`;
+      // The start of the address, as wallets show it (no "sol_" in front).
+      const base = input.address.slice(0, 6);
       let username = base;
       for (let i = 2; this.db.prepare('SELECT 1 FROM users WHERE username = ? COLLATE NOCASE').get(username); i++) username = `${base}${i}`;
       const id = randomUUID();
@@ -2568,13 +2569,21 @@ export class FirstprintService {
   }
 
   /**
+   * A player by username. Wallet accounts used to be named "sol_<address start>"; links shared
+   * with the old name still find the player under the new one.
+   */
+  private userByName<T>(columns: string, username: string): T | undefined {
+    const name = String(username ?? '').trim();
+    const find = (n: string) => as<T | undefined>(this.db.prepare(`SELECT ${columns} FROM users WHERE username = ? COLLATE NOCASE`).get(n));
+    return find(name) ?? (/^sol_/i.test(name) ? find(name.slice(4)) : undefined);
+  }
+
+  /**
    * One player's result on one settled market, for the shareable PnL card. Only what is already
    * public (the market, the username and their record on the public profile) is included.
    */
   pnlCard(marketId: string, username: string) {
-    const u = as<{ id: string; username: string } | undefined>(
-      this.db.prepare('SELECT id, username FROM users WHERE username = ? COLLATE NOCASE').get(String(username ?? '').trim()),
-    );
+    const u = this.userByName<{ id: string; username: string }>('id, username', username);
     if (!u) throw new AppError(404, 'user_not_found', 'No player with that username.');
     const h = this.statsFor(u.id).history.find((x) => x.marketId === marketId);
     if (!h) throw new AppError(404, 'no_result', 'This player has no settled prediction on that market.');
@@ -2603,9 +2612,7 @@ export class FirstprintService {
    * already public on markets and the leaderboard; email, wallets and X are never included.
    */
   publicProfile(username: string, viewerId?: string) {
-    const u = as<{ id: string; username: string; created_at: number } | undefined>(
-      this.db.prepare('SELECT id, username, created_at FROM users WHERE username = ? COLLATE NOCASE').get(String(username ?? '').trim()),
-    );
+    const u = this.userByName<{ id: string; username: string; created_at: number }>('id, username, created_at', username);
     if (!u) throw new AppError(404, 'user_not_found', 'No player with that username.');
     const stats = this.statsFor(u.id);
     const open = as<{ market_id: string; symbol: string; name: string | null; status: string; config: string; bucket: Bucket; stake: number }[]>(

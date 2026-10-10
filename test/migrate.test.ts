@@ -43,3 +43,28 @@ test('an older database gets the Telegram task kind; its tasks and completions a
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('wallet accounts named "sol_…" lose the prefix; names players picked are kept', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fp-migrate-'));
+  const path = join(dir, 'old.db');
+  try {
+    const first = openDb(path);
+    const add = first.prepare('INSERT INTO users (id, username, needs_username, points, created_at) VALUES (?, ?, ?, 0, 1)');
+    add.run('w1', 'sol_7xKXtg', 1);
+    add.run('w2', 'sol_Ab3xYz', 1);
+    add.run('taken', 'ab3xyz', 0); // someone already uses the short name
+    add.run('picked', 'sol_king', 0); // chose this name themselves
+    first.close();
+
+    const db = openDb(path);
+    const name = (id: string) => (db.prepare('SELECT username FROM users WHERE id = ?').get(id) as { username: string }).username;
+    assert.equal(name('w1'), '7xKXtg');
+    assert.equal(name('w2'), 'Ab3xYz2');
+    assert.equal(name('taken'), 'ab3xyz');
+    assert.equal(name('picked'), 'sol_king');
+    db.close();
+    openDb(path).close(); // opening again changes nothing
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
