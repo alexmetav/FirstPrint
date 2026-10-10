@@ -1418,7 +1418,7 @@ export function createApiServer(opts: ServerOptions): Server {
   const siteRoot = opts.siteDir ? resolve(opts.siteDir) : null;
   const APP_PREFIX = '/app';
   /** Website files that link to the app; their /play/ links are pointed at /app/. */
-  const LINKED_SITE_FILES = new Set(['index.html', join('assets', 'site.js'), 'pitch.html', 'whitepaper.html', 'tokenomics.html']);
+  const LINKED_SITE_FILES = new Set(['index.html', join('assets', 'site.js'), 'pitch.html', 'whitepaper.html', 'tokenomics.html', 'docs.html']);
 
   /**
    * Static files, read and compressed once per version of the file. Compressing the 300 KB app script on

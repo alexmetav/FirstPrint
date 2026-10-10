@@ -22,6 +22,7 @@
     <header class="doc-bar">
       <a class="doc-brand" href="/"><span class="doc-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
       <nav class="doc-nav" aria-label="Documents">
+        <a href="/docs">Docs</a>
         <a href="/pitch">Pitch deck</a>
         <a href="/whitepaper" aria-current="page">Whitepaper</a>
         <a href="/tokenomics">Tokenomics</a>
@@ -99,12 +100,12 @@
         <h2 id="prices"><span class="n">3</span>Start and result prices</h2>
         <p>Prices are noisy, and a new listing’s first minutes are the noisiest of all. Firstprint never uses a single trade as a reference.</p>
         <ul>
-          <li><b>Start price at the close.</b> For a token that is already trading, the start price is its price when predictions close: the median of the last three one-minute closes before the close on each source (or the last three price points on CoinGecko), across the market’s sources. A token that climbs while predictions are open gives nobody an edge, because the move is measured from the close.</li>
+          <li><b>Start price at the close.</b> For a token that is already trading, the start price is its price at the exact moment predictions close, read from the market’s sources (the median when several answer). A token that climbs while predictions are open gives nobody an edge, because the move is measured from the close.</li>
           <li><b>Opening price for upcoming markets.</b> When a token starts trading, the start price is the median of the closes of its 2nd to 4th one-minute candles, skipping the chaotic first minute. A market only opens once trades have been flowing for a few minutes and the live price is within 10% of that reference.</li>
           <li><b>Averaged windows.</b> In automatic mode the start and result prices are one-hour averages of one-minute candles, combined across exchanges as a volume-weighted median, so a wick on one venue can’t decide a market.</li>
           <li><b>Coverage checks.</b> A window must have real candles in at least half of its minutes and a minimum number of trades, or the market is cancelled rather than settled on bad data.</li>
         </ul>
-        <p>Today, production markets are run by operators: they confirm prices against live exchange data before posting a result, with automated checks that warn about missing or inconsistent prices.</p>
+        <p>Today, production markets are published by operators. At the exact result time the server reads the price from each of the market’s sources (the one-minute candle ending at that moment, the median across sources) and posts the result by itself: winning outcome from the % change, winners paid, players notified. If no source has that price, the operator is alerted with links to each exchange’s chart at that minute and posts the result by hand. An operator can also end a countdown early; the result time then moves to that minute and players see it at once.</p>
 
         <h2 id="payouts"><span class="n">4</span>Pools and payouts</h2>
         <p>Markets are parimutuel: all stakes go into one pool, and the players who picked the winning outcome share it. There is no house taking the other side, so Firstprint never bets against its players.</p>
@@ -157,7 +158,7 @@
           <li><b>The move counts from the close.</b> The start price is taken when predictions close, so following a trend while they are open earns nothing.</li>
           <li><b>Averages and medians, not last trades.</b> Moving a one-hour, multi-exchange median costs far more than a market could pay.</li>
           <li><b>Cancellation rules.</b> An automatic market is cancelled and refunded if a listing is delayed by more than a day, trading halts for more than six hours in total, or price data is too thin. Admin-run markets are cancelled and refunded by the operator.</li>
-          <li><b>One account, one player.</b> Sign-in is verified (Google, email code or a signed wallet message); tasks are honour-based, with one X username per account and each task paying once; referral rewards need the friend to make a real prediction.</li>
+          <li><b>One account, one player.</b> Sign-in is verified (Google, email code or a signed wallet message); follow, repost and post tasks are checked on X, with one X username per account and each task paying once; referral rewards need the friend to predict on three different markets.</li>
           <li><b>Public results.</b> Every settled market shows its start price, result price and winning outcome.</li>
         </ul>
 
@@ -177,7 +178,7 @@
         <ul>
           <li><b>TestFPT.</b> A Token-2022 token on Solana testnet. Starting points, rewards and daily streak points are minted to the player’s wallet.</li>
           <li><b>Predictions as transfers.</b> For Firstprint-wallet players, every stake is a TestFPT transfer from their wallet to the market escrow, and every payout or refund a transfer back, each carrying a memo such as <code>firstprint:stake:&lt;market&gt;:&lt;outcome&gt;</code>.</li>
-          <li><b>Fees paid by Firstprint.</b> The server normally signs and pays every network fee, including claims to players’ own wallets, so players don’t need SOL. If the server runs low on test SOL, a claim to your own wallet asks you to sign and pay the small fee.</li>
+          <li><b>Fees paid by Firstprint.</b> The server signs and pays every network fee, so players don’t need SOL. Rewards are sent by themselves to the player’s Firstprint wallet or first linked wallet, with no claim step. If sending is paused (the server is low on test SOL), a claim chip lets the player claim by signing.</li>
           <li><b>Exactly once.</b> Each transaction is recorded before it is sent and only retried after its blockhash has expired, so nothing is minted or moved twice.</li>
           <li><b>On-chain pools.</b> A Solana program for USDC prediction pools with oracle settlement exists as a devnet prototype. It is unaudited and not in use.</li>
         </ul>
@@ -187,9 +188,9 @@
         <ul>
           <li><b>Shareable PnL cards.</b> Every settled prediction has an image card and link with a preview made for X.</li>
           <li><b>Daily streaks</b> bring players back every day.</li>
-          <li><b>Referrals</b> reward the inviter once the friend makes a prediction.</li>
+          <li><b>Referrals</b> reward the inviter (200 points, up to 25 friends) once the friend has predicted on three different markets.</li>
           <li><b>Telegram channel</b> posts every new market, its last hour and its result.</li>
-          <li><b>Leaderboards</b> by day, week, month and all time, with public profiles.</li>
+          <li><b>Leaderboards</b> by day, week, month and all time, a Results list of every settled token, and public profiles.</li>
         </ul>
 
         <h2 id="economics"><span class="n">10</span>Economics</h2>
@@ -226,7 +227,7 @@
           <li>Smart contracts and custodial wallets carry technical risk. The on-chain pool program is an unaudited prototype.</li>
           <li>This paper describes plans that may change. It is not financial advice and not an offer to sell or a solicitation to buy any token or security.</li>
         </ul>
-        <p class="muted">See also the <a href="/terms.html">terms of use</a> and <a href="/privacy.html">privacy policy</a>.</p>
+        <p class="muted">See also the <a href="/docs">player docs</a>, the <a href="/terms.html">terms of use</a> and <a href="/privacy.html">privacy policy</a>.</p>
       </article>
     </div>
 

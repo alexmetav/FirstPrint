@@ -21,7 +21,7 @@ console.log('Built public site and prediction app into .deploy/');
 const appUrl = (process.env.APP_URL ?? '').trim().replace(/\/+$/, '');
 if (appUrl) {
   if (!/^https:\/\/[^\s"'<>]+$/.test(appUrl)) throw new Error('APP_URL must be an https:// address.');
-  for (const file of ['index.html', 'assets/site.js', 'pitch.html', 'whitepaper.html', 'tokenomics.html']) {
+  for (const file of ['index.html', 'assets/site.js', 'pitch.html', 'whitepaper.html', 'tokenomics.html', 'docs.html']) {
     const url = new URL(file, out);
     writeFileSync(url, linkSiteToApp(readFileSync(url, 'utf8'), appUrl, file));
   }

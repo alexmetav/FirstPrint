@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Firstprint docs</title>
+    <meta name="description" content="The Firstprint player guide: signing in, markets, predicting, taking a prediction back, prices and results, payouts, the daily streak, tasks, referrals, TestFPT wallets, the leaderboard and what changed recently." />
+    <meta name="theme-color" content="#09090b" />
+    <link rel="canonical" href="https://www.firstprint.fun/docs" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="Firstprint docs" />
+    <meta property="og:description" content="Everything a player needs to know about Firstprint: markets, results, rewards, TestFPT and the leaderboard." />
+    <meta property="og:image" content="https://www.firstprint.fun/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Geist+Mono:wght@400..600&display=swap" />
+    <link rel="stylesheet" href="assets/docs.css" />
+  </head>
+  <body>
+    <header class="doc-bar">
+      <a class="doc-brand" href="/"><span class="doc-mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>Firstprint</a>
+      <nav class="doc-nav" aria-label="Documents">
+        <a href="/docs" aria-current="page">Docs</a>
+        <a href="/pitch">Pitch deck</a>
+        <a href="/whitepaper">Whitepaper</a>
+        <a href="/tokenomics">Tokenomics</a>
+        <a href="/media-kit">Media kit</a>
+      </nav>
+      <a class="doc-cta" href="/play/">Launch app</a>
+    </header>
+
+    <div class="doc">
+      <nav class="toc" aria-label="Contents">
+        <b>Contents</b>
+        <a href="#start">1. Getting started</a>
+        <a href="#markets">2. Markets</a>
+        <a href="#predict">3. Making a prediction</a>
+        <a href="#take-back">4. Taking a prediction back</a>
+        <a href="#results">5. Prices and results</a>
+        <a href="#payouts">6. Payouts and refunds</a>
+        <a href="#earn">7. Earn: streak, tasks, invites</a>
+        <a href="#testfpt">8. TestFPT and wallets</a>
+        <a href="#leaderboard">9. Leaderboard and results</a>
+        <a href="#dashboard">10. Dashboard and profile</a>
+        <a href="#alerts">11. Telegram and email</a>
+        <a href="#api">12. Public API</a>
+        <a href="#faq">13. FAQ</a>
+        <a href="#changes">14. What’s new</a>
+      </nav>
+
+      <article class="doc-body">
+        <p class="eyebrow">Docs · player guide</p>
+        <h1>How to play Firstprint</h1>
+        <p class="sub">Everything about markets, results, rewards and TestFPT, in one place. Free to play: points only, no real money.</p>
+        <div class="meta-row"><span>Updated 11 October 2026</span><span>Solana testnet</span><span>firstprint.fun</span></div>
+
+        <div class="callout" style="--c: var(--up)"><p><b>In short.</b> Pick where a token’s price will land at the result time, from Crash to Moon (or Yes/No). Stake free points. If you’re right, you share the pool with the other winners, and earlier picks get a bigger share.</p></div>
+
+        <h2 id="start"><span class="n">1</span>Getting started</h2>
+        <ul>
+          <li><b>Log in three ways.</b> Google, a one-time code sent to your email, or a Solana wallet (Phantom, Solflare, Backpack or any Wallet Standard wallet) by signing a message. Ways that share an email lead to the same account.</li>
+          <li><b>1,000 starting points.</b> Every new account gets 1,000 points as a welcome bonus.</li>
+          <li><b>A wallet made for you.</b> If you sign up without a wallet, Firstprint makes one for you: no seed phrase and no extension. Its secret key is stored encrypted, never in plain text. You can also link your own wallet later.</li>
+          <li><b>Your username.</b> If you sign up with a wallet, your username is the first six characters of your wallet address (for example <code>7xKXtg</code>). If that name is taken, a number is added. You can change it in your profile.</li>
+          <li><b>Take the tour.</b> On the home page, under <i>How it works</i>, the <b>Take the tour</b> button walks you through the app.</li>
+        </ul>
+
+        <h2 id="markets"><span class="n">2</span>Markets</h2>
+        <p>Firstprint opens markets on crypto tokens: new exchange listings, trending tokens and well-known ones. Every market is checked by the Firstprint team before it is published.</p>
+        <h3>The five outcomes</h3>
+        <p>A ladder market asks where the price will be at the result time, compared with the start price:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Outcome</th><th>Price at the result vs the start price</th></tr></thead>
+            <tbody>
+              <tr><td><span class="swatch" style="--c: var(--moon)"></span>Moon</td><td>+50% or better</td></tr>
+              <tr><td><span class="swatch" style="--c: var(--up)"></span>Up</td><td>+10% to +50%</td></tr>
+              <tr><td><span class="swatch" style="--c: var(--flat)"></span>Flat</td><td>−10% to +10%</td></tr>
+              <tr><td><span class="swatch" style="--c: var(--down)"></span>Down</td><td>−50% to −10%</td></tr>
+              <tr><td><span class="swatch" style="--c: var(--crash)"></span>Crash</td><td>−50% or worse</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>These are the default ranges. A market can use its own ranges, and the market page always shows the ones it uses. A <b>Yes/No</b> market asks one question instead, such as “will the price be at or above $0.25 at the result time?”.</p>
+
+        <h3>A market’s life</h3>
+        <ol>
+          <li><b>Open.</b> You can predict until predictions close, at most three days after the market opens.</li>
+          <li><b>Counting down.</b> Predictions are closed and the start price is locked. The market counts down to its result time, usually 7 to 30 days later.</li>
+          <li><b>Settled or cancelled.</b> The result is posted and winners are paid, or the market is cancelled and every stake is refunded.</li>
+        </ol>
+        <p>Each market page has a big live countdown to the second: <b>Predictions close in</b> (green) while you can predict, then <b>Result in</b> (gold) until the result. The digits turn gold in the last hour.</p>
+
+        <h3>The home page</h3>
+        <ul>
+          <li><b>Featured market</b> at the top, with an <b>Open market</b> button beside the token name.</li>
+          <li><b>Total markets</b>: every market published so far.</li>
+          <li><b>Top payout</b>: the best multiple a player has actually been paid on a win. Before any result, it shows the best payout on offer now.</li>
+          <li><b>In play</b>: points staked in open markets. The number rolls digit by digit as new predictions come in.</li>
+          <li><b>Top players</b>: the all-time leaders, with a link to the full leaderboard.</li>
+        </ul>
+
+        <h2 id="predict"><span class="n">3</span>Making a prediction</h2>
+        <ul>
+          <li><b>Pick and stake.</b> Choose an outcome on the market page, enter how many points to stake and confirm. The page shows what you would win if the pool stayed as it is now.</li>
+          <li><b>Early bonus.</b> A prediction placed when the market opens counts <b>2×</b> when the winners share the pool. The bonus falls steadily, minute by minute, to 1× at the close. Market cards and the market page show the live bonus. The bonus changes your share of the pool; it never adds points by itself.</li>
+          <li><b>Limits.</b> One player can stake up to 10% of a market’s pool cap (by default). A stake that would go over the pool cap or your limit isn’t accepted, so no single player can dominate a market.</li>
+          <li><b>Crowd odds.</b> The market page shows how the pool is split between the outcomes, how that changed over time, recent predictions and the top participants.</li>
+        </ul>
+
+        <h2 id="take-back"><span class="n">4</span>Taking a prediction back</h2>
+        <p>You can take a prediction back while predictions are open. You get your stake back minus a fee, and the prediction leaves the pool. The fee stops a big stake from moving the odds and then leaving at the last moment.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>When you take it back</th><th>Fee</th></tr></thead>
+            <tbody>
+              <tr><td>Within 2 minutes of placing it, in the first half of the prediction window</td><td>Free</td></tr>
+              <tr><td>First half of the prediction window</td><td>2%</td></tr>
+              <tr><td>Second half: in a 72-hour market, 24 h / 12 h / 6 h / 1 h before the close</td><td>about 4% / 16% / 30% / 46%</td></tr>
+              <tr><td>Near the close</td><td>up to 50%</td></tr>
+              <tr><td>Last 10 minutes before predictions close</td><td>Not allowed</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul>
+          <li><b>You see the exact fee first.</b> The confirm window shows the fee, what comes back to you, and where the fee goes.</li>
+          <li><b>Half is burned.</b> Those points are gone for good. Your profile counts them as <i>Points burned</i>.</li>
+          <li><b>Half goes to early players.</b> It is shared among predictions placed in the first half of the window that were never taken back, by stake, win or lose. It is paid at the result, next to any winnings, and shows on your profile as <i>Early rewards</i>. It is separate from the pool, so it never reduces anyone’s winnings.</li>
+          <li><b>The early bonus is lost.</b> If you predict again, the new prediction gets the bonus for the moment you place it.</li>
+          <li><b>Cancelled markets.</b> Stakes still in are refunded, but take-back fees are not returned; the early half is burned too.</li>
+        </ul>
+        <p class="muted">The Firstprint team can change these numbers. A change applies only to predictions taken back after it. The full formula is in the <a href="/whitepaper#take-back">whitepaper</a>.</p>
+
+        <h2 id="results"><span class="n">5</span>Prices and results</h2>
+        <ul>
+          <li><b>Start price.</b> For a token that is already trading, the start price is its price at the exact moment predictions close. A move while predictions are open doesn’t count, so following a trend earns nothing. Some markets set the start price in advance; the market page says which.</li>
+          <li><b>Result price.</b> At the exact result time, Firstprint reads the token’s price from the market’s exchanges: the one-minute candle that ends at that moment. When several exchanges answer, the middle value (the median) is used.</li>
+          <li><b>Results post by themselves.</b> As soon as the result price is in, the winning outcome is worked out from the % change, winners are paid, players are told and the result is posted to the Telegram channel. There is nothing to claim.</li>
+          <li><b>If a price can’t be read.</b> When no exchange has the price for that minute, the Firstprint team checks each exchange’s chart at that exact time and posts the result by hand.</li>
+          <li><b>Earlier result.</b> The team can end a market’s countdown early and post its result now. The result time then moves to that minute and the market page shows the new time straight away.</li>
+          <li><b>Public results.</b> Every settled market shows its start price, final price, % change, winning outcome and winners.</li>
+        </ul>
+
+        <h2 id="payouts"><span class="n">6</span>Payouts and refunds</h2>
+        <p>All stakes go into one pool. Everyone who picked the winning outcome shares it, minus the fee shown on the market (usually 4%). There is no house on the other side.</p>
+        <div class="formula">
+          net pool = pool × (1 − fee)<br />
+          your share = your stake × your early bonus ÷ (all winning stakes × their bonuses)<br />
+          payout = net pool × your share
+        </div>
+        <div class="callout" style="--c: var(--up)"><p><b>Example.</b> A 10,000-point pool with a 4% fee shares 9,600 points. If the winners staked 2,000 points with the same bonus, each winning point returns 4.8 points.</p></div>
+        <ul>
+          <li><b>Everyone gets their points back</b> if nobody picked the winning outcome, everyone picked the same outcome, or the market is cancelled.</li>
+          <li><b>Rounding.</b> Payouts are rounded down to whole points.</li>
+          <li><b>Share it.</b> Each settled prediction has a PnL card you can share on X.</li>
+        </ul>
+
+        <h2 id="earn"><span class="n">7</span>Earn: streak, tasks, invites</h2>
+        <p>The <b>Earn</b> tab is where you get more points.</p>
+        <h3>Daily streak</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Day of your streak</th><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7+</th></tr></thead>
+            <tbody><tr><td>Points</td><td>50</td><td>75</td><td>100</td><td>125</td><td>150</td><td>175</td><td>200</td></tr></tbody>
+          </table>
+        </div>
+        <p>Claim once a day from the streak button in the top bar. Days are counted in UTC. Miss a day and the streak starts again at day 1.</p>
+        <h3>Tasks</h3>
+        <ul>
+          <li><b>Kinds of task.</b> Follow an account on X, repost or like a post, publish a post (your invite link is added for you), join the Telegram channel, or open a link.</li>
+          <li><b>Connect X first.</b> X tasks need your X username. Connecting X pays its own reward (100 points by default). One X username can be linked to one Firstprint account.</li>
+          <li><b>Press Verify.</b> Do the task, then press Verify. Follow, repost and post tasks are checked on X before they pay. The button shows a spinner and a seconds counter while it checks. After 3 checks in a row that find nothing, wait 5 minutes before trying again.</li>
+          <li><b>Join Telegram.</b> Press Join to open the Firstprint bot with your own code and press Start. That links your Telegram account; Verify then checks that you are in the channel. No X account needed.</li>
+          <li><b>Once each.</b> Each task pays once. <i>Already claimed</i> means you did it; <i>All spots claimed</i> means a task with limited spots is full. Sometimes a task is reset so everyone can do it and earn it again.</li>
+        </ul>
+        <h3>Invite friends</h3>
+        <p>Share your invite link from Earn. You get <b>200 points</b> for each friend who signs up with it and predicts on <b>3 different markets</b>, for up to 25 friends.</p>
+
+        <h2 id="testfpt"><span class="n">8</span>TestFPT and wallets</h2>
+        <ul>
+          <li><b>Points on chain.</b> Points move as <b>TestFPT</b>, a token on the Solana test network. Your starting points, daily streak, task, Connect X and invite rewards are sent as TestFPT.</li>
+          <li><b>Sent straight to your wallet.</b> There is no claim step: rewards go by themselves to your Firstprint wallet, or to the first wallet you linked. A verified task sends right away and its coins fly into your points balance.</li>
+          <li><b>No SOL needed.</b> Firstprint pays every network fee.</li>
+          <li><b>The claim chip.</b> If sending is paused for a while, a small gold chip appears next to your points balance. Press <b>Claim</b> and sign with your wallet to get your TestFPT anyway.</li>
+          <li><b>Predictions are transfers too.</b> With a Firstprint wallet, every stake, payout and refund is a public TestFPT transfer. See them under <i>On-chain activity</i> on your dashboard, and open any of them on the Solana explorer.</li>
+          <li><b>No value.</b> TestFPT is a test token on a test network. It can’t be bought, sold or cashed out.</li>
+        </ul>
+
+        <h2 id="leaderboard"><span class="n">9</span>Leaderboard and results</h2>
+        <ul>
+          <li><b>Rankings by points won or lost</b> on settled markets: <b>All time</b> (the default), This month, This week (from Monday 00:00 UTC) and Today (UTC).</li>
+          <li><b>Results.</b> A list of every token with a result: its outcome, how many played and how many won, with a few player avatars. Tap one to see everyone who played, winners first, with their pick, stake and result. Refunded markets are listed with the reason.</li>
+          <li><b>Profiles.</b> Tap any name to open that player’s public profile.</li>
+        </ul>
+
+        <h2 id="dashboard"><span class="n">10</span>Dashboard and profile</h2>
+        <ul>
+          <li><b>Dashboard</b> (the <i>Me</i> tab on phones): your balance, positions in play, past results, on-chain activity, points history and wallets. Long lists come in pages of 10.</li>
+          <li><b>Profile tiles</b> include win rate, points won over time, <i>Points burned</i> (from taking picks back) and <i>Early rewards</i> (from predicting early and staying in).</li>
+          <li><b>Public profile.</b> Other players see your markets in play, past markets and record.</li>
+        </ul>
+
+        <h2 id="alerts"><span class="n">11</span>Telegram and email</h2>
+        <ul>
+          <li><b>Telegram channel.</b> Every new market is posted with a banner, its start price, when predictions close and when the result is due. A reminder goes out in its last hour, and the result is posted when it settles.</li>
+          <li><b>Email.</b> Sign-in codes and result emails come from Firstprint with a <i>See the result</i> button.</li>
+        </ul>
+
+        <h2 id="api"><span class="n">12</span>Public API</h2>
+        <p>A free, read-only API lists markets, one market, upcoming tokens and the leaderboard. No key is needed; each address can make 60 requests a minute. See the <a href="/api.html">API docs</a>.</p>
+
+        <h2 id="faq"><span class="n">13</span>FAQ</h2>
+        <h3>Does it cost anything?</h3>
+        <p>No. Firstprint is free. Points and TestFPT have no cash value and can’t be bought, sold or withdrawn.</p>
+        <h3>Do I need SOL or a crypto wallet?</h3>
+        <p>No. Log in with Google or email and Firstprint makes a wallet for you. It also pays the network fees.</p>
+        <h3>When do I get my winnings?</h3>
+        <p>At the result time. Results post by themselves and winnings go straight to your balance; there is nothing to claim.</p>
+        <h3>Why did my streak reset?</h3>
+        <p>A streak stays alive only if you claim every UTC day. Missing a day starts it again at day 1 (50 points).</p>
+        <h3>My task says “Verify” but nothing happens.</h3>
+        <p>The check on X can take a few seconds; the button shows a counter while it works. If 3 checks in a row find nothing, wait 5 minutes, make sure the right X account is connected, and try again.</p>
+        <h3>Can I change my pick?</h3>
+        <p>Yes, by taking it back and predicting again, until 10 minutes before predictions close. See <a href="#take-back">Taking a prediction back</a> for the fee.</p>
+        <h3>Where are the full rules?</h3>
+        <p>The <a href="/whitepaper">whitepaper</a> has the full market design, formulas and integrity rules. The <a href="/terms.html">terms</a> and <a href="/privacy.html">privacy policy</a> apply to everything here.</p>
+
+        <h2 id="changes"><span class="n">14</span>What’s new</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Change</th></tr></thead>
+            <tbody>
+              <tr><td>11 Oct 2026</td><td>Wallet sign-ups get a username from their address (no more <code>sol_</code> names). Old profile and share links still work.</td></tr>
+              <tr><td>11 Oct 2026</td><td>Leaderboard <b>Results</b>: every settled token with its players and winners.</td></tr>
+              <tr><td>11 Oct 2026</td><td>Home: <b>In play</b> points roll digit by digit like a timer.</td></tr>
+              <tr><td>11 Oct 2026</td><td>Market pages, the leaderboard and Earn open faster.</td></tr>
+              <tr><td>10 Oct 2026</td><td>Results post by themselves with the price at the exact result time; the start price is the price at the exact close.</td></tr>
+              <tr><td>10 Oct 2026</td><td>The leaderboard opens on <b>All time</b>, so every player who has won shows.</td></tr>
+              <tr><td>9 Oct 2026</td><td><a href="/media-kit">Media kit</a> for partners.</td></tr>
+              <tr><td>8 Oct 2026</td><td><b>Take a prediction back</b> with a time-based fee: half burned, half to early players. Early bonus raised to 2×.</td></tr>
+              <tr><td>8 Oct 2026</td><td>Home: <b>Top payout</b> and <b>Total markets</b>.</td></tr>
+              <tr><td>7 Oct 2026</td><td>Rewards go straight to your wallet: no claim step.</td></tr>
+              <tr><td>7 Oct 2026</td><td>Market page: a big live countdown to the second.</td></tr>
+              <tr><td>7 Oct 2026</td><td><b>Join Telegram</b> task, checked through the Firstprint bot.</td></tr>
+              <tr><td>7 Oct 2026</td><td>Dashboard and profile lists come in pages.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted">Firstprint is in public testing on Solana testnet. Points have no cash value. Nothing here is financial advice.</p>
+      </article>
+    </div>
+
+    <footer class="doc-foot">© 2026 Firstprint · <a href="/whitepaper">Whitepaper</a> · <a href="/api.html">API</a> · <a href="/terms.html">Terms</a> · <a href="/privacy.html">Privacy</a></footer>
+    <script type="module" src="assets/docs.js"></script>
+  </body>
+</html>
