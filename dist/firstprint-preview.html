@@ -16460,7 +16460,7 @@ class DemoBackend {
       let created = false;
       let userId = this.walletOwners.get(address);
       if (!userId) {
-        const u = this.addUser(`sol_${address.slice(0, 6)}`, 1_000);
+        const u = this.addUser(address.slice(0, 6), 1_000);
         u.needsUsername = true;
         u.hasEmail = false;
         u.wallets.push({ address, walletName: walletName ?? null });
