@@ -736,6 +736,68 @@ export class DemoBackend {
     });
   }
 
+  results(page = 1) {
+    return this.run(() => {
+      const done = this.marketList.filter((m) => (m.status === 'resolved' || m.status === 'void') && m.predictions.length).sort((a, b) => (b.settledAt ?? 0) - (a.settledAt ?? 0));
+      const per = 10;
+      const pages = Math.max(1, Math.ceil(done.length / per));
+      const pg = Math.min(pages, Math.max(1, page));
+      return {
+        page: pg,
+        pages,
+        total: done.length,
+        results: done.slice((pg - 1) * per, pg * per).map((m) => {
+          const byUser = this.resultRows(m);
+          return {
+            marketId: m.id,
+            symbol: m.symbol,
+            name: m.name,
+            outcomes: 'ladder',
+            status: m.status,
+            winningBucket: m.status === 'resolved' ? (m.result?.winningBucket ?? null) : null,
+            voidReason: m.status === 'void' ? (m.result?.voidReason ?? 'refunded') : null,
+            settledAt: m.settledAt ?? null,
+            logoUrl: m.logoUrl ?? null,
+            players: byUser.length,
+            winners: byUser.filter((r) => r.won).length,
+            pool: m.predictions.reduce((s, p) => s + (p.accepted ?? p.stake), 0),
+            paid: byUser.reduce((s, r) => s + r.payout, 0),
+            sample: byUser.slice(0, 4).map((r) => r.name),
+          };
+        }),
+      };
+    });
+  }
+
+  resultPlayers(marketId, page = 1) {
+    return this.run(() => {
+      const m = this.marketList.find((x) => x.id === marketId);
+      if (!m) throw new ApiError(404, 'market_not_found', 'Market not found.');
+      const rows = this.resultRows(m);
+      const per = 20;
+      const pages = Math.max(1, Math.ceil(rows.length / per));
+      const pg = Math.min(pages, Math.max(1, page));
+      return { marketId, status: m.status, page: pg, pages, total: rows.length, players: rows.slice((pg - 1) * per, pg * per) };
+    });
+  }
+
+  /** One row per player of a settled market, winners first. */
+  resultRows(m) {
+    const by = new Map();
+    for (const p of m.predictions) {
+      const r = by.get(p.userId) ?? { name: this.users.get(p.userId).username, buckets: [], stake: 0, accepted: 0, payout: 0, refund: 0, at: p.placedAt };
+      if (!r.buckets.includes(p.bucket)) r.buckets.push(p.bucket);
+      r.stake += p.stake;
+      r.accepted += p.accepted ?? 0;
+      r.payout += p.payout ?? 0;
+      r.refund += p.refund ?? 0;
+      by.set(p.userId, r);
+    }
+    return [...by.values()]
+      .sort((a, b) => b.payout - a.payout || a.at - b.at)
+      .map(({ at: _at, accepted, ...r }) => ({ ...r, profit: m.status === 'resolved' ? r.payout - accepted : 0, won: r.payout > 0 }));
+  }
+
   walletChallenge(address) {
     return this.run(() => {
       const nonce = b58encode(crypto.getRandomValues(new Uint8Array(12)));

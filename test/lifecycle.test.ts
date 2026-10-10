@@ -86,6 +86,33 @@ test('full lifecycle: predict → close → settle → payout', async () => {
   assert.equal(lb.me?.profit, 92);
 });
 
+test('results list every settled token with its players and winners', async () => {
+  const { clock, service, marketId, listingAt, scheduler } = setup(-0.3);
+  const alice = await service.createUser({ username: 'alice' });
+  const bob = await service.createUser({ username: 'bob' });
+  const carol = await service.createUser({ username: 'carol' });
+  service.placePrediction(marketId, alice.id, 'down', 100);
+  service.placePrediction(marketId, bob.id, 'up', 100);
+  service.placePrediction(marketId, carol.id, 'down', 50);
+  assert.equal(service.results().total, 0, 'an open market has no result yet');
+  assert.throws(() => service.resultPlayers(marketId), /no result yet/);
+
+  await runUntil(clock, scheduler, listingAt + 31 * MIN);
+  const list = service.results();
+  assert.equal(list.total, 1);
+  const r = list.results[0];
+  assert.equal(r.symbol, 'XYZ');
+  assert.equal(r.winningBucket, 'down');
+  assert.equal(r.players, 3);
+  assert.equal(r.winners, 2);
+  assert.deepEqual(r.sample.slice(0, 2), ['alice', 'carol'], 'winners first');
+
+  const players = service.resultPlayers(marketId);
+  assert.equal(players.total, 3);
+  assert.deepEqual(players.players.map((p) => [p.name, p.won]), [['alice', true], ['carol', true], ['bob', false]]);
+  assert.equal(players.players[2].profit, -100);
+});
+
 test('markets with no price data are voided and fully refunded', async () => {
   const db = openDb(':memory:');
   const clock = new ManualClock(T0);

@@ -14468,6 +14468,151 @@ html.in-maint body {
   min-width: 0;
 }
 
+/* --------------------------------------------------------- Results under the leaderboard */
+
+.res-section {
+  margin-top: 34px;
+}
+.res-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+.res-head p {
+  margin: 0 0 14px;
+  font-size: 14px;
+}
+.res-list {
+  list-style: none;
+  margin: 0 0 12px;
+}
+.res-item + .res-item {
+  border-top: 1px solid var(--line);
+}
+.res-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.res-row:hover {
+  background: var(--surface-2);
+}
+.res-tok {
+  display: flex;
+  flex-direction: column;
+  min-width: 64px;
+  line-height: 1.25;
+}
+.res-tok .muted {
+  font-size: 12px;
+}
+.res-out {
+  flex: 1;
+  font-size: 13px;
+  min-width: 0;
+}
+.res-win .oc {
+  margin-left: 4px;
+}
+.res-void {
+  color: var(--muted);
+}
+.res-faces {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+}
+.res-faces .avatar {
+  --size: 22px;
+  margin-left: -7px;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.res-faces .avatar:first-child {
+  margin-left: 0;
+}
+.res-plus {
+  margin-left: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.res-count {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.res-chev {
+  display: inline-flex;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+.res-item.open .res-chev {
+  transform: rotate(90deg);
+}
+.res-body {
+  padding: 0 0 8px;
+  border-top: 1px dashed var(--line);
+}
+.res-out-sm {
+  display: none;
+  margin: 10px 18px 0;
+  font-size: 13px;
+}
+.res-loading,
+.res-empty {
+  padding: 14px 18px;
+  margin: 0;
+}
+.res-table {
+  width: 100%;
+}
+.res-table td,
+.res-table th {
+  padding-left: 18px;
+}
+.res-table td:last-child,
+.res-table th:last-child {
+  padding-right: 18px;
+}
+.res-body .pager {
+  margin: 8px 0 4px;
+}
+.tag-win {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: color-mix(in srgb, var(--up) 18%, transparent);
+  color: var(--up);
+}
+.tag-win .i {
+  width: 12px;
+  height: 12px;
+}
+@media (max-width: 640px) {
+  .res-row {
+    gap: 9px;
+    padding: 11px 14px;
+  }
+  .res-faces {
+    margin-left: auto;
+  }
+  .res-out-sm {
+    display: block;
+  }
+  .res-table td,
+  .res-table th {
+    padding-left: 14px;
+  }
+}
+
 </style>
   </head>
   <body>
@@ -15117,6 +15262,8 @@ function createApi(baseUrl = '') {
     activity: (m) => request(`/api/markets/${id(m)}/activity`),
     leaderboard: (period = 'week') => request(`/api/leaderboard?period=${encodeURIComponent(period)}`),
     odds: (m) => request(`/api/markets/${id(m)}/odds`),
+    results: (page = 1) => request(`/api/results?page=${page}`),
+    resultPlayers: (m, page = 1) => request(`/api/results/${id(m)}?page=${page}`),
     holders: (m) => request(`/api/markets/${id(m)}/holders`),
     profile: (name) => request(`/api/users/${id(name)}`),
     notifications: () => request('/api/me/notifications'),
@@ -16185,6 +16332,68 @@ class DemoBackend {
     });
   }
 
+  results(page = 1) {
+    return this.run(() => {
+      const done = this.marketList.filter((m) => (m.status === 'resolved' || m.status === 'void') && m.predictions.length).sort((a, b) => (b.settledAt ?? 0) - (a.settledAt ?? 0));
+      const per = 10;
+      const pages = Math.max(1, Math.ceil(done.length / per));
+      const pg = Math.min(pages, Math.max(1, page));
+      return {
+        page: pg,
+        pages,
+        total: done.length,
+        results: done.slice((pg - 1) * per, pg * per).map((m) => {
+          const byUser = this.resultRows(m);
+          return {
+            marketId: m.id,
+            symbol: m.symbol,
+            name: m.name,
+            outcomes: 'ladder',
+            status: m.status,
+            winningBucket: m.status === 'resolved' ? (m.result?.winningBucket ?? null) : null,
+            voidReason: m.status === 'void' ? (m.result?.voidReason ?? 'refunded') : null,
+            settledAt: m.settledAt ?? null,
+            logoUrl: m.logoUrl ?? null,
+            players: byUser.length,
+            winners: byUser.filter((r) => r.won).length,
+            pool: m.predictions.reduce((s, p) => s + (p.accepted ?? p.stake), 0),
+            paid: byUser.reduce((s, r) => s + r.payout, 0),
+            sample: byUser.slice(0, 4).map((r) => r.name),
+          };
+        }),
+      };
+    });
+  }
+
+  resultPlayers(marketId, page = 1) {
+    return this.run(() => {
+      const m = this.marketList.find((x) => x.id === marketId);
+      if (!m) throw new ApiError(404, 'market_not_found', 'Market not found.');
+      const rows = this.resultRows(m);
+      const per = 20;
+      const pages = Math.max(1, Math.ceil(rows.length / per));
+      const pg = Math.min(pages, Math.max(1, page));
+      return { marketId, status: m.status, page: pg, pages, total: rows.length, players: rows.slice((pg - 1) * per, pg * per) };
+    });
+  }
+
+  /** One row per player of a settled market, winners first. */
+  resultRows(m) {
+    const by = new Map();
+    for (const p of m.predictions) {
+      const r = by.get(p.userId) ?? { name: this.users.get(p.userId).username, buckets: [], stake: 0, accepted: 0, payout: 0, refund: 0, at: p.placedAt };
+      if (!r.buckets.includes(p.bucket)) r.buckets.push(p.bucket);
+      r.stake += p.stake;
+      r.accepted += p.accepted ?? 0;
+      r.payout += p.payout ?? 0;
+      r.refund += p.refund ?? 0;
+      by.set(p.userId, r);
+    }
+    return [...by.values()]
+      .sort((a, b) => b.payout - a.payout || a.at - b.at)
+      .map(({ at: _at, accepted, ...r }) => ({ ...r, profit: m.status === 'resolved' ? r.payout - accepted : 0, won: r.payout > 0 }));
+  }
+
   walletChallenge(address) {
     return this.run(() => {
       const nonce = b58encode(crypto.getRandomValues(new Uint8Array(12)));
@@ -17043,6 +17252,7 @@ async function loadRoute(opening = false) {
       const lb = await fetchLeaderboard(period);
       if (stale() || period !== S.lbPeriod) return;
       setHtml(view, leaderboardView(lb));
+      if (S.api.results) loadResults();
       // The other tabs are small and cached on the server: load them now so switching is instant.
       for (const [p] of LB_PERIODS) {
         const hit = lbCache.get(p);
@@ -19211,7 +19421,94 @@ function leaderboardView(lb) {
         ? `${podium}<div class="panel panel-flush"><table class="table"><thead><tr><th>Rank</th><th>Participant</th><th class="right">Profit</th><th class="right hide-sm">Correct</th></tr></thead><tbody>${rows}</tbody></table></div>`
         : `<div class="empty"><div class="empty-art">${ico('trophy')}</div><p>No markets have settled ${{ day: 'today', week: 'this week', month: 'this month', all: '' }[lb.period ?? 'week'] || 'yet'}${lb.period === 'all' ? '' : ' yet'}.</p></div>`
     }
-    ${S.me && !lb.me ? '<p class="fine">You’ll appear here after one of your predictions settles.</p>' : ''}`;
+    ${S.me && !lb.me ? '<p class="fine">You’ll appear here after one of your predictions settles.</p>' : ''}
+    <section class="res-section" aria-labelledby="res-title">
+      <div class="res-head"><h2 id="res-title">${ico('checkCircle')} Results</h2><p class="muted">Every token with a result: who played and who won. Tap one to see everyone.</p></div>
+      <div id="lb-results">${resultsInner()}</div>
+    </section>`;
+}
+
+// ------------------------------------------------------------------ Results (under the leaderboard)
+
+const RES_VOID = {
+  one_sided_pool: 'Refunded: everyone picked the same',
+  no_winners: 'Refunded: nobody picked the result',
+  empty_pool: 'Refunded: no stakes in play',
+  retracted: 'Cancelled and refunded',
+};
+
+/** Settled tokens, one row each; the open one lists its players below it, a page at a time. */
+function resultsInner() {
+  const d = S.res?.data;
+  if (!d) return '<p class="res-empty muted">Loading results…</p>';
+  if (!d.results.length) return '<p class="res-empty muted">No results yet. Tokens show here once their result is in.</p>';
+  const rows = d.results
+    .map((r) => {
+      const open = S.res.open === r.marketId;
+      const yn = r.outcomes === 'binary';
+      const res = r.status === 'resolved' && r.winningBucket ? `<span class="res-win">Result ${outcome(r.winningBucket, yn)}</span>` : `<span class="res-void">${esc(RES_VOID[r.voidReason] ?? 'Refunded')}</span>`;
+      const shown = r.sample.slice(0, 3);
+      const more = r.players - shown.length;
+      const faces = `<span class="res-faces" aria-hidden="true">${shown.map((n) => avatar(n, 'avatar-xs')).join('')}${more > 0 ? `<span class="res-plus">+${fmtNum(more)}</span>` : ''}</span>`;
+      return `
+      <li class="res-item${open ? ' open' : ''}">
+        <button class="res-row" data-action="res-open" data-id="${esc(r.marketId)}" aria-expanded="${open}">
+          ${tokenAvatar(r, 'avatar-sm')}
+          <span class="res-tok"><b>${esc(r.symbol)}</b><span class="muted">${r.settledAt ? fmtAgo(r.settledAt) : ''}</span></span>
+          <span class="res-out hide-sm">${res}</span>
+          ${faces}
+          <span class="res-count"><b>${fmtNum(r.players)}</b> <span class="muted">${r.players === 1 ? 'player' : 'players'}</span>${r.winners ? ` · <b class="profit-pos">${fmtNum(r.winners)}</b> <span class="muted">won</span>` : ''}</span>
+          <span class="res-chev" aria-hidden="true">${ico('chevronRight')}</span>
+        </button>
+        ${open ? `<div class="res-body"><p class="res-out-sm">${res}</p>${resultPlayersInner(r)}</div>` : ''}
+      </li>`;
+    })
+    .join('');
+  return `<ol class="res-list panel panel-flush">${rows}</ol>${pager('res', d.page, d.pages).replace(/data-action="page"/g, 'data-action="res-page"')}`;
+}
+
+function resultPlayersInner(r) {
+  const p = S.res.players?.[r.marketId];
+  if (!p) return '<p class="muted res-loading">Loading players…</p>';
+  const yn = r.outcomes === 'binary';
+  const rows = p.players
+    .map((x) => {
+      const result =
+        p.status === 'void'
+          ? `<span class="muted">Refunded ${fmtNum(x.refund || x.stake)}</span>`
+          : x.won
+            ? `<b class="profit-pos">Won ${fmtNum(x.payout)}</b>`
+            : `<span class="profit-neg">${signed(x.profit)}</span>`;
+      return `<tr><td><span class="who-cell">${avatar(x.name, 'avatar-sm')}${userLink(x.name)}${x.won ? ` <span class="tag tag-win">${ico('trophy')}Winner</span>` : ''}</span></td><td>${x.buckets.map((b) => outcome(b, yn)).join(' ')}</td><td class="right num-cell hide-sm">${fmtNum(x.stake)}</td><td class="right">${result}</td></tr>`;
+    })
+    .join('');
+  return `<table class="table res-table"><thead><tr><th>Player</th><th>Pick</th><th class="right hide-sm">Stake</th><th class="right">Result</th></tr></thead><tbody>${rows}</tbody></table>${pager('resp', p.page, p.pages).replace(/data-action="page"/g, `data-action="res-ppage" data-id="${esc(r.marketId)}"`)}`;
+}
+
+function paintResults() {
+  const el = $('#lb-results');
+  if (el) el.innerHTML = resultsInner();
+}
+
+/** Loads one page of results (and keeps the open token's players). */
+async function loadResults(page = S.res?.data?.page ?? 1) {
+  S.res ??= { data: null, open: null, players: {} };
+  try {
+    S.res.data = await S.api.results(page);
+  } catch {
+    S.res.data ??= { page: 1, pages: 1, total: 0, results: [] };
+  }
+  paintResults();
+}
+
+async function loadResultPlayers(marketId, page = 1) {
+  try {
+    S.res.players[marketId] = await S.api.resultPlayers(marketId, page);
+  } catch (err) {
+    toast(err?.message ?? 'Couldn’t load the players.', true);
+    S.res.open = null;
+  }
+  paintResults();
 }
 
 const PER_PAGE = 10;
@@ -23579,6 +23876,22 @@ document.addEventListener('click', async (e) => {
     case 'page': {
       const b = t.closest('[data-action]');
       return goPage(b.dataset.list, Number(b.dataset.page), b);
+    }
+    case 'res-page': {
+      S.res.open = null;
+      await loadResults(Number(t.closest('[data-action]').dataset.page));
+      return $('#res-title')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+    case 'res-open': {
+      const id = t.closest('[data-action]').dataset.id;
+      S.res.open = S.res.open === id ? null : id;
+      paintResults();
+      if (S.res.open) loadResultPlayers(id, S.res.players[id]?.page ?? 1);
+      return;
+    }
+    case 'res-ppage': {
+      const b = t.closest('[data-action]');
+      return loadResultPlayers(b.dataset.id, Number(b.dataset.page));
     }
     case 'viz-days':
       S.vizDays = Number(t.closest('[data-action]').dataset.days);
