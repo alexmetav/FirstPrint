@@ -1129,10 +1129,10 @@ export function createApiServer(opts: ServerOptions): Server {
 
   // --- Admin: TestFPT token and tasks ---------------------------------------------
 
-  route('GET', '/api/admin/token', async ({ requireAdmin }) => {
+  route('GET', '/api/admin/token', async ({ requireAdmin, url }) => {
     const level = requireAdmin();
     if (!opts.rewards) return { enabled: false };
-    const status = await opts.rewards.tokenStatus();
+    const status = await opts.rewards.tokenStatus(url.searchParams.get('fresh') === '1');
     // The mint authority's secret key is shown to the owner only (to copy into Render).
     return level === 'owner' ? status : { ...status, authorityKey: null, authorityKeyHidden: Boolean(status.authorityKey) };
   });

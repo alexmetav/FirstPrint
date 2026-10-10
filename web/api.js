@@ -219,7 +219,7 @@ export function createAdminApi(key, baseUrl = '') {
     marketChecks: () => request('/api/admin/market-checks'),
     fetchImage: (url) => request(`/api/admin/fetch-image?url=${encodeURIComponent(url)}`),
     setStartPrice: (id, basePrice) => post(`/api/admin/manual-markets/${encodeURIComponent(id)}/start-price`, { basePrice }),
-    token: () => request('/api/admin/token'),
+    token: (fresh) => request(`/api/admin/token${fresh ? '?fresh=1' : ''}`),
     tokenStep: (step) => post(`/api/admin/token/${encodeURIComponent(step)}`),
     tasks: () => request('/api/admin/tasks'),
     errors: (view = 'open') => request(`/api/admin/errors?view=${view}`),

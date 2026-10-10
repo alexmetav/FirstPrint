@@ -1067,9 +1067,18 @@ export class FirstprintService {
     return this.lightColsSql;
   }
 
+  /**
+   * Every market for the admin panel. Published markets link their uploaded logo (/api/logo, cached by
+   * the browser) instead of carrying the image in the list, which kept the panel slow to open on a
+   * phone; drafts keep theirs inline, since /api/logo serves published markets only.
+   */
   adminMarkets() {
-    const rows = as<MarketRow[]>(this.db.prepare('SELECT * FROM markets WHERE archived_at IS NULL ORDER BY created_at DESC LIMIT 1000').all());
-    return rows.map((r) => this.view(r, undefined, true));
+    const rows = as<MarketRow[]>(this.db.prepare(`SELECT ${this.lightCols} FROM markets WHERE archived_at IS NULL ORDER BY created_at DESC LIMIT 1000`).all());
+    const draftLogo = this.db.prepare('SELECT logo_url FROM markets WHERE id = ?');
+    return rows.map((r) => {
+      if (r.published === 1 || !r.logo_url?.startsWith('data:')) return this.view(r);
+      return this.view({ ...r, logo_url: as<{ logo_url: string | null }>(draftLogo.get(r.id)).logo_url }, undefined, true);
+    });
   }
 
   private statsCache: { at: number; value: { totalMarkets: number; topPayout: number | null } } | null = null;
